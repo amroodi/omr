@@ -7,7 +7,7 @@ import { getContext, getTenantIdOrThrow } from '../../common/tenant/tenant-conte
 
 interface CreateInput {
   username: string;
-  displayName: string;
+  displayName?: string;
   password: string;
   roleId: string;
   branchId?: string;
@@ -53,7 +53,7 @@ export class UsersService {
       data: {
         tenantId: getTenantIdOrThrow(),
         username: input.username.trim(),
-        displayName: input.displayName.trim(),
+        displayName: input.displayName?.trim() || input.username.trim(),
         passwordHash: await this.hash.hashPassword(input.password),
         roleId: input.roleId,
         branchId: input.branchId ?? null,

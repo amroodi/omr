@@ -5,9 +5,10 @@ export class CreateUserDto {
   @Length(3, 64)
   username!: string;
 
+  @IsOptional()
   @IsString()
   @Length(2, 120)
-  displayName!: string;
+  displayName?: string;
 
   @IsString()
   @Length(8, 128)
