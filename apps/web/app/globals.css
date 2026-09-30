@@ -249,3 +249,115 @@ h1, h2, h3 {
 /* thin, tasteful scrollbars */
 ::-webkit-scrollbar { height: 10px; width: 10px; }
 ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; }
+
+/* ═══════════════════════════ Premium landing layer ═══════════════════════════ */
+
+/* Gradient text (headline highlight) */
+.gradient-text {
+  background: linear-gradient(120deg, #ffb347, #ff9500 45%, #ff6a00);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Glassmorphism surface */
+.glass {
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+}
+:root.dark .glass {
+  background: color-mix(in srgb, #131b2e 55%, transparent);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), var(--shadow-lg);
+}
+
+/* Aurora / mesh background with drifting orbs */
+.aurora {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  z-index: -1;
+  pointer-events: none;
+}
+.aurora::before,
+.aurora::after,
+.aurora > span {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(70px);
+  opacity: 0.55;
+  will-change: transform;
+}
+.aurora::before {
+  width: 46vw; height: 46vw;
+  right: -8vw; top: -14vw;
+  background: radial-gradient(circle at 30% 30%, #ff9500, transparent 62%);
+  animation: drift1 18s ease-in-out infinite alternate;
+}
+.aurora::after {
+  width: 40vw; height: 40vw;
+  left: -10vw; top: 6vw;
+  background: radial-gradient(circle at 50% 50%, #ff5e3a, transparent 60%);
+  opacity: 0.4;
+  animation: drift2 22s ease-in-out infinite alternate;
+}
+.aurora > span {
+  width: 34vw; height: 34vw;
+  left: 24vw; bottom: -18vw;
+  background: radial-gradient(circle at 50% 50%, #7c5cff, transparent 60%);
+  opacity: 0.3;
+  animation: drift3 26s ease-in-out infinite alternate;
+}
+:root:not(.dark) .aurora::before { opacity: 0.4; }
+:root:not(.dark) .aurora::after { opacity: 0.28; }
+:root:not(.dark) .aurora > span { opacity: 0.22; }
+
+@keyframes drift1 { to { transform: translate(-6vw, 6vw) scale(1.12); } }
+@keyframes drift2 { to { transform: translate(8vw, -4vw) scale(1.15); } }
+@keyframes drift3 { to { transform: translate(-4vw, -8vw) scale(1.1); } }
+
+/* Subtle dotted grid overlay */
+.grid-overlay {
+  position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background-image: radial-gradient(color-mix(in srgb, var(--text) 8%, transparent) 1px, transparent 1px);
+  background-size: 26px 26px;
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 30%, transparent 75%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 30%, transparent 75%);
+}
+
+/* Scroll reveal */
+.reveal { opacity: 0; transform: translateY(24px); transition: opacity 0.7s cubic-bezier(.2,.7,.2,1), transform 0.7s cubic-bezier(.2,.7,.2,1); }
+.reveal.in { opacity: 1; transform: none; }
+
+/* Floating animation for the hero preview */
+@keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
+.floaty { animation: float 6s ease-in-out infinite; }
+
+/* Big display type */
+.display { font-weight: 800; letter-spacing: -0.03em; line-height: 1.08; }
+
+/* Pill button on glass */
+.btn-glass {
+  background: color-mix(in srgb, var(--surface) 40%, transparent);
+  border: 1px solid color-mix(in srgb, var(--text) 14%, transparent);
+  color: var(--text);
+  backdrop-filter: blur(10px);
+}
+.btn-glass:hover { background: color-mix(in srgb, var(--surface) 60%, transparent); }
+
+/* Feature icon tile */
+.feature-icon {
+  width: 48px; height: 48px; border-radius: 14px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--brand) 22%, transparent), color-mix(in srgb, var(--brand) 6%, transparent));
+  color: var(--brand);
+  border: 1px solid color-mix(in srgb, var(--brand) 20%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aurora::before, .aurora::after, .aurora > span, .floaty { animation: none; }
+  .reveal { transition: none; opacity: 1; transform: none; }
+}
