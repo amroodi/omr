@@ -8,8 +8,8 @@ export function BrandMark({ size = 32 }: { size?: number }) {
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'linear-gradient(135deg, #6366f1, #4338ca 60%, #0ea5e9)',
-        boxShadow: '0 6px 16px -6px rgba(79,70,229,0.7)',
+        background: 'linear-gradient(135deg, #ffb84d, #ff9500 55%, #ff7a00)',
+        boxShadow: '0 6px 16px -6px rgba(255,149,0,0.7)',
       }}
     >
       <svg width={size * 0.6} height={size * 0.6} viewBox="0 0 24 24" fill="none">
