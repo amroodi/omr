@@ -1,0 +1,15 @@
+{
+  "name": "omr-damuon-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Multi-tenant insurance management & inquiry platform (rebuild of omr.bimmes.ir)",
+  "author": "Milad Amroodi (میلاد امرودی) — Atieh Andishan Damuon",
+  "license": "UNLICENSED",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "api:dev": "npm --workspace apps/api run start:dev",
+    "web:dev": "npm --workspace apps/web run dev"
+  }
+}

@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #f8fafc;
+  --card: #ffffff;
+  --text: #0f172a;
+  --muted: #64748b;
+  --border: #e2e8f0;
+}
+.dark {
+  --bg: #0b1220;
+  --card: #111a2e;
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --border: #1e293b;
+}
+
+html {
+  direction: rtl;
+}
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'IRANYekanX', Tahoma, sans-serif;
+}
+
+/* Persian numerals rendering hint for inputs */
+input,
+table {
+  font-feature-settings: 'ss01';
+}

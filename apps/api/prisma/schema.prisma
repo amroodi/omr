@@ -1,0 +1,407 @@
+// Prisma schema — OMR Damuon multi-tenant insurance platform
+// See docs/DATA-DICTIONARY.md for the legacy-field -> model mapping.
+//
+// Conventions:
+// - Every tenant-owned model has `tenantId` and a composite index on it.
+// - Fields marked "ENCRYPTED" hold AES-256-GCM ciphertext (see FieldCryptoService),
+//   not plaintext. Searchable encrypted fields have a paired `*Hash` blind index.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────── Tenancy ───────────────────────────────
+
+model Tenant {
+  id            String   @id @default(uuid())
+  slug          String   @unique // subdomain / white-label key
+  name          String
+  logoUrl       String?
+  faviconUrl    String?
+  primaryColor  String   @default("#0ea5e9")
+  contactHeader String? // injected into exported PDF/Excel headers
+  carrierConfig String? // ENCRYPTED json: upstream carrier credentials
+  fontFamily    String?  @default("IRANYekanX")
+  isActive      Boolean  @default(true)
+  licenseUntil  DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  branches   Branch[]
+  orgUsers   OrgUser[]
+  roles      Role[]
+  insured    InsuredParty[]
+  policies   Policy[]
+  cases      Case[]
+  documents  Document[]
+  auditLogs  AuditLog[]
+  otpChallenges OtpChallenge[]
+  customers  CustomerAccount[]
+  sharesOwned    DataSharingAgreement[] @relation("ShareOwner")
+  sharesReceived DataSharingAgreement[] @relation("SharePartner")
+}
+
+model Branch {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  name      String
+  code      String
+  createdAt DateTime @default(now())
+
+  orgUsers OrgUser[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+}
+
+// ─────────────────────────── Identity & access ──────────────────────────
+
+model SuperAdmin {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String // argon2id
+  totpSecret   String? // ENCRYPTED
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  name        String
+  permissions String[] // e.g. ["case:read","case:edit","export:pii"]
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  orgUsers OrgUser[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+}
+
+model OrgUser {
+  id           String   @id @default(uuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  branchId     String?
+  branch       Branch?  @relation(fields: [branchId], references: [id])
+  roleId       String
+  role         Role     @relation(fields: [roleId], references: [id])
+  username     String
+  displayName  String
+  passwordHash String // argon2id
+  totpSecret   String? // ENCRYPTED, optional MFA
+  isActive     Boolean  @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+
+  @@unique([tenantId, username])
+  @@index([tenantId])
+}
+
+// Customer (end-user) login identity — the "customer realm". Distinct from OrgUser. A customer
+// authenticates with National ID + phone + OTP and sees only their own linked cases (matched by
+// nationalCodeHash against insured or beneficiary). Scoped to one tenant.
+model CustomerAccount {
+  id               String   @id @default(uuid())
+  tenantId         String
+  tenant           Tenant   @relation(fields: [tenantId], references: [id])
+  branchId         String? // registered-at branch
+  nationalCode     String // ENCRYPTED
+  nationalCodeHash String // blind index / login key
+  fullName         String? // ENCRYPTED
+  phone            String? // ENCRYPTED
+  phoneHash        String? // blind index for OTP pairing
+  shareConsent     Boolean  @default(false) // consent to FULL cross-org sharing of their PII
+  isActive         Boolean  @default(true)
+  lastLoginAt      DateTime?
+  createdAt        DateTime @default(now())
+
+  @@unique([tenantId, nationalCodeHash])
+  @@index([tenantId, phoneHash])
+}
+
+// ─────────────────────────── Insurance domain ───────────────────────────
+
+model InsuredParty {
+  id               String   @id @default(uuid())
+  tenantId         String
+  tenant           Tenant   @relation(fields: [tenantId], references: [id])
+  nationalCode     String // ENCRYPTED
+  nationalCodeHash String // blind index (HMAC) — used for lookup, replaces IDOR key
+  fullName         String // ENCRYPTED
+  fatherName       String? // ENCRYPTED
+  birthDate        DateTime?
+  dateOfDeath      DateTime? // tarikh_fot
+  deathReportedAt  DateTime? // tarikh_elam_fot
+  phone            String? // ENCRYPTED
+  phoneHash        String? // blind index for OTP pairing
+  address          String? // ENCRYPTED
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  policies      Policy[]
+  cases         Case[]
+  beneficiaries Beneficiary[]
+
+  @@unique([tenantId, nationalCodeHash])
+  @@index([tenantId, phoneHash])
+}
+
+enum BeneficiaryType {
+  SPOUSE
+  CHILD
+  PARENT
+  SIBLING
+  OTHER
+}
+
+model Beneficiary {
+  id             String          @id @default(uuid())
+  tenantId       String
+  insuredId      String
+  insured        InsuredParty    @relation(fields: [insuredId], references: [id])
+  type           BeneficiaryType @default(OTHER)
+  nationalCode   String? // ENCRYPTED
+  nationalCodeHash String?
+  fullName       String // ENCRYPTED
+  relationship   String?
+  sharePercent   Decimal?        @db.Decimal(5, 2)
+  iban           String? // ENCRYPTED
+  createdAt      DateTime        @default(now())
+
+  cases Case[]
+
+  @@index([tenantId, insuredId])
+}
+
+enum PolicyStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model Policy {
+  id           String       @id @default(uuid())
+  tenantId     String
+  tenant       Tenant       @relation(fields: [tenantId], references: [id])
+  insuredId    String
+  insured      InsuredParty @relation(fields: [insuredId], references: [id])
+  policyNumber String
+  carrier      String // e.g. "البرز"
+  productType  String? // life / death coverage
+  startDate    DateTime? // tarikh_bime
+  sumInsured   Decimal?     @db.Decimal(18, 2)
+  status       PolicyStatus @default(ACTIVE)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  cases Case[]
+
+  @@unique([tenantId, policyNumber])
+  @@index([tenantId, insuredId])
+}
+
+// Case status mirrors legacy #vaziat_parvandeh badge states.
+enum CaseStatus {
+  PAID // پرداخت شده
+  REVIEWING // در حال بررسی
+  UNPAYABLE // غیرقابل پرداخت
+  OTHER
+}
+
+model Case {
+  id             String       @id @default(uuid())
+  tenantId       String
+  tenant         Tenant       @relation(fields: [tenantId], references: [id])
+  caseNumber     String
+  insuredId      String
+  insured        InsuredParty @relation(fields: [insuredId], references: [id])
+  policyId       String?
+  policy         Policy?      @relation(fields: [policyId], references: [id])
+  beneficiaryId  String?
+  beneficiary    Beneficiary? @relation(fields: [beneficiaryId], references: [id])
+  status         CaseStatus   @default(REVIEWING)
+
+  // Workflow dates (legacy *_date fields) — see DATA-DICTIONARY.md
+  stageDate               DateTime? // marhale_parvandeh_date
+  brokerageNotifiedAt     DateTime? // elam_kargozari_date
+  branchNotifiedAt        DateTime? // elam_kargozari_shobe_date
+  docsRequestedAt         DateTime? // darkhast_madarek_date
+  missingDocsRequestedAt  DateTime? // darkhast_kasri_madarek_date
+  docsSentAt              DateTime? // ersal_madarek_date
+  deficiencyCompletedAt   DateTime? // takmil_naghs_date
+  sentToHqAt              DateTime? // ersal_setad_date
+  approvedAt              DateTime? // taeed_parvandeh_date
+  returnedToBranchAt      DateTime? // bargasht_shobe_date
+  paidAt                  DateTime? // pardakht_date
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  payments  Payment[]
+  documents Document[]
+
+  @@unique([tenantId, caseNumber])
+  @@index([tenantId, status])
+  @@index([tenantId, insuredId])
+}
+
+enum PaymentStatus {
+  PAID // success
+  PENDING
+}
+
+model Payment {
+  id          String        @id @default(uuid())
+  tenantId    String
+  caseId      String
+  case        Case          @relation(fields: [caseId], references: [id])
+  date        DateTime
+  description String?
+  amount      Decimal       @db.Decimal(18, 2)
+  status      PaymentStatus @default(PENDING)
+  createdAt   DateTime      @default(now())
+
+  @@index([tenantId, caseId])
+}
+
+// ─────────────────────────── Documents & OCR ────────────────────────────
+
+enum DocumentKind {
+  NATIONAL_ID_SCAN
+  POLICY_SCAN
+  DEATH_CERTIFICATE
+  BANK_INFO
+  OTHER
+}
+
+// Assessment of a document's authenticity/integrity by an "ارزیاب اصالت مدارک" (assessor).
+enum VerificationStatus {
+  PENDING // awaiting assessment
+  VERIFIED // authentic & accurate
+  REJECTED // forged / inaccurate / illegible
+  NEEDS_INFO // more information required
+}
+
+model Document {
+  id         String       @id @default(uuid())
+  tenantId   String
+  tenant     Tenant       @relation(fields: [tenantId], references: [id])
+  caseId     String?
+  case       Case?        @relation(fields: [caseId], references: [id])
+  kind       DocumentKind @default(OTHER)
+  fileName   String
+  mimeType   String
+  sizeBytes  Int
+  storageKey String // private object-storage key
+  ocrStatus  String       @default("pending") // pending|processing|done|failed
+  ocrText    String? // ENCRYPTED — may contain PII
+  ocrFields  String? // ENCRYPTED json — auto-populated values
+  uploadedBy String?
+
+  // Document-authenticity assessment
+  verificationStatus VerificationStatus @default(PENDING)
+  verifiedById       String? // OrgUser id of the assessor
+  verifiedAt         DateTime?
+  verificationNote   String? // reason / findings
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, caseId])
+  @@index([tenantId, verificationStatus])
+}
+
+// ───────────────────────── OTP (inquiry gating) ─────────────────────────
+
+model OtpChallenge {
+  id           String   @id @default(uuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  purpose      String   @default("inquiry") // "inquiry" (one case) | "customer" (login)
+  phoneHash    String // blind index of the target phone
+  insuredId    String?
+  caseId       String? // record this challenge unlocks (inquiry purpose)
+  codeHash     String // salted hash of the OTP, never plaintext
+  attempts     Int      @default(0)
+  maxAttempts  Int      @default(5)
+  consumedAt   DateTime?
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  @@index([tenantId, phoneHash])
+  @@index([expiresAt])
+}
+
+// ─────────────────────── Cross-org data sharing ─────────────────────────
+
+enum SharingScope {
+  CASE_STATUS // read-only status/workflow, no PII
+  FULL // read all owned data (still subject to the partner's own RBAC + customer consent)
+}
+
+// An explicit, revocable grant letting one tenant (partner) read another tenant's (owner) data.
+// Never wired into the default query scope — partners read only via "shared with me" endpoints
+// that call SharingService.assertAccess first. Isolation stays the safe default.
+model DataSharingAgreement {
+  id             String       @id @default(uuid())
+  ownerTenantId  String
+  ownerTenant    Tenant       @relation("ShareOwner", fields: [ownerTenantId], references: [id])
+  partnerTenantId String
+  partnerTenant  Tenant       @relation("SharePartner", fields: [partnerTenantId], references: [id])
+  scope          SharingScope @default(CASE_STATUS)
+  isActive       Boolean      @default(true)
+  note           String?
+  createdBy      String? // super-admin or org user id
+  revokedAt      DateTime?
+  revokedBy      String?
+  createdAt      DateTime     @default(now())
+
+  @@unique([ownerTenantId, partnerTenantId, scope])
+  @@index([partnerTenantId, isActive])
+}
+
+// ─────────────────────────── Audit (hash chain) ─────────────────────────
+
+enum AuditAction {
+  VIEW
+  EXPORT
+  EDIT
+  CREATE
+  UPLOAD
+  DELETE
+  LOGIN
+  LOGIN_FAILED
+  OTP_ISSUE
+  OTP_VERIFY
+  TENANT_PROVISION
+  SHARE_GRANT
+  SHARE_REVOKE
+}
+
+model AuditLog {
+  id             String      @id @default(uuid())
+  tenantId       String?
+  tenant         Tenant?     @relation(fields: [tenantId], references: [id])
+  actorType      String // ORG_USER | SUPER_ADMIN | INSURED | SYSTEM
+  actorId        String?
+  action         AuditAction
+  targetType     String?
+  targetId       String?
+  ip             String?
+  userAgent      String?
+  metadata       String? // json, PII-redacted
+  jalaliTimestamp String // rendered Shamsi time
+  prevHash       String?
+  hash           String // SHA256(prevHash + canonical(row)) — tamper evidence
+  createdAt      DateTime    @default(now())
+
+  @@index([tenantId, action])
+  @@index([tenantId, createdAt])
+}
