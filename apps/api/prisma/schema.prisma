@@ -55,6 +55,7 @@ model Branch {
   createdAt DateTime @default(now())
 
   orgUsers OrgUser[]
+  cases    Case[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -221,6 +222,8 @@ model Case {
   tenantId       String
   tenant         Tenant       @relation(fields: [tenantId], references: [id])
   caseNumber     String
+  branchId       String? // owning branch (for branch-scoped access)
+  branch         Branch?      @relation(fields: [branchId], references: [id])
   insuredId      String
   insured        InsuredParty @relation(fields: [insuredId], references: [id])
   policyId       String?

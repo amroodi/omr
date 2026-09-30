@@ -12,11 +12,15 @@ import { RequestContextMiddleware } from './common/tenant/request-context.middle
 import { TenantResolverGuard } from './common/tenant/tenant-resolver.guard';
 import { CarriersModule } from './integrations/carriers/carriers.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { CasesModule } from './modules/cases/cases.module';
 import { CustomerModule } from './modules/customer/customer.module';
 import { DocumentsModule } from './modules/documents/documents.module';
+import { ExportsModule } from './modules/exports/exports.module';
+import { ImportModule } from './modules/import/import.module';
 import { InquiryModule } from './modules/inquiry/inquiry.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { SharingModule } from './modules/sharing/sharing.module';
+import { TenantsModule } from './modules/tenants/tenants.module';
 import { UsersModule } from './modules/users/users.module';
 
 @Module({
@@ -41,6 +45,10 @@ import { UsersModule } from './modules/users/users.module';
     DocumentsModule,
     CustomerModule,
     SharingModule,
+    CasesModule,
+    TenantsModule,
+    ExportsModule,
+    ImportModule,
   ],
   providers: [
     TenantResolverGuard,
