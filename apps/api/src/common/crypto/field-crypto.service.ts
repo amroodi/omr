@@ -1,7 +1,13 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { timingSafeEqual } from 'crypto';
-import { blindIndexValue, decryptValue, encryptValue } from './field-crypto.core';
+import {
+  blindIndexValue,
+  decryptBuffer,
+  decryptValue,
+  encryptBuffer,
+  encryptValue,
+} from './field-crypto.core';
 
 /**
  * AES-256-GCM field-level encryption + HMAC blind index.
@@ -85,6 +91,16 @@ export class FieldCryptoService implements OnModuleInit {
   blindIndex(value: string | null | undefined): string | null {
     if (value === null || value === undefined) return null;
     return blindIndexValue(this.pepper, String(value));
+  }
+
+  /** Encrypt raw bytes (files) for encryption at rest. */
+  encryptBuffer(buf: Buffer): Buffer {
+    return encryptBuffer(this.keys.get(this.currentVersion)!, this.currentVersion, buf);
+  }
+
+  /** Decrypt bytes produced by encryptBuffer(). */
+  decryptBuffer(data: Buffer): Buffer {
+    return decryptBuffer(this.keys, data);
   }
 
   /** Constant-time comparison of two blind indexes / hashes. */

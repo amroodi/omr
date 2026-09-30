@@ -1,5 +1,5 @@
-import { VerificationStatus } from '@prisma/client';
-import { IsEnum, IsOptional, IsString, Length } from 'class-validator';
+import { DocumentKind, VerificationStatus } from '@prisma/client';
+import { IsEnum, IsOptional, IsString, IsUUID, Length } from 'class-validator';
 
 export class VerifyDocumentDto {
   @IsEnum(VerificationStatus)
@@ -9,4 +9,12 @@ export class VerifyDocumentDto {
   @IsString()
   @Length(0, 1000)
   note?: string;
+}
+
+export class UploadDocumentDto {
+  @IsUUID()
+  caseId!: string;
+
+  @IsEnum(DocumentKind)
+  kind!: DocumentKind;
 }

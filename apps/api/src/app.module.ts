@@ -10,7 +10,9 @@ import { RateLimitModule } from './common/rate-limit/rate-limit.module';
 import { RolesGuard } from './common/rbac/roles.guard';
 import { RequestContextMiddleware } from './common/tenant/request-context.middleware';
 import { TenantResolverGuard } from './common/tenant/tenant-resolver.guard';
+import { StorageModule } from './common/storage/storage.module';
 import { CarriersModule } from './integrations/carriers/carriers.module';
+import { OcrModule } from './integrations/ocr/ocr.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CasesModule } from './modules/cases/cases.module';
 import { CustomerModule } from './modules/customer/customer.module';
@@ -37,7 +39,9 @@ import { UsersModule } from './modules/users/users.module';
     CryptoModule,
     AuditModule,
     RateLimitModule,
+    StorageModule,
     CarriersModule,
+    OcrModule,
     AuthModule,
     InquiryModule,
     RolesModule,

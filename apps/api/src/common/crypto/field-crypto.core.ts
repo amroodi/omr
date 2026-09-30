@@ -44,3 +44,32 @@ export function decryptValue(keys: Map<string, Buffer>, ciphertext: string): str
 export function blindIndexValue(pepper: Buffer, value: string): string {
   return createHmac('sha256', pepper).update(normalizeValue(value)).digest('hex');
 }
+
+/**
+ * Binary AES-256-GCM for files (encryption at rest). On-disk layout:
+ *   [8 bytes: "v<ver>" null-padded][12 IV][16 auth tag][ciphertext]
+ */
+const HEADER_LEN = 8;
+const TAG_LEN = 16;
+
+export function encryptBuffer(key: Buffer, version: string, buf: Buffer): Buffer {
+  const iv = randomBytes(IV_LEN);
+  const cipher = createCipheriv(ALGO, key, iv);
+  const enc = Buffer.concat([cipher.update(buf), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  const header = Buffer.alloc(HEADER_LEN);
+  header.write(`v${version}`, 'utf8');
+  return Buffer.concat([header, iv, tag, enc]);
+}
+
+export function decryptBuffer(keys: Map<string, Buffer>, data: Buffer): Buffer {
+  const version = data.subarray(0, HEADER_LEN).toString('utf8').replace(/\0+$/, '').slice(1);
+  const key = keys.get(version);
+  if (!key) throw new Error(`No decryption key loaded for version ${version}.`);
+  const iv = data.subarray(HEADER_LEN, HEADER_LEN + IV_LEN);
+  const tag = data.subarray(HEADER_LEN + IV_LEN, HEADER_LEN + IV_LEN + TAG_LEN);
+  const ct = data.subarray(HEADER_LEN + IV_LEN + TAG_LEN);
+  const decipher = createDecipheriv(ALGO, key, iv);
+  decipher.setAuthTag(tag);
+  return Buffer.concat([decipher.update(ct), decipher.final()]);
+}

@@ -12,6 +12,10 @@ coverage/
 # prisma
 apps/api/prisma/*.db
 
+# uploaded files (encrypted at rest, but never commit)
+.storage/
+apps/api/.storage/
+
 # local-only generated files (dev credentials, scratch)
 *.local.txt
 *.local
