@@ -2,8 +2,8 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { client, setTenantSlug, setToken } from '../../../lib/client';
-
-const card = { background: 'var(--card)', borderColor: 'var(--border)' };
+import { AuthCard } from '../../components/auth-card';
+import { ErrorBox, Field } from '../../components/ui';
 
 export default function OrgLogin() {
   const router = useRouter();
@@ -14,32 +14,24 @@ export default function OrgLogin() {
   const [loading, setLoading] = useState(false);
 
   const submit = async () => {
-    setError('');
-    setLoading(true);
+    setError(''); setLoading(true);
     try {
       setTenantSlug(tenantSlug);
       const r = await client.post<{ token: string }>('/auth/org/login', { tenantSlug, username, password });
       setToken('org', r.token);
       router.push('/org');
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
+    } catch (e: any) { setError(e.message); } finally { setLoading(false); }
   };
 
   return (
-    <div className="max-w-sm mx-auto space-y-3">
-      <h1 className="text-xl font-bold">ورود سازمان</h1>
-      {error && <div className="rounded-lg border p-2 text-sm" style={{ borderColor: '#ef4444', color: '#ef4444' }}>{error}</div>}
-      <div className="rounded-xl border p-4 space-y-3" style={card}>
-        <input className="w-full rounded-lg border p-2 bg-transparent" style={{ borderColor: 'var(--border)' }} value={tenantSlug} onChange={(e) => setSlug(e.target.value)} placeholder="شناسه سازمان (slug)" />
-        <input className="w-full rounded-lg border p-2 bg-transparent" style={{ borderColor: 'var(--border)' }} value={username} onChange={(e) => setUsername(e.target.value)} placeholder="نام کاربری" />
-        <input type="password" className="w-full rounded-lg border p-2 bg-transparent" style={{ borderColor: 'var(--border)' }} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="رمز عبور" />
-        <button onClick={submit} disabled={loading} className="w-full rounded-lg bg-brand py-2 text-white disabled:opacity-50">
-          {loading ? '...' : 'ورود'}
-        </button>
+    <AuthCard title="ورود سازمان" subtitle="پنل مدیریت پرونده‌های سازمان">
+      <div className="space-y-4">
+        <ErrorBox message={error} />
+        <Field label="شناسه سازمان"><input className="input" value={tenantSlug} onChange={(e) => setSlug(e.target.value)} placeholder="damuon" /></Field>
+        <Field label="نام کاربری"><input className="input" value={username} onChange={(e) => setUsername(e.target.value)} /></Field>
+        <Field label="رمز عبور"><input type="password" className="input" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} /></Field>
+        <button onClick={submit} disabled={loading || !username || !password} className="btn btn-primary w-full">{loading ? '…' : 'ورود'}</button>
       </div>
-    </div>
+    </AuthCard>
   );
 }

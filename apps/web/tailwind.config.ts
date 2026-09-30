@@ -6,12 +6,12 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['IRANYekanX', 'Tahoma', 'sans-serif'],
+        sans: ['Vazirmatn', 'IRANYekanX', 'Tahoma', 'sans-serif'],
       },
       colors: {
         brand: {
-          DEFAULT: '#0ea5e9',
-          dark: '#0369a1',
+          DEFAULT: '#4f46e5',
+          dark: '#4338ca',
         },
       },
     },

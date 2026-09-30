@@ -1,71 +1,51 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { client } from '../../../lib/client';
-import { OrgNav } from '../nav';
+import { Shell } from '../../components/Shell';
+import { ErrorBox } from '../../components/ui';
+import { ORG_NAV } from '../nav';
 
-const card = { background: 'var(--card)', borderColor: 'var(--border)' };
-
-interface Doc {
-  id: string;
-  kind: string;
-  fileName: string;
-  verificationStatus: string;
-  caseId: string | null;
-}
+interface Doc { id: string; kind: string; fileName: string; verificationStatus: string; caseId: string | null }
 
 export default function AssessorQueue() {
   const [docs, setDocs] = useState<Doc[]>([]);
   const [error, setError] = useState('');
   const [note, setNote] = useState<Record<string, string>>({});
 
-  const load = () =>
-    client.get<Doc[]>('/documents/verification-queue', 'org').then(setDocs).catch((e) => setError(e.message));
-
-  useEffect(() => {
-    load();
-  }, []);
+  const load = () => client.get<Doc[]>('/documents/verification-queue', 'org').then(setDocs).catch((e) => setError(e.message));
+  useEffect(() => { load(); }, []);
 
   const decide = async (id: string, status: string) => {
     setError('');
-    try {
-      await client.post(`/documents/${id}/verify`, { status, note: note[id] || undefined }, 'org');
-      load();
-    } catch (e: any) {
-      setError(e.message);
-    }
+    try { await client.post(`/documents/${id}/verify`, { status, note: note[id] || undefined }, 'org'); load(); }
+    catch (e: any) { setError(e.message); }
   };
 
   return (
-    <div>
-      <OrgNav />
-      <h1 className="text-lg font-bold mb-3">صف ارزیابی اصالت مدارک</h1>
-      {error && <div className="rounded-lg border p-2 text-sm mb-2" style={{ borderColor: '#ef4444', color: '#ef4444' }}>{error}</div>}
+    <Shell title="ارزیابی اصالت مدارک" subtitle="بررسی صحت و اصالت اسناد بارگذاری‌شده" nav={ORG_NAV} realm="org">
+      <ErrorBox message={error} />
       {docs.length === 0 ? (
-        <p className="text-sm" style={{ color: 'var(--muted)' }}>موردی برای ارزیابی نیست.</p>
+        <div className="card p-8 text-center text-sm" style={{ color: 'var(--muted)' }}>
+          موردی برای ارزیابی در صف نیست.
+        </div>
       ) : (
         <div className="space-y-3">
           {docs.map((d) => (
-            <div key={d.id} className="rounded-xl border p-3 space-y-2" style={card}>
-              <div className="flex justify-between text-sm">
-                <span>{d.fileName}</span>
-                <span style={{ color: 'var(--muted)' }}>{d.kind}</span>
+            <div key={d.id} className="card p-4 space-y-3">
+              <div className="flex justify-between items-center">
+                <span className="font-semibold">{d.fileName}</span>
+                <span className="badge badge-neutral">{d.kind}</span>
               </div>
-              <input
-                value={note[d.id] || ''}
-                onChange={(e) => setNote({ ...note, [d.id]: e.target.value })}
-                placeholder="یادداشت / یافته‌ها (اختیاری)"
-                className="w-full rounded-lg border p-2 bg-transparent text-sm"
-                style={{ borderColor: 'var(--border)' }}
-              />
-              <div className="flex gap-2">
-                <button onClick={() => decide(d.id, 'VERIFIED')} className="rounded-lg px-3 py-1 text-sm text-white" style={{ background: '#10b981' }}>تایید اصالت</button>
-                <button onClick={() => decide(d.id, 'REJECTED')} className="rounded-lg px-3 py-1 text-sm text-white" style={{ background: '#ef4444' }}>رد</button>
-                <button onClick={() => decide(d.id, 'NEEDS_INFO')} className="rounded-lg px-3 py-1 text-sm text-white" style={{ background: '#f59e0b' }}>نیاز به اطلاعات</button>
+              <input value={note[d.id] || ''} onChange={(e) => setNote({ ...note, [d.id]: e.target.value })} placeholder="یادداشت یا یافته‌ها (اختیاری)" className="input" />
+              <div className="flex flex-wrap gap-2">
+                <button onClick={() => decide(d.id, 'VERIFIED')} className="btn btn-sm" style={{ background: 'var(--success)', color: '#fff' }}>تایید اصالت</button>
+                <button onClick={() => decide(d.id, 'REJECTED')} className="btn btn-sm" style={{ background: 'var(--danger)', color: '#fff' }}>رد</button>
+                <button onClick={() => decide(d.id, 'NEEDS_INFO')} className="btn btn-sm" style={{ background: 'var(--warning)', color: '#fff' }}>نیاز به اطلاعات</button>
               </div>
             </div>
           ))}
         </div>
       )}
-    </div>
+    </Shell>
   );
 }
