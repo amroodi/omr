@@ -21,16 +21,19 @@ npm run dev   # http://localhost:3000
 - **Layout** with RTL, dark/light toggle (`app/theme-toggle.tsx`), and the developer credit.
 - **API client** (`lib/api.ts`) sending the `x-tenant-slug` header for tenant resolution.
 
-## Scaffolded (next steps)
+## Screens implemented
 
-Three route groups are planned; only the public inquiry is built:
+- **Public inquiry** (`/`) — OTP-gated single-record lookup.
+- **Organization** (`/org/login`, `/org`): case table with filters and search, XLSX export,
+  plus `/org/assessor` (document-authenticity queue), `/org/import` (CSV/XLSX validate-preview
+  and commit), `/org/users` (role editor with permission toggles + user creation),
+  `/org/sharing` (grant/revoke cross-org access).
+- **Customer** (`/customer/login`, `/customer`): OTP login and "my cases".
+- **Super-admin** (`/admin/login`, `/admin`): provision organizations, activate/deactivate.
 
-- `app/(org)/…` — **Brokerage panel**: case table (filter/paginate/edit), batch import preview,
-  renewal tracking, document queue, XLSX/PDF export with tenant branding.
-- `app/(admin)/…` — **Super-admin**: tenant provisioning, granular RBAC editor, font upload,
-  global audit-log viewer, carrier API config.
-- `app/(user)/…` — **Insured dashboard**: policy overview, payment schedule, self-service
-  document upload.
+Tokens are stored per realm in `localStorage` via `lib/client.ts`.
 
-Build these against the API in `apps/api`; the auth, RBAC, tenant, and audit primitives are
-already in place.
+## Next steps
+
+Font upload UI, global audit-log viewer, per-case detail/edit screen, document upload widget,
+and renewal tracking. The API primitives for these are in `apps/api`.

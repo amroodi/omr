@@ -23,10 +23,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <header
-          className="flex items-center justify-between px-4 py-3 border-b"
+          className="flex items-center justify-between px-4 py-3 border-b gap-3 flex-wrap"
           style={{ borderColor: 'var(--border)', background: 'var(--card)' }}
         >
-          <span className="font-bold text-lg">سامانه بیمس</span>
+          <a href="/" className="font-bold text-lg">سامانه بیمس</a>
+          <nav className="flex gap-3 text-sm mr-auto">
+            <a href="/customer/login">مشتری</a>
+            <a href="/org/login">سازمان</a>
+            <a href="/admin/login">مدیر سکو</a>
+          </nav>
           <ThemeToggle />
         </header>
         <main className="mx-auto max-w-3xl p-4">{children}</main>
