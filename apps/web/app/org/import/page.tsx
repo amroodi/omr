@@ -25,7 +25,7 @@ export default function ImportPage() {
   };
 
   return (
-    <Shell title="ورود دسته‌ای مشتریان" subtitle="بارگذاری فایل CSV یا Excel با اعتبارسنجی پیش از ثبت" nav={ORG_NAV} realm="org">
+    <Shell title="ورود دسته‌ای بیمه‌گزاران" subtitle="بارگذاری فایل CSV یا Excel با اعتبارسنجی پیش از ثبت" nav={ORG_NAV} realm="org">
       <ErrorBox message={error} />
       <div className="card p-5 space-y-3">
         <p className="text-sm" style={{ color: 'var(--muted)' }}>

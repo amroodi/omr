@@ -62,7 +62,7 @@ export default function AdminDashboard() {
         <StatCard label="سازمان‌ها" value={totals.orgs} tone="brand" icon={<Icon path="M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M9 13h.01M9 17h.01" />} />
         <StatCard label="فعال" value={totals.active} tone="success" icon={<Icon path="M20 6L9 17l-5-5" />} />
         <StatCard label="کل پرونده‌ها" value={totals.cases} tone="warning" icon={<Icon path="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />} />
-        <StatCard label="کل مشتریان" value={totals.customers} tone="muted" icon={<Icon path="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8z" />} />
+        <StatCard label="کل بیمه‌گزاران" value={totals.customers} tone="muted" icon={<Icon path="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8z" />} />
       </div>
 
       <ErrorBox message={error} />
@@ -85,7 +85,7 @@ export default function AdminDashboard() {
 
         <div className="card overflow-x-auto lg:col-span-2 h-fit">
           <table className="table">
-            <thead><tr>{['نام', 'شناسه', 'کاربران', 'پرونده‌ها', 'مشتریان', 'وضعیت'].map((h) => <th key={h}>{h}</th>)}</tr></thead>
+            <thead><tr>{['نام', 'شناسه', 'کاربران', 'پرونده‌ها', 'بیمه‌گزاران', 'وضعیت'].map((h) => <th key={h}>{h}</th>)}</tr></thead>
             <tbody>
               {tenants.map((t) => (
                 <tr key={t.id}>

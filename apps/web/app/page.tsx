@@ -179,7 +179,7 @@ function Features() {
     ['M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M9 13h.01', 'معماری چند-مستأجری', 'هر سازمان با داده، برند و کاربران کاملاً مجزا. آماده ارائه به‌صورت سرویس به کارگزاری‌ها.'],
     ['M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8z', 'کنترل دسترسی دقیق', 'نقش‌های سفارشی با مجوزهای تفکیک‌شده، شعبه‌محور و ضدارتقای دسترسی.'],
     ['M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM14 2v6h6M9 15l2 2 4-4', 'ارزیابی اصالت مدارک', 'صف بررسی اسناد، تایید/رد اصالت و ثبت کامل تصمیمات کارشناسان.'],
-    ['M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3', 'خروجی و ورود دسته‌ای', 'خروجی Excel و PDF با برند سازمان، و ورود انبوه مشتریان با اعتبارسنجی پیش از ثبت.'],
+    ['M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3', 'خروجی و ورود دسته‌ای', 'خروجی Excel و PDF با برند سازمان، و ورود انبوه بیمه‌گزاران با اعتبارسنجی پیش از ثبت.'],
     ['M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z', 'تقویم شمسی یکپارچه', 'نمایش و ثبت همه تاریخ‌ها به‌صورت شمسی در سراسر سامانه، فیلترها و گزارش‌ها.'],
   ];
   return (
@@ -295,7 +295,7 @@ function CTA() {
       <Reveal>
         <div className="relative overflow-hidden text-center p-10 md:p-14" style={{ borderRadius: 26, background: 'linear-gradient(135deg, #ff9500, #ff6a00)', boxShadow: '0 30px 60px -20px rgba(255,120,0,0.5)' }}>
           <h2 className="display text-3xl md:text-4xl text-white">آماده‌اید سازمان‌تان را دیجیتال کنید؟</h2>
-          <p className="mt-3 text-white/90 max-w-xl mx-auto">پلتفرمی که می‌توانید با برند خودتان به مشتریان و کارگزاری‌های دیگر ارائه دهید.</p>
+          <p className="mt-3 text-white/90 max-w-xl mx-auto">پلتفرمی که می‌توانید با برند خودتان به شرکت‌های بیمه و کارگزاری‌های دیگر ارائه دهید.</p>
           <div className="flex flex-wrap gap-3 justify-center mt-7">
             <Link href="/org/login" className="btn" style={{ background: '#fff', color: '#c96e00', padding: '0.8rem 1.6rem', fontWeight: 700 }}>شروع کنید</Link>
             <Link href="/admin/login" className="btn" style={{ background: 'rgba(255,255,255,0.16)', color: '#fff', border: '1px solid rgba(255,255,255,0.4)', padding: '0.8rem 1.6rem' }}>پنل مدیر سکو</Link>
