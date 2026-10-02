@@ -13,6 +13,7 @@ import { TenantResolverGuard } from './common/tenant/tenant-resolver.guard';
 import { StorageModule } from './common/storage/storage.module';
 import { CarriersModule } from './integrations/carriers/carriers.module';
 import { OcrModule } from './integrations/ocr/ocr.module';
+import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CasesModule } from './modules/cases/cases.module';
 import { CustomerModule } from './modules/customer/customer.module';
@@ -53,6 +54,7 @@ import { UsersModule } from './modules/users/users.module';
     TenantsModule,
     ExportsModule,
     ImportModule,
+    AuditLogsModule,
   ],
   providers: [
     TenantResolverGuard,
