@@ -26,7 +26,7 @@ export default function CustomerLogin() {
   });
 
   return (
-    <AuthCard title="ورود مشتری" subtitle="دسترسی به پرونده‌های شخصی شما">
+    <AuthCard title="ورود بیمه‌گزار" subtitle="پیگیری پرونده‌های خسارت و بارگذاری مدارک">
       <div className="space-y-4">
         <ErrorBox message={error} />
         {step === 'id' ? (

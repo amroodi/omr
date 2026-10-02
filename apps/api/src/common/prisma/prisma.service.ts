@@ -20,6 +20,7 @@ const TENANT_MODELS = new Set<string>([
   'OtpChallenge',
   'AuditLog',
   'ApprovalLevel',
+  'RequiredDocument',
 ]);
 
 const READ_OPS = new Set(['findMany', 'findFirst', 'findFirstOrThrow', 'count', 'aggregate', 'groupBy']);

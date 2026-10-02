@@ -19,6 +19,7 @@ import { BrandingModule } from './modules/branding/branding.module';
 import { CasesModule } from './modules/cases/cases.module';
 import { ClaimsModule } from './modules/claims/claims.module';
 import { LevelsModule } from './modules/levels/levels.module';
+import { RequiredDocsModule } from './modules/required-docs/required-docs.module';
 import { CustomerModule } from './modules/customer/customer.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { ExportsModule } from './modules/exports/exports.module';
@@ -63,6 +64,7 @@ import { UsersModule } from './modules/users/users.module';
     PaymentsModule,
     ClaimsModule,
     LevelsModule,
+    RequiredDocsModule,
   ],
   providers: [
     TenantResolverGuard,

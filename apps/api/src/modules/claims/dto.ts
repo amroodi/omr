@@ -1,4 +1,4 @@
-import { SalesChannel } from '@prisma/client';
+import { CauseOfDeath, SalesChannel } from '@prisma/client';
 import {
   ArrayNotEmpty,
   IsArray,
@@ -24,6 +24,10 @@ export class FileClaimDto {
   @IsOptional()
   @IsUUID()
   sellingBranchId?: string;
+
+  @IsOptional()
+  @IsEnum(CauseOfDeath)
+  causeOfDeath?: CauseOfDeath;
 
   @IsOptional()
   @IsString()

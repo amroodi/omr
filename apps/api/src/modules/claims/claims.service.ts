@@ -1,17 +1,21 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { AuditAction, ClaimStatus, Prisma, SalesChannel } from '@prisma/client';
+import { AuditAction, CauseOfDeath, ClaimStatus, Prisma, SalesChannel } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { AuditService } from '../../common/audit/audit.service';
 import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { StorageService } from '../../common/storage/storage.service';
 import { getContext } from '../../common/tenant/tenant-context';
 import { toJalali } from '../../common/jalali/jalali.util';
+
+const CLAIM_DOC_MIME = new Set(['application/pdf', 'image/jpeg', 'image/png']);
 
 interface FileClaimInput {
   insurerTenantId: string;
   channel: SalesChannel;
   brokerTenantId?: string; // BROKER channel
   sellingBranchId?: string; // DIRECT channel (insurer branch)
+  causeOfDeath?: CauseOfDeath;
   policyNumber?: string;
   claimedAmount: string;
   deceasedFullName: string;
@@ -34,6 +38,7 @@ export class ClaimsService {
     private readonly prisma: PrismaService,
     private readonly crypto: FieldCryptoService,
     private readonly audit: AuditService,
+    private readonly storage: StorageService,
   ) {}
 
   private db() {
@@ -76,6 +81,7 @@ export class ClaimsService {
         deceasedFullName: this.crypto.encrypt(input.deceasedFullName)!,
         deceasedNationalCode: this.crypto.encrypt(nid)!,
         deceasedNationalCodeHash: this.crypto.blindIndex(nid)!,
+        causeOfDeath: input.causeOfDeath ?? 'NATURAL',
         policyNumber: input.policyNumber ?? null,
         claimedAmount: input.claimedAmount,
         status: ClaimStatus.UNDER_REVIEW,
@@ -197,6 +203,83 @@ export class ClaimsService {
     if (!claim) throw new NotFoundException('پرونده یافت نشد');
     this.assertParticipant(claim);
     return this.present(claim, true);
+  }
+
+  /** Required-document checklist for a claim, filtered by its cause of death. */
+  async checklist(claimId: string) {
+    const db = this.db();
+    const claim = await db.claim.findUnique({ where: { id: claimId } });
+    if (!claim) throw new NotFoundException('پرونده یافت نشد');
+    this.assertParticipant(claim);
+
+    const reqs = await db.requiredDocument.findMany({
+      where: { tenantId: claim.insurerTenantId, isActive: true, appliesTo: { in: [claim.causeOfDeath as any, 'BOTH'] } },
+      orderBy: { order: 'asc' },
+    });
+    const docs = await db.document.findMany({
+      where: { claimId },
+      select: { id: true, docCode: true, fileName: true, verificationStatus: true },
+    });
+    const byCode = new Map<string, any[]>();
+    for (const d of docs) {
+      const k = d.docCode ?? '_other';
+      if (!byCode.has(k)) byCode.set(k, []);
+      byCode.get(k)!.push(d);
+    }
+    const items = reqs.map((r) => ({
+      code: r.code,
+      label: r.label,
+      appliesTo: r.appliesTo,
+      uploaded: (byCode.get(r.code) ?? []).length > 0,
+      documents: byCode.get(r.code) ?? [],
+    }));
+    const reqCodes = new Set(reqs.map((r) => r.code));
+    return {
+      causeOfDeath: claim.causeOfDeath,
+      complete: items.length > 0 && items.every((i) => i.uploaded),
+      items,
+      otherDocuments: docs.filter((d) => !d.docCode || !reqCodes.has(d.docCode)),
+    };
+  }
+
+  /** Upload a document to a claim, tagged with the required-document code it satisfies. */
+  async uploadDocument(claimId: string, file: Express.Multer.File, docCode: string) {
+    if (!file?.buffer?.length) throw new BadRequestException('فایلی دریافت نشد');
+    if (!CLAIM_DOC_MIME.has(file.mimetype)) throw new BadRequestException('فقط PDF، JPG و PNG مجاز است');
+    const db = this.db();
+    const claim = await db.claim.findUnique({ where: { id: claimId } });
+    if (!claim) throw new NotFoundException('پرونده یافت نشد');
+    this.assertParticipant(claim);
+    const storageKey = await this.storage.save(claim.insurerTenantId, file.buffer);
+    const doc = await db.document.create({
+      data: {
+        tenantId: claim.insurerTenantId,
+        claimId,
+        docCode: docCode.trim(),
+        kind: 'OTHER',
+        fileName: file.originalname,
+        mimeType: file.mimetype,
+        sizeBytes: file.size,
+        storageKey,
+        uploadedBy: getContext()?.actorId ?? null,
+        verificationStatus: 'PENDING',
+      },
+      select: { id: true, docCode: true, fileName: true },
+    });
+    await this.audit.record({ action: AuditAction.UPLOAD, tenantId: claim.insurerTenantId, targetType: 'ClaimDocument', targetId: doc.id, metadata: { claimId, docCode } });
+    return doc;
+  }
+
+  async listDocuments(claimId: string) {
+    const db = this.db();
+    const claim = await db.claim.findUnique({ where: { id: claimId } });
+    if (!claim) throw new NotFoundException('پرونده یافت نشد');
+    this.assertParticipant(claim);
+    return db.document.findMany({
+      where: { claimId },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, docCode: true, fileName: true, mimeType: true, verificationStatus: true, createdAt: true },
+    });
   }
 
   /** Work queue: claims with a PENDING step the caller must act on. */

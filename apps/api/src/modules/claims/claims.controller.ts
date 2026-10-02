@@ -1,8 +1,20 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { Permissions } from '../../common/rbac/decorators';
 import { PERMISSIONS } from '../../common/rbac/permissions';
 import { ClaimsService } from './claims.service';
 import { DecisionDto, FileClaimDto } from './dto';
+
+const docLimits = { fileSize: 15 * 1024 * 1024 };
 
 @Controller('claims')
 export class ClaimsController {
@@ -26,6 +38,27 @@ export class ClaimsController {
   @Get(':id')
   get(@Param('id') id: string) {
     return this.claims.get(id);
+  }
+
+  /** Required-document checklist (filtered by the claim's cause of death). */
+  @Permissions(PERMISSIONS.CLAIM_PROCESS)
+  @Get(':id/checklist')
+  checklist(@Param('id') id: string) {
+    return this.claims.checklist(id);
+  }
+
+  @Permissions(PERMISSIONS.CLAIM_PROCESS)
+  @Get(':id/documents')
+  documents(@Param('id') id: string) {
+    return this.claims.listDocuments(id);
+  }
+
+  /** Upload a document to the claim, tagged with the required-document code it satisfies. */
+  @Permissions(PERMISSIONS.CLAIM_FILE)
+  @Post(':id/documents')
+  @UseInterceptors(FileInterceptor('file', { limits: docLimits }))
+  uploadDocument(@Param('id') id: string, @Query('docCode') docCode: string, @UploadedFile() file: Express.Multer.File) {
+    return this.claims.uploadDocument(id, file, docCode);
   }
 
   /** معرف forwards / insurer level endorses (engine routes by authority ceiling). */

@@ -31,7 +31,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <span className="font-extrabold text-lg">بیمس</span>
             </a>
             <nav className="hidden sm:flex gap-1 text-sm mr-auto">
-              <a href="/customer/login" className="px-3 py-1.5 rounded-lg hover:bg-[var(--surface-2)] transition">پورتال مشتری</a>
+              <a href="/customer/login" className="px-3 py-1.5 rounded-lg hover:bg-[var(--surface-2)] transition">بیمه‌گزار</a>
               <a href="/org/login" className="px-3 py-1.5 rounded-lg hover:bg-[var(--surface-2)] transition">پورتال سازمان</a>
               <a href="/admin/login" className="px-3 py-1.5 rounded-lg hover:bg-[var(--surface-2)] transition">مدیر سکو</a>
             </nav>

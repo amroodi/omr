@@ -55,6 +55,7 @@ model Tenant {
   sharesOwned    DataSharingAgreement[] @relation("ShareOwner")
   sharesReceived DataSharingAgreement[] @relation("SharePartner")
   approvalLevels ApprovalLevel[]
+  requiredDocuments RequiredDocument[]
 }
 
 model Branch {
@@ -327,6 +328,7 @@ model Document {
   caseId     String?
   case       Case?        @relation(fields: [caseId], references: [id])
   claimId    String? // death-claim this document belongs to (claims workflow)
+  docCode    String? // RequiredDocument.code this upload satisfies (claims)
   kind       DocumentKind @default(OTHER)
   fileName   String
   mimeType   String
@@ -408,6 +410,34 @@ enum SalesChannel {
   BROKER // bought through a brokerage; معرف = the broker tenant
 }
 
+enum CauseOfDeath {
+  NATURAL // فوت طبیعی
+  ACCIDENT // فوت ناشی از حادثه
+}
+
+enum DocAppliesTo {
+  NATURAL // only natural death
+  ACCIDENT // only accidental death
+  BOTH // required for both
+}
+
+// Per-insurer configurable catalog of required claim documents, tagged by cause of death.
+// The full list is provided by the business and edited here without code changes.
+model RequiredDocument {
+  id        String       @id @default(uuid())
+  tenantId  String // the INSURER
+  tenant    Tenant       @relation(fields: [tenantId], references: [id])
+  code      String // stable key, e.g. "death_cert"
+  label     String // Persian label, e.g. "گواهی فوت"
+  appliesTo DocAppliesTo @default(BOTH)
+  order     Int          @default(0)
+  isActive  Boolean      @default(true)
+  createdAt DateTime     @default(now())
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+}
+
 enum ApprovalLevelKind {
   INSURER_CLAIMS // بیمه‌گر (واحد خسارت)
   TECHNICAL_MGMT // مدیریت فنی مربوطه
@@ -457,6 +487,7 @@ model Claim {
   deceasedFullName         String // ENCRYPTED
   deceasedNationalCode     String // ENCRYPTED
   deceasedNationalCodeHash String // blind index
+  causeOfDeath             CauseOfDeath @default(NATURAL)
   policyNumber             String?
   claimedAmount            Decimal @db.Decimal(18, 2)
 

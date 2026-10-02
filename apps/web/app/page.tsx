@@ -53,7 +53,7 @@ function Hero() {
               <Icon path="M5 12h14M13 6l6 6-6 6" />
             </Link>
             <Link href="/customer/login" className="btn btn-glass" style={{ padding: '0.8rem 1.5rem', fontSize: '0.95rem' }}>
-              پورتال مشتریان
+              پورتال بیمه‌گزار
             </Link>
           </div>
         </Reveal>

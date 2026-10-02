@@ -7,6 +7,7 @@ import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { SYSTEM_ROLES } from '../../common/rbac/permissions';
 import { getContext } from '../../common/tenant/tenant-context';
+import { DEFAULT_REQUIRED_DOCS } from '../required-docs/defaults';
 
 interface ProvisionInput {
   name: string;
@@ -85,6 +86,13 @@ export class TenantsService {
           roleId: roleIds['مدیر سازمان'],
         },
       });
+
+      // An insurer starts with the default required-document catalog, editable afterwards.
+      if (tenant.kind === 'INSURER') {
+        await tx.requiredDocument.createMany({
+          data: DEFAULT_REQUIRED_DOCS.map((d) => ({ ...d, tenantId: tenant.id })),
+        });
+      }
 
       return { tenant, adminId: admin.id };
     });
