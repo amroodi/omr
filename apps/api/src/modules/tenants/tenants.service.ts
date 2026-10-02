@@ -16,6 +16,7 @@ interface ProvisionInput {
   adminPassword?: string; // generated if omitted
   primaryColor?: string;
   contactHeader?: string;
+  kind?: 'INSURER' | 'BROKER';
 }
 
 @Injectable()
@@ -60,7 +61,8 @@ export class TenantsService {
         data: {
           slug,
           name: input.name.trim(),
-          primaryColor: input.primaryColor ?? '#0ea5e9',
+          kind: input.kind ?? 'BROKER',
+          primaryColor: input.primaryColor ?? '#ff9500',
           contactHeader: input.contactHeader ?? null,
         },
       });

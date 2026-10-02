@@ -17,9 +17,16 @@ datasource db {
 
 // ─────────────────────────────── Tenancy ───────────────────────────────
 
+// An organization's role in the claims ecosystem.
+enum TenantKind {
+  INSURER // بیمه‌گر — owns policies and the approval hierarchy
+  BROKER // کارگزاری — acts as معرف, introduces claims to insurers
+}
+
 model Tenant {
-  id            String   @id @default(uuid())
-  slug          String   @unique // subdomain / white-label key
+  id            String     @id @default(uuid())
+  kind          TenantKind @default(BROKER)
+  slug          String     @unique // subdomain / white-label key
   name          String
   logoUrl       String?
   faviconUrl    String?
@@ -47,6 +54,7 @@ model Tenant {
   customers  CustomerAccount[]
   sharesOwned    DataSharingAgreement[] @relation("ShareOwner")
   sharesReceived DataSharingAgreement[] @relation("SharePartner")
+  approvalLevels ApprovalLevel[]
 }
 
 model Branch {
@@ -318,6 +326,7 @@ model Document {
   tenant     Tenant       @relation(fields: [tenantId], references: [id])
   caseId     String?
   case       Case?        @relation(fields: [caseId], references: [id])
+  claimId    String? // death-claim this document belongs to (claims workflow)
   kind       DocumentKind @default(OTHER)
   fileName   String
   mimeType   String
@@ -389,6 +398,143 @@ model DataSharingAgreement {
   @@index([partnerTenantId, isActive])
 }
 
+// ─────────────────────── Claims workflow (hierarchy) ────────────────────
+// See docs/CLAIMS-WORKFLOW.md. A Claim is a CROSS-TENANT object: it is not auto-scoped by the
+// Prisma tenant extension (it has no single `tenantId`). Access is granted per party via
+// ClaimParticipant (orgs) and the policyHolderId (the filing بیمه‌گزار).
+
+enum SalesChannel {
+  DIRECT // bought from the insurer; معرف = the selling insurer branch
+  BROKER // bought through a brokerage; معرف = the broker tenant
+}
+
+enum ApprovalLevelKind {
+  INSURER_CLAIMS // بیمه‌گر (واحد خسارت)
+  TECHNICAL_MGMT // مدیریت فنی مربوطه
+  COUNCIL_DEPUTY // معاون شورای فنی (gateway)
+  TECHNICAL_COUNCIL // شورای فنی (final)
+  CUSTOM
+}
+
+// Per-insurer configurable approval ladder. `ceiling` null = unlimited (top of chain).
+model ApprovalLevel {
+  id        String            @id @default(uuid())
+  tenantId  String // the INSURER (auto-scoped for insurer admins)
+  tenant    Tenant            @relation(fields: [tenantId], references: [id])
+  name      String
+  order     Int // 1 = first authority level (بیمه‌گر)
+  ceiling   Decimal?          @db.Decimal(18, 2)
+  kind      ApprovalLevelKind @default(CUSTOM)
+  isActive  Boolean           @default(true)
+  createdAt DateTime          @default(now())
+
+  @@unique([tenantId, order])
+  @@index([tenantId])
+}
+
+enum ClaimStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  RETURNED_INCOMPLETE // نقص مدارک — with بیمه‌گزار for رفع نقص
+  APPROVED
+  REJECTED
+  PAID
+}
+
+model Claim {
+  id          String       @id @default(uuid())
+  claimNumber String       @unique
+
+  // Parties (cross-tenant; plain id references, not relations)
+  insurerTenantId String // بیمه‌گر — owns the claim
+  channel         SalesChannel
+  brokerTenantId  String? // معرف (BROKER channel)
+  sellingBranchId String? // معرف = insurer branch that sold (DIRECT channel)
+  policyHolderId  String? // بیمه‌گزار (CustomerAccount) who files & does رفع نقص
+
+  // Subject (deceased بیمه‌شده / متوفی)
+  deceasedFullName         String // ENCRYPTED
+  deceasedNationalCode     String // ENCRYPTED
+  deceasedNationalCodeHash String // blind index
+  policyNumber             String?
+  claimedAmount            Decimal @db.Decimal(18, 2)
+
+  status    ClaimStatus @default(DRAFT)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  steps        ClaimStep[]
+  participants ClaimParticipant[]
+  deficiencies ClaimDeficiency[]
+
+  @@index([insurerTenantId, status])
+  @@index([brokerTenantId])
+  @@index([deceasedNationalCodeHash])
+}
+
+enum ClaimPartyType {
+  POLICYHOLDER // بیمه‌گزار
+  MOAREF // معرف (broker or selling branch)
+  INSURER_LEVEL // an insurer ApprovalLevel
+}
+
+enum ClaimStepState {
+  PENDING // awaiting the holder's action
+  FORWARDED // control passed to the next party (معرف → بیمه‌گر)
+  ESCALATED // amount exceeded ceiling → next level up
+  APPROVED // authorized at this level
+  RETURNED_INCOMPLETE // نقص مدارک raised here
+  REJECTED // substantive rejection
+  ACKED // decision cascaded through this step on the way down
+}
+
+model ClaimStep {
+  id             String         @id @default(uuid())
+  claimId        String
+  claim          Claim          @relation(fields: [claimId], references: [id])
+  order          Int
+  partyType      ClaimPartyType
+  levelId        String? // ApprovalLevel id when partyType = INSURER_LEVEL
+  holderTenantId String // org that holds this step
+  holderBranchId String? // specific branch (معرف in DIRECT channel)
+  direction      String         @default("UP") // UP (toward authority) | DOWN (decision cascade)
+  state          ClaimStepState @default(PENDING)
+  note           String?
+  decidedById    String?
+  decidedAt      DateTime?
+  createdAt      DateTime       @default(now())
+
+  @@index([claimId, order])
+  @@index([holderTenantId, state])
+}
+
+// Which organizations may access a claim (the filing بیمه‌گزار is matched via policyHolderId).
+model ClaimParticipant {
+  id        String   @id @default(uuid())
+  claimId   String
+  claim     Claim    @relation(fields: [claimId], references: [id])
+  tenantId  String // participating org
+  role      String // INSURER | MOAREF_BROKER | MOAREF_BRANCH
+  createdAt DateTime @default(now())
+
+  @@unique([claimId, tenantId])
+  @@index([tenantId])
+}
+
+model ClaimDeficiency {
+  id              String    @id @default(uuid())
+  claimId         String
+  claim           Claim     @relation(fields: [claimId], references: [id])
+  raisedByTenantId String?
+  raisedByStepId  String?
+  items           String // JSON array of deficiency descriptions
+  resolvedAt      DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([claimId])
+}
+
 // ─────────────────────────── Audit (hash chain) ─────────────────────────
 
 enum AuditAction {
@@ -408,6 +554,14 @@ enum AuditAction {
   PAYMENT_PROPOSE
   PAYMENT_APPROVE
   PAYMENT_REJECT
+  CLAIM_SUBMIT
+  CLAIM_FORWARD
+  CLAIM_ESCALATE
+  CLAIM_APPROVE
+  CLAIM_RETURN_INCOMPLETE
+  CLAIM_RECTIFY
+  CLAIM_REJECT
+  CLAIM_PAY
 }
 
 model AuditLog {

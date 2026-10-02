@@ -17,6 +17,8 @@ import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BrandingModule } from './modules/branding/branding.module';
 import { CasesModule } from './modules/cases/cases.module';
+import { ClaimsModule } from './modules/claims/claims.module';
+import { LevelsModule } from './modules/levels/levels.module';
 import { CustomerModule } from './modules/customer/customer.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { ExportsModule } from './modules/exports/exports.module';
@@ -59,6 +61,8 @@ import { UsersModule } from './modules/users/users.module';
     AuditLogsModule,
     BrandingModule,
     PaymentsModule,
+    ClaimsModule,
+    LevelsModule,
   ],
   providers: [
     TenantResolverGuard,

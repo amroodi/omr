@@ -15,6 +15,11 @@ export const PERMISSIONS = {
   PAYMENT_PROPOSE: 'payment:propose', // create a payout awaiting approval (maker)
   PAYMENT_APPROVE: 'payment:approve', // approve/reject a proposed payout (checker)
 
+  // Death-claim workflow
+  CLAIM_FILE: 'claim:file', // file a claim / do رفع نقص (بیمه‌گزار side)
+  CLAIM_PROCESS: 'claim:process', // معرف control + insurer-level decisions
+  LEVEL_MANAGE: 'level:manage', // configure the insurer's approval ladder & ceilings
+
   // Exports
   EXPORT_LIST: 'export:list',
   EXPORT_PII: 'export:pii', // unmask National IDs in exports (audit-logged)
@@ -60,6 +65,8 @@ export const SYSTEM_ROLES: Record<string, Permission[]> = {
     PERMISSIONS.EXPORT_LIST,
     PERMISSIONS.IMPORT_BATCH,
     PERMISSIONS.PAYMENT_PROPOSE,
+    PERMISSIONS.CLAIM_FILE,
+    PERMISSIONS.CLAIM_PROCESS,
   ],
   // Four-eyes approver: can authorize payouts but cannot propose them.
   'تاییدکننده پرداخت': [PERMISSIONS.CASE_READ, PERMISSIONS.PAYMENT_APPROVE],

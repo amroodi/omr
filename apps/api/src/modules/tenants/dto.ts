@@ -1,9 +1,14 @@
-import { IsBoolean, IsHexColor, IsOptional, IsString, Length, Matches } from 'class-validator';
+import { TenantKind } from '@prisma/client';
+import { IsBoolean, IsEnum, IsHexColor, IsOptional, IsString, Length, Matches } from 'class-validator';
 
 export class ProvisionTenantDto {
   @IsString()
   @Length(2, 120)
   name!: string;
+
+  @IsOptional()
+  @IsEnum(TenantKind)
+  kind?: TenantKind; // INSURER | BROKER (default BROKER)
 
   @IsString()
   @Matches(/^[a-z0-9-]{2,40}$/, { message: 'slug must be lowercase letters, digits, hyphens' })
