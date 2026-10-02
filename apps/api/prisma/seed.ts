@@ -68,24 +68,27 @@ async function main(): Promise<void> {
   const adminPw = randomPassword();
   const superPw = randomPassword();
 
+  // Reset the password on re-seed too, so prisma/seed-output.local.txt always matches the DB.
+  const adminHash = await argon2.hash(adminPw, { type: argon2.argon2id });
   await prisma.orgUser.upsert({
     where: { tenantId_username: { tenantId: tenant.id, username: 'admin' } },
-    update: {},
+    update: { passwordHash: adminHash, roleId: roleIds['مدیر سازمان'] },
     create: {
       tenantId: tenant.id,
       username: 'admin',
       displayName: 'مدیر دامون',
-      passwordHash: await argon2.hash(adminPw, { type: argon2.argon2id }),
+      passwordHash: adminHash,
       roleId: roleIds['مدیر سازمان'],
     },
   });
 
+  const superHash = await argon2.hash(superPw, { type: argon2.argon2id });
   await prisma.superAdmin.upsert({
     where: { email: 'superadmin@damuon.local' },
-    update: {},
+    update: { passwordHash: superHash },
     create: {
       email: 'superadmin@damuon.local',
-      passwordHash: await argon2.hash(superPw, { type: argon2.argon2id }),
+      passwordHash: superHash,
     },
   });
 

@@ -11,6 +11,10 @@ export const PERMISSIONS = {
   POLICY_READ: 'policy:read',
   POLICY_EDIT: 'policy:edit',
 
+  // Payouts (maker-checker / four-eyes)
+  PAYMENT_PROPOSE: 'payment:propose', // create a payout awaiting approval (maker)
+  PAYMENT_APPROVE: 'payment:approve', // approve/reject a proposed payout (checker)
+
   // Exports
   EXPORT_LIST: 'export:list',
   EXPORT_PII: 'export:pii', // unmask National IDs in exports (audit-logged)
@@ -55,7 +59,10 @@ export const SYSTEM_ROLES: Record<string, Permission[]> = {
     PERMISSIONS.OCR_RUN,
     PERMISSIONS.EXPORT_LIST,
     PERMISSIONS.IMPORT_BATCH,
+    PERMISSIONS.PAYMENT_PROPOSE,
   ],
+  // Four-eyes approver: can authorize payouts but cannot propose them.
+  'تاییدکننده پرداخت': [PERMISSIONS.CASE_READ, PERMISSIONS.PAYMENT_APPROVE],
   'فقط مشاهده': [PERMISSIONS.CASE_READ, PERMISSIONS.POLICY_READ, PERMISSIONS.DOC_READ],
   // Assessor of document authenticity — reviews uploaded docs for integrity/accuracy.
   'ارزیاب اصالت مدارک': [

@@ -264,6 +264,13 @@ enum PaymentStatus {
   PENDING
 }
 
+// Maker-checker (four-eyes) state for a payout.
+enum PaymentApproval {
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+}
+
 model Payment {
   id          String        @id @default(uuid())
   tenantId    String
@@ -273,9 +280,18 @@ model Payment {
   description String?
   amount      Decimal       @db.Decimal(18, 2)
   status      PaymentStatus @default(PENDING)
-  createdAt   DateTime      @default(now())
+
+  // Maker-checker: a payout proposed by one user must be approved by another.
+  approval     PaymentApproval @default(PENDING_APPROVAL)
+  proposedById String? // OrgUser who created the payout (maker)
+  approvedById String? // OrgUser who approved/rejected (checker)
+  decidedAt    DateTime?
+  approvalNote String?
+
+  createdAt DateTime @default(now())
 
   @@index([tenantId, caseId])
+  @@index([tenantId, approval])
 }
 
 // ─────────────────────────── Documents & OCR ────────────────────────────
@@ -389,6 +405,9 @@ enum AuditAction {
   TENANT_PROVISION
   SHARE_GRANT
   SHARE_REVOKE
+  PAYMENT_PROPOSE
+  PAYMENT_APPROVE
+  PAYMENT_REJECT
 }
 
 model AuditLog {
