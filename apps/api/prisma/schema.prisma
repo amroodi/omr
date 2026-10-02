@@ -23,10 +23,13 @@ model Tenant {
   name          String
   logoUrl       String?
   faviconUrl    String?
-  primaryColor  String   @default("#0ea5e9")
+  logoKey       String? // storage key of uploaded logo (encrypted at rest)
+  faviconKey    String? // storage key of uploaded favicon
+  fontKey       String? // storage key of uploaded custom font (.woff2/.ttf)
+  primaryColor  String   @default("#ff9500")
   contactHeader String? // injected into exported PDF/Excel headers
   carrierConfig String? // ENCRYPTED json: upstream carrier credentials
-  fontFamily    String?  @default("IRANYekanX")
+  fontFamily    String?  @default("Vazirmatn")
   isActive      Boolean  @default(true)
   licenseUntil  DateTime?
   createdAt     DateTime @default(now())

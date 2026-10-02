@@ -15,6 +15,7 @@ import { CarriersModule } from './integrations/carriers/carriers.module';
 import { OcrModule } from './integrations/ocr/ocr.module';
 import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { BrandingModule } from './modules/branding/branding.module';
 import { CasesModule } from './modules/cases/cases.module';
 import { CustomerModule } from './modules/customer/customer.module';
 import { DocumentsModule } from './modules/documents/documents.module';
@@ -55,6 +56,7 @@ import { UsersModule } from './modules/users/users.module';
     ExportsModule,
     ImportModule,
     AuditLogsModule,
+    BrandingModule,
   ],
   providers: [
     TenantResolverGuard,
