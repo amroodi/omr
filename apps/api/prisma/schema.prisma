@@ -410,29 +410,25 @@ enum SalesChannel {
   BROKER // bought through a brokerage; معرف = the broker tenant
 }
 
-enum CauseOfDeath {
-  NATURAL // فوت طبیعی
-  ACCIDENT // فوت ناشی از حادثه
+// Claim scenarios from the policy contract (clause ج). A claim is one of these.
+enum ClaimType {
+  DEATH_ILLNESS // ج-۱ فوت ناشی از بیماری (طبیعی)
+  DEATH_ACCIDENT // ج-۲ فوت ناشی از حادثه
+  DISABILITY_ACCIDENT // ج-۴ نقص عضو / ازکارافتادگی ناشی از حادثه
 }
 
-enum DocAppliesTo {
-  NATURAL // only natural death
-  ACCIDENT // only accidental death
-  BOTH // required for both
-}
-
-// Per-insurer configurable catalog of required claim documents, tagged by cause of death.
-// The full list is provided by the business and edited here without code changes.
+// Per-insurer configurable catalog of required claim documents. Each document applies to one or
+// more claim types. The business list is edited here (or via the API) with no code change.
 model RequiredDocument {
-  id        String       @id @default(uuid())
-  tenantId  String // the INSURER
-  tenant    Tenant       @relation(fields: [tenantId], references: [id])
-  code      String // stable key, e.g. "death_cert"
-  label     String // Persian label, e.g. "گواهی فوت"
-  appliesTo DocAppliesTo @default(BOTH)
-  order     Int          @default(0)
-  isActive  Boolean      @default(true)
-  createdAt DateTime     @default(now())
+  id             String      @id @default(uuid())
+  tenantId       String // the INSURER
+  tenant         Tenant      @relation(fields: [tenantId], references: [id])
+  code           String // stable key, e.g. "death_cert_cause"
+  label          String // Persian label
+  appliesToTypes ClaimType[] // which claim scenarios require this document
+  order          Int         @default(0)
+  isActive       Boolean     @default(true)
+  createdAt      DateTime    @default(now())
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -487,7 +483,7 @@ model Claim {
   deceasedFullName         String // ENCRYPTED
   deceasedNationalCode     String // ENCRYPTED
   deceasedNationalCodeHash String // blind index
-  causeOfDeath             CauseOfDeath @default(NATURAL)
+  claimType                ClaimType @default(DEATH_ILLNESS)
   policyNumber             String?
   claimedAmount            Decimal @db.Decimal(18, 2)
 

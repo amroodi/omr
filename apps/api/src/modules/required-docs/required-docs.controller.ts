@@ -1,19 +1,19 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
-import { DocAppliesTo } from '@prisma/client';
-import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, Length, Min } from 'class-validator';
+import { ClaimType } from '@prisma/client';
+import { IsArray, IsBoolean, IsEnum, IsInt, IsOptional, IsString, Length, Min } from 'class-validator';
 import { Permissions } from '../../common/rbac/decorators';
 import { PERMISSIONS } from '../../common/rbac/permissions';
 import { RequiredDocsService } from './required-docs.service';
 
 class CreateDocDto {
   @IsString() @Length(2, 60) code!: string;
-  @IsString() @Length(2, 200) label!: string;
-  @IsOptional() @IsEnum(DocAppliesTo) appliesTo?: DocAppliesTo;
+  @IsString() @Length(2, 300) label!: string;
+  @IsOptional() @IsArray() @IsEnum(ClaimType, { each: true }) appliesToTypes?: ClaimType[];
   @IsOptional() @IsInt() @Min(0) order?: number;
 }
 class UpdateDocDto {
-  @IsOptional() @IsString() @Length(2, 200) label?: string;
-  @IsOptional() @IsEnum(DocAppliesTo) appliesTo?: DocAppliesTo;
+  @IsOptional() @IsString() @Length(2, 300) label?: string;
+  @IsOptional() @IsArray() @IsEnum(ClaimType, { each: true }) appliesToTypes?: ClaimType[];
   @IsOptional() @IsInt() @Min(0) order?: number;
   @IsOptional() @IsBoolean() isActive?: boolean;
 }

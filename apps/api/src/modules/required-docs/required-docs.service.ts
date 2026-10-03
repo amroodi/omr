@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { AuditAction, DocAppliesTo } from '@prisma/client';
+import { AuditAction, ClaimType } from '@prisma/client';
 import { AuditService } from '../../common/audit/audit.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { getTenantIdOrThrow } from '../../common/tenant/tenant-context';
@@ -8,7 +8,7 @@ import { DEFAULT_REQUIRED_DOCS } from './defaults';
 interface DocInput {
   code: string;
   label: string;
-  appliesTo?: DocAppliesTo;
+  appliesToTypes?: ClaimType[];
   order?: number;
 }
 
@@ -28,13 +28,13 @@ export class RequiredDocsService {
     const exists = await this.prisma.scoped.requiredDocument.findFirst({ where: { code: input.code } });
     if (exists) throw new BadRequestException('کد مدرک تکراری است');
     const doc = await this.prisma.scoped.requiredDocument.create({
-      data: { tenantId, code: input.code.trim(), label: input.label.trim(), appliesTo: input.appliesTo ?? 'BOTH', order: input.order ?? 0 },
+      data: { tenantId, code: input.code.trim(), label: input.label.trim(), appliesToTypes: input.appliesToTypes ?? [], order: input.order ?? 0 },
     });
     await this.audit.record({ action: AuditAction.CREATE, targetType: 'RequiredDocument', targetId: doc.id, metadata: { code: input.code } });
     return doc;
   }
 
-  async update(id: string, data: { label?: string; appliesTo?: DocAppliesTo; order?: number; isActive?: boolean }) {
+  async update(id: string, data: { label?: string; appliesToTypes?: ClaimType[]; order?: number; isActive?: boolean }) {
     await this.prisma.scoped.requiredDocument.updateMany({ where: { id }, data });
     await this.audit.record({ action: AuditAction.EDIT, targetType: 'RequiredDocument', targetId: id, metadata: data as Record<string, unknown> });
     return { ok: true };

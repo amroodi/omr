@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { AuditAction, CauseOfDeath, ClaimStatus, Prisma, SalesChannel } from '@prisma/client';
+import { AuditAction, ClaimStatus, ClaimType, Prisma, SalesChannel } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { AuditService } from '../../common/audit/audit.service';
 import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
@@ -15,7 +15,7 @@ interface FileClaimInput {
   channel: SalesChannel;
   brokerTenantId?: string; // BROKER channel
   sellingBranchId?: string; // DIRECT channel (insurer branch)
-  causeOfDeath?: CauseOfDeath;
+  claimType?: ClaimType;
   policyNumber?: string;
   claimedAmount: string;
   deceasedFullName: string;
@@ -81,7 +81,7 @@ export class ClaimsService {
         deceasedFullName: this.crypto.encrypt(input.deceasedFullName)!,
         deceasedNationalCode: this.crypto.encrypt(nid)!,
         deceasedNationalCodeHash: this.crypto.blindIndex(nid)!,
-        causeOfDeath: input.causeOfDeath ?? 'NATURAL',
+        claimType: input.claimType ?? 'DEATH_ILLNESS',
         policyNumber: input.policyNumber ?? null,
         claimedAmount: input.claimedAmount,
         status: ClaimStatus.UNDER_REVIEW,
@@ -213,7 +213,7 @@ export class ClaimsService {
     this.assertParticipant(claim);
 
     const reqs = await db.requiredDocument.findMany({
-      where: { tenantId: claim.insurerTenantId, isActive: true, appliesTo: { in: [claim.causeOfDeath as any, 'BOTH'] } },
+      where: { tenantId: claim.insurerTenantId, isActive: true, appliesToTypes: { has: claim.claimType } },
       orderBy: { order: 'asc' },
     });
     const docs = await db.document.findMany({
@@ -229,13 +229,13 @@ export class ClaimsService {
     const items = reqs.map((r) => ({
       code: r.code,
       label: r.label,
-      appliesTo: r.appliesTo,
+      appliesToTypes: r.appliesToTypes,
       uploaded: (byCode.get(r.code) ?? []).length > 0,
       documents: byCode.get(r.code) ?? [],
     }));
     const reqCodes = new Set(reqs.map((r) => r.code));
     return {
-      causeOfDeath: claim.causeOfDeath,
+      claimType: claim.claimType,
       complete: items.length > 0 && items.every((i) => i.uploaded),
       items,
       otherDocuments: docs.filter((d) => !d.docCode || !reqCodes.has(d.docCode)),
@@ -356,6 +356,7 @@ export class ClaimsService {
       id: c.id,
       claimNumber: c.claimNumber,
       status: c.status,
+      claimType: c.claimType,
       channel: c.channel,
       claimedAmount: c.claimedAmount?.toString(),
       deceasedName: c.deceasedFullName ? this.crypto.decrypt(c.deceasedFullName) : null,
