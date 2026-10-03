@@ -21,6 +21,7 @@ interface UpdateSettings {
   primaryColor?: string;
   contactHeader?: string;
   fontFamily?: string;
+  noticeDays?: number;
 }
 
 @Injectable()
@@ -46,6 +47,7 @@ export class BrandingService {
       primaryColor: t.primaryColor,
       contactHeader: t.contactHeader,
       fontFamily: t.fontFamily,
+      noticeDays: t.noticeDays,
       hasLogo: !!t.logoKey,
       hasFavicon: !!t.faviconKey,
       hasCustomFont: !!t.fontKey,
@@ -62,6 +64,7 @@ export class BrandingService {
         ...(dto.primaryColor ? { primaryColor: dto.primaryColor } : {}),
         ...(dto.contactHeader !== undefined ? { contactHeader: dto.contactHeader } : {}),
         ...(dto.fontFamily ? { fontFamily: dto.fontFamily.trim() } : {}),
+        ...(dto.noticeDays !== undefined ? { noticeDays: dto.noticeDays } : {}),
       },
     });
     await this.audit.record({ action: AuditAction.EDIT, targetType: 'TenantBranding', targetId: id, metadata: dto as Record<string, unknown> });

@@ -37,6 +37,7 @@ model Tenant {
   contactHeader String? // injected into exported PDF/Excel headers
   carrierConfig String? // ENCRYPTED json: upstream carrier credentials
   fontFamily    String?  @default("Vazirmatn")
+  noticeDays    Int      @default(30) // deadline (days from event) for the بیمه‌گزار to report
   isActive      Boolean  @default(true)
   licenseUntil  DateTime?
   createdAt     DateTime @default(now())
@@ -484,6 +485,9 @@ model Claim {
   deceasedNationalCode     String // ENCRYPTED
   deceasedNationalCodeHash String // blind index
   claimType                ClaimType @default(DEATH_ILLNESS)
+  eventDate                DateTime? // date of death/accident (the risk event)
+  noticeDeadline           DateTime? // eventDate + insurer.noticeDays (snapshot)
+  lateNotice               Boolean   @default(false) // filed after the deadline
   policyNumber             String?
   claimedAmount            Decimal @db.Decimal(18, 2)
 

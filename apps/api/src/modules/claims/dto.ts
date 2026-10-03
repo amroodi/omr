@@ -3,6 +3,7 @@ import {
   ArrayNotEmpty,
   IsArray,
   IsEnum,
+  IsISO8601,
   IsNumberString,
   IsOptional,
   IsString,
@@ -28,6 +29,10 @@ export class FileClaimDto {
   @IsOptional()
   @IsEnum(ClaimType)
   claimType?: ClaimType;
+
+  @IsOptional()
+  @IsISO8601()
+  eventDate?: string; // date of the death/accident
 
   @IsOptional()
   @IsString()

@@ -16,6 +16,7 @@ interface FileClaimInput {
   brokerTenantId?: string; // BROKER channel
   sellingBranchId?: string; // DIRECT channel (insurer branch)
   claimType?: ClaimType;
+  eventDate?: string; // ISO date of the death/accident
   policyNumber?: string;
   claimedAmount: string;
   deceasedFullName: string;
@@ -48,8 +49,17 @@ export class ClaimsService {
   // ─────────────────────────── Filing ───────────────────────────
   async file(input: FileClaimInput) {
     const db = this.db();
-    const insurer = await db.tenant.findUnique({ where: { id: input.insurerTenantId }, select: { id: true, kind: true } });
+    const insurer = await db.tenant.findUnique({ where: { id: input.insurerTenantId }, select: { id: true, kind: true, noticeDays: true } });
     if (!insurer || insurer.kind !== 'INSURER') throw new BadRequestException('بیمه‌گر نامعتبر است');
+
+    // 30-day (configurable) notice deadline: event date + insurer.noticeDays.
+    const eventDate = input.eventDate ? new Date(input.eventDate) : null;
+    let noticeDeadline: Date | null = null;
+    let lateNotice = false;
+    if (eventDate) {
+      noticeDeadline = new Date(eventDate.getTime() + insurer.noticeDays * 24 * 60 * 60 * 1000);
+      lateNotice = new Date() > noticeDeadline;
+    }
 
     let moarefTenantId: string;
     let moarefBranchId: string | null = null;
@@ -82,6 +92,9 @@ export class ClaimsService {
         deceasedNationalCode: this.crypto.encrypt(nid)!,
         deceasedNationalCodeHash: this.crypto.blindIndex(nid)!,
         claimType: input.claimType ?? 'DEATH_ILLNESS',
+        eventDate,
+        noticeDeadline,
+        lateNotice,
         policyNumber: input.policyNumber ?? null,
         claimedAmount: input.claimedAmount,
         status: ClaimStatus.UNDER_REVIEW,
@@ -362,6 +375,9 @@ export class ClaimsService {
       deceasedName: c.deceasedFullName ? this.crypto.decrypt(c.deceasedFullName) : null,
       insurerTenantId: c.insurerTenantId,
       brokerTenantId: c.brokerTenantId,
+      eventDate: c.eventDate ? toJalali(c.eventDate, false) : null,
+      noticeDeadline: c.noticeDeadline ? toJalali(c.noticeDeadline, false) : null,
+      lateNotice: c.lateNotice,
       createdAt: c.createdAt ? toJalali(c.createdAt) : null,
     };
     if (!full) return base;

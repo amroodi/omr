@@ -1,10 +1,16 @@
-import { IsHexColor, IsOptional, IsString, Length } from 'class-validator';
+import { IsHexColor, IsInt, IsOptional, IsString, Length, Max, Min } from 'class-validator';
 
 export class UpdateBrandingDto {
   @IsOptional()
   @IsString()
   @Length(2, 120)
   name?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(365)
+  noticeDays?: number; // insurer's claim-notice deadline window
 
   @IsOptional()
   @IsHexColor()
