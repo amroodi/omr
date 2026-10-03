@@ -43,9 +43,21 @@ const STATUS_MAP: Record<string, { label: string; cls: string }> = {
   REJECTED: { label: 'رد شده', cls: 'badge-danger' },
   NEEDS_INFO: { label: 'نیاز به اطلاعات', cls: 'badge-warning' },
   PENDING: { label: 'در انتظار', cls: 'badge-neutral' },
+  // Claim statuses
+  DRAFT: { label: 'پیش‌نویس', cls: 'badge-neutral' },
+  SUBMITTED: { label: 'ثبت‌شده', cls: 'badge-info' },
+  UNDER_REVIEW: { label: 'در حال بررسی', cls: 'badge-warning' },
+  RETURNED_INCOMPLETE: { label: 'نقص مدارک', cls: 'badge-danger' },
+  APPROVED: { label: 'تایید نهایی', cls: 'badge-success' },
 };
 
 export function StatusBadge({ status }: { status: string }) {
   const s = STATUS_MAP[status] || { label: status, cls: 'badge-neutral' };
   return <span className={`badge ${s.cls}`}>{s.label}</span>;
 }
+
+export const CLAIM_TYPE_LABELS: Record<string, string> = {
+  DEATH_ILLNESS: 'فوت ناشی از بیماری',
+  DEATH_ACCIDENT: 'فوت ناشی از حادثه',
+  DISABILITY_ACCIDENT: 'نقص عضو / ازکارافتادگی ناشی از حادثه',
+};

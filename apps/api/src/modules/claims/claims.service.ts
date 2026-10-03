@@ -65,6 +65,8 @@ export class ClaimsService {
     let moarefBranchId: string | null = null;
     let moarefRole: string;
     if (input.channel === 'BROKER') {
+      // Default the معرف broker to the caller's own tenant (a broker filing on behalf).
+      input.brokerTenantId = input.brokerTenantId ?? getContext()?.tenantId;
       if (!input.brokerTenantId) throw new BadRequestException('کارگزار (معرف) الزامی است');
       const broker = await db.tenant.findUnique({ where: { id: input.brokerTenantId }, select: { kind: true } });
       if (!broker || broker.kind !== 'BROKER') throw new BadRequestException('کارگزار نامعتبر است');
@@ -293,6 +295,31 @@ export class ClaimsService {
       orderBy: { createdAt: 'desc' },
       select: { id: true, docCode: true, fileName: true, mimeType: true, verificationStatus: true, createdAt: true },
     });
+  }
+
+  /** All claims the caller participates in, newest first, flagged if their action is needed. */
+  async listMine() {
+    const ctx = getContext();
+    const db = this.db();
+    const where =
+      ctx?.actorType === 'CUSTOMER'
+        ? { policyHolderId: ctx.actorId }
+        : { OR: [{ insurerTenantId: ctx?.tenantId }, { brokerTenantId: ctx?.tenantId }, { participants: { some: { tenantId: ctx?.tenantId } } }] };
+    const claims = await db.claim.findMany({ where, orderBy: { updatedAt: 'desc' }, include: { steps: { where: { state: 'PENDING' } } } });
+    return claims.map((c) => ({ ...(this.present(c) as object), needsAction: this.needsAction(c) }));
+  }
+
+  private needsAction(c: any): boolean {
+    const ctx = getContext();
+    const pending = (c.steps ?? []).find((s: any) => s.state === 'PENDING');
+    if (!pending) return false;
+    if (pending.partyType === 'POLICYHOLDER') return ctx?.actorType === 'CUSTOMER' ? c.policyHolderId === ctx.actorId : ctx?.tenantId === c.insurerTenantId || ctx?.tenantId === c.brokerTenantId;
+    return ctx?.actorType === 'ORG_USER' && ctx.tenantId === pending.holderTenantId;
+  }
+
+  /** Active insurers a claim can be filed against. */
+  listInsurers() {
+    return this.db().tenant.findMany({ where: { kind: 'INSURER', isActive: true }, orderBy: { name: 'asc' }, select: { id: true, name: true, slug: true } });
   }
 
   /** Work queue: claims with a PENDING step the caller must act on. */

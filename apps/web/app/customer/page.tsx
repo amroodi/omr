@@ -1,8 +1,9 @@
 'use client';
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { clearToken, client, getToken } from '../../lib/client';
-import { ErrorBox, StatusBadge } from '../components/ui';
+import { CLAIM_TYPE_LABELS, ErrorBox, StatusBadge } from '../components/ui';
 import { Icon } from '../components/Shell';
 
 interface MyCase {
@@ -12,16 +13,21 @@ interface MyCase {
   stageDate: string | null; paidAt: string | null;
   recentPayments: { date: string; amount: string; status: string }[];
 }
+interface MyClaim { id: string; claimNumber: string; status: string; claimType: string; deceasedName: string | null; lateNotice: boolean; needsAction: boolean }
 
 export default function CustomerDashboard() {
   const router = useRouter();
   const [cases, setCases] = useState<MyCase[]>([]);
+  const [claims, setClaims] = useState<MyClaim[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!getToken('customer')) { router.push('/customer/login'); return; }
-    client.get<MyCase[]>('/customer/cases', 'customer').then(setCases).catch((e) => setError(e.message)).finally(() => setLoading(false));
+    Promise.all([
+      client.get<MyClaim[]>('/customer/claims', 'customer').then(setClaims).catch(() => {}),
+      client.get<MyCase[]>('/customer/cases', 'customer').then(setCases).catch((e) => setError(e.message)),
+    ]).finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -37,6 +43,27 @@ export default function CustomerDashboard() {
         </button>
       </div>
       <ErrorBox message={error} />
+
+      {claims.length > 0 && (
+        <div className="mb-6">
+          <h2 className="font-bold mb-2">پرونده‌های خسارت</h2>
+          <div className="space-y-2">
+            {claims.map((c) => (
+              <Link key={c.id} href={`/customer/claims/${c.id}`} className="card card-hover p-4 flex items-center justify-between">
+                <div>
+                  <div className="font-semibold">{c.claimNumber} <span className="font-normal" style={{ color: 'var(--muted)' }}>— {CLAIM_TYPE_LABELS[c.claimType] || c.claimType}</span></div>
+                  <div className="text-sm" style={{ color: 'var(--muted)' }}>{c.deceasedName}</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {c.status === 'RETURNED_INCOMPLETE' && <span className="badge badge-danger">نیازمند رفع نقص</span>}
+                  <StatusBadge status={c.status} />
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="card p-8 text-center text-sm" style={{ color: 'var(--muted)' }}>در حال بارگذاری…</div>
       ) : cases.length === 0 ? (

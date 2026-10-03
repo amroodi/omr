@@ -27,11 +27,25 @@ export class ClaimsController {
     return this.claims.file(dto);
   }
 
+  /** All claims the caller participates in. */
+  @Permissions(PERMISSIONS.CLAIM_PROCESS)
+  @Get()
+  list() {
+    return this.claims.listMine();
+  }
+
   /** The caller's action queue (claims awaiting their step). */
   @Permissions(PERMISSIONS.CLAIM_PROCESS)
   @Get('queue')
   queue() {
     return this.claims.queue();
+  }
+
+  /** Active insurers to file a claim against. */
+  @Permissions(PERMISSIONS.CLAIM_FILE)
+  @Get('insurers')
+  insurers() {
+    return this.claims.listInsurers();
   }
 
   @Permissions(PERMISSIONS.CLAIM_PROCESS)
