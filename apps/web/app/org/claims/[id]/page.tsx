@@ -47,6 +47,11 @@ export default function ClaimDetail() {
     await client.postForm(`/claims/${id}/documents?docCode=${encodeURIComponent(code)}`, fd, 'org');
   });
 
+  const viewDoc = async (docId: string) => {
+    setError('');
+    try { await client.view(`/claims/${id}/documents/${docId}/file`, 'org'); } catch (e: any) { setError(e.message); }
+  };
+
   const endorse = () => act(() => client.post(`/claims/${id}/endorse`, {}, 'org'));
   const reject = () => act(() => client.post(`/claims/${id}/reject`, { note: 'رد پرونده' }, 'org'));
   const pay = () => act(() => client.post(`/claims/${id}/pay`, {}, 'org'));
@@ -101,7 +106,10 @@ export default function ClaimDetail() {
                       <span style={{ color: it.uploaded ? 'var(--success)' : 'var(--muted)' }}>{it.uploaded ? '✔' : '○'}</span>
                       {it.label}{it.documents.length > 1 && <span className="badge badge-neutral">{it.documents.length}</span>}
                     </span>
-                    <div>
+                    <div className="flex items-center gap-1">
+                      {it.documents.map((d, di) => (
+                        <button key={d.id} onClick={() => viewDoc(d.id)} className="btn btn-ghost btn-sm" title="مشاهده مدرک">مشاهده{it.documents.length > 1 ? ` ${di + 1}` : ''}</button>
+                      ))}
                       <input ref={(el) => { fileRefs.current[it.code] = el; }} type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }}
                         onChange={(e) => { const file = e.target.files?.[0]; if (file) upload(it.code, file); e.currentTarget.value = ''; }} />
                       <button onClick={() => fileRefs.current[it.code]?.click()} disabled={busy} className="btn btn-ghost btn-sm">بارگذاری</button>

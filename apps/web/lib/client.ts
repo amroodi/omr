@@ -92,5 +92,21 @@ export const client = {
     a.click();
     URL.revokeObjectURL(url);
   },
+  // Open a protected file inline in a new tab (auth header can't ride on window.open).
+  view: async (path: string, realm: Realm) => {
+    const res = await fetch(`${BASE}${path}`, { headers: headers(realm, false) });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error((data as any).message || `خطا (${res.status})`);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const w = window.open(url, '_blank');
+    if (!w) { // popup blocked → fall back to same-tab navigation
+      const a = document.createElement('a');
+      a.href = url; a.target = '_blank'; a.rel = 'noopener'; a.click();
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  },
   base: BASE,
 };
