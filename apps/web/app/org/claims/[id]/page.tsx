@@ -5,6 +5,7 @@ import { client } from '../../../../lib/client';
 import { Shell } from '../../../components/Shell';
 import { CLAIM_TYPE_LABELS, ErrorBox, StatusBadge } from '../../../components/ui';
 import { ORG_NAV } from '../../nav';
+import { FieldsSection } from './fields-section';
 
 interface ChecklistItem { code: string; label: string; uploaded: boolean; documents: { id: string }[] }
 interface Checklist { claimType: string; complete: boolean; items: ChecklistItem[] }
@@ -83,6 +84,9 @@ export default function ClaimDetail() {
               <Row label="تاریخ وقوع" value={claim.eventDate} />
               <Row label="مهلت اعلام" value={claim.noticeDeadline} />
             </div>
+
+            {/* claim data / workflow fields (OCR-assisted) */}
+            <FieldsSection claimId={id} realm="org" basePath="/claims" />
 
             {/* checklist */}
             <div className="card p-5">
