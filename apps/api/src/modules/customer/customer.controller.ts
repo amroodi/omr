@@ -5,14 +5,24 @@ import {
   Param,
   Post,
   Query,
+  Res,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Response } from 'express';
+import { IsOptional, IsString, Length, Matches } from 'class-validator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { Public } from '../../common/rbac/decorators';
+import { Permissions, Public } from '../../common/rbac/decorators';
+import { PERMISSIONS } from '../../common/rbac/permissions';
 import { TenantResolverGuard } from '../../common/tenant/tenant-resolver.guard';
+
+class CreateCustomerDto {
+  @IsString() @Length(8, 12) nationalCode!: string;
+  @IsString() @Matches(/^0?9\d{9}$/) phone!: string;
+  @IsOptional() @IsString() @Length(2, 120) fullName?: string;
+}
 import { ClaimsService } from '../claims/claims.service';
 import { CustomerAuthService } from './customer-auth.service';
 import { CustomerService } from './customer.service';
@@ -38,6 +48,19 @@ export class CustomerController {
   @Post('login/verify-otp')
   verifyOtp(@Body() dto: CustomerVerifyOtpDto) {
     return this.auth.verifyOtp(dto.nationalCode, dto.phone, dto.code);
+  }
+
+  // ── Org-side بیمه‌گزار onboarding (org token + customer:manage) ──
+  @Permissions(PERMISSIONS.CUSTOMER_MANAGE)
+  @Post('accounts')
+  createAccount(@Body() dto: CreateCustomerDto) {
+    return this.customer.createAccount(dto);
+  }
+
+  @Permissions(PERMISSIONS.CUSTOMER_MANAGE)
+  @Get('accounts')
+  listAccounts() {
+    return this.customer.listAccounts();
   }
 
   /** Customer dashboard — the caller's own cases only (requires a `customer` token). */
@@ -77,5 +100,14 @@ export class CustomerController {
   @Post('claims/:id/rectify')
   rectify(@Param('id') id: string, @Body() body: { note?: string }) {
     return this.claims.rectify(id, body?.note);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('claims/:id/documents/:docId/file')
+  async claimDoc(@Param('id') id: string, @Param('docId') docId: string, @Res() res: Response) {
+    const { buffer, mimeType, fileName } = await this.claims.getDocumentFile(id, docId);
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fileName)}"`);
+    res.send(buffer);
   }
 }

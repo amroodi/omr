@@ -6,10 +6,12 @@ import {
   Post,
   Put,
   Query,
+  Res,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Response } from 'express';
 import { Permissions } from '../../common/rbac/decorators';
 import { PERMISSIONS } from '../../common/rbac/permissions';
 import { ClaimFieldsService } from '../claim-fields/claim-fields.service';
@@ -89,6 +91,16 @@ export class ClaimsController {
   @Get(':id/documents')
   documents(@Param('id') id: string) {
     return this.claims.listDocuments(id);
+  }
+
+  /** Download/preview a claim document (any party to the claim). */
+  @Permissions(PERMISSIONS.CLAIM_PROCESS)
+  @Get(':id/documents/:docId/file')
+  async docFile(@Param('id') id: string, @Param('docId') docId: string, @Res() res: Response) {
+    const { buffer, mimeType, fileName } = await this.claims.getDocumentFile(id, docId);
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fileName)}"`);
+    res.send(buffer);
   }
 
   /** Upload a document to the claim, tagged with the required-document code it satisfies. */

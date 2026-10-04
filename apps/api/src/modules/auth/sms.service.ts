@@ -22,9 +22,24 @@ export class SmsService {
         // Never log the recipient's full number in production.
         this.logger.debug(`[SMS:console] -> ${this.mask(toPhone)}: ${message}`);
         return;
-      // case 'kavenegar': return this.sendKavenegar(toPhone, message);
+      case 'kavenegar':
+        return this.sendKavenegar(toPhone, message);
       default:
         throw new Error(`SMS driver "${this.driver}" not implemented`);
+    }
+  }
+
+  /** Kavenegar (Iranian SMS gateway). Set SMS_API_KEY and SMS_SENDER. */
+  private async sendKavenegar(toPhone: string, message: string): Promise<void> {
+    const apiKey = this.config.get<string>('SMS_API_KEY', '');
+    const sender = this.config.get<string>('SMS_SENDER', '');
+    if (!apiKey) throw new Error('SMS_API_KEY is not set for the kavenegar driver');
+    const url = `https://api.kavenegar.com/v1/${apiKey}/sms/send.json`;
+    const params = new URLSearchParams({ receptor: toPhone, message, ...(sender ? { sender } : {}) });
+    const res = await fetch(`${url}?${params.toString()}`, { method: 'POST' });
+    if (!res.ok) {
+      this.logger.error(`Kavenegar send failed: HTTP ${res.status}`);
+      throw new Error('ارسال پیامک ناموفق بود');
     }
   }
 

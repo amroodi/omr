@@ -37,6 +37,7 @@ export const PERMISSIONS = {
   IMPORT_BATCH: 'import:batch',
 
   // Org administration
+  CUSTOMER_MANAGE: 'customer:manage', // create/manage بیمه‌گزار (policyholder) accounts
   USER_MANAGE: 'user:manage',
   ROLE_MANAGE: 'role:manage',
   BRANCH_MANAGE: 'branch:manage',
@@ -67,6 +68,7 @@ export const SYSTEM_ROLES: Record<string, Permission[]> = {
     PERMISSIONS.PAYMENT_PROPOSE,
     PERMISSIONS.CLAIM_FILE,
     PERMISSIONS.CLAIM_PROCESS,
+    PERMISSIONS.CUSTOMER_MANAGE,
   ],
   // Four-eyes approver: can authorize payouts but cannot propose them.
   'تاییدکننده پرداخت': [PERMISSIONS.CASE_READ, PERMISSIONS.PAYMENT_APPROVE],

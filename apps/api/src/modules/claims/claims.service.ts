@@ -298,6 +298,19 @@ export class ClaimsService {
     return doc;
   }
 
+  /** Decrypted bytes of a claim document, for any party to the claim (cross-tenant). */
+  async getDocumentFile(claimId: string, docId: string): Promise<{ buffer: Buffer; mimeType: string; fileName: string }> {
+    const db = this.db();
+    const claim = await db.claim.findUnique({ where: { id: claimId } });
+    if (!claim) throw new NotFoundException('پرونده یافت نشد');
+    this.assertParticipant(claim);
+    const doc = await db.document.findFirst({ where: { id: docId, claimId }, select: { storageKey: true, mimeType: true, fileName: true } });
+    if (!doc) throw new NotFoundException('سند یافت نشد');
+    const buffer = await this.storage.read(doc.storageKey);
+    await this.audit.record({ action: AuditAction.VIEW, tenantId: claim.insurerTenantId, targetType: 'ClaimDocumentFile', targetId: docId });
+    return { buffer, mimeType: doc.mimeType, fileName: doc.fileName };
+  }
+
   async listDocuments(claimId: string) {
     const db = this.db();
     const claim = await db.claim.findUnique({ where: { id: claimId } });
