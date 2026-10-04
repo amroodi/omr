@@ -4,8 +4,8 @@ import { DocumentKind } from '@prisma/client';
 
 export interface OcrResult {
   text: string;
-  /** Auto-populated candidate fields, e.g. { nationalCode, fullName, policyNumber }. */
-  fields: Record<string, string>;
+  /** Auto-populated candidate fields keyed by ClaimFieldDef.key, each with a confidence 0..1. */
+  fields: Record<string, { value: string; confidence: number }>;
   engine: string;
 }
 

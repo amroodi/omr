@@ -17,6 +17,7 @@ import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BrandingModule } from './modules/branding/branding.module';
 import { CasesModule } from './modules/cases/cases.module';
+import { ClaimFieldsModule } from './modules/claim-fields/claim-fields.module';
 import { ClaimsModule } from './modules/claims/claims.module';
 import { LevelsModule } from './modules/levels/levels.module';
 import { RequiredDocsModule } from './modules/required-docs/required-docs.module';
@@ -63,6 +64,7 @@ import { UsersModule } from './modules/users/users.module';
     BrandingModule,
     PaymentsModule,
     ClaimsModule,
+    ClaimFieldsModule,
     LevelsModule,
     RequiredDocsModule,
   ],

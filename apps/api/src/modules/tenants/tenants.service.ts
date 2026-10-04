@@ -8,6 +8,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { SYSTEM_ROLES } from '../../common/rbac/permissions';
 import { getContext } from '../../common/tenant/tenant-context';
 import { DEFAULT_REQUIRED_DOCS } from '../required-docs/defaults';
+import { DEFAULT_CLAIM_FIELDS } from '../claim-fields/defaults';
 
 interface ProvisionInput {
   name: string;
@@ -87,10 +88,23 @@ export class TenantsService {
         },
       });
 
-      // An insurer starts with the default required-document catalog, editable afterwards.
+      // An insurer starts with the default required-document and claim-field catalogs.
       if (tenant.kind === 'INSURER') {
         await tx.requiredDocument.createMany({
           data: DEFAULT_REQUIRED_DOCS.map((d) => ({ ...d, tenantId: tenant.id })),
+        });
+        await tx.claimFieldDef.createMany({
+          data: DEFAULT_CLAIM_FIELDS.map((d) => ({
+            tenantId: tenant.id,
+            key: d.key,
+            label: d.label,
+            type: d.type,
+            group: d.group,
+            options: d.options ?? [],
+            editableBy: d.editableBy,
+            order: d.order,
+            required: d.required ?? false,
+          })),
         });
       }
 

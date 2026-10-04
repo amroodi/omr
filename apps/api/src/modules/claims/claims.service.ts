@@ -7,6 +7,8 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { StorageService } from '../../common/storage/storage.service';
 import { getContext } from '../../common/tenant/tenant-context';
 import { toJalali } from '../../common/jalali/jalali.util';
+import { OcrService } from '../../integrations/ocr/ocr.service';
+import { ClaimFieldsService } from '../claim-fields/claim-fields.service';
 
 const CLAIM_DOC_MIME = new Set(['application/pdf', 'image/jpeg', 'image/png']);
 
@@ -40,6 +42,8 @@ export class ClaimsService {
     private readonly crypto: FieldCryptoService,
     private readonly audit: AuditService,
     private readonly storage: StorageService,
+    private readonly ocr: OcrService,
+    private readonly fields: ClaimFieldsService,
   ) {}
 
   private db() {
@@ -282,6 +286,15 @@ export class ClaimsService {
       select: { id: true, docCode: true, fileName: true },
     });
     await this.audit.record({ action: AuditAction.UPLOAD, tenantId: claim.insurerTenantId, targetType: 'ClaimDocument', targetId: doc.id, metadata: { claimId, docCode } });
+
+    // OCR-assist (shadow mode): extract candidate field values as unconfirmed drafts for review.
+    try {
+      const result = await this.ocr.extract(file.buffer, file.mimetype, 'OTHER');
+      const drafts = Object.entries(result.fields).map(([key, f]) => ({ key, value: f.value, confidence: f.confidence }));
+      if (drafts.length) await this.fields.ingestOcrDraft(claimId, doc.id, drafts);
+    } catch {
+      /* OCR is best-effort; never block the upload */
+    }
     return doc;
   }
 

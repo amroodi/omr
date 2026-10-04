@@ -21,6 +21,7 @@ const TENANT_MODELS = new Set<string>([
   'AuditLog',
   'ApprovalLevel',
   'RequiredDocument',
+  'ClaimFieldDef',
 ]);
 
 const READ_OPS = new Set(['findMany', 'findFirst', 'findFirstOrThrow', 'count', 'aggregate', 'groupBy']);

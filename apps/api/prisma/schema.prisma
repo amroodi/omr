@@ -57,6 +57,7 @@ model Tenant {
   sharesReceived DataSharingAgreement[] @relation("SharePartner")
   approvalLevels ApprovalLevel[]
   requiredDocuments RequiredDocument[]
+  claimFieldDefs ClaimFieldDef[]
 }
 
 model Branch {
@@ -401,6 +402,71 @@ model DataSharingAgreement {
   @@index([partnerTenantId, isActive])
 }
 
+// ─────────────────── Configurable claim fields + OCR provenance ─────────
+// The claim data/workflow fields operators fill. Configurable per insurer and per party
+// (authority), OCR-assisted: values carry provenance + confidence and need human confirmation.
+
+enum FieldType {
+  TEXT
+  NUMBER
+  AMOUNT
+  DATE // Jalali date stored ISO
+  SELECT
+  BOOL
+  NATIONAL_CODE // Iranian کد ملی (checksum-validated)
+  IBAN // Iranian شبا (checksum-validated)
+}
+
+enum FieldGroup {
+  CLAIM_DATA // بیمه‌شده/بیمه‌نامه/سرمایه
+  BENEFICIARY // ذینفع
+  WORKFLOW_STAGE // مراحل و وضعیت‌های گردش کار
+}
+
+enum FieldSource {
+  MANUAL // typed by a human
+  OCR // extracted by OCR, not yet confirmed
+  OCR_CORRECTED // OCR value edited by a human
+}
+
+model ClaimFieldDef {
+  id         String         @id @default(uuid())
+  tenantId   String // INSURER
+  tenant     Tenant         @relation(fields: [tenantId], references: [id])
+  key        String // stable, e.g. "payable_amount"
+  label      String
+  type       FieldType      @default(TEXT)
+  group      FieldGroup     @default(CLAIM_DATA)
+  options    String[] // for SELECT
+  editableBy ClaimPartyType[] // which parties (authority) may fill this field
+  order      Int            @default(0)
+  required   Boolean        @default(false)
+  isActive   Boolean        @default(true)
+  createdAt  DateTime       @default(now())
+
+  @@unique([tenantId, key])
+  @@index([tenantId])
+}
+
+model ClaimFieldValue {
+  id            String      @id @default(uuid())
+  claimId       String
+  claim         Claim       @relation(fields: [claimId], references: [id])
+  key           String
+  value         String? // typed per the field def; stored as string
+  source        FieldSource @default(MANUAL)
+  confidence    Float? // OCR confidence 0..1
+  sourceDocId   String? // document the OCR value came from
+  confirmedById String? // human who confirmed (null = unconfirmed OCR draft)
+  confirmedAt   DateTime?
+  updatedById   String?
+  updatedAt     DateTime    @updatedAt
+  createdAt     DateTime    @default(now())
+
+  @@unique([claimId, key])
+  @@index([claimId])
+}
+
 // ─────────────────────── Claims workflow (hierarchy) ────────────────────
 // See docs/CLAIMS-WORKFLOW.md. A Claim is a CROSS-TENANT object: it is not auto-scoped by the
 // Prisma tenant extension (it has no single `tenantId`). Access is granted per party via
@@ -498,6 +564,7 @@ model Claim {
   steps        ClaimStep[]
   participants ClaimParticipant[]
   deficiencies ClaimDeficiency[]
+  fieldValues  ClaimFieldValue[]
 
   @@index([insurerTenantId, status])
   @@index([brokerTenantId])

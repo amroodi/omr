@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   Post,
+  Put,
   Query,
   UploadedFile,
   UseInterceptors,
@@ -11,6 +12,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Permissions } from '../../common/rbac/decorators';
 import { PERMISSIONS } from '../../common/rbac/permissions';
+import { ClaimFieldsService } from '../claim-fields/claim-fields.service';
 import { ClaimsService } from './claims.service';
 import { DecisionDto, FileClaimDto } from './dto';
 
@@ -18,7 +20,10 @@ const docLimits = { fileSize: 15 * 1024 * 1024 };
 
 @Controller('claims')
 export class ClaimsController {
-  constructor(private readonly claims: ClaimsService) {}
+  constructor(
+    private readonly claims: ClaimsService,
+    private readonly fields: ClaimFieldsService,
+  ) {}
 
   /** File a death claim (بیمه‌گزار / broker on their behalf). */
   @Permissions(PERMISSIONS.CLAIM_FILE)
@@ -59,6 +64,25 @@ export class ClaimsController {
   @Get(':id/checklist')
   checklist(@Param('id') id: string) {
     return this.claims.checklist(id);
+  }
+
+  /** Claim data/workflow fields, grouped, with values, provenance and edit rights. */
+  @Permissions(PERMISSIONS.CLAIM_PROCESS)
+  @Get(':id/fields')
+  fieldsList(@Param('id') id: string) {
+    return this.fields.listForClaim(id);
+  }
+
+  @Permissions(PERMISSIONS.CLAIM_PROCESS)
+  @Put(':id/fields/:key')
+  setField(@Param('id') id: string, @Param('key') key: string, @Body() body: { value: string }) {
+    return this.fields.setValue(id, key, body?.value ?? '');
+  }
+
+  @Permissions(PERMISSIONS.CLAIM_PROCESS)
+  @Post(':id/fields/:key/confirm')
+  confirmField(@Param('id') id: string, @Param('key') key: string) {
+    return this.fields.confirmValue(id, key);
   }
 
   @Permissions(PERMISSIONS.CLAIM_PROCESS)
