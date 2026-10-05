@@ -48,15 +48,16 @@ export class CustomerAuthService {
     });
 
     if (account) {
-      const code = this.hash.generateOtp(this.config.get<number>('OTP_LENGTH', 6));
-      const ttl = this.config.get<number>('OTP_TTL_SECONDS', 180);
+      // ConfigService returns raw env strings; coerce to numbers (Prisma Int columns reject strings).
+      const code = this.hash.generateOtp(Number(this.config.get('OTP_LENGTH', 6)));
+      const ttl = Number(this.config.get('OTP_TTL_SECONDS', 180));
       await this.prisma.scoped.otpChallenge.create({
         data: {
           tenantId,
           purpose: 'customer',
           phoneHash,
           codeHash: this.hash.hashOtp(code),
-          maxAttempts: this.config.get<number>('OTP_MAX_ATTEMPTS', 5),
+          maxAttempts: Number(this.config.get('OTP_MAX_ATTEMPTS', 5)),
           expiresAt: new Date(Date.now() + ttl * 1000),
         },
       });

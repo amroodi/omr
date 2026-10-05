@@ -49,8 +49,8 @@ export class InquiryService {
 
     // Rate limit per IP and per National ID to stop enumeration and SMS bombing.
     const nidHash = this.crypto.blindIndex(dto.nationalCode)!;
-    const perIp = this.config.get<number>('RL_OTP_ISSUE_PER_IP_PER_HOUR', 10);
-    const perNid = this.config.get<number>('RL_OTP_ISSUE_PER_NID_PER_HOUR', 5);
+    const perIp = Number(this.config.get('RL_OTP_ISSUE_PER_IP_PER_HOUR', 10));
+    const perNid = Number(this.config.get('RL_OTP_ISSUE_PER_NID_PER_HOUR', 5));
     if (!this.rateLimit.hit(`otp:ip:${ip}`, perIp, 3600)) {
       throw new TooManyRequestsException('تعداد درخواست‌ها زیاد است. بعداً تلاش کنید.');
     }
@@ -79,8 +79,9 @@ export class InquiryService {
 
     // Always send the same generic response — never reveal whether the pair exists.
     if (insured && caseId) {
-      const code = this.hash.generateOtp(this.config.get<number>('OTP_LENGTH', 6));
-      const ttl = this.config.get<number>('OTP_TTL_SECONDS', 180);
+      // ConfigService returns raw env strings; coerce to numbers (Prisma Int columns reject strings).
+      const code = this.hash.generateOtp(Number(this.config.get('OTP_LENGTH', 6)));
+      const ttl = Number(this.config.get('OTP_TTL_SECONDS', 180));
       await this.prisma.scoped.otpChallenge.create({
         data: {
           tenantId,
@@ -89,7 +90,7 @@ export class InquiryService {
           insuredId: insured.id,
           caseId,
           codeHash: this.hash.hashOtp(code),
-          maxAttempts: this.config.get<number>('OTP_MAX_ATTEMPTS', 5),
+          maxAttempts: Number(this.config.get('OTP_MAX_ATTEMPTS', 5)),
           expiresAt: new Date(Date.now() + ttl * 1000),
         },
       });

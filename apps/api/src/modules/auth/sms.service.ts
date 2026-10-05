@@ -19,8 +19,9 @@ export class SmsService {
   async send(toPhone: string, message: string): Promise<void> {
     switch (this.driver) {
       case 'console':
-        // Never log the recipient's full number in production.
-        this.logger.debug(`[SMS:console] -> ${this.mask(toPhone)}: ${message}`);
+        // Dev/test driver: print at log level so OTP codes are visible without enabling debug logs.
+        // Never log the recipient's full number. Switch SMS_DRIVER to a real gateway in production.
+        this.logger.log(`[SMS:console] -> ${this.mask(toPhone)}: ${message}`);
         return;
       case 'kavenegar':
         return this.sendKavenegar(toPhone, message);
