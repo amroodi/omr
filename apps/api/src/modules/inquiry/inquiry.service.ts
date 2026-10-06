@@ -4,6 +4,7 @@ import {
   NotFoundException,
   TooManyRequestsException,
 } from './http-exceptions';
+import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { AuditAction } from '@prisma/client';
@@ -31,6 +32,7 @@ import { RequestOtpDto, VerifyOtpDto } from './dto';
  */
 @Injectable()
 export class InquiryService {
+  private readonly logger = new Logger(InquiryService.name);
   constructor(
     private readonly prisma: PrismaService,
     private readonly crypto: FieldCryptoService,
@@ -94,7 +96,11 @@ export class InquiryService {
           expiresAt: new Date(Date.now() + ttl * 1000),
         },
       });
-      await this.sms.sendOtp(dto.phone, code);
+      try {
+        await this.sms.sendOtp(dto.phone, code, tenantId);
+      } catch (e) {
+        this.logger.error(`Inquiry OTP send failed (tenant ${tenantId}): ${String(e)}`);
+      }
       await this.audit.record({
         action: AuditAction.OTP_ISSUE,
         targetType: 'Case',

@@ -36,6 +36,7 @@ model Tenant {
   primaryColor  String   @default("#ff9500")
   contactHeader String? // injected into exported PDF/Excel headers
   carrierConfig String? // ENCRYPTED json: upstream carrier credentials
+  smsConfig     String? // ENCRYPTED json: this org's SMS provider + credentials (per-tenant gateway)
   fontFamily    String?  @default("Vazirmatn")
   noticeDays    Int      @default(30) // deadline (days from event) for the بیمه‌گزار to report
   // Origins allowed to embed the inquiry widget in an <iframe> (CSP frame-ancestors allowlist).
@@ -147,6 +148,14 @@ model OrgUser {
 // Customer (end-user) login identity — the "customer realm". Distinct from OrgUser. A customer
 // authenticates with National ID + phone + OTP and sees only their own linked cases (matched by
 // nationalCodeHash against insured or beneficiary). Scoped to one tenant.
+// A بیمه‌گزار account's lifecycle. Admin-created accounts are ACTIVE immediately; self-signups are
+// PENDING until an org admin approves (then ACTIVE) or rejects (REJECTED). Only ACTIVE can log in.
+enum CustomerSignupStatus {
+  PENDING
+  ACTIVE
+  REJECTED
+}
+
 model CustomerAccount {
   id               String   @id @default(uuid())
   tenantId         String
@@ -158,6 +167,7 @@ model CustomerAccount {
   phone            String? // ENCRYPTED
   phoneHash        String? // blind index for OTP pairing
   shareConsent     Boolean  @default(false) // consent to FULL cross-org sharing of their PII
+  signupStatus     CustomerSignupStatus @default(ACTIVE)
   isActive         Boolean  @default(true)
   lastLoginAt      DateTime?
   createdAt        DateTime @default(now())

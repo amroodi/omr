@@ -19,7 +19,7 @@ import { Permissions } from '../../common/rbac/decorators';
 import { PERMISSIONS } from '../../common/rbac/permissions';
 import { TenantResolverGuard } from '../../common/tenant/tenant-resolver.guard';
 import { AssetKind, BrandingService } from './branding.service';
-import { CarrierConfigDto, UpdateBrandingDto } from './dto';
+import { CarrierConfigDto, SmsConfigDto, TestSmsDto, UpdateBrandingDto } from './dto';
 
 const ASSET_KINDS: AssetKind[] = ['logo', 'favicon', 'font'];
 const assetLimits = { fileSize: 3 * 1024 * 1024 }; // 3 MB
@@ -57,6 +57,25 @@ export class BrandingController {
   @Put('carrier-config')
   setCarrierConfig(@Body() dto: CarrierConfigDto) {
     return this.branding.setCarrierConfig({ ...dto });
+  }
+
+  // ── Per-tenant SMS gateway ──
+  @Permissions(PERMISSIONS.TENANT_SETTINGS)
+  @Get('sms-config')
+  getSmsConfig() {
+    return this.branding.getSmsConfig();
+  }
+
+  @Permissions(PERMISSIONS.TENANT_SETTINGS)
+  @Put('sms-config')
+  setSmsConfig(@Body() dto: SmsConfigDto) {
+    return this.branding.setSmsConfig(dto);
+  }
+
+  @Permissions(PERMISSIONS.TENANT_SETTINGS)
+  @Post('sms-config/test')
+  testSms(@Body() dto: TestSmsDto) {
+    return this.branding.testSms(dto.phone);
   }
 
   // ── Public: branding + assets for theming (tenant resolved from slug) ────

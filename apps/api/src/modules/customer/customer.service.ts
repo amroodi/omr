@@ -1,10 +1,11 @@
-import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
-import { AuditAction } from '@prisma/client';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { AuditAction, CustomerSignupStatus } from '@prisma/client';
 import { AuditService } from '../../common/audit/audit.service';
 import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { getContext, getTenantIdOrThrow } from '../../common/tenant/tenant-context';
 import { toAsciiDigits, toJalali } from '../../common/jalali/jalali.util';
+import { SmsService, TenantSmsConfig } from '../auth/sms.service';
 
 /**
  * Customer dashboard data. A logged-in customer sees only cases where they are the insured or a
@@ -12,19 +13,99 @@ import { toAsciiDigits, toJalali } from '../../common/jalali/jalali.util';
  */
 @Injectable()
 export class CustomerService {
+  private readonly logger = new Logger(CustomerService.name);
   constructor(
     private readonly prisma: PrismaService,
     private readonly crypto: FieldCryptoService,
     private readonly audit: AuditService,
+    private readonly sms: SmsService,
   ) {}
 
-  // ── Org-side بیمه‌گزار onboarding (tenant-scoped) ──
+  private validatePair(nationalCode: string, phone: string): { nid: string; phone: string } {
+    const nid = toAsciiDigits(nationalCode).trim();
+    const phone2 = toAsciiDigits(phone).trim();
+    if (!/^\d{10}$/.test(nid)) throw new BadRequestException('کد ملی باید ۱۰ رقم باشد');
+    if (!/^0?9\d{9}$/.test(phone2)) throw new BadRequestException('شماره موبایل نامعتبر است');
+    return { nid, phone: phone2 };
+  }
+
+  // ── Public self-signup: creates a PENDING account and notifies the org admin ──
+  async signup(input: { tenantSlug: string; nationalCode: string; phone: string; fullName?: string }) {
+    const { nid, phone } = this.validatePair(input.nationalCode, input.phone);
+    const db = this.prisma.unscoped();
+    const tenant = await db.tenant.findUnique({ where: { slug: input.tenantSlug.trim() }, select: { id: true, isActive: true, smsConfig: true } });
+    if (!tenant || !tenant.isActive) throw new NotFoundException('سازمان یافت نشد');
+    const nidHash = this.crypto.blindIndex(nid)!;
+
+    const existing = await db.customerAccount.findFirst({ where: { tenantId: tenant.id, nationalCodeHash: nidHash }, select: { id: true, signupStatus: true } });
+    if (existing) {
+      if (existing.signupStatus === 'ACTIVE') throw new BadRequestException('شما قبلاً در این سازمان ثبت شده‌اید؛ وارد شوید.');
+      if (existing.signupStatus === 'PENDING') throw new BadRequestException('درخواست ثبت‌نام شما قبلاً ارسال شده و در انتظار تایید است.');
+      // REJECTED → allow a fresh request.
+      await db.customerAccount.update({
+        where: { id: existing.id },
+        data: { signupStatus: 'PENDING', phone: this.crypto.encrypt(phone), phoneHash: this.crypto.blindIndex(phone), fullName: input.fullName ? this.crypto.encrypt(input.fullName) : null },
+      });
+    } else {
+      await db.customerAccount.create({
+        data: {
+          tenantId: tenant.id,
+          nationalCode: this.crypto.encrypt(nid)!,
+          nationalCodeHash: nidHash,
+          fullName: input.fullName ? this.crypto.encrypt(input.fullName) : null,
+          phone: this.crypto.encrypt(phone),
+          phoneHash: this.crypto.blindIndex(phone),
+          signupStatus: 'PENDING',
+        },
+      });
+    }
+    await this.audit.record({ action: AuditAction.CREATE, tenantId: tenant.id, actorType: 'INSURED', targetType: 'CustomerSignup', metadata: { status: 'PENDING' } });
+
+    // Notify the org (best-effort) via its own SMS gateway, to the configured notify number.
+    this.notifyAdminOfSignup(tenant.id, tenant.smsConfig).catch(() => undefined);
+    return { ok: true, message: 'درخواست ثبت‌نام ارسال شد. پس از تایید سازمان، امکان ورود خواهید داشت.' };
+  }
+
+  private async notifyAdminOfSignup(tenantId: string, smsConfig: string | null): Promise<void> {
+    if (!smsConfig) return;
+    let notifyPhone = '';
+    try { notifyPhone = (JSON.parse(this.crypto.decrypt(smsConfig) ?? '{}') as TenantSmsConfig).notifyPhone ?? ''; } catch { return; }
+    if (!notifyPhone) return;
+    try {
+      await this.sms.send(notifyPhone, 'سامانه بیمس: یک درخواست ثبت‌نام بیمه‌گزار جدید در انتظار تایید است. لطفاً در پنل سازمان بررسی کنید.', tenantId);
+    } catch (e) {
+      this.logger.error(`Signup admin notify failed (tenant ${tenantId}): ${String(e)}`);
+    }
+  }
+
+  async approve(id: string) {
+    const tenantId = getTenantIdOrThrow();
+    const acc = await this.prisma.scoped.customerAccount.findFirst({ where: { id } });
+    if (!acc) throw new NotFoundException('حساب یافت نشد');
+    await this.prisma.scoped.customerAccount.updateMany({ where: { id }, data: { signupStatus: 'ACTIVE', isActive: true } });
+    await this.audit.record({ action: AuditAction.EDIT, targetType: 'CustomerAccount', targetId: id, metadata: { action: 'approve' } });
+    const phone = acc.phone ? this.crypto.decrypt(acc.phone) : null;
+    if (phone) {
+      this.sms.send(phone, 'سامانه بیمس: حساب بیمه‌گزار شما تایید شد. اکنون می‌توانید وارد شوید.', tenantId).catch((e) => this.logger.error(`Approve notify failed: ${String(e)}`));
+    }
+    return { ok: true };
+  }
+
+  async reject(id: string) {
+    await this.prisma.scoped.customerAccount.updateMany({ where: { id }, data: { signupStatus: 'REJECTED', isActive: false } });
+    await this.audit.record({ action: AuditAction.EDIT, targetType: 'CustomerAccount', targetId: id, metadata: { action: 'reject' } });
+    return { ok: true };
+  }
+
+  /** Active organizations, for the public signup picker. */
+  listOrgs() {
+    return this.prisma.unscoped().tenant.findMany({ where: { isActive: true }, orderBy: { name: 'asc' }, select: { slug: true, name: true } });
+  }
+
+  // ── Org-side بیمه‌گزار onboarding (tenant-scoped) ── admin-created accounts are ACTIVE at once
   async createAccount(input: { nationalCode: string; phone: string; fullName?: string }) {
     const tenantId = getTenantIdOrThrow();
-    const nid = toAsciiDigits(input.nationalCode).trim();
-    const phone = toAsciiDigits(input.phone).trim();
-    if (!/^\d{10}$/.test(nid)) throw new BadRequestException('کد ملی باید ۱۰ رقم باشد');
-    if (!/^0?9\d{9}$/.test(phone)) throw new BadRequestException('شماره موبایل نامعتبر است');
+    const { nid, phone } = this.validatePair(input.nationalCode, input.phone);
     const nidHash = this.crypto.blindIndex(nid)!;
     if (await this.prisma.scoped.customerAccount.findFirst({ where: { nationalCodeHash: nidHash } })) {
       throw new BadRequestException('بیمه‌گزار با این کد ملی قبلاً ثبت شده است');
@@ -37,6 +118,7 @@ export class CustomerService {
         fullName: input.fullName ? this.crypto.encrypt(input.fullName) : null,
         phone: this.crypto.encrypt(phone),
         phoneHash: this.crypto.blindIndex(phone),
+        signupStatus: 'ACTIVE',
       },
       select: { id: true },
     });
@@ -44,18 +126,29 @@ export class CustomerService {
     return { id: acc.id, ok: true };
   }
 
-  async listAccounts() {
-    const rows = await this.prisma.scoped.customerAccount.findMany({ orderBy: { createdAt: 'desc' }, take: 500 });
+  async listAccounts(status?: CustomerSignupStatus) {
+    const rows = await this.prisma.scoped.customerAccount.findMany({
+      where: status ? { signupStatus: status } : {},
+      orderBy: { createdAt: 'desc' },
+      take: 500,
+    });
     return rows.map((r) => {
       const nid = this.crypto.decrypt(r.nationalCode) ?? '';
       return {
         id: r.id,
         fullName: r.fullName ? this.crypto.decrypt(r.fullName) : null,
         nationalCodeMasked: nid ? `••••••${nid.slice(-4)}` : null,
+        phoneMasked: r.phone ? `••••${(this.crypto.decrypt(r.phone) ?? '').slice(-4)}` : null,
+        signupStatus: r.signupStatus,
         isActive: r.isActive,
+        createdAt: toJalali(r.createdAt),
         lastLoginAt: r.lastLoginAt ? toJalali(r.lastLoginAt) : null,
       };
     });
+  }
+
+  async pendingCount() {
+    return { count: await this.prisma.scoped.customerAccount.count({ where: { signupStatus: 'PENDING' } }) };
   }
 
   async myCases(): Promise<unknown[]> {

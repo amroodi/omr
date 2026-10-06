@@ -23,10 +23,11 @@ class CreateCustomerDto {
   @IsString() @Matches(/^0?9\d{9}$/) phone!: string;
   @IsOptional() @IsString() @Length(2, 120) fullName?: string;
 }
+import { CustomerSignupStatus } from '@prisma/client';
 import { ClaimsService } from '../claims/claims.service';
 import { CustomerAuthService } from './customer-auth.service';
 import { CustomerService } from './customer.service';
-import { CustomerRequestOtpDto, CustomerVerifyOtpDto } from './dto';
+import { CustomerRequestOtpDto, CustomerSignupDto, CustomerVerifyOtpDto } from './dto';
 
 @Controller('customer')
 export class CustomerController {
@@ -50,7 +51,20 @@ export class CustomerController {
     return this.auth.verifyOtp(dto.nationalCode, dto.phone, dto.code);
   }
 
-  // ── Org-side بیمه‌گزار onboarding (org token + customer:manage) ──
+  // ── Public self-signup (choose an organization; creates a PENDING request) ──
+  @Public()
+  @Get('orgs')
+  orgs() {
+    return this.customer.listOrgs();
+  }
+
+  @Public()
+  @Post('signup')
+  signup(@Body() dto: CustomerSignupDto) {
+    return this.customer.signup(dto);
+  }
+
+  // ── Org-side بیمه‌گزار onboarding + approvals (org token + customer:manage) ──
   @Permissions(PERMISSIONS.CUSTOMER_MANAGE)
   @Post('accounts')
   createAccount(@Body() dto: CreateCustomerDto) {
@@ -59,8 +73,27 @@ export class CustomerController {
 
   @Permissions(PERMISSIONS.CUSTOMER_MANAGE)
   @Get('accounts')
-  listAccounts() {
-    return this.customer.listAccounts();
+  listAccounts(@Query('status') status?: string) {
+    const s = status && (['PENDING', 'ACTIVE', 'REJECTED'] as const).includes(status as any) ? (status as CustomerSignupStatus) : undefined;
+    return this.customer.listAccounts(s);
+  }
+
+  @Permissions(PERMISSIONS.CUSTOMER_MANAGE)
+  @Get('accounts/pending-count')
+  pendingCount() {
+    return this.customer.pendingCount();
+  }
+
+  @Permissions(PERMISSIONS.CUSTOMER_MANAGE)
+  @Post('accounts/:id/approve')
+  approve(@Param('id') id: string) {
+    return this.customer.approve(id);
+  }
+
+  @Permissions(PERMISSIONS.CUSTOMER_MANAGE)
+  @Post('accounts/:id/reject')
+  reject(@Param('id') id: string) {
+    return this.customer.reject(id);
   }
 
   /** Customer dashboard — the caller's own cases only (requires a `customer` token). */

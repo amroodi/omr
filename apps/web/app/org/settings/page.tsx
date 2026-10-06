@@ -7,6 +7,7 @@ import { ORG_NAV } from '../nav';
 
 const TABS = [
   ['branding', 'برندینگ و تنظیمات'],
+  ['sms', 'درگاه پیامک'],
   ['branches', 'شعب'],
   ['levels', 'سطوح تایید و سقف اختیار'],
   ['docs', 'مدارک مورد نیاز'],
@@ -23,6 +24,7 @@ export default function Settings() {
         ))}
       </div>
       {tab === 'branding' && <BrandingTab />}
+      {tab === 'sms' && <SmsTab />}
       {tab === 'branches' && <BranchesTab />}
       {tab === 'levels' && <LevelsTab />}
       {tab === 'docs' && <DocsTab />}
@@ -60,6 +62,75 @@ function BrandingTab() {
         {s.hasLogo && <span className="badge badge-success">لوگو تنظیم شده</span>}
       </div>
       <button onClick={save} className="btn btn-primary btn-sm">ذخیره</button>
+    </div>
+  );
+}
+
+const DRIVER_LABELS: Record<string, string> = {
+  console: 'کنسول (آزمایشی — بدون ارسال واقعی)', magfa: 'مگفا (Magfa)', kavenegar: 'کاوه‌نگار',
+  ghasedak: 'قاصدک', smsir: 'SMS.ir', melipayamak: 'ملی‌پیامک',
+};
+// Which fields each provider needs, to show only the relevant inputs.
+const DRIVER_FIELDS: Record<string, string[]> = {
+  console: ['sender'],
+  magfa: ['username', 'password', 'domain', 'sender'],
+  kavenegar: ['apiKey', 'sender', 'otpPattern'],
+  ghasedak: ['apiKey', 'sender', 'otpPattern'],
+  smsir: ['apiKey', 'sender', 'otpTemplateId'],
+  melipayamak: ['username', 'password', 'sender', 'otpPattern'],
+};
+const FIELD_LABELS: Record<string, string> = {
+  sender: 'شماره خط / نام فرستنده', apiKey: 'کلید API', username: 'نام کاربری', password: 'رمز عبور',
+  domain: 'دامنه حساب (Magfa)', otpPattern: 'نام/کد الگوی تایید (OTP)', otpTemplateId: 'شناسه الگوی تایید (SMS.ir)',
+};
+const SECRET = new Set(['apiKey', 'password']);
+
+function SmsTab() {
+  const [c, setC] = useState<any>(null);
+  const [f, setF] = useState<Record<string, string>>({});
+  const [testPhone, setTestPhone] = useState('');
+  const [msg, setMsg] = useState<{ t: 'ok' | 'err'; m: string } | null>(null);
+  const load = () => client.get<any>('/tenant/sms-config', 'org').then((d) => { setC(d); setF({ driver: d.driver || 'console', sender: d.sender || '', username: d.username || '', domain: d.domain || '', otpPattern: d.otpPattern || '', otpTemplateId: d.otpTemplateId || '', notifyPhone: d.notifyPhone || '', apiKey: '', password: '' }); }).catch((e) => setMsg({ t: 'err', m: e.message }));
+  useEffect(() => { load(); }, []);
+  const save = async () => {
+    setMsg(null);
+    try {
+      const body: Record<string, string> = { driver: f.driver, sender: f.sender, notifyPhone: f.notifyPhone, username: f.username, domain: f.domain, otpPattern: f.otpPattern, otpTemplateId: f.otpTemplateId };
+      if (f.apiKey) body.apiKey = f.apiKey;     // blank = keep stored secret
+      if (f.password) body.password = f.password;
+      await client.put('/tenant/sms-config', body, 'org'); setMsg({ t: 'ok', m: 'ذخیره شد' }); load();
+    } catch (e: any) { setMsg({ t: 'err', m: e.message }); }
+  };
+  const test = async () => {
+    setMsg(null);
+    try { await client.post('/tenant/sms-config/test', { phone: testPhone }, 'org'); setMsg({ t: 'ok', m: 'پیام آزمایشی ارسال شد' }); }
+    catch (e: any) { setMsg({ t: 'err', m: e.message }); }
+  };
+  if (!c) return null;
+  const fields = DRIVER_FIELDS[f.driver] || [];
+  return (
+    <div className="card p-5 max-w-lg space-y-3">
+      {msg && <div className={msg.t === 'ok' ? 'alert-success' : 'alert-error'}>{msg.m}</div>}
+      <p className="text-xs" style={{ color: 'var(--muted)' }}>درگاه پیامک این سازمان. برای ارسال کد تایید ورود و اطلاع‌رسانی ثبت‌نام‌ها استفاده می‌شود. اطلاعات اعتباری به‌صورت رمزنگاری‌شده ذخیره می‌شود.</p>
+      <Field label="ارائه‌دهنده">
+        <select className="input" value={f.driver} onChange={(e) => setF({ ...f, driver: e.target.value })}>
+          {(c.drivers || []).map((d: string) => <option key={d} value={d}>{DRIVER_LABELS[d] || d}</option>)}
+        </select>
+      </Field>
+      {fields.map((k) => (
+        <Field key={k} label={FIELD_LABELS[k] + (SECRET.has(k) && (k === 'apiKey' ? c.hasApiKey : c.hasPassword) ? ' (تنظیم شده — برای تغییر وارد کنید)' : '')}>
+          <input className="input" type={SECRET.has(k) ? 'password' : 'text'} value={f[k] || ''} onChange={(e) => setF({ ...f, [k]: e.target.value })} placeholder={SECRET.has(k) ? '••••••••' : ''} style={{ direction: 'ltr', textAlign: 'left' }} />
+        </Field>
+      ))}
+      <Field label="شماره موبایل مدیر برای اطلاع‌رسانی (اختیاری)"><input className="input" value={f.notifyPhone} onChange={(e) => setF({ ...f, notifyPhone: e.target.value })} placeholder="۰۹۱۲…" style={{ direction: 'ltr', textAlign: 'right' }} /></Field>
+      <button onClick={save} className="btn btn-primary btn-sm">ذخیره درگاه</button>
+      <div className="pt-3 mt-2" style={{ borderTop: '1px solid var(--border)' }}>
+        <h4 className="text-sm font-semibold mb-2">ارسال پیام آزمایشی</h4>
+        <div className="flex gap-2">
+          <input className="input" value={testPhone} onChange={(e) => setTestPhone(e.target.value)} placeholder="۰۹۱۲…" style={{ direction: 'ltr', textAlign: 'right' }} />
+          <button onClick={test} disabled={!c.configured || !testPhone} className="btn btn-ghost btn-sm" style={{ whiteSpace: 'nowrap' }}>ارسال آزمایشی</button>
+        </div>
+      </div>
     </div>
   );
 }

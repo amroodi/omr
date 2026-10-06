@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { AuditAction } from '@prisma/client';
@@ -18,6 +18,7 @@ import { SmsService } from '../auth/sms.service';
  */
 @Injectable()
 export class CustomerAuthService {
+  private readonly logger = new Logger(CustomerAuthService.name);
   constructor(
     private readonly prisma: PrismaService,
     private readonly crypto: FieldCryptoService,
@@ -43,7 +44,7 @@ export class CustomerAuthService {
     }
 
     const account = await this.prisma.scoped.customerAccount.findFirst({
-      where: { nationalCodeHash: nidHash, phoneHash, isActive: true },
+      where: { nationalCodeHash: nidHash, phoneHash, isActive: true, signupStatus: 'ACTIVE' },
       select: { id: true },
     });
 
@@ -61,7 +62,12 @@ export class CustomerAuthService {
           expiresAt: new Date(Date.now() + ttl * 1000),
         },
       });
-      await this.sms.sendOtp(phone, code);
+      // A provider failure must not 500 the login nor reveal whether the account exists.
+      try {
+        await this.sms.sendOtp(phone, code, tenantId);
+      } catch (e) {
+        this.logger.error(`Customer OTP send failed (tenant ${tenantId}): ${String(e)}`);
+      }
       await this.audit.record({ action: AuditAction.OTP_ISSUE, tenantId, actorType: 'CUSTOMER', metadata: { realm: 'customer' } });
     }
 
@@ -90,7 +96,7 @@ export class CustomerAuthService {
     }
 
     const account = await this.prisma.scoped.customerAccount.findFirst({
-      where: { nationalCodeHash: nidHash, phoneHash, isActive: true },
+      where: { nationalCodeHash: nidHash, phoneHash, isActive: true, signupStatus: 'ACTIVE' },
       select: { id: true },
     });
     if (!account) throw new ForbiddenException('حساب یافت نشد.');

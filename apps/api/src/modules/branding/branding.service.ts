@@ -5,8 +5,12 @@ import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { StorageService } from '../../common/storage/storage.service';
 import { getContext, getTenantIdOrThrow } from '../../common/tenant/tenant-context';
+import { SMS_DRIVERS, SmsService, TenantSmsConfig } from '../auth/sms.service';
 
 export type AssetKind = 'logo' | 'favicon' | 'font';
+
+// Which config fields each driver needs — drives the panel form and server-side validation.
+const SECRET_FIELDS: (keyof TenantSmsConfig)[] = ['apiKey', 'password'];
 
 const IMAGE_MIME = new Set(['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp', 'image/x-icon', 'image/vnd.microsoft.icon']);
 const FONT_EXT = /\.(woff2|woff|ttf|otf)$/i;
@@ -32,6 +36,7 @@ export class BrandingService {
     private readonly storage: StorageService,
     private readonly crypto: FieldCryptoService,
     private readonly audit: AuditService,
+    private readonly sms: SmsService,
   ) {}
 
   private tenantDb() {
@@ -72,6 +77,69 @@ export class BrandingService {
     });
     await this.audit.record({ action: AuditAction.EDIT, targetType: 'TenantBranding', targetId: id, metadata: dto as Record<string, unknown> });
     return this.getSettings();
+  }
+
+  // ── Per-tenant SMS gateway ─────────────────────────────────────────────
+  private async loadSmsConfig(id: string): Promise<TenantSmsConfig | null> {
+    const t = await this.tenantDb().findUnique({ where: { id }, select: { smsConfig: true } });
+    if (!t?.smsConfig) return null;
+    try { return JSON.parse(this.crypto.decrypt(t.smsConfig) ?? '{}') as TenantSmsConfig; } catch { return null; }
+  }
+
+  /** Masked view for the panel: secrets are never returned, only whether they are set. */
+  async getSmsConfig() {
+    const id = getTenantIdOrThrow();
+    const cfg = await this.loadSmsConfig(id);
+    return {
+      drivers: SMS_DRIVERS,
+      configured: !!cfg,
+      driver: cfg?.driver ?? '',
+      sender: cfg?.sender ?? '',
+      username: cfg?.username ?? '',
+      domain: cfg?.domain ?? '',
+      otpPattern: cfg?.otpPattern ?? '',
+      otpTemplateId: cfg?.otpTemplateId ?? '',
+      notifyPhone: cfg?.notifyPhone ?? '',
+      hasApiKey: !!cfg?.apiKey,
+      hasPassword: !!cfg?.password,
+    };
+  }
+
+  /** Save config. Blank secret fields keep the stored value (so the masked form need not resend them). */
+  async setSmsConfig(dto: Partial<TenantSmsConfig> & { driver: string }) {
+    const id = getTenantIdOrThrow();
+    if (!SMS_DRIVERS.includes(dto.driver)) throw new BadRequestException('درایور پیامک نامعتبر است');
+    const existing = (await this.loadSmsConfig(id)) ?? ({} as TenantSmsConfig);
+    const merged: TenantSmsConfig = { ...existing, ...this.nonEmpty(dto) } as TenantSmsConfig;
+    // Blank secrets in the payload must not wipe stored ones; nonEmpty() already dropped blanks.
+    merged.driver = dto.driver;
+    await this.tenantDb().update({ where: { id }, data: { smsConfig: this.crypto.encrypt(JSON.stringify(merged)) } });
+    await this.audit.record({ action: AuditAction.EDIT, targetType: 'TenantSmsConfig', targetId: id, metadata: { driver: dto.driver } });
+    return this.getSmsConfig();
+  }
+
+  /** Send a one-off test message using the saved config, to verify the gateway works. */
+  async testSms(phone: string) {
+    const id = getTenantIdOrThrow();
+    const cfg = await this.loadSmsConfig(id);
+    if (!cfg) throw new BadRequestException('ابتدا درگاه پیامک را ذخیره کنید');
+    if (!phone) throw new BadRequestException('شماره موبایل مقصد را وارد کنید');
+    try {
+      await this.sms.buildDriver(cfg).send(phone, 'پیام آزمایشی سامانه بیمس — درگاه پیامک شما با موفقیت کار می‌کند.');
+      return { ok: true };
+    } catch (e) {
+      throw new BadRequestException(`ارسال آزمایشی ناموفق بود: ${String((e as Error).message)}`);
+    }
+  }
+
+  private nonEmpty(obj: Record<string, unknown>): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(obj)) {
+      if (v === undefined || v === null) continue;
+      if (SECRET_FIELDS.includes(k as keyof TenantSmsConfig) && String(v).trim() === '') continue; // keep stored secret
+      out[k] = typeof v === 'string' ? v.trim() : v;
+    }
+    return out;
   }
 
   async uploadAsset(kind: AssetKind, file: Express.Multer.File) {

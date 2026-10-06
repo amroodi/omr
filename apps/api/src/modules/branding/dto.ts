@@ -33,6 +33,22 @@ export class UpdateBrandingDto {
   embedOrigins?: string[];
 }
 
+export class SmsConfigDto {
+  @IsString() @Length(2, 40) driver!: string;
+  @IsOptional() @IsString() @Length(0, 120) sender?: string;
+  @IsOptional() @IsString() @Length(0, 300) apiKey?: string;
+  @IsOptional() @IsString() @Length(0, 120) username?: string;
+  @IsOptional() @IsString() @Length(0, 200) password?: string;
+  @IsOptional() @IsString() @Length(0, 120) domain?: string;
+  @IsOptional() @IsString() @Length(0, 120) otpPattern?: string;
+  @IsOptional() @IsString() @Length(0, 60) otpTemplateId?: string;
+  @IsOptional() @IsString() @Length(0, 20) notifyPhone?: string;
+}
+
+export class TestSmsDto {
+  @IsString() @Length(8, 20) phone!: string;
+}
+
 export class CarrierConfigDto {
   @IsString()
   @Length(2, 40)
