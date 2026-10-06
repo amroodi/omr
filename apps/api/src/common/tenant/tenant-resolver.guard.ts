@@ -16,8 +16,12 @@ export class TenantResolverGuard implements CanActivate {
     const req = context.switchToHttp().getRequest<Request>();
     const ctx = (req as any).context as RequestContext;
 
+    // Header first (browser fetch), then ?tenant=/?org= (iframe embeds can't set headers),
+    // then the host subdomain (per-tenant domains).
+    const q = req.query as Record<string, string | undefined>;
     const slug =
       (req.headers['x-tenant-slug'] as string | undefined)?.trim() ||
+      (q.tenant || q.org)?.trim() ||
       this.subdomain(req.headers['host'] as string | undefined);
 
     if (!slug) throw new NotFoundException('Tenant not specified');

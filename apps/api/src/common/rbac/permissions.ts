@@ -43,6 +43,7 @@ export const PERMISSIONS = {
   BRANCH_MANAGE: 'branch:manage',
   AUDIT_READ: 'audit:read',
   TENANT_SETTINGS: 'tenant:settings', // white-label, branding, carrier config
+  API_KEY_MANAGE: 'apikey:manage', // create/revoke server-to-server API keys
 
   // Platform (super-admin only, checked separately)
   TENANT_MANAGE: 'tenant:manage',

@@ -16,9 +16,9 @@ git pull --ff-only
 echo "==> Installing dependencies (clean, includes build tools)"
 npm ci
 
-echo "==> Prisma: generate client + apply migrations"
+echo "==> Prisma: generate client + apply migrations + sync system-role permissions"
 set -a; source "$API_ENV"; set +a          # export DATABASE_URL for prisma
-( cd apps/api && npx prisma generate && npx prisma migrate deploy )
+( cd apps/api && npx prisma generate && npx prisma migrate deploy && npx ts-node prisma/sync-roles.ts )
 
 echo "==> Building API"
 npm --workspace apps/api run build

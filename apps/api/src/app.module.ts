@@ -13,9 +13,12 @@ import { TenantResolverGuard } from './common/tenant/tenant-resolver.guard';
 import { StorageModule } from './common/storage/storage.module';
 import { CarriersModule } from './integrations/carriers/carriers.module';
 import { OcrModule } from './integrations/ocr/ocr.module';
+import { ApiKeysModule } from './modules/api-keys/api-keys.module';
 import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BranchesModule } from './modules/branches/branches.module';
+import { EmbedModule } from './modules/embed/embed.module';
+import { PartnerModule } from './modules/partner/partner.module';
 import { BrandingModule } from './modules/branding/branding.module';
 import { CasesModule } from './modules/cases/cases.module';
 import { ClaimFieldsModule } from './modules/claim-fields/claim-fields.module';
@@ -69,6 +72,9 @@ import { UsersModule } from './modules/users/users.module';
     LevelsModule,
     RequiredDocsModule,
     BranchesModule,
+    ApiKeysModule,
+    PartnerModule,
+    EmbedModule,
   ],
   providers: [
     TenantResolverGuard,

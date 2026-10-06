@@ -1,4 +1,4 @@
-import { IsHexColor, IsInt, IsOptional, IsString, Length, Max, Min } from 'class-validator';
+import { IsArray, IsHexColor, IsInt, IsOptional, IsString, Length, Matches, Max, Min } from 'class-validator';
 
 export class UpdateBrandingDto {
   @IsOptional()
@@ -25,6 +25,12 @@ export class UpdateBrandingDto {
   @IsString()
   @Length(1, 80)
   fontFamily?: string;
+
+  // Origins allowed to embed the inquiry widget (e.g. "https://damuon.ir"). Scheme + host only.
+  @IsOptional()
+  @IsArray()
+  @Matches(/^https?:\/\/[a-zA-Z0-9.:-]+$/, { each: true, message: 'هر مبدأ باید مانند https://example.com باشد' })
+  embedOrigins?: string[];
 }
 
 export class CarrierConfigDto {

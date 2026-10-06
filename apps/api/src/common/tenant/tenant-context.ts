@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from 'async_hooks';
 
 export interface RequestContext {
   tenantId?: string;
-  actorType: 'ORG_USER' | 'SUPER_ADMIN' | 'INSURED' | 'CUSTOMER' | 'SYSTEM';
+  actorType: 'ORG_USER' | 'SUPER_ADMIN' | 'INSURED' | 'CUSTOMER' | 'SYSTEM' | 'API';
   actorId?: string;
   permissions: string[];
   ip?: string;
@@ -15,6 +15,8 @@ export interface RequestContext {
   branchId?: string;
   /** When true, org queries must be restricted to `branchId` (branch admin / staff). */
   branchScoped?: boolean;
+  /** Scopes granted to the current server-to-server API key (actorType 'API'). */
+  apiScopes?: string[];
 }
 
 /**

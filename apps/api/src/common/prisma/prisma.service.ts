@@ -22,6 +22,7 @@ const TENANT_MODELS = new Set<string>([
   'ApprovalLevel',
   'RequiredDocument',
   'ClaimFieldDef',
+  'ApiKey',
 ]);
 
 const READ_OPS = new Set(['findMany', 'findFirst', 'findFirstOrThrow', 'count', 'aggregate', 'groupBy']);

@@ -38,6 +38,8 @@ model Tenant {
   carrierConfig String? // ENCRYPTED json: upstream carrier credentials
   fontFamily    String?  @default("Vazirmatn")
   noticeDays    Int      @default(30) // deadline (days from event) for the بیمه‌گزار to report
+  // Origins allowed to embed the inquiry widget in an <iframe> (CSP frame-ancestors allowlist).
+  embedOrigins  String[] @default([])
   isActive      Boolean  @default(true)
   licenseUntil  DateTime?
   createdAt     DateTime @default(now())
@@ -58,6 +60,27 @@ model Tenant {
   approvalLevels ApprovalLevel[]
   requiredDocuments RequiredDocument[]
   claimFieldDefs ClaimFieldDef[]
+  apiKeys    ApiKey[]
+}
+
+// Scoped, rotatable API key for server-to-server integration from a customer's own backend.
+// Only a SHA-256 hash of the secret is stored; the plaintext is shown once at creation.
+// `prefix` is a public lookup id embedded at the start of the key.
+model ApiKey {
+  id          String    @id @default(uuid())
+  tenantId    String
+  tenant      Tenant    @relation(fields: [tenantId], references: [id])
+  name        String
+  prefix      String    @unique // public lookup id, e.g. "omr_live_a1b2c3d4"
+  keyHash     String // sha256 of the full key
+  scopes      String[]  @default([]) // e.g. ["claim:status"]
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+  createdById String?
+  createdAt   DateTime  @default(now())
+
+  @@index([tenantId])
 }
 
 model Branch {
