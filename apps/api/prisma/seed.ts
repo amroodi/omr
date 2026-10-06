@@ -34,6 +34,15 @@ function hashOtp(code: string): string {
 }
 
 async function main(): Promise<void> {
+  // SAFETY: this is the DEVELOPMENT seed — it writes fake insured/policy/claim/payment records and a
+  // hardcoded OTP (123456). It must never run against production. Use prisma/provision.ts instead.
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DEV_SEED !== 'true') {
+    throw new Error(
+      'Refusing to run the DEV seed (fake data + dev OTP) with NODE_ENV=production. ' +
+        'Use `npx ts-node prisma/provision.ts` for production provisioning.',
+    );
+  }
+
   const version = process.env.FIELD_ENCRYPTION_KEY_VERSION || '1';
   const key = Buffer.from(requireEnv('FIELD_ENCRYPTION_KEY'), 'base64').subarray(0, 32);
   const pepper = Buffer.from(requireEnv('BLIND_INDEX_PEPPER'), 'base64');

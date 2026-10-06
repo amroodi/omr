@@ -140,9 +140,12 @@ sudo -u omr npm --workspace apps/api run build
 sudo -u omr -E NEXT_PUBLIC_API_BASE="https://panel.damuon.com/api/v1" \
      npm --workspace apps/web run build
 
-# Seed the first tenant + super-admin + org admin (RUN ONCE — re-running resets seeded passwords)
-sudo -u omr -E bash -c 'cd apps/api && npx prisma db seed'
-sudo -u omr cat apps/api/prisma/seed-output.local.txt   # note the credentials, then keep them safe
+# Provision the first tenant + super-admin + org admin for PRODUCTION.
+# This creates NO fake data and NO dev OTP, and is safe to re-run (existing passwords are kept).
+# Do NOT use `prisma db seed` in production — that is the dev seed (fake records + OTP 123456) and
+# it refuses to run when NODE_ENV=production.
+sudo -u omr -E SUPER_ADMIN_EMAIL="you@damuon.com" bash -c 'cd apps/api && npx ts-node prisma/provision.ts'
+sudo -u omr cat apps/api/prisma/provision-output.local.txt   # note the credentials, store safely, then delete the file
 ```
 
 > **`NEXT_PUBLIC_API_BASE` is compile-time.** It is inlined into the web bundle by `next build`. If you ever change the domain or path, you must rebuild the web app — setting it only at runtime does nothing.
@@ -199,7 +202,7 @@ Certbot installs a renewal timer automatically. Confirm with `sudo certbot renew
 
 ## 8. Smoke test
 
-1. Open `https://panel.damuon.com/org/login`, sign in with the org admin from `seed-output.local.txt`.
+1. Open `https://panel.damuon.com/org/login`, sign in with the org admin from `provision-output.local.txt`.
 2. **تنظیمات سازمان** → seed default required-documents and claim-fields, add a branch and approval levels.
 3. **بیمه‌گزاران** → create a policyholder (National ID + mobile).
 4. Log out → `https://panel.damuon.com/customer/login` → request an OTP. With a real provider configured (§8a) the code is texted; with the `console` driver run `journalctl -u omr-api -f` and read the `[SMS:console]` line.
@@ -262,7 +265,7 @@ It pulls, `npm ci`, generates the Prisma client, runs `migrate deploy`, rebuilds
 - [ ] `/etc/omr/api.env` is `chmod 600`, owned by `omr`; secrets were generated on the server and never committed.
 - [ ] `FIELD_ENCRYPTION_KEY`, `BLIND_INDEX_PEPPER`, `JWT_SECRET` are backed up offline.
 - [ ] `SMS_DRIVER` is `kavenegar` (not `console`) before go-live.
-- [ ] Seeded admin passwords were rotated after first login; `seed-output.local.txt` was deleted from the server.
+- [ ] Provisioned admin/super-admin passwords were rotated after first login; `provision-output.local.txt` was deleted from the server.
 - [ ] TLS works and HTTP redirects to HTTPS; `certbot renew --dry-run` passes.
 - [ ] Daily DB + storage backups run and a restore has been tested.
 - [ ] SSH is key-only (`PasswordAuthentication no`) and root login is disabled.

@@ -58,7 +58,7 @@ Do these in order. The first five prevent the vast majority of real-world breach
 - Run `npm audit` after each dependency change; fix high/critical.
 
 ### 6. Access hygiene
-- Rotate the seeded admin password on day one; delete `seed-output.local.txt` from the server.
+- Rotate the provisioned admin/super-admin passwords on day one; delete `provision-output.local.txt` from the server.
 - Remove accounts the moment someone leaves.
 - Give each staff member the **lowest role** that lets them do their job.
 
