@@ -1,0 +1,25 @@
+# systemd unit for the NestJS API.
+# Install: sudo cp deploy/omr-api.service /etc/systemd/system/
+#          sudo systemctl daemon-reload && sudo systemctl enable --now omr-api
+[Unit]
+Description=OMR Damuon API (NestJS)
+After=network.target docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+User=omr
+Group=omr
+WorkingDirectory=/opt/omr/apps/api
+EnvironmentFile=/etc/omr/api.env
+ExecStart=/usr/bin/node dist/main.js
+Restart=on-failure
+RestartSec=5
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=full
+# Allow writing only to the storage dir (ProtectSystem=full makes /usr etc read-only)
+ReadWritePaths=/var/lib/omr /opt/omr
+
+[Install]
+WantedBy=multi-user.target

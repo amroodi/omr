@@ -1,0 +1,26 @@
+# systemd unit for the Next.js web app.
+# Install: sudo cp deploy/omr-web.service /etc/systemd/system/
+#          sudo systemctl daemon-reload && sudo systemctl enable --now omr-web
+#
+# NOTE: NEXT_PUBLIC_API_BASE is baked in at BUILD time (next build), not read here.
+# Rebuild the web app whenever the public API URL changes.
+[Unit]
+Description=OMR Damuon Web (Next.js)
+After=network.target omr-api.service
+
+[Service]
+Type=simple
+User=omr
+Group=omr
+WorkingDirectory=/opt/omr/apps/web
+Environment=NODE_ENV=production
+Environment=PORT=3000
+ExecStart=/usr/bin/npm run start
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=full
+ReadWritePaths=/opt/omr
+
+[Install]
+WantedBy=multi-user.target

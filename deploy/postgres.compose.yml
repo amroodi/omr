@@ -1,0 +1,26 @@
+# Postgres for production — bound to localhost only, data on a named volume.
+# Start:   docker compose -f deploy/postgres.compose.yml up -d
+# Logs:    docker compose -f deploy/postgres.compose.yml logs -f
+# Backup:  docker exec omr-postgres pg_dump -U omr omr_damuon | gzip > backup_$(date +%F).sql.gz
+services:
+  postgres:
+    image: postgres:16
+    container_name: omr-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: omr
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in the shell or an .env next to this file}
+      POSTGRES_DB: omr_damuon
+    # 127.0.0.1 only — never expose Postgres to the public internet.
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - omr_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U omr -d omr_damuon"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  omr_pgdata:
