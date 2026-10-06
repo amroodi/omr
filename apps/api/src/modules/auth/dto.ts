@@ -29,3 +29,13 @@ export class SuperAdminLoginDto {
   @IsString()
   totp?: string;
 }
+
+export class ChangePasswordDto {
+  @IsString()
+  @Length(6, 128)
+  currentPassword!: string;
+
+  @IsString()
+  @Length(8, 128)
+  newPassword!: string;
+}

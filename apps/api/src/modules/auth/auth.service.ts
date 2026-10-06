@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { AuditAction } from '@prisma/client';
@@ -118,5 +118,41 @@ export class AuthService {
     });
 
     return { token, expiresIn, actor: { id: admin!.id, displayName: admin!.email, permissions } };
+  }
+
+  /** Change the signed-in actor's own password (super-admin or org user). */
+  async changePassword(
+    actorType: string | undefined,
+    actorId: string | undefined,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<{ ok: true }> {
+    if (!actorId) throw new UnauthorizedException('نشست نامعتبر است');
+    if (!newPassword || newPassword.length < 8) {
+      throw new BadRequestException('رمز عبور جدید باید حداقل ۸ کاراکتر باشد');
+    }
+    const db = this.prisma.unscoped();
+
+    if (actorType === 'SUPER_ADMIN') {
+      const a = await db.superAdmin.findUnique({ where: { id: actorId } });
+      if (!a || !(await this.hash.verifyPassword(a.passwordHash, currentPassword))) {
+        throw new UnauthorizedException('رمز عبور فعلی نادرست است');
+      }
+      await db.superAdmin.update({ where: { id: actorId }, data: { passwordHash: await this.hash.hashPassword(newPassword) } });
+      await this.audit.record({ action: AuditAction.EDIT, actorType: 'SUPER_ADMIN', actorId, targetType: 'SuperAdmin', targetId: actorId, metadata: { action: 'password-change' } });
+      return { ok: true };
+    }
+
+    if (actorType === 'ORG_USER') {
+      const u = await db.orgUser.findUnique({ where: { id: actorId } });
+      if (!u || !(await this.hash.verifyPassword(u.passwordHash, currentPassword))) {
+        throw new UnauthorizedException('رمز عبور فعلی نادرست است');
+      }
+      await db.orgUser.update({ where: { id: actorId }, data: { passwordHash: await this.hash.hashPassword(newPassword) } });
+      await this.audit.record({ action: AuditAction.EDIT, tenantId: getContext()?.tenantId, actorType: 'ORG_USER', actorId, targetType: 'OrgUser', targetId: actorId, metadata: { action: 'password-change' } });
+      return { ok: true };
+    }
+
+    throw new UnauthorizedException('این حساب امکان تغییر رمز از این مسیر را ندارد');
   }
 }

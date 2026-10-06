@@ -1,7 +1,8 @@
 import { Body, Controller, Post } from '@nestjs/common';
-import { Public } from '../../common/rbac/decorators';
+import { CurrentActor, Public } from '../../common/rbac/decorators';
+import type { RequestContext } from '../../common/tenant/tenant-context';
 import { AuthService } from './auth.service';
-import { OrgLoginDto, SuperAdminLoginDto } from './dto';
+import { ChangePasswordDto, OrgLoginDto, SuperAdminLoginDto } from './dto';
 
 @Controller('auth')
 export class AuthController {
@@ -17,5 +18,11 @@ export class AuthController {
   @Post('super/login')
   superLogin(@Body() dto: SuperAdminLoginDto) {
     return this.auth.superAdminLogin(dto);
+  }
+
+  /** Change the signed-in actor's own password (super-admin or org user). Requires a valid token. */
+  @Post('change-password')
+  changePassword(@CurrentActor() actor: RequestContext, @Body() dto: ChangePasswordDto) {
+    return this.auth.changePassword(actor?.actorType, actor?.actorId, dto.currentPassword, dto.newPassword);
   }
 }

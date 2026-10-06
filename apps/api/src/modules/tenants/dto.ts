@@ -42,3 +42,10 @@ export class SetTenantActiveDto {
   @IsBoolean()
   isActive!: boolean;
 }
+
+export class ResetAdminDto {
+  @IsOptional()
+  @IsString()
+  @Length(3, 64)
+  username?: string;
+}

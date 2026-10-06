@@ -1,8 +1,9 @@
 'use client';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { ReactNode } from 'react';
+import { ReactNode, useState } from 'react';
 import { clearToken, Realm } from '../../lib/client';
+import { ChangePasswordModal } from './ChangePasswordModal';
 
 export interface NavItem {
   href: string;
@@ -25,6 +26,7 @@ export function Shell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const [showPw, setShowPw] = useState(false);
 
   return (
     <div className="grid gap-5" style={{ gridTemplateColumns: 'minmax(0,1fr)' }}>
@@ -52,8 +54,16 @@ export function Shell({
                 );
               })}
               <button
-                onClick={() => { clearToken(realm); router.push(`/${realm === 'super' ? 'admin' : realm}/login`); }}
+                onClick={() => setShowPw(true)}
                 className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm whitespace-nowrap transition mt-auto lg:mt-2"
+                style={{ color: 'var(--muted)' }}
+              >
+                <Icon path="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zM8 11V7a4 4 0 118 0v4" />
+                تغییر رمز عبور
+              </button>
+              <button
+                onClick={() => { clearToken(realm); router.push(`/${realm === 'super' ? 'admin' : realm}/login`); }}
+                className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm whitespace-nowrap transition"
                 style={{ color: 'var(--danger)' }}
               >
                 <Icon path="M15 3H5a2 2 0 00-2 2v14a2 2 0 002 2h10M17 16l4-4-4-4M21 12H9" />
@@ -72,6 +82,7 @@ export function Shell({
           <div className="fade-up">{children}</div>
         </section>
       </div>
+      {showPw && <ChangePasswordModal realm={realm} onClose={() => setShowPw(false)} />}
     </div>
   );
 }

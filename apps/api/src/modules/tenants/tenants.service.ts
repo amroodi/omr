@@ -128,6 +128,25 @@ export class TenantsService {
     };
   }
 
+  /** Platform-only: reset an organization's admin password, returning a one-time password. */
+  async resetAdminPassword(tenantId: string, username = 'admin') {
+    const db = this.prisma.unscoped();
+    const user = await db.orgUser.findUnique({ where: { tenantId_username: { tenantId, username: username.trim() } } });
+    if (!user) throw new BadRequestException('کاربر مدیر با این نام کاربری یافت نشد');
+    const password = randomBytes(9).toString('base64url');
+    await db.orgUser.update({ where: { id: user.id }, data: { passwordHash: await this.hash.hashPassword(password) } });
+    await this.audit.record({
+      action: AuditAction.EDIT,
+      actorType: 'SUPER_ADMIN',
+      actorId: getContext()?.actorId,
+      tenantId,
+      targetType: 'OrgUser',
+      targetId: user.id,
+      metadata: { action: 'admin-password-reset', username },
+    });
+    return { username: user.username, oneTimePassword: password };
+  }
+
   async setActive(id: string, isActive: boolean) {
     const tenant = await this.prisma.unscoped().tenant.update({ where: { id }, data: { isActive } });
     await this.audit.record({ action: AuditAction.EDIT, actorType: 'SUPER_ADMIN', tenantId: id, targetType: 'Tenant', targetId: id, metadata: { isActive } });
