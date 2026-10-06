@@ -30,9 +30,13 @@ async function bootstrap(): Promise<void> {
   const prisma = app.get(PrismaService);
   await prisma.enableShutdownHooks(app);
 
-  const port = config.get<number>('PORT', 4000);
-  await app.listen(port);
-  logger.log(`OMR Damuon API listening on http://localhost:${port}/api/v1`);
+  // Bind to localhost by default: the API is always reached through the Nginx reverse proxy, so it
+  // must not be exposed on the public interface even if a firewall rule is missing. Override with
+  // HOST=0.0.0.0 only for setups that genuinely need it.
+  const port = Number(config.get('PORT', 4000));
+  const host = config.get<string>('HOST', '127.0.0.1');
+  await app.listen(port, host);
+  logger.log(`OMR Damuon API listening on http://${host}:${port}/api/v1`);
 }
 
 bootstrap();

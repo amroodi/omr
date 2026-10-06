@@ -14,7 +14,9 @@ User=omr
 Group=omr
 WorkingDirectory=/opt/omr/apps/web
 Environment=NODE_ENV=production
-Environment=PORT=3000
+# Non-generic port, bound to localhost (reached only via Nginx). Next reads PORT + HOSTNAME.
+Environment=PORT=29318
+Environment=HOSTNAME=127.0.0.1
 ExecStart=/usr/bin/npm run start
 Restart=on-failure
 RestartSec=5

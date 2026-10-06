@@ -8,19 +8,21 @@ Ubuntu VPS for the pilot. Supporting config files live in [`deploy/`](../deploy)
 One VPS, one domain, Nginx as the only thing exposed to the internet:
 
 ```
-                 ┌─────────────────────── VPS ───────────────────────┐
-  Internet ─TLS─▶│  Nginx :443                                        │
-                 │    ├─ /api/  ─▶ API (systemd omr-api)   :4000      │
-                 │    └─ /      ─▶ Web (systemd omr-web)    :3000      │
-                 │                                                     │
-                 │  Postgres (docker)  127.0.0.1:5432  ◀── API only    │
-                 │  /var/lib/omr/storage  (encrypted uploaded docs)    │
-                 └─────────────────────────────────────────────────────┘
+                 ┌──────────────────────── VPS ────────────────────────┐
+  Internet ─TLS─▶│  Nginx :443                                          │
+                 │    ├─ /api/  ─▶ API (systemd omr-api)  127.0.0.1:17421│
+                 │    └─ /      ─▶ Web (systemd omr-web)  127.0.0.1:29318│
+                 │                                                       │
+                 │  Postgres (docker)  127.0.0.1:15987  ◀── API only     │
+                 │  /var/lib/omr/storage  (encrypted uploaded docs)      │
+                 └───────────────────────────────────────────────────────┘
 ```
 
-- **Postgres** runs in Docker (same as local), bound to `127.0.0.1` only.
-- **API** and **web** run as native Node processes under **systemd** (auto-restart, start on boot, logs via `journalctl`).
+- **Postgres** runs in Docker (same as local), bound to `127.0.0.1:15987`.
+- **API** and **web** run as native Node processes under **systemd** (auto-restart, start on boot, logs via `journalctl`), each **bound to `127.0.0.1`** on a **non-generic port** (17421 / 29318).
 - **Nginx + Let's Encrypt** terminate TLS and route by path. Nothing but 22/80/443 is open.
+
+> **Ports & binding.** The apps use non-default ports (17421/29318/15987) and bind to localhost, so they're reachable only through Nginx. The *real* protection is the localhost binding + firewall + TLS — the unusual port numbers are a thin extra layer, not a substitute. Want different numbers? Change `PORT`/`HOST` in `api.env`, `PORT` in `omr-web.service`, the Postgres host-port in `postgres.compose.yml` + `DATABASE_URL`, and the two `proxy_pass` lines in the Nginx config — keep them consistent.
 
 > **Why not Docker for everything?** For a single-VPS pilot, systemd is fewer moving parts and easier to debug than orchestrating three containers. Postgres stays in Docker because it's the one piece where a pinned image + named volume genuinely simplifies ops.
 
@@ -115,10 +117,11 @@ sudo chmod 600 /etc/omr/api.env
 ```
 
 In `/etc/omr/api.env` make sure:
-- `DATABASE_URL` uses the same password you set in step 3, host `127.0.0.1:5432`, user `omr`, db `omr_damuon`.
+- `DATABASE_URL` uses the same password you set in step 3, host `127.0.0.1:15987`, user `omr`, db `omr_damuon`.
 - `CORS_ORIGINS="https://panel.damuon.com"` (add every tenant/white-label domain, comma-separated).
 - `STORAGE_DIR="/var/lib/omr/storage"`.
-- `SMS_DRIVER="kavenegar"` with real `SMS_API_KEY` / `SMS_SENDER` (or keep `console` for a dry run — codes then go to `journalctl`).
+- `PORT=17421`, `HOST=127.0.0.1` (match the Nginx `proxy_pass`).
+- SMS provider set — see **§8a** below (or keep `console` for a dry run; codes then go to `journalctl`).
 
 ---
 
@@ -170,8 +173,8 @@ sudo chmod 440 /etc/sudoers.d/omr-deploy
 Quick local check before Nginx:
 
 ```bash
-curl -s -H "x-tenant-slug: damuon" http://127.0.0.1:4000/api/v1/tenant/branding | head -c 200
-curl -sI http://127.0.0.1:3000 | head -1      # expect HTTP/1.1 200
+curl -s -H "x-tenant-slug: damuon" http://127.0.0.1:17421/api/v1/tenant/branding | head -c 200
+curl -sI http://127.0.0.1:29318 | head -1      # expect HTTP/1.1 200
 ```
 
 ---
@@ -199,10 +202,28 @@ Certbot installs a renewal timer automatically. Confirm with `sudo certbot renew
 1. Open `https://panel.damuon.com/org/login`, sign in with the org admin from `seed-output.local.txt`.
 2. **تنظیمات سازمان** → seed default required-documents and claim-fields, add a branch and approval levels.
 3. **بیمه‌گزاران** → create a policyholder (National ID + mobile).
-4. Log out → `https://panel.damuon.com/customer/login` → request an OTP. With a real Kavenegar key the code is texted; with the `console` driver run `journalctl -u omr-api -f` and read the `[SMS:console]` line.
+4. Log out → `https://panel.damuon.com/customer/login` → request an OTP. With a real provider configured (§8a) the code is texted; with the `console` driver run `journalctl -u omr-api -f` and read the `[SMS:console]` line.
 5. File a test claim, upload a document, view it back.
 
 ---
+
+## 8a. SMS provider
+
+One provider per deployment, chosen with `SMS_DRIVER` in `/etc/omr/api.env`. Supported out of the box: `console` (dev only), **`magfa`** (Damuon), `kavenegar`, `ghasedak`, `smsir`, `melipayamak`. Fill only the fields your provider needs:
+
+| Provider | Required | OTP pattern field |
+| --- | --- | --- |
+| magfa | `SMS_USERNAME`, `SMS_PASSWORD`, `SMS_DOMAIN`, `SMS_SENDER` | — (normal send) |
+| kavenegar | `SMS_API_KEY`, `SMS_SENDER` | `SMS_OTP_PATTERN` (template name) |
+| ghasedak | `SMS_API_KEY`, `SMS_SENDER` | `SMS_OTP_PATTERN` (template name) |
+| smsir | `SMS_API_KEY`, `SMS_SENDER` | `SMS_OTP_TEMPLATE_ID` (numeric) |
+| melipayamak | `SMS_USERNAME`, `SMS_PASSWORD`, `SMS_SENDER` | `SMS_OTP_PATTERN` (bodyId) |
+
+> **OTP patterns matter in Iran.** Gateways usually require OTP/service text to use a *pre-approved pattern* ("الگو") sent through a verify endpoint; free-text service SMS is often filtered. Register an OTP pattern in your provider's panel, put its name/id in the pattern field above, and the system will use the pattern endpoint automatically. Leave it blank only if your account is approved for free-text.
+
+**Add a provider not listed here:** create one file in `apps/api/src/modules/auth/sms/drivers/` implementing the `SmsDriver` interface, add one line to the `REGISTRY` map in `apps/api/src/modules/auth/sms.service.ts`, and set `SMS_DRIVER` to its name. Each driver is ~40 lines; use `magfa.driver.ts` as a template.
+
+After changing provider config: `sudo systemctl restart omr-api`, then run one real OTP from `/customer/login` and confirm delivery.
 
 ## 9. Backups (do this before real data)
 

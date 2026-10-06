@@ -1,54 +1,64 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { SmsConfig, SmsDriver } from './sms/sms-driver';
+import { ConsoleDriver } from './sms/drivers/console.driver';
+import { GhasedakDriver } from './sms/drivers/ghasedak.driver';
+import { KavenegarDriver } from './sms/drivers/kavenegar.driver';
+import { MagfaDriver } from './sms/drivers/magfa.driver';
+import { MelipayamakDriver } from './sms/drivers/melipayamak.driver';
+import { SmsIrDriver } from './sms/drivers/smsir.driver';
+
+/** Each deployment (one per organization's VPS) selects its provider via SMS_DRIVER. */
+type DriverFactory = (cfg: SmsConfig) => SmsDriver;
+
+const REGISTRY: Record<string, DriverFactory> = {
+  console: (c) => new ConsoleDriver(c),
+  magfa: (c) => new MagfaDriver(c),
+  kavenegar: (c) => new KavenegarDriver(c),
+  ghasedak: (c) => new GhasedakDriver(c),
+  smsir: (c) => new SmsIrDriver(c),
+  melipayamak: (c) => new MelipayamakDriver(c),
+};
 
 /**
- * SMS gateway abstraction. The `console` driver (default in dev) logs the message instead of
- * sending it, so OTP flows are testable without a provider. Implement a real Iranian provider
- * (Kavenegar, Ghasedak, …) by adding a branch in `send()` keyed on SMS_DRIVER — the interface
- * stays the same.
+ * SMS gateway facade. Picks a provider driver from SMS_DRIVER at startup. Adding a provider =
+ * one file in ./sms/drivers + one line in REGISTRY. OTP uses each provider's approved-pattern
+ * endpoint when configured (see sms-driver.ts); otherwise it falls back to a free-text message.
  */
 @Injectable()
 export class SmsService {
   private readonly logger = new Logger(SmsService.name);
-  private readonly driver: string;
+  private readonly driver: SmsDriver;
 
   constructor(private readonly config: ConfigService) {
-    this.driver = this.config.get<string>('SMS_DRIVER', 'console');
+    const name = this.config.get<string>('SMS_DRIVER', 'console').trim();
+    const factory = REGISTRY[name];
+    if (!factory) {
+      throw new Error(`SMS_DRIVER "${name}" is not supported. Available: ${Object.keys(REGISTRY).join(', ')}`);
+    }
+    this.driver = factory(this.buildConfig());
+    this.logger.log(`SMS provider: ${this.driver.name}`);
   }
 
   async send(toPhone: string, message: string): Promise<void> {
-    switch (this.driver) {
-      case 'console':
-        // Dev/test driver: print at log level so OTP codes are visible without enabling debug logs.
-        // Never log the recipient's full number. Switch SMS_DRIVER to a real gateway in production.
-        this.logger.log(`[SMS:console] -> ${this.mask(toPhone)}: ${message}`);
-        return;
-      case 'kavenegar':
-        return this.sendKavenegar(toPhone, message);
-      default:
-        throw new Error(`SMS driver "${this.driver}" not implemented`);
-    }
-  }
-
-  /** Kavenegar (Iranian SMS gateway). Set SMS_API_KEY and SMS_SENDER. */
-  private async sendKavenegar(toPhone: string, message: string): Promise<void> {
-    const apiKey = this.config.get<string>('SMS_API_KEY', '');
-    const sender = this.config.get<string>('SMS_SENDER', '');
-    if (!apiKey) throw new Error('SMS_API_KEY is not set for the kavenegar driver');
-    const url = `https://api.kavenegar.com/v1/${apiKey}/sms/send.json`;
-    const params = new URLSearchParams({ receptor: toPhone, message, ...(sender ? { sender } : {}) });
-    const res = await fetch(`${url}?${params.toString()}`, { method: 'POST' });
-    if (!res.ok) {
-      this.logger.error(`Kavenegar send failed: HTTP ${res.status}`);
-      throw new Error('ارسال پیامک ناموفق بود');
-    }
+    return this.driver.send(toPhone, message);
   }
 
   async sendOtp(toPhone: string, code: string): Promise<void> {
-    await this.send(toPhone, `کد تایید سامانه بیمس: ${code}\nاین کد را در اختیار دیگران قرار ندهید.`);
+    return this.driver.sendOtp(toPhone, code);
   }
 
-  private mask(phone: string): string {
-    return phone.length <= 4 ? '••••' : `${'•'.repeat(phone.length - 4)}${phone.slice(-4)}`;
+  private buildConfig(): SmsConfig {
+    const g = (k: string) => this.config.get<string>(k, '') ?? '';
+    return {
+      sender: g('SMS_SENDER'),
+      apiKey: g('SMS_API_KEY'),
+      username: g('SMS_USERNAME'),
+      password: g('SMS_PASSWORD'),
+      domain: g('SMS_DOMAIN'),
+      otpPattern: g('SMS_OTP_PATTERN'),
+      otpTemplateId: g('SMS_OTP_TEMPLATE_ID'),
+      otpMessage: (code: string) => `کد تایید سامانه بیمس: ${code}\nاین کد را در اختیار دیگران قرار ندهید.`,
+    };
   }
 }

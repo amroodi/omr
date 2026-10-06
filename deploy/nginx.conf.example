@@ -1,6 +1,7 @@
 # Nginx reverse proxy — one TLS front door for both apps.
-#   /api/  -> NestJS API on 127.0.0.1:4000  (keeps the /api/v1 prefix)
-#   /      -> Next.js web on 127.0.0.1:3000
+#   /api/  -> NestJS API on 127.0.0.1:17421  (keeps the /api/v1 prefix)
+#   /      -> Next.js web on 127.0.0.1:29318
+# Both apps bind to 127.0.0.1 on non-generic ports; only Nginx (80/443) is public.
 #
 # Install:
 #   sudo cp deploy/nginx.conf.example /etc/nginx/sites-available/omr
@@ -19,7 +20,7 @@ server {
 
     # API: everything under /api/ goes to NestJS (its global prefix is /api/v1).
     location /api/ {
-        proxy_pass http://127.0.0.1:4000;
+        proxy_pass http://127.0.0.1:17421;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -30,7 +31,7 @@ server {
 
     # Web: everything else goes to Next.js.
     location / {
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://127.0.0.1:29318;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
