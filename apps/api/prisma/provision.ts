@@ -13,13 +13,18 @@
  *   set -a; source /etc/omr/api.env; set +a
  *   SUPER_ADMIN_EMAIL=you@damuon.com npx ts-node prisma/provision.ts
  *
+ * Credentials are printed to the terminal AND (best-effort) written to ~/omr-provision-output.txt
+ * (override with PROVISION_OUT=/path). It never crashes if that file can't be written.
+ *
  * Optional overrides: PROVISION_TENANT_SLUG (default "damuon"), PROVISION_TENANT_NAME,
- * PROVISION_TENANT_KIND (BROKER|INSURER, default BROKER), PROVISION_ADMIN_USERNAME (default "admin").
+ * PROVISION_TENANT_KIND (BROKER|INSURER, default BROKER), PROVISION_ADMIN_USERNAME (default "admin"),
+ * PROVISION_RESET=true (reset the admin/super-admin password if the account already exists).
  */
 import { PrismaClient, TenantKind } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { randomBytes } from 'crypto';
 import { writeFileSync } from 'fs';
+import { homedir } from 'os';
 import { join } from 'path';
 import { SYSTEM_ROLES } from '../src/common/rbac/permissions';
 
@@ -46,6 +51,7 @@ async function main(): Promise<void> {
   const kind = (process.env.PROVISION_TENANT_KIND || 'BROKER') as TenantKind;
   const adminUsername = process.env.PROVISION_ADMIN_USERNAME || 'admin';
   const superEmail = need('SUPER_ADMIN_EMAIL');
+  const reset = process.env.PROVISION_RESET === 'true';
 
   const created: string[] = [];
   const credentials: string[] = [];
@@ -69,7 +75,7 @@ async function main(): Promise<void> {
     roleIds[rname] = role.id;
   }
 
-  // ── Org admin — create only if missing; NEVER reset an existing password in production ──
+  // ── Org admin — create if missing; with PROVISION_RESET=true, reset an existing password too ──
   const existingAdmin = await prisma.orgUser.findUnique({
     where: { tenantId_username: { tenantId: tenant.id, username: adminUsername } },
   });
@@ -86,11 +92,19 @@ async function main(): Promise<void> {
     });
     created.push('org admin');
     credentials.push(`Org admin username: ${adminUsername}`, `Org admin password: ${p}`);
+  } else if (reset) {
+    const p = generatedPassword();
+    await prisma.orgUser.update({
+      where: { id: existingAdmin.id },
+      data: { passwordHash: await argon2.hash(p, { type: argon2.argon2id }), roleId: roleIds['مدیر سازمان'] },
+    });
+    created.push('org admin password RESET');
+    credentials.push(`Org admin username: ${adminUsername}`, `Org admin password: ${p}`);
   } else {
     await prisma.orgUser.update({ where: { id: existingAdmin.id }, data: { roleId: roleIds['مدیر سازمان'] } });
   }
 
-  // ── Super admin — create only if missing ──
+  // ── Super admin — create if missing; with PROVISION_RESET=true, reset an existing password too ──
   const existingSuper = await prisma.superAdmin.findUnique({ where: { email: superEmail } });
   if (!existingSuper) {
     const p = generatedPassword();
@@ -99,20 +113,46 @@ async function main(): Promise<void> {
     });
     created.push('super admin');
     credentials.push(`Super admin email: ${superEmail}`, `Super admin password: ${p}`);
+  } else if (reset) {
+    const p = generatedPassword();
+    await prisma.superAdmin.update({
+      where: { id: existingSuper.id },
+      data: { passwordHash: await argon2.hash(p, { type: argon2.argon2id }) },
+    });
+    created.push('super admin password RESET');
+    credentials.push(`Super admin email: ${superEmail}`, `Super admin password: ${p}`);
   }
 
   const out = [
     'OMR Damuon — PRODUCTION provisioning output',
-    'KEEP SECRET. Change these passwords after first login, then delete this file.',
     `Generated: ${new Date().toISOString()}`,
     '',
     `Tenant slug: ${slug}   (kind: ${kind})`,
-    ...(credentials.length ? ['', ...credentials] : ['', '(no new credentials — users already existed)']),
+    ...(credentials.length ? ['', ...credentials] : ['', '(no new credentials — users already existed; pass PROVISION_RESET=true to reset)']),
   ].join('\n');
-  writeFileSync(join(__dirname, 'provision-output.local.txt'), out, 'utf8');
 
-  console.log(`Provisioning complete. Created: ${created.length ? created.join(', ') : 'nothing new'}.`);
-  console.log('Credentials (if any) written to prisma/provision-output.local.txt — read, store safely, then delete.');
+  // Terminal is the reliable channel for interactive provisioning. Also try to drop a file in a
+  // writable location (best-effort) — never crash if the repo dir isn't writable by this user.
+  let savedTo = '';
+  if (credentials.length) {
+    const target = process.env.PROVISION_OUT || join(homedir(), 'omr-provision-output.txt');
+    try {
+      writeFileSync(target, out + '\n', { encoding: 'utf8', mode: 0o600 });
+      savedTo = target;
+    } catch {
+      /* ignore — the credentials are printed below regardless */
+    }
+  }
+
+  console.log('\n' + '='.repeat(60));
+  console.log(out);
+  console.log('='.repeat(60));
+  if (credentials.length) {
+    console.log('⚠  COPY these now, change the passwords after first login, then clear your terminal.');
+    if (savedTo) console.log(`   A copy was also written to: ${savedTo}  (delete it once stored safely)`);
+    else console.log('   (Could not write a file; use the values above.)');
+  }
+  console.log(`Provisioning complete. ${created.length ? 'Changes: ' + created.join(', ') : 'Nothing new.'}`);
 }
 
 main()
