@@ -84,6 +84,27 @@ model ApiKey {
   @@index([tenantId])
 }
 
+// Who a notification is for: ORG = the organization's staff (tenant-wide inbox);
+// CUSTOMER = one بیمه‌گزار account (recipientId). Each notification is also sent by SMS.
+enum NotificationAudience {
+  ORG
+  CUSTOMER
+}
+
+model Notification {
+  id          String               @id @default(uuid())
+  tenantId    String
+  audience    NotificationAudience
+  recipientId String? // CustomerAccount id for CUSTOMER; null = whole-org inbox for ORG
+  title       String
+  body        String
+  link        String? // in-panel path the recipient should open
+  readAt      DateTime?
+  createdAt   DateTime             @default(now())
+
+  @@index([tenantId, audience, recipientId, readAt])
+}
+
 model Branch {
   id        String   @id @default(uuid())
   tenantId  String

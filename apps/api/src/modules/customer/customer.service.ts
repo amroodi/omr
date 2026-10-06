@@ -5,7 +5,7 @@ import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { getContext, getTenantIdOrThrow } from '../../common/tenant/tenant-context';
 import { toAsciiDigits, toJalali } from '../../common/jalali/jalali.util';
-import { SmsService, TenantSmsConfig } from '../auth/sms.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 /**
  * Customer dashboard data. A logged-in customer sees only cases where they are the insured or a
@@ -18,7 +18,7 @@ export class CustomerService {
     private readonly prisma: PrismaService,
     private readonly crypto: FieldCryptoService,
     private readonly audit: AuditService,
-    private readonly sms: SmsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   private validatePair(nationalCode: string, phone: string): { nid: string; phone: string } {
@@ -61,21 +61,15 @@ export class CustomerService {
     }
     await this.audit.record({ action: AuditAction.CREATE, tenantId: tenant.id, actorType: 'INSURED', targetType: 'CustomerSignup', metadata: { status: 'PENDING' } });
 
-    // Notify the org (best-effort) via its own SMS gateway, to the configured notify number.
-    this.notifyAdminOfSignup(tenant.id, tenant.smsConfig).catch(() => undefined);
+    // Notify the org (in-panel + SMS to its notify number via its own gateway).
+    await this.notifications.notify({
+      tenantId: tenant.id,
+      audience: 'ORG',
+      title: 'درخواست ثبت‌نام بیمه‌گزار',
+      body: 'یک بیمه‌گزار درخواست ثبت‌نام داده است؛ برای تایید به پنل مراجعه کنید.',
+      link: '/org/policyholders',
+    });
     return { ok: true, message: 'درخواست ثبت‌نام ارسال شد. پس از تایید سازمان، امکان ورود خواهید داشت.' };
-  }
-
-  private async notifyAdminOfSignup(tenantId: string, smsConfig: string | null): Promise<void> {
-    if (!smsConfig) return;
-    let notifyPhone = '';
-    try { notifyPhone = (JSON.parse(this.crypto.decrypt(smsConfig) ?? '{}') as TenantSmsConfig).notifyPhone ?? ''; } catch { return; }
-    if (!notifyPhone) return;
-    try {
-      await this.sms.send(notifyPhone, 'سامانه بیمس: یک درخواست ثبت‌نام بیمه‌گزار جدید در انتظار تایید است. لطفاً در پنل سازمان بررسی کنید.', tenantId);
-    } catch (e) {
-      this.logger.error(`Signup admin notify failed (tenant ${tenantId}): ${String(e)}`);
-    }
   }
 
   async approve(id: string) {
@@ -84,16 +78,28 @@ export class CustomerService {
     if (!acc) throw new NotFoundException('حساب یافت نشد');
     await this.prisma.scoped.customerAccount.updateMany({ where: { id }, data: { signupStatus: 'ACTIVE', isActive: true } });
     await this.audit.record({ action: AuditAction.EDIT, targetType: 'CustomerAccount', targetId: id, metadata: { action: 'approve' } });
-    const phone = acc.phone ? this.crypto.decrypt(acc.phone) : null;
-    if (phone) {
-      this.sms.send(phone, 'سامانه بیمس: حساب بیمه‌گزار شما تایید شد. اکنون می‌توانید وارد شوید.', tenantId).catch((e) => this.logger.error(`Approve notify failed: ${String(e)}`));
-    }
+    await this.notifications.notify({
+      tenantId,
+      audience: 'CUSTOMER',
+      recipientId: id,
+      title: 'حساب شما تایید شد',
+      body: 'حساب بیمه‌گزار شما تایید شد. اکنون می‌توانید وارد شوید.',
+      link: '/customer',
+    });
     return { ok: true };
   }
 
   async reject(id: string) {
+    const tenantId = getTenantIdOrThrow();
     await this.prisma.scoped.customerAccount.updateMany({ where: { id }, data: { signupStatus: 'REJECTED', isActive: false } });
     await this.audit.record({ action: AuditAction.EDIT, targetType: 'CustomerAccount', targetId: id, metadata: { action: 'reject' } });
+    await this.notifications.notify({
+      tenantId,
+      audience: 'CUSTOMER',
+      recipientId: id,
+      title: 'درخواست ثبت‌نام',
+      body: 'درخواست ثبت‌نام شما تایید نشد. برای اطلاعات بیشتر با سازمان تماس بگیرید.',
+    });
     return { ok: true };
   }
 

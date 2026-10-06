@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { clearToken, client, getToken } from '../../lib/client';
 import { CLAIM_TYPE_LABELS, ErrorBox, StatusBadge } from '../components/ui';
 import { Icon } from '../components/Shell';
+import { NotificationBell } from '../components/NotificationBell';
 
 interface MyCase {
   caseNumber: string; status: string;
@@ -38,9 +39,12 @@ export default function CustomerDashboard() {
           <h1 className="text-2xl font-extrabold">پرونده‌های من</h1>
           <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>وضعیت و سوابق پرداخت پرونده‌های شما</p>
         </div>
-        <button onClick={() => { clearToken('customer'); router.push('/customer/login'); }} className="btn btn-ghost btn-sm">
-          <Icon path="M15 3H5a2 2 0 00-2 2v14a2 2 0 002 2h10M17 16l4-4-4-4M21 12H9" /> خروج
-        </button>
+        <div className="flex items-center gap-2">
+          <NotificationBell realm="customer" />
+          <button onClick={() => { clearToken('customer'); router.push('/customer/login'); }} className="btn btn-ghost btn-sm">
+            <Icon path="M15 3H5a2 2 0 00-2 2v14a2 2 0 002 2h10M17 16l4-4-4-4M21 12H9" /> خروج
+          </button>
+        </div>
       </div>
       <ErrorBox message={error} />
 

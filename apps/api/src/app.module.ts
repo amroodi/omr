@@ -18,6 +18,7 @@ import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BranchesModule } from './modules/branches/branches.module';
 import { EmbedModule } from './modules/embed/embed.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 import { PartnerModule } from './modules/partner/partner.module';
 import { BrandingModule } from './modules/branding/branding.module';
 import { CasesModule } from './modules/cases/cases.module';
@@ -75,6 +76,7 @@ import { UsersModule } from './modules/users/users.module';
     ApiKeysModule,
     PartnerModule,
     EmbedModule,
+    NotificationsModule,
   ],
   providers: [
     TenantResolverGuard,

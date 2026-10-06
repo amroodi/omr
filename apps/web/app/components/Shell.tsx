@@ -4,6 +4,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { ReactNode, useState } from 'react';
 import { clearToken, Realm } from '../../lib/client';
 import { ChangePasswordModal } from './ChangePasswordModal';
+import { NotificationBell } from './NotificationBell';
 
 export interface NavItem {
   href: string;
@@ -75,9 +76,12 @@ export function Shell({
 
         {/* Content */}
         <section className="min-w-0">
-          <div className="mb-5">
-            <h1 className="text-2xl font-extrabold">{title}</h1>
-            {subtitle && <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>{subtitle}</p>}
+          <div className="mb-5 flex items-start justify-between gap-3">
+            <div>
+              <h1 className="text-2xl font-extrabold">{title}</h1>
+              {subtitle && <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>{subtitle}</p>}
+            </div>
+            <NotificationBell realm={realm} />
           </div>
           <div className="fade-up">{children}</div>
         </section>

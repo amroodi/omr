@@ -9,6 +9,7 @@ import { getContext } from '../../common/tenant/tenant-context';
 import { toJalali } from '../../common/jalali/jalali.util';
 import { OcrService } from '../../integrations/ocr/ocr.service';
 import { ClaimFieldsService } from '../claim-fields/claim-fields.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 const CLAIM_DOC_MIME = new Set(['application/pdf', 'image/jpeg', 'image/png']);
 
@@ -44,7 +45,20 @@ export class ClaimsService {
     private readonly storage: StorageService,
     private readonly ocr: OcrService,
     private readonly fields: ClaimFieldsService,
+    private readonly notifications: NotificationsService,
   ) {}
+
+  // ── Notification helpers (in-panel + SMS via the relevant org's gateway) ──
+  private async notifyOrg(tenantId: string, title: string, body: string, link = '/org/claims') {
+    await this.notifications.notify({ tenantId, audience: 'ORG', title, body, link });
+  }
+
+  private async notifyPolicyHolder(policyHolderId: string | null | undefined, title: string, body: string) {
+    if (!policyHolderId) return;
+    const acc = await this.prisma.unscoped().customerAccount.findUnique({ where: { id: policyHolderId }, select: { tenantId: true } });
+    if (!acc) return;
+    await this.notifications.notify({ tenantId: acc.tenantId, audience: 'CUSTOMER', recipientId: policyHolderId, title, body, link: '/customer' });
+  }
 
   private db() {
     return this.prisma.unscoped();
@@ -118,6 +132,8 @@ export class ClaimsService {
     });
 
     await this.audit.record({ action: AuditAction.CLAIM_SUBMIT, tenantId: input.insurerTenantId, targetType: 'Claim', targetId: claim.id, metadata: { channel: input.channel, moaref: moarefRole } });
+    await this.notifyOrg(moarefTenantId, 'پرونده خسارت جدید', `پرونده ${claim.claimNumber} برای بررسی در انتظار شماست.`);
+    await this.notifyPolicyHolder(claim.policyHolderId, 'ثبت پرونده خسارت', `پرونده ${claim.claimNumber} ثبت شد و در حال بررسی است.`);
     return this.present(claim);
   }
 
@@ -144,6 +160,7 @@ export class ClaimsService {
     await db.claimStep.update({ where: { id: step.id }, data: { state: 'FORWARDED', note: note ?? null, decidedById: this.actor(), decidedAt: new Date() } });
     await this.addStep(claim.id, step.order + 1, 'INSURER_LEVEL', claim.insurerTenantId, { levelId: first.id });
     await this.audit.record({ action: AuditAction.CLAIM_FORWARD, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claim.id });
+    await this.notifyOrg(claim.insurerTenantId, 'پرونده برای تایید ارجاع شد', `پرونده ${claim.claimNumber} در سطح بیمه‌گر در انتظار بررسی است.`);
     return this.reload(claim.id);
   }
 
@@ -159,6 +176,8 @@ export class ClaimsService {
       await db.claimStep.update({ where: { id: step.id }, data: { state: 'APPROVED', note: note ?? null, decidedById: this.actor(), decidedAt: new Date() } });
       await db.claim.update({ where: { id: claim.id }, data: { status: ClaimStatus.APPROVED } });
       await this.audit.record({ action: AuditAction.CLAIM_APPROVE, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claim.id, metadata: { levelOrder: level.order } });
+      await this.notifyPolicyHolder(claim.policyHolderId, 'تایید پرونده خسارت', `پرونده ${claim.claimNumber} تایید شد.`);
+      await this.notifyOrg(claim.insurerTenantId, 'پرونده تایید شد', `پرونده ${claim.claimNumber} تایید نهایی شد و آماده پرداخت است.`);
       return this.reload(claim.id);
     }
     // Beyond this level's authority → escalate strictly to the next level (no skipping).
@@ -167,6 +186,7 @@ export class ClaimsService {
     await db.claimStep.update({ where: { id: step.id }, data: { state: 'ESCALATED', note: note ?? null, decidedById: this.actor(), decidedAt: new Date() } });
     await this.addStep(claim.id, step.order + 1, 'INSURER_LEVEL', claim.insurerTenantId, { levelId: next.id });
     await this.audit.record({ action: AuditAction.CLAIM_ESCALATE, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claim.id, metadata: { from: level.order, to: next.order } });
+    await this.notifyOrg(claim.insurerTenantId, 'ارجاع به سطح بالاتر', `پرونده ${claim.claimNumber} برای تایید به سطح بالاتر ارجاع شد.`);
     return this.reload(claim.id);
   }
 
@@ -178,6 +198,7 @@ export class ClaimsService {
     // Hand back to the بیمه‌گزار for رفع نقص.
     await this.addStep(claim.id, step.order + 1, 'POLICYHOLDER', claim.insurerTenantId, { direction: 'DOWN' });
     await this.audit.record({ action: AuditAction.CLAIM_RETURN_INCOMPLETE, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claim.id, metadata: { items } });
+    await this.notifyPolicyHolder(claim.policyHolderId, 'نقص مدارک پرونده', `برای پرونده ${claim.claimNumber} نقص مدارک اعلام شد؛ برای رفع نقص وارد پنل شوید.`);
     return this.reload(claim.id);
   }
 
@@ -186,6 +207,7 @@ export class ClaimsService {
     await db.claimStep.update({ where: { id: step.id }, data: { state: 'REJECTED', note: note ?? null, decidedById: this.actor(), decidedAt: new Date() } });
     await db.claim.update({ where: { id: claim.id }, data: { status: ClaimStatus.REJECTED } });
     await this.audit.record({ action: AuditAction.CLAIM_REJECT, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claim.id });
+    await this.notifyPolicyHolder(claim.policyHolderId, 'رد پرونده خسارت', `پرونده ${claim.claimNumber} رد شد. برای اطلاعات بیشتر با سازمان تماس بگیرید.`);
     return this.reload(claim.id);
   }
 
@@ -202,6 +224,7 @@ export class ClaimsService {
     await this.addStep(claim.id, step.order + 1, 'MOAREF', moarefTenantId, { holderBranchId: claim.sellingBranchId });
     await db.claim.update({ where: { id: claim.id }, data: { status: ClaimStatus.UNDER_REVIEW } });
     await this.audit.record({ action: AuditAction.CLAIM_RECTIFY, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claim.id });
+    await this.notifyOrg(moarefTenantId, 'رفع نقص انجام شد', `بیمه‌گزار نقص مدارک پرونده ${claim.claimNumber} را رفع کرد؛ پرونده دوباره در انتظار بررسی است.`);
     return this.reload(claim.id);
   }
 
@@ -213,6 +236,7 @@ export class ClaimsService {
     if (claim.status !== ClaimStatus.APPROVED) throw new BadRequestException('پرونده تایید نشده است');
     await this.db().claim.update({ where: { id: claimId }, data: { status: ClaimStatus.PAID } });
     await this.audit.record({ action: AuditAction.CLAIM_PAY, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId });
+    await this.notifyPolicyHolder(claim.policyHolderId, 'پرداخت خسارت', `خسارت پرونده ${claim.claimNumber} پرداخت شد.`);
     return this.reload(claimId);
   }
 
