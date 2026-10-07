@@ -45,7 +45,12 @@ export class MagfaSoapDriver implements SmsDriver {
       throw new Error(`اتصال به وب‌سرویس SOAP مگفا ناموفق بود: ${String((e as Error).message).slice(0, 160)}`);
     }
 
-    const args = { messages: [message], senders: [this.cfg.sender], recipients: [toLocalMobile(toPhone)] };
+    // Magfa's WSDL types these as arrays of <item>, so each parameter wraps its values in `item`.
+    const args = {
+      messages: { item: [message] },
+      senders: { item: [this.cfg.sender] },
+      recipients: { item: [toLocalMobile(toPhone)] },
+    };
     let result: any;
     try {
       const res = await client.sendAsync(args);
