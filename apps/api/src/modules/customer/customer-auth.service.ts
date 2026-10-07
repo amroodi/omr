@@ -130,6 +130,20 @@ export class CustomerAuthService {
         this.logger.error(`Customer OTP send failed (tenant ${tenantId}): ${String(e)}`);
       }
       await this.audit.record({ action: AuditAction.OTP_ISSUE, tenantId, actorType: 'CUSTOMER', metadata: { realm: 'customer' } });
+      return { ok: true, message: 'در صورت وجود حساب، کد تایید ارسال شد.' };
+    }
+
+    // No ACTIVE account. If a signup exists but is pending/rejected, say so clearly so the user
+    // isn't left waiting for a code that will never arrive (they proved phone ownership at signup).
+    const signup = await this.prisma.scoped.customerAccount.findFirst({
+      where: { nationalCodeHash: nidHash, phoneHash },
+      select: { signupStatus: true },
+    });
+    if (signup?.signupStatus === 'PENDING') {
+      throw new ForbiddenException('درخواست ثبت‌نام شما هنوز توسط سازمان تایید نشده است. پس از تایید، امکان ورود خواهید داشت.');
+    }
+    if (signup?.signupStatus === 'REJECTED') {
+      throw new ForbiddenException('درخواست ثبت‌نام شما تایید نشد. برای پیگیری با سازمان تماس بگیرید.');
     }
 
     return { ok: true, message: 'در صورت وجود حساب، کد تایید ارسال شد.' };
