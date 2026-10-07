@@ -19,6 +19,8 @@ export default function CustomerLogin() {
   const [orgs, setOrgs] = useState<{ slug: string; name: string }[]>([]);
   const [fullName, setFullName] = useState('');
   const [signupDone, setSignupDone] = useState('');
+  const [signupStep, setSignupStep] = useState<'form' | 'otp'>('form');
+  const [signupCode, setSignupCode] = useState('');
 
   useEffect(() => { client.get<{ slug: string; name: string }[]>('/customer/orgs').then(setOrgs).catch(() => {}); }, []);
 
@@ -31,8 +33,12 @@ export default function CustomerLogin() {
     const r = await client.post<{ token: string }>('/customer/login/verify-otp', { nationalCode, phone, code });
     setToken('customer', r.token); router.push('/customer');
   });
-  const signup = () => wrap(async () => {
-    const r = await client.post<{ message: string }>('/customer/signup', { tenantSlug: tenant, nationalCode, phone, fullName });
+  const signupRequestOtp = () => wrap(async () => {
+    await client.post('/customer/signup/request-otp', { tenantSlug: tenant, nationalCode, phone });
+    setSignupStep('otp');
+  });
+  const signupVerify = () => wrap(async () => {
+    const r = await client.post<{ message: string }>('/customer/signup/verify-otp', { tenantSlug: tenant, nationalCode, phone, fullName, code: signupCode });
     setSignupDone(r.message || 'درخواست ثبت‌نام ارسال شد.');
   });
 
@@ -46,7 +52,14 @@ export default function CustomerLogin() {
         {mode === 'signup' && signupDone ? (
           <>
             <div className="alert-success">{signupDone}</div>
-            <button onClick={() => { setMode('login'); setSignupDone(''); setStep('id'); }} className="btn btn-primary w-full">بازگشت به ورود</button>
+            <button onClick={() => { setMode('login'); setSignupDone(''); setSignupStep('form'); setStep('id'); }} className="btn btn-primary w-full">بازگشت به ورود</button>
+          </>
+        ) : mode === 'signup' && signupStep === 'otp' ? (
+          <>
+            <p className="text-sm" style={{ color: 'var(--muted)' }}>کد تایید به شماره {phone} ارسال شد.</p>
+            <Field label="کد تایید"><input value={signupCode} onChange={(e) => setSignupCode(e.target.value)} className="input text-center tracking-[0.5em] text-lg" inputMode="numeric" placeholder="––––––" /></Field>
+            <button onClick={signupVerify} disabled={loading || signupCode.length < 4} className="btn btn-primary w-full">{loading ? '…' : 'تایید و ثبت درخواست'}</button>
+            <button onClick={() => { setSignupStep('form'); setError(''); }} className="btn btn-ghost btn-sm w-full">بازگشت</button>
           </>
         ) : mode === 'signup' ? (
           <>
@@ -59,7 +72,7 @@ export default function CustomerLogin() {
             <Field label="نام و نام خانوادگی"><input value={fullName} onChange={(e) => setFullName(e.target.value)} className="input" /></Field>
             <Field label="کد ملی"><input value={nationalCode} onChange={(e) => setNid(e.target.value)} className="input" inputMode="numeric" style={{ direction: 'ltr', textAlign: 'right' }} /></Field>
             <Field label="موبایل"><input value={phone} onChange={(e) => setPhone(e.target.value)} className="input" inputMode="numeric" placeholder="۰۹۱۲…" style={{ direction: 'ltr', textAlign: 'right' }} /></Field>
-            <button onClick={signup} disabled={loading || !nationalCode || !phone} className="btn btn-primary w-full">{loading ? '…' : 'ارسال درخواست ثبت‌نام'}</button>
+            <button onClick={signupRequestOtp} disabled={loading || !nationalCode || !phone} className="btn btn-primary w-full">{loading ? '…' : 'ارسال کد تایید'}</button>
             <button onClick={() => { setMode('login'); setError(''); }} className="btn btn-ghost btn-sm w-full">حساب دارید؟ ورود</button>
           </>
         ) : step === 'id' ? (

@@ -78,6 +78,12 @@ export class BrandingController {
     return this.branding.testSms(dto.phone);
   }
 
+  @Permissions(PERMISSIONS.TENANT_SETTINGS)
+  @Post('sms-config/request-platform')
+  requestPlatformSms() {
+    return this.branding.requestPlatformSms();
+  }
+
   // ── Public: branding + assets for theming (tenant resolved from slug) ────
   @Public()
   @UseGuards(TenantResolverGuard)

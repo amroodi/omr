@@ -106,12 +106,31 @@ function SmsTab() {
     try { await client.post('/tenant/sms-config/test', { phone: testPhone }, 'org'); setMsg({ t: 'ok', m: 'پیام آزمایشی ارسال شد' }); }
     catch (e: any) { setMsg({ t: 'err', m: e.message }); }
   };
+  const requestPlatform = async () => {
+    setMsg(null);
+    try { const d = await client.post<any>('/tenant/sms-config/request-platform', {}, 'org'); setC(d); setMsg({ t: 'ok', m: 'درخواست ارسال شد؛ در انتظار تایید مدیر سکو.' }); }
+    catch (e: any) { setMsg({ t: 'err', m: e.message }); }
+  };
   if (!c) return null;
   const fields = DRIVER_FIELDS[f.driver] || [];
   return (
     <div className="card p-5 max-w-lg space-y-3">
       {msg && <div className={msg.t === 'ok' ? 'alert-success' : 'alert-error'}>{msg.m}</div>}
       <p className="text-xs" style={{ color: 'var(--muted)' }}>درگاه پیامک این سازمان. برای ارسال کد تایید ورود و اطلاع‌رسانی ثبت‌نام‌ها استفاده می‌شود. اطلاعات اعتباری به‌صورت رمزنگاری‌شده ذخیره می‌شود.</p>
+      {c.platformAvailable && (
+        <div className="rounded-xl p-3" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+          {c.usePlatform ? (
+            <p className="text-sm" style={{ color: 'var(--success)' }}>✔ این سازمان مجاز به استفاده از درگاه پیامک سکو است. اگر درگاه اختصاصی ثبت نکنید، پیامک‌ها از طریق سکو ارسال می‌شود.</p>
+          ) : c.usePlatformRequested ? (
+            <p className="text-sm" style={{ color: 'var(--warning)' }}>⏳ درخواست استفاده از درگاه پیامک سکو ثبت شده و در انتظار تایید مدیر سکو است.</p>
+          ) : (
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs" style={{ color: 'var(--muted)' }}>درگاه پیامک اختصاصی ندارید؟ می‌توانید از درگاه پیامک سکو استفاده کنید.</span>
+              <button onClick={requestPlatform} className="btn btn-ghost btn-sm" style={{ whiteSpace: 'nowrap' }}>درخواست استفاده از درگاه سکو</button>
+            </div>
+          )}
+        </div>
+      )}
       <Field label="ارائه‌دهنده">
         <select className="input" value={f.driver} onChange={(e) => setF({ ...f, driver: e.target.value })}>
           {(c.drivers || []).map((d: string) => <option key={d} value={d}>{DRIVER_LABELS[d] || d}</option>)}

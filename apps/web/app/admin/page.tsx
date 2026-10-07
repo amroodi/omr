@@ -114,7 +114,8 @@ export default function AdminDashboard() {
           )}
         </div>
 
-        <div className="card overflow-x-auto lg:col-span-2 h-fit">
+        <div className="lg:col-span-2 space-y-5">
+        <div className="card overflow-x-auto h-fit">
           <table className="table">
             <thead><tr>{['نام', 'شناسه', 'کاربران', 'پرونده‌ها', 'بیمه‌گزاران', 'وضعیت', 'اقدام'].map((h) => <th key={h}>{h}</th>)}</tr></thead>
             <tbody>
@@ -138,6 +139,68 @@ export default function AdminDashboard() {
             </tbody>
           </table>
         </div>
+        <PlatformSms />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PlatformSms() {
+  const [c, setC] = useState<any>(null);
+  const [f, setF] = useState<Record<string, string>>({});
+  const [reqs, setReqs] = useState<any[]>([]);
+  const [testPhone, setTestPhone] = useState('');
+  const [msg, setMsg] = useState<{ t: 'ok' | 'err'; m: string } | null>(null);
+  const DLABEL: Record<string, string> = { console: 'کنسول (آزمایشی)', magfa: 'مگفا', kavenegar: 'کاوه‌نگار', ghasedak: 'قاصدک', smsir: 'SMS.ir', melipayamak: 'ملی‌پیامک' };
+  const DFIELDS: Record<string, string[]> = { console: [], magfa: ['username', 'password', 'domain', 'sender'], kavenegar: ['apiKey', 'sender', 'otpPattern'], ghasedak: ['apiKey', 'sender', 'otpPattern'], smsir: ['apiKey', 'sender', 'otpTemplateId'], melipayamak: ['username', 'password', 'sender', 'otpPattern'] };
+  const FLABEL: Record<string, string> = { sender: 'خط/فرستنده', apiKey: 'کلید API', username: 'نام کاربری', password: 'رمز', domain: 'دامنه', otpPattern: 'الگوی OTP', otpTemplateId: 'شناسه الگو' };
+  const SECRET = new Set(['apiKey', 'password']);
+  const load = () => {
+    client.get<any>('/platform/sms-config', 'super').then((d) => { setC(d); setF({ driver: d.driver || 'magfa', sender: d.sender || '', username: d.username || '', domain: d.domain || '', otpPattern: d.otpPattern || '', otpTemplateId: d.otpTemplateId || '', apiKey: '', password: '' }); }).catch((e) => setMsg({ t: 'err', m: e.message }));
+    client.get<any[]>('/platform/sms-requests', 'super').then(setReqs).catch(() => {});
+  };
+  useEffect(() => { load(); }, []);
+  const save = async () => {
+    setMsg(null);
+    try { const b: Record<string, string> = { driver: f.driver, sender: f.sender, username: f.username, domain: f.domain, otpPattern: f.otpPattern, otpTemplateId: f.otpTemplateId }; if (f.apiKey) b.apiKey = f.apiKey; if (f.password) b.password = f.password; await client.put('/platform/sms-config', b, 'super'); setMsg({ t: 'ok', m: 'ذخیره شد' }); load(); } catch (e: any) { setMsg({ t: 'err', m: e.message }); }
+  };
+  const test = async () => { setMsg(null); try { await client.post('/platform/sms-config/test', { phone: testPhone }, 'super'); setMsg({ t: 'ok', m: 'پیام آزمایشی ارسال شد' }); } catch (e: any) { setMsg({ t: 'err', m: e.message }); } };
+  const setPlatform = async (id: string, enabled: boolean) => { try { await client.post(`/platform/tenants/${id}/sms-platform`, { enabled }, 'super'); load(); } catch (e: any) { setMsg({ t: 'err', m: e.message }); } };
+  if (!c) return null;
+  const fields = DFIELDS[f.driver] || [];
+  return (
+    <div className="card p-5 space-y-3">
+      <h3 className="font-semibold">درگاه پیامک سکو (میزبان)</h3>
+      <p className="text-xs" style={{ color: 'var(--muted)' }}>این درگاه کدهای تایید ثبت‌نام (پیش از عضویت در سازمان) را ارسال می‌کند و در اختیار سازمان‌هایی که درگاه اختصاصی ندارند و تاییدشان کرده‌اید قرار می‌گیرد.</p>
+      {msg && <div className={msg.t === 'ok' ? 'alert-success' : 'alert-error'}>{msg.m}</div>}
+      <div className="grid sm:grid-cols-2 gap-3">
+        <Field label="ارائه‌دهنده"><select className="input" value={f.driver} onChange={(e) => setF({ ...f, driver: e.target.value })}>{(c.drivers || []).map((d: string) => <option key={d} value={d}>{DLABEL[d] || d}</option>)}</select></Field>
+        {fields.map((k) => (
+          <Field key={k} label={FLABEL[k] + (SECRET.has(k) && (k === 'apiKey' ? c.hasApiKey : c.hasPassword) ? ' (تنظیم‌شده)' : '')}>
+            <input className="input" type={SECRET.has(k) ? 'password' : 'text'} value={f[k] || ''} onChange={(e) => setF({ ...f, [k]: e.target.value })} placeholder={SECRET.has(k) ? '••••••' : ''} style={{ direction: 'ltr', textAlign: 'left' }} />
+          </Field>
+        ))}
+      </div>
+      <div className="flex gap-2 items-end">
+        <button onClick={save} className="btn btn-primary btn-sm">ذخیره درگاه سکو</button>
+        <input className="input" style={{ maxWidth: 160, direction: 'ltr', textAlign: 'right' }} value={testPhone} onChange={(e) => setTestPhone(e.target.value)} placeholder="۰۹۱۲… آزمایشی" />
+        <button onClick={test} disabled={!c.configured || !testPhone} className="btn btn-ghost btn-sm">ارسال آزمایشی</button>
+      </div>
+      <div className="pt-3 mt-2" style={{ borderTop: '1px solid var(--border)' }}>
+        <h4 className="text-sm font-semibold mb-2">سازمان‌های متقاضی/مجاز استفاده از پیامک سکو</h4>
+        {reqs.length === 0 ? <p className="text-xs" style={{ color: 'var(--muted)' }}>موردی نیست</p> : (
+          <div className="divide-y" style={{ borderColor: 'var(--border)' }}>
+            {reqs.map((r) => (
+              <div key={r.id} className="flex justify-between items-center py-2 text-sm">
+                <span>{r.name} {r.smsUsePlatform ? <span className="badge badge-success">مجاز</span> : <span className="badge badge-warning">در انتظار</span>}</span>
+                {r.smsUsePlatform
+                  ? <button onClick={() => setPlatform(r.id, false)} className="text-xs" style={{ color: 'var(--danger)' }}>لغو دسترسی</button>
+                  : <button onClick={() => setPlatform(r.id, true)} className="text-xs" style={{ color: 'var(--success)' }}>تایید دسترسی</button>}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

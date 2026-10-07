@@ -90,6 +90,8 @@ export class BrandingService {
   async getSmsConfig() {
     const id = getTenantIdOrThrow();
     const cfg = await this.loadSmsConfig(id);
+    const t = await this.tenantDb().findUnique({ where: { id }, select: { smsUsePlatform: true, smsUsePlatformRequested: true } });
+    const platform = await this.prisma.unscoped().platformConfig.findUnique({ where: { id: 'platform' }, select: { smsConfig: true } });
     return {
       drivers: SMS_DRIVERS,
       configured: !!cfg,
@@ -102,7 +104,19 @@ export class BrandingService {
       notifyPhone: cfg?.notifyPhone ?? '',
       hasApiKey: !!cfg?.apiKey,
       hasPassword: !!cfg?.password,
+      // Platform-gateway fallback status
+      usePlatform: !!t?.smsUsePlatform,
+      usePlatformRequested: !!t?.smsUsePlatformRequested,
+      platformAvailable: !!platform?.smsConfig,
     };
+  }
+
+  /** Org asks the super-admin to let it send via the platform gateway (Damuon's Magfa). */
+  async requestPlatformSms() {
+    const id = getTenantIdOrThrow();
+    await this.tenantDb().update({ where: { id }, data: { smsUsePlatformRequested: true } });
+    await this.audit.record({ action: AuditAction.EDIT, targetType: 'TenantSmsConfig', targetId: id, metadata: { requestPlatformSms: true } });
+    return this.getSmsConfig();
   }
 
   /** Save config. Blank secret fields keep the stored value (so the masked form need not resend them). */

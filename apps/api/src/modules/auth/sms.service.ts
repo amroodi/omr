@@ -49,6 +49,7 @@ export class SmsService {
   private readonly logger = new Logger(SmsService.name);
   private readonly envDriver: SmsDriver | null;
   private readonly cache = new Map<string, { sig: string; driver: SmsDriver }>(); // tenantId -> driver
+  private platformCache: { sig: string; driver: SmsDriver } | null = null;
 
   constructor(
     private readonly config: ConfigService,
@@ -70,6 +71,13 @@ export class SmsService {
     return driver.sendOtp(toPhone, code);
   }
 
+  /** OTP via the HOST/platform gateway (used before a user belongs to any org, e.g. signup). */
+  async sendOtpViaPlatform(toPhone: string, code: string): Promise<void> {
+    const driver = (await this.platformDriver()) ?? this.envDriver;
+    if (!driver) throw new Error('درگاه پیامک سکو پیکربندی نشده است');
+    return driver.sendOtp(toPhone, code);
+  }
+
   /** Build a one-off driver from a config object (used by the panel's test-send). */
   buildDriver(cfg: TenantSmsConfig): SmsDriver {
     const factory = REGISTRY[cfg.driver];
@@ -79,7 +87,7 @@ export class SmsService {
 
   private async driverFor(tenantId?: string): Promise<SmsDriver | null> {
     if (tenantId) {
-      const t = await this.prisma.unscoped().tenant.findUnique({ where: { id: tenantId }, select: { smsConfig: true } });
+      const t = await this.prisma.unscoped().tenant.findUnique({ where: { id: tenantId }, select: { smsConfig: true, smsUsePlatform: true } });
       if (t?.smsConfig) {
         const cached = this.cache.get(tenantId);
         if (cached && cached.sig === t.smsConfig) return cached.driver;
@@ -90,11 +98,31 @@ export class SmsService {
           return driver;
         } catch (e) {
           this.logger.error(`Tenant ${tenantId} SMS config invalid: ${String(e)}`);
-          // fall through to env driver
+          // fall through
         }
+      }
+      // No own gateway but approved to use the platform gateway (Damuon's Magfa).
+      if (t?.smsUsePlatform) {
+        const p = await this.platformDriver();
+        if (p) return p;
       }
     }
     return this.envDriver;
+  }
+
+  private async platformDriver(): Promise<SmsDriver | null> {
+    const pc = await this.prisma.unscoped().platformConfig.findUnique({ where: { id: 'platform' }, select: { smsConfig: true } });
+    if (!pc?.smsConfig) return null;
+    if (this.platformCache && this.platformCache.sig === pc.smsConfig) return this.platformCache.driver;
+    try {
+      const cfg = JSON.parse(this.crypto.decrypt(pc.smsConfig) ?? '{}') as TenantSmsConfig;
+      const driver = this.buildDriver(cfg);
+      this.platformCache = { sig: pc.smsConfig, driver };
+      return driver;
+    } catch (e) {
+      this.logger.error(`Platform SMS config invalid: ${String(e)}`);
+      return null;
+    }
   }
 
   private buildFromEnv(): SmsDriver | null {

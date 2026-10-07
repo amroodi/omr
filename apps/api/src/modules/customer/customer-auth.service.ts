@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { AuditAction } from '@prisma/client';
@@ -10,6 +10,7 @@ import { RateLimitService } from '../../common/rate-limit/rate-limit.service';
 import { getContext, getTenantIdOrThrow } from '../../common/tenant/tenant-context';
 import { TooManyRequestsException } from '../inquiry/http-exceptions';
 import { SmsService } from '../auth/sms.service';
+import { CustomerService } from './customer.service';
 
 /**
  * Customer realm authentication — a persistent account for insured people & beneficiaries.
@@ -28,7 +29,67 @@ export class CustomerAuthService {
     private readonly audit: AuditService,
     private readonly rateLimit: RateLimitService,
     private readonly config: ConfigService,
+    private readonly customers: CustomerService,
   ) {}
+
+  // ── Self-signup phone verification (OTP sent via the HOST/platform gateway) ──
+  async requestSignupOtp(tenantSlug: string, nationalCode: string, phone: string): Promise<{ ok: true; message: string }> {
+    const ip = getContext()?.ip ?? 'unknown';
+    const db = this.prisma.unscoped();
+    const tenant = await db.tenant.findUnique({ where: { slug: tenantSlug.trim() }, select: { id: true, isActive: true } });
+    if (!tenant || !tenant.isActive) throw new NotFoundException('سازمان یافت نشد');
+
+    if (!this.rateLimit.hit(`signupotp:ip:${ip}`, 10, 3600)) throw new TooManyRequestsException('تعداد درخواست‌ها زیاد است.');
+    const phoneHash = this.crypto.blindIndex(this.normalizePhone(phone))!;
+    if (!this.rateLimit.hit(`signupotp:ph:${phoneHash}`, 5, 3600)) throw new TooManyRequestsException('تعداد درخواست‌ها زیاد است.');
+
+    const nidHash = this.crypto.blindIndex(nationalCode.trim())!;
+    const existing = await db.customerAccount.findFirst({ where: { tenantId: tenant.id, nationalCodeHash: nidHash, signupStatus: 'ACTIVE' }, select: { id: true } });
+    if (existing) throw new BadRequestException('شما قبلاً در این سازمان ثبت شده‌اید؛ وارد شوید.');
+
+    const code = this.hash.generateOtp(Number(this.config.get('OTP_LENGTH', 6)));
+    const ttl = Number(this.config.get('OTP_TTL_SECONDS', 180));
+    await db.otpChallenge.create({
+      data: {
+        tenantId: tenant.id,
+        purpose: 'signup',
+        phoneHash,
+        codeHash: this.hash.hashOtp(code),
+        maxAttempts: Number(this.config.get('OTP_MAX_ATTEMPTS', 5)),
+        expiresAt: new Date(Date.now() + ttl * 1000),
+      },
+    });
+    try {
+      await this.sms.sendOtpViaPlatform(phone, code); // host gateway, since the user is not yet in any org
+    } catch (e) {
+      this.logger.error(`Signup OTP send failed (platform): ${String(e)}`);
+    }
+    await this.audit.record({ action: AuditAction.OTP_ISSUE, tenantId: tenant.id, actorType: 'INSURED', metadata: { realm: 'signup' } });
+    return { ok: true, message: 'کد تایید به شماره شما ارسال شد.' };
+  }
+
+  async verifySignupOtp(dto: { tenantSlug: string; nationalCode: string; phone: string; code: string; fullName?: string }) {
+    const ip = getContext()?.ip ?? 'unknown';
+    const db = this.prisma.unscoped();
+    const tenant = await db.tenant.findUnique({ where: { slug: dto.tenantSlug.trim() }, select: { id: true, isActive: true } });
+    if (!tenant || !tenant.isActive) throw new NotFoundException('سازمان یافت نشد');
+    if (!this.rateLimit.hit(`signupverify:ip:${ip}`, 20, 600)) throw new TooManyRequestsException('تعداد تلاش‌ها زیاد است.');
+
+    const phoneHash = this.crypto.blindIndex(this.normalizePhone(dto.phone))!;
+    const challenge = await db.otpChallenge.findFirst({
+      where: { tenantId: tenant.id, phoneHash, purpose: 'signup', consumedAt: null, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!challenge) throw new ForbiddenException('کد نامعتبر یا منقضی شده است.');
+    if (challenge.attempts >= challenge.maxAttempts) throw new ForbiddenException('تعداد تلاش‌ها به پایان رسید.');
+    if (!this.hash.verifyOtp(challenge.codeHash, dto.code)) {
+      await db.otpChallenge.update({ where: { id: challenge.id }, data: { attempts: { increment: 1 } } });
+      throw new ForbiddenException('کد نامعتبر است.');
+    }
+    await db.otpChallenge.update({ where: { id: challenge.id }, data: { consumedAt: new Date() } });
+    // Phone verified → create the PENDING signup request (still needs org approval).
+    return this.customers.signup({ tenantSlug: dto.tenantSlug, nationalCode: dto.nationalCode, phone: dto.phone, fullName: dto.fullName });
+  }
 
   async requestOtp(nationalCode: string, phone: string): Promise<{ ok: true; message: string }> {
     const tenantId = getTenantIdOrThrow();

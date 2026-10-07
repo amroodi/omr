@@ -27,7 +27,7 @@ import { CustomerSignupStatus } from '@prisma/client';
 import { ClaimsService } from '../claims/claims.service';
 import { CustomerAuthService } from './customer-auth.service';
 import { CustomerService } from './customer.service';
-import { CustomerRequestOtpDto, CustomerSignupDto, CustomerVerifyOtpDto } from './dto';
+import { CustomerRequestOtpDto, CustomerSignupDto, CustomerSignupVerifyDto, CustomerVerifyOtpDto } from './dto';
 
 @Controller('customer')
 export class CustomerController {
@@ -59,9 +59,15 @@ export class CustomerController {
   }
 
   @Public()
-  @Post('signup')
-  signup(@Body() dto: CustomerSignupDto) {
-    return this.customer.signup(dto);
+  @Post('signup/request-otp')
+  signupRequestOtp(@Body() dto: CustomerSignupDto) {
+    return this.auth.requestSignupOtp(dto.tenantSlug, dto.nationalCode, dto.phone);
+  }
+
+  @Public()
+  @Post('signup/verify-otp')
+  signupVerifyOtp(@Body() dto: CustomerSignupVerifyDto) {
+    return this.auth.verifySignupOtp(dto);
   }
 
   // ── Org-side بیمه‌گزار onboarding + approvals (org token + customer:manage) ──

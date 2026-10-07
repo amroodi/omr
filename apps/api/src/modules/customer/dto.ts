@@ -34,3 +34,9 @@ export class CustomerSignupDto {
   @Length(2, 120)
   fullName?: string;
 }
+
+export class CustomerSignupVerifyDto extends CustomerSignupDto {
+  @IsString()
+  @Length(4, 8)
+  code!: string;
+}

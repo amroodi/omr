@@ -37,6 +37,8 @@ model Tenant {
   contactHeader String? // injected into exported PDF/Excel headers
   carrierConfig String? // ENCRYPTED json: upstream carrier credentials
   smsConfig     String? // ENCRYPTED json: this org's SMS provider + credentials (per-tenant gateway)
+  smsUsePlatform          Boolean @default(false) // approved to send via the host platform gateway
+  smsUsePlatformRequested Boolean @default(false) // org asked to use the platform gateway (awaits super-admin)
   fontFamily    String?  @default("Vazirmatn")
   noticeDays    Int      @default(30) // deadline (days from event) for the بیمه‌گزار to report
   // Origins allowed to embed the inquiry widget in an <iframe> (CSP frame-ancestors allowlist).
@@ -82,6 +84,14 @@ model ApiKey {
   createdAt   DateTime  @default(now())
 
   @@index([tenantId])
+}
+
+// Host/platform singleton settings (super-admin managed). The platform SMS gateway (Damuon's Magfa
+// today) sends pre-signup OTPs and serves organizations approved to use the platform gateway.
+model PlatformConfig {
+  id        String   @id @default("platform")
+  smsConfig String? // ENCRYPTED json: the platform SMS provider + credentials
+  updatedAt DateTime @updatedAt @default(now())
 }
 
 // Who a notification is for: ORG = the organization's staff (tenant-wide inbox);
