@@ -111,6 +111,17 @@ export class ClaimsController {
     return this.claims.uploadDocument(id, file, docCode);
   }
 
+  /** Approve / reject / request-info on an uploaded document (document-authenticity assessor). */
+  @Permissions(PERMISSIONS.DOC_VERIFY)
+  @Post(':id/documents/:docId/verify')
+  verifyDocument(
+    @Param('id') id: string,
+    @Param('docId') docId: string,
+    @Body() body: { action: 'approve' | 'reject' | 'needs_info'; note?: string },
+  ) {
+    return this.claims.verifyDocument(id, docId, body?.action, body?.note);
+  }
+
   /** معرف forwards / insurer level endorses (engine routes by authority ceiling). */
   @Permissions(PERMISSIONS.CLAIM_PROCESS)
   @Post(':id/endorse')

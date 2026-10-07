@@ -13,6 +13,13 @@ import { NotificationsService } from '../notifications/notifications.service';
 
 const CLAIM_DOC_MIME = new Set(['application/pdf', 'image/jpeg', 'image/png']);
 
+const DOC_STATUS_LABELS: Record<string, string> = {
+  PENDING: 'در انتظار بررسی',
+  VERIFIED: 'تاییدشده',
+  REJECTED: 'ردشده',
+  NEEDS_INFO: 'نیاز به اصلاح/ارسال مجدد',
+};
+
 interface FileClaimInput {
   insurerTenantId: string;
   channel: SalesChannel;
@@ -261,28 +268,66 @@ export class ClaimsService {
     });
     const docs = await db.document.findMany({
       where: { claimId },
-      select: { id: true, docCode: true, fileName: true, verificationStatus: true },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, docCode: true, fileName: true, verificationStatus: true, verificationNote: true, createdAt: true, uploadedBy: true },
     });
-    const byCode = new Map<string, any[]>();
+    const byCode = new Map<string, typeof docs>();
     for (const d of docs) {
       const k = d.docCode ?? '_other';
       if (!byCode.has(k)) byCode.set(k, []);
       byCode.get(k)!.push(d);
     }
-    const items = reqs.map((r) => ({
-      code: r.code,
-      label: r.label,
-      appliesToTypes: r.appliesToTypes,
-      uploaded: (byCode.get(r.code) ?? []).length > 0,
-      documents: byCode.get(r.code) ?? [],
-    }));
+    // Present each docCode's uploads newest-first, with an explicit version number so admins can
+    // tell new re-uploads from older ones at a glance. The newest is the "current" version.
+    const present = (group: typeof docs) =>
+      group.map((d, i) => ({
+        id: d.id,
+        fileName: d.fileName,
+        status: d.verificationStatus,
+        statusLabel: DOC_STATUS_LABELS[d.verificationStatus] ?? d.verificationStatus,
+        note: d.verificationNote ?? null,
+        uploadedAt: d.createdAt ? toJalali(d.createdAt) : null,
+        version: group.length - i, // newest has the highest version number
+        isLatest: i === 0,
+      }));
+    const items = reqs.map((r) => {
+      const group = byCode.get(r.code) ?? [];
+      const latest = group[0];
+      return {
+        code: r.code,
+        label: r.label,
+        appliesToTypes: r.appliesToTypes,
+        uploaded: group.length > 0,
+        latestStatus: latest?.verificationStatus ?? null,
+        documents: present(group),
+      };
+    });
     const reqCodes = new Set(reqs.map((r) => r.code));
     return {
       claimType: claim.claimType,
       complete: items.length > 0 && items.every((i) => i.uploaded),
       items,
-      otherDocuments: docs.filter((d) => !d.docCode || !reqCodes.has(d.docCode)),
+      otherDocuments: present(docs.filter((d) => !d.docCode || !reqCodes.has(d.docCode))),
     };
+  }
+
+  /** Approve / reject / request-info on a claim document. Org participants only (not the بیمه‌گزار). */
+  async verifyDocument(claimId: string, docId: string, action: 'approve' | 'reject' | 'needs_info', note?: string) {
+    const ctx = getContext();
+    if (ctx?.actorType !== 'ORG_USER') throw new ForbiddenException('تنها کارشناس سازمان می‌تواند مدارک را بررسی کند');
+    const db = this.db();
+    const claim = await db.claim.findUnique({ where: { id: claimId } });
+    if (!claim) throw new NotFoundException('پرونده یافت نشد');
+    this.assertParticipant(claim);
+    const doc = await db.document.findFirst({ where: { id: docId, claimId }, select: { id: true } });
+    if (!doc) throw new NotFoundException('سند یافت نشد');
+    const status = action === 'approve' ? 'VERIFIED' : action === 'reject' ? 'REJECTED' : 'NEEDS_INFO';
+    await db.document.update({
+      where: { id: docId },
+      data: { verificationStatus: status as any, verifiedById: ctx?.actorId ?? null, verifiedAt: new Date(), verificationNote: note ?? null },
+    });
+    await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'ClaimDocument', targetId: docId, metadata: { verify: status, note } });
+    return { ok: true };
   }
 
   /** Upload a document to a claim, tagged with the required-document code it satisfies. */

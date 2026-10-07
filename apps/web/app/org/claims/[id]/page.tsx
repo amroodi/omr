@@ -7,8 +7,11 @@ import { CLAIM_TYPE_LABELS, ErrorBox, StatusBadge } from '../../../components/ui
 import { ORG_NAV } from '../../nav';
 import { FieldsSection } from './fields-section';
 
-interface ChecklistItem { code: string; label: string; uploaded: boolean; documents: { id: string }[] }
+interface ClaimDoc { id: string; fileName: string; status: string; statusLabel: string; note: string | null; uploadedAt: string | null; version: number; isLatest: boolean }
+interface ChecklistItem { code: string; label: string; uploaded: boolean; latestStatus: string | null; documents: ClaimDoc[] }
 interface Checklist { claimType: string; complete: boolean; items: ChecklistItem[] }
+
+const DOC_BADGE: Record<string, string> = { PENDING: 'badge-warning', VERIFIED: 'badge-success', REJECTED: 'badge-danger', NEEDS_INFO: 'badge-warning' };
 interface Claim {
   id: string; claimNumber: string; status: string; claimType: string; deceasedName: string | null;
   claimedAmount: string; eventDate: string | null; noticeDeadline: string | null; lateNotice: boolean;
@@ -51,6 +54,12 @@ export default function ClaimDetail() {
     setError('');
     try { await client.view(`/claims/${id}/documents/${docId}/file`, 'org'); } catch (e: any) { setError(e.message); }
   };
+
+  const verifyDoc = (docId: string, action: 'approve' | 'reject' | 'needs_info') => act(async () => {
+    let note: string | undefined;
+    if (action !== 'approve') { note = window.prompt(action === 'reject' ? 'دلیل رد مدرک:' : 'توضیح/اصلاح موردنیاز:') || undefined; }
+    await client.post(`/claims/${id}/documents/${docId}/verify`, { action, note }, 'org');
+  });
 
   const endorse = () => act(() => client.post(`/claims/${id}/endorse`, {}, 'org'));
   const reject = () => act(() => client.post(`/claims/${id}/reject`, { note: 'رد پرونده' }, 'org'));
@@ -99,21 +108,39 @@ export default function ClaimDetail() {
                 <h3 className="font-bold">مدارک مورد نیاز</h3>
                 {checklist && <span className={`badge ${checklist.complete ? 'badge-success' : 'badge-warning'}`}>{checklist.complete ? 'کامل' : 'ناقص'}</span>}
               </div>
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {checklist?.items.map((it) => (
-                  <div key={it.code} className="flex items-center justify-between gap-3 py-1.5 border-b" style={{ borderColor: 'var(--border)' }}>
-                    <span className="text-sm flex items-center gap-2">
-                      <span style={{ color: it.uploaded ? 'var(--success)' : 'var(--muted)' }}>{it.uploaded ? '✔' : '○'}</span>
-                      {it.label}{it.documents.length > 1 && <span className="badge badge-neutral">{it.documents.length}</span>}
-                    </span>
-                    <div className="flex items-center gap-1">
-                      {it.documents.map((d, di) => (
-                        <button key={d.id} onClick={() => viewDoc(d.id)} className="btn btn-ghost btn-sm" title="مشاهده مدرک">مشاهده{it.documents.length > 1 ? ` ${di + 1}` : ''}</button>
-                      ))}
-                      <input ref={(el) => { fileRefs.current[it.code] = el; }} type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }}
-                        onChange={(e) => { const file = e.target.files?.[0]; if (file) upload(it.code, file); e.currentTarget.value = ''; }} />
-                      <button onClick={() => fileRefs.current[it.code]?.click()} disabled={busy} className="btn btn-ghost btn-sm">بارگذاری</button>
+                  <div key={it.code} className="py-2 border-b" style={{ borderColor: 'var(--border)' }}>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-sm flex items-center gap-2">
+                        <span style={{ color: it.uploaded ? 'var(--success)' : 'var(--muted)' }}>{it.uploaded ? '✔' : '○'}</span>
+                        {it.label}
+                      </span>
+                      <div>
+                        <input ref={(el) => { fileRefs.current[it.code] = el; }} type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }}
+                          onChange={(e) => { const file = e.target.files?.[0]; if (file) upload(it.code, file); e.currentTarget.value = ''; }} />
+                        <button onClick={() => fileRefs.current[it.code]?.click()} disabled={busy} className="btn btn-ghost btn-sm">بارگذاری جایگزین</button>
+                      </div>
                     </div>
+                    {it.documents.length > 0 && (
+                      <div className="mt-2 space-y-1.5 mr-6">
+                        {it.documents.map((d) => (
+                          <div key={d.id} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5" style={{ background: d.isLatest ? 'var(--brand-soft)' : 'var(--surface-2)', opacity: d.isLatest ? 1 : 0.7 }}>
+                            <span className="text-xs flex items-center gap-2 min-w-0">
+                              <span className="badge badge-neutral shrink-0">نسخه {d.version}</span>
+                              {d.isLatest && <span className="badge badge-success shrink-0">جدیدترین</span>}
+                              <span className={`badge ${DOC_BADGE[d.status] || 'badge-neutral'} shrink-0`}>{d.statusLabel}</span>
+                              <span className="truncate" style={{ color: 'var(--muted)' }}>{d.uploadedAt}</span>
+                            </span>
+                            <span className="flex items-center gap-1 shrink-0">
+                              <button onClick={() => viewDoc(d.id)} className="btn btn-ghost btn-sm">مشاهده</button>
+                              {d.isLatest && d.status !== 'VERIFIED' && <button onClick={() => verifyDoc(d.id, 'approve')} disabled={busy} className="text-xs" style={{ color: 'var(--success)' }}>تایید</button>}
+                              {d.isLatest && d.status !== 'REJECTED' && <button onClick={() => verifyDoc(d.id, 'reject')} disabled={busy} className="text-xs" style={{ color: 'var(--danger)' }}>رد</button>}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

@@ -22,13 +22,15 @@ export default function NewClaim() {
   const router = useRouter();
   const [insurers, setInsurers] = useState<{ id: string; name: string }[]>([]);
   const [branches, setBranches] = useState<{ id: string; name: string; code: string }[]>([]);
-  const [f, setF] = useState({ insurerTenantId: '', channel: 'BROKER', sellingBranchId: '', claimType: 'DEATH_ILLNESS', eventDate: '', deceasedFullName: '', deceasedNationalCode: '', claimedAmount: '', policyNumber: '' });
+  const [holders, setHolders] = useState<{ id: string; fullName: string | null; nationalCodeMasked: string | null }[]>([]);
+  const [f, setF] = useState({ insurerTenantId: '', channel: 'BROKER', sellingBranchId: '', policyHolderId: '', claimType: 'DEATH_ILLNESS', eventDate: '', deceasedFullName: '', deceasedNationalCode: '', claimedAmount: '', policyNumber: '' });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     client.get<{ id: string; name: string }[]>('/claims/insurers', 'org').then(setInsurers).catch((e) => setError(e.message));
     client.get<{ id: string; name: string; code: string }[]>('/branches', 'org').then(setBranches).catch(() => {});
+    client.get<any[]>('/customer/accounts?status=ACTIVE', 'org').then(setHolders).catch(() => {});
   }, []);
 
   const submit = async () => {
@@ -48,6 +50,7 @@ export default function NewClaim() {
         claimedAmount: toAscii(f.claimedAmount).replace(/[^\d]/g, ''),
       };
       if (f.channel === 'DIRECT' && f.sellingBranchId) payload.sellingBranchId = f.sellingBranchId;
+      if (f.policyHolderId) payload.policyHolderId = f.policyHolderId;
       if (iso) payload.eventDate = iso;
       if (f.policyNumber.trim()) payload.policyNumber = f.policyNumber.trim();
       const c = await client.post<{ id: string }>('/claims', payload, 'org');
@@ -71,6 +74,13 @@ export default function NewClaim() {
             <option value="">— انتخاب بیمه‌گر —</option>
             {insurers.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
           </select>
+        </Field>
+        <Field label="بیمه‌گزار (برای بارگذاری مدارک در پنل خودش)">
+          <select className="input" value={f.policyHolderId} onChange={(e) => setF({ ...f, policyHolderId: e.target.value })}>
+            <option value="">— بدون اتصال به حساب بیمه‌گزار —</option>
+            {holders.map((h) => <option key={h.id} value={h.id}>{h.fullName || 'بی‌نام'} — {h.nationalCodeMasked}</option>)}
+          </select>
+          {holders.length === 0 && <p className="text-xs mt-1" style={{ color: 'var(--muted)' }}>بیمه‌گزار فعالی ثبت نشده — از «بیمه‌گزاران» اضافه/تایید کنید</p>}
         </Field>
         {f.channel === 'DIRECT' && (
           <Field label="شعبه فروش">

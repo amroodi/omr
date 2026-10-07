@@ -4,8 +4,11 @@ import { useParams, useRouter } from 'next/navigation';
 import { client, getToken } from '../../../../lib/client';
 import { CLAIM_TYPE_LABELS, ErrorBox, StatusBadge } from '../../../components/ui';
 
-interface ChecklistItem { code: string; label: string; uploaded: boolean; documents: { id: string }[] }
+interface ClaimDoc { id: string; fileName: string; status: string; statusLabel: string; note: string | null; uploadedAt: string | null; version: number; isLatest: boolean }
+interface ChecklistItem { code: string; label: string; uploaded: boolean; latestStatus: string | null; documents: ClaimDoc[] }
 interface Checklist { complete: boolean; items: ChecklistItem[] }
+
+const DOC_BADGE: Record<string, string> = { PENDING: 'badge-warning', VERIFIED: 'badge-success', REJECTED: 'badge-danger', NEEDS_INFO: 'badge-warning' };
 interface Claim {
   claimNumber: string; status: string; claimType: string; deceasedName: string | null;
   eventDate: string | null; noticeDeadline: string | null; lateNotice: boolean;
@@ -35,6 +38,7 @@ export default function CustomerClaim() {
 
   const act = async (fn: () => Promise<any>) => { setError(''); setBusy(true); try { await fn(); await load(); } catch (e: any) { setError(e.message); } finally { setBusy(false); } };
   const upload = (code: string, file: File) => act(async () => { const fd = new FormData(); fd.append('file', file); await client.postForm(`/customer/claims/${id}/documents?docCode=${encodeURIComponent(code)}`, fd, 'customer'); });
+  const viewDoc = async (docId: string) => { setError(''); try { await client.view(`/customer/claims/${id}/documents/${docId}/file`, 'customer'); } catch (e: any) { setError(e.message); } };
   const rectify = () => act(() => client.post(`/customer/claims/${id}/rectify`, { note: 'مدارک تکمیل شد' }, 'customer'));
 
   return (
@@ -72,15 +76,32 @@ export default function CustomerClaim() {
             </div>
             <div className="space-y-2">
               {checklist?.items.map((it) => (
-                <div key={it.code} className="flex items-center justify-between gap-3 py-1.5 border-b" style={{ borderColor: 'var(--border)' }}>
-                  <span className="text-sm flex items-center gap-2">
-                    <span style={{ color: it.uploaded ? 'var(--success)' : 'var(--muted)' }}>{it.uploaded ? '✔' : '○'}</span>{it.label}
-                  </span>
-                  <div>
-                    <input ref={(el) => { fileRefs.current[it.code] = el; }} type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }}
-                      onChange={(e) => { const file = e.target.files?.[0]; if (file) upload(it.code, file); e.currentTarget.value = ''; }} />
-                    <button onClick={() => fileRefs.current[it.code]?.click()} disabled={busy} className="btn btn-ghost btn-sm">بارگذاری</button>
+                <div key={it.code} className="py-2 border-b" style={{ borderColor: 'var(--border)' }}>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm flex items-center gap-2">
+                      <span style={{ color: it.uploaded ? 'var(--success)' : 'var(--muted)' }}>{it.uploaded ? '✔' : '○'}</span>{it.label}
+                    </span>
+                    <div>
+                      <input ref={(el) => { fileRefs.current[it.code] = el; }} type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }}
+                        onChange={(e) => { const file = e.target.files?.[0]; if (file) upload(it.code, file); e.currentTarget.value = ''; }} />
+                      <button onClick={() => fileRefs.current[it.code]?.click()} disabled={busy} className="btn btn-ghost btn-sm">{it.uploaded ? 'بارگذاری مجدد' : 'بارگذاری'}</button>
+                    </div>
                   </div>
+                  {it.documents.length > 0 && (
+                    <div className="mt-2 space-y-1.5 mr-6">
+                      {it.documents.map((d) => (
+                        <div key={d.id} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5" style={{ background: d.isLatest ? 'var(--brand-soft)' : 'var(--surface-2)', opacity: d.isLatest ? 1 : 0.7 }}>
+                          <span className="text-xs flex items-center gap-2 min-w-0">
+                            <span className="badge badge-neutral shrink-0">نسخه {d.version}</span>
+                            {d.isLatest && <span className="badge badge-success shrink-0">جدیدترین</span>}
+                            <span className={`badge ${DOC_BADGE[d.status] || 'badge-neutral'} shrink-0`}>{d.statusLabel}</span>
+                            {d.note && <span className="truncate" style={{ color: 'var(--danger)' }} title={d.note}>{d.note}</span>}
+                          </span>
+                          <button onClick={() => viewDoc(d.id)} className="btn btn-ghost btn-sm shrink-0">مشاهده</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
