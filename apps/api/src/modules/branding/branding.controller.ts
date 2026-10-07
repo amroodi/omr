@@ -99,6 +99,8 @@ export class BrandingController {
     const { buffer, mime } = await this.branding.getAsset(assertKind(kind));
     res.setHeader('Content-Type', mime);
     res.setHeader('Cache-Control', 'public, max-age=300');
+    // Public branding asset — allow cross-origin embedding (panel header, inquiry widget, etc.).
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     res.send(buffer);
   }
 }

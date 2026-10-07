@@ -11,6 +11,7 @@ interface Checklist { complete: boolean; items: ChecklistItem[] }
 const DOC_BADGE: Record<string, string> = { PENDING: 'badge-warning', VERIFIED: 'badge-success', REJECTED: 'badge-danger', NEEDS_INFO: 'badge-warning' };
 interface Claim {
   claimNumber: string; status: string; claimType: string; deceasedName: string | null;
+  insurerTenantId?: string;
   eventDate: string | null; noticeDeadline: string | null; lateNotice: boolean;
   deficiencies?: { items: string[]; resolvedAt: string | null }[];
 }
@@ -20,6 +21,7 @@ export default function CustomerClaim() {
   const router = useRouter();
   const [claim, setClaim] = useState<Claim | null>(null);
   const [checklist, setChecklist] = useState<Checklist | null>(null);
+  const [insurers, setInsurers] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -29,6 +31,7 @@ export default function CustomerClaim() {
       const [c, cl] = await Promise.all([client.get<Claim>(`/customer/claims/${id}`, 'customer'), client.get<Checklist>(`/customer/claims/${id}/checklist`, 'customer')]);
       setClaim(c); setChecklist(cl);
     } catch (e: any) { setError(e.message); }
+    client.get<{ id: string; name: string }[]>('/customer/insurers', 'customer').then((a) => setInsurers(Object.fromEntries(a.map((i) => [i.id, i.name])))).catch(() => {});
   };
   useEffect(() => {
     if (!getToken('customer')) { router.push('/customer/login'); return; }
@@ -55,6 +58,9 @@ export default function CustomerClaim() {
             <div className="text-sm" style={{ color: 'var(--muted)' }}>
               {CLAIM_TYPE_LABELS[claim.claimType] || claim.claimType} — {claim.deceasedName}
             </div>
+            {claim.insurerTenantId && insurers[claim.insurerTenantId] && (
+              <div className="text-sm mt-1">بیمه‌گر: <b>{insurers[claim.insurerTenantId]}</b></div>
+            )}
             {claim.lateNotice && <div className="alert-error mt-3">⚠ اعلام خسارت خارج از مهلت مقرر بوده است (مهلت: {claim.noticeDeadline}).</div>}
           </div>
 
