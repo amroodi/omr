@@ -43,6 +43,22 @@ export class SetTenantActiveDto {
   isActive!: boolean;
 }
 
+export class UpdateTenantDto {
+  @IsOptional()
+  @IsString()
+  @Length(2, 120)
+  name?: string;
+
+  @IsOptional()
+  @IsEnum(TenantKind)
+  kind?: TenantKind;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^[a-z0-9-]{2,40}$/, { message: 'slug must be lowercase letters, digits, hyphens' })
+  slug?: string;
+}
+
 export class ResetAdminDto {
   @IsOptional()
   @IsString()

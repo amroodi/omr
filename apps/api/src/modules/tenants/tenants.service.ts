@@ -37,12 +37,46 @@ export class TenantsService {
         id: true,
         slug: true,
         name: true,
+        kind: true,
         isActive: true,
         licenseUntil: true,
         createdAt: true,
         _count: { select: { orgUsers: true, cases: true, customers: true } },
       },
     });
+  }
+
+  /** Platform-only: edit an organization's name / type / slug. */
+  async update(id: string, input: { name?: string; kind?: 'INSURER' | 'BROKER'; slug?: string }) {
+    const db = this.prisma.unscoped();
+    const current = await db.tenant.findUnique({ where: { id }, select: { kind: true } });
+    if (!current) throw new BadRequestException('سازمان یافت نشد');
+    const data: Record<string, unknown> = {};
+    if (input.name !== undefined) data.name = input.name.trim();
+    if (input.kind !== undefined) data.kind = input.kind;
+    if (input.slug !== undefined) {
+      const slug = input.slug.trim().toLowerCase();
+      if (!/^[a-z0-9-]{2,40}$/.test(slug)) throw new BadRequestException('شناسه سازمان باید انگلیسی، کوچک و بدون فاصله باشد');
+      const clash = await db.tenant.findUnique({ where: { slug }, select: { id: true } });
+      if (clash && clash.id !== id) throw new BadRequestException('این شناسه سازمان قبلاً استفاده شده است');
+      data.slug = slug;
+    }
+    if (Object.keys(data).length === 0) return { ok: true };
+
+    const t = await db.tenant.update({ where: { id }, data });
+
+    // Converting to INSURER: seed the default catalogs if this tenant has none yet.
+    if (input.kind === 'INSURER' && current.kind !== 'INSURER') {
+      const has = await db.requiredDocument.count({ where: { tenantId: id } });
+      if (has === 0) {
+        await db.requiredDocument.createMany({ data: DEFAULT_REQUIRED_DOCS.map((d) => ({ ...d, tenantId: id })) });
+        await db.claimFieldDef.createMany({
+          data: DEFAULT_CLAIM_FIELDS.map((d) => ({ tenantId: id, key: d.key, label: d.label, type: d.type, group: d.group, options: d.options ?? [], editableBy: d.editableBy, order: d.order, required: d.required ?? false })),
+        });
+      }
+    }
+    await this.audit.record({ action: AuditAction.EDIT, actorType: 'SUPER_ADMIN', actorId: getContext()?.actorId, tenantId: id, targetType: 'Tenant', targetId: id, metadata: data });
+    return { id: t.id, slug: t.slug, name: t.name, kind: t.kind };
   }
 
   /** Provision a new organization (tenant): tenant row, system roles, and its first org admin. */

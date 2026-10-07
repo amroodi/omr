@@ -7,9 +7,10 @@ import { Icon } from '../components/Shell';
 import { ChangePasswordModal } from '../components/ChangePasswordModal';
 
 interface Tenant {
-  id: string; slug: string; name: string; isActive: boolean;
+  id: string; slug: string; name: string; kind: string; isActive: boolean;
   _count: { orgUsers: number; cases: number; customers: number };
 }
+const KIND_LABEL: Record<string, string> = { BROKER: 'کارگزاری/نمایندگی', INSURER: 'شرکت بیمه' };
 
 export default function AdminDashboard() {
   const router = useRouter();
@@ -19,6 +20,7 @@ export default function AdminDashboard() {
   const [error, setError] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [resetResult, setResetResult] = useState<{ name: string; username: string; oneTimePassword: string } | null>(null);
+  const [edit, setEdit] = useState<{ id: string; name: string; slug: string; kind: string } | null>(null);
 
   const load = () => client.get<Tenant[]>('/tenants', 'super').then(setTenants).catch((e) => setError(e.message));
   useEffect(() => {
@@ -57,6 +59,12 @@ export default function AdminDashboard() {
   const toggle = async (t: Tenant) => {
     try { await client.patch(`/tenants/${t.id}/active`, { isActive: !t.isActive }, 'super'); load(); } catch (e: any) { setError(e.message); }
   };
+  const saveEdit = async () => {
+    if (!edit) return;
+    setError('');
+    try { await client.patch(`/tenants/${edit.id}`, { name: edit.name.trim(), slug: edit.slug.trim(), kind: edit.kind }, 'super'); setEdit(null); load(); }
+    catch (e: any) { setError(e.message); }
+  };
 
   return (
     <div>
@@ -76,6 +84,23 @@ export default function AdminDashboard() {
       </div>
 
       {showPw && <ChangePasswordModal onClose={() => setShowPw(false)} />}
+      {edit && (
+        <div onClick={() => setEdit(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()} className="card p-5 space-y-3" style={{ width: '100%', maxWidth: 420 }}>
+            <div className="flex justify-between items-center"><h3 className="font-bold">ویرایش سازمان</h3><button onClick={() => setEdit(null)} className="text-sm" style={{ color: 'var(--muted)' }}>✕</button></div>
+            <Field label="نام سازمان"><input className="input" value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></Field>
+            <Field label="نوع سازمان">
+              <select className="input" value={edit.kind} onChange={(e) => setEdit({ ...edit, kind: e.target.value })}>
+                <option value="BROKER">کارگزاری / نمایندگی (معرف)</option>
+                <option value="INSURER">شرکت بیمه (بیمه‌گر)</option>
+              </select>
+            </Field>
+            <Field label="شناسه (انگلیسی)"><input className="input" value={edit.slug} onChange={(e) => setEdit({ ...edit, slug: e.target.value })} style={{ direction: 'ltr', textAlign: 'left' }} /></Field>
+            <p className="text-xs" style={{ color: 'var(--muted)' }}>توجه: تغییر «شناسه» بر ورود کاربران آن سازمان اثر می‌گذارد (باید با شناسه جدید وارد شوند).</p>
+            <button onClick={saveEdit} disabled={!edit.name || !edit.slug} className="btn btn-primary btn-sm w-full">ذخیره تغییرات</button>
+          </div>
+        </div>
+      )}
       {resetResult && (
         <div className="alert-success mb-4">
           رمز جدید مدیر «{resetResult.name}» ساخته شد — کاربری: <b>{resetResult.username}</b> · رمز یک‌بارمصرف: <b style={{ direction: 'ltr', display: 'inline-block' }}>{resetResult.oneTimePassword}</b>
@@ -117,12 +142,13 @@ export default function AdminDashboard() {
         <div className="lg:col-span-2 space-y-5">
         <div className="card overflow-x-auto h-fit">
           <table className="table">
-            <thead><tr>{['نام', 'شناسه', 'کاربران', 'پرونده‌ها', 'بیمه‌گزاران', 'وضعیت', 'اقدام'].map((h) => <th key={h}>{h}</th>)}</tr></thead>
+            <thead><tr>{['نام', 'شناسه', 'نوع', 'کاربران', 'پرونده‌ها', 'بیمه‌گزاران', 'وضعیت', 'اقدام'].map((h) => <th key={h}>{h}</th>)}</tr></thead>
             <tbody>
               {tenants.map((t) => (
                 <tr key={t.id}>
                   <td className="font-semibold">{t.name}</td>
                   <td style={{ direction: 'ltr', textAlign: 'right' }}>{t.slug}</td>
+                  <td><span className="badge badge-neutral">{KIND_LABEL[t.kind] || t.kind}</span></td>
                   <td>{t._count.orgUsers}</td>
                   <td>{t._count.cases}</td>
                   <td>{t._count.customers}</td>
@@ -132,7 +158,10 @@ export default function AdminDashboard() {
                     </button>
                   </td>
                   <td>
-                    <button onClick={() => resetAdmin(t)} className="text-xs" style={{ color: 'var(--brand)' }}>بازنشانی رمز مدیر</button>
+                    <span className="flex gap-2 whitespace-nowrap">
+                      <button onClick={() => setEdit({ id: t.id, name: t.name, slug: t.slug, kind: t.kind })} className="text-xs" style={{ color: 'var(--brand)' }}>ویرایش</button>
+                      <button onClick={() => resetAdmin(t)} className="text-xs" style={{ color: 'var(--muted)' }}>بازنشانی رمز</button>
+                    </span>
                   </td>
                 </tr>
               ))}
