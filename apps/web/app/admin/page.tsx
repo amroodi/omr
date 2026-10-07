@@ -152,8 +152,8 @@ function PlatformSms() {
   const [reqs, setReqs] = useState<any[]>([]);
   const [testPhone, setTestPhone] = useState('');
   const [msg, setMsg] = useState<{ t: 'ok' | 'err'; m: string } | null>(null);
-  const DLABEL: Record<string, string> = { console: 'کنسول (آزمایشی)', magfa: 'مگفا', kavenegar: 'کاوه‌نگار', ghasedak: 'قاصدک', smsir: 'SMS.ir', melipayamak: 'ملی‌پیامک' };
-  const DFIELDS: Record<string, string[]> = { console: ['otpTemplate'], magfa: ['username', 'password', 'domain', 'sender', 'otpTemplate'], kavenegar: ['apiKey', 'sender', 'otpPattern'], ghasedak: ['apiKey', 'sender', 'otpPattern'], smsir: ['apiKey', 'sender', 'otpTemplateId'], melipayamak: ['username', 'password', 'sender', 'otpTemplate'] };
+  const DLABEL: Record<string, string> = { console: 'کنسول (آزمایشی)', magfa: 'مگفا — HTTP V2', 'magfa-soap': 'مگفا — SOAP V2', kavenegar: 'کاوه‌نگار', ghasedak: 'قاصدک', smsir: 'SMS.ir', melipayamak: 'ملی‌پیامک' };
+  const DFIELDS: Record<string, string[]> = { console: ['otpTemplate'], magfa: ['username', 'password', 'domain', 'sender', 'otpTemplate'], 'magfa-soap': ['username', 'password', 'domain', 'sender', 'otpTemplate'], kavenegar: ['apiKey', 'sender', 'otpPattern'], ghasedak: ['apiKey', 'sender', 'otpPattern'], smsir: ['apiKey', 'sender', 'otpTemplateId'], melipayamak: ['username', 'password', 'sender', 'otpTemplate'] };
   const FLABEL: Record<string, string> = { sender: 'خط/فرستنده', apiKey: 'کلید API', username: 'نام کاربری', password: 'رمز', domain: 'دامنه', otpPattern: 'الگوی OTP', otpTemplateId: 'شناسه الگو', otpTemplate: 'متن کد تایید (از {code} استفاده کنید)' };
   const SECRET = new Set(['apiKey', 'password']);
   const load = () => {

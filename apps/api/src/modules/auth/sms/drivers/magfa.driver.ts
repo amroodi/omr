@@ -11,7 +11,7 @@ import { SmsConfig, SmsDriver, toLocalMobile } from '../sms-driver';
  * Config: SMS_USERNAME, SMS_PASSWORD, SMS_DOMAIN, SMS_SENDER.
  */
 // Official Magfa `status` meanings (HTTP/SOAP v2) — surfaced to the operator for quick diagnosis.
-const MAGFA_STATUS: Record<number, string> = {
+export const MAGFA_STATUS: Record<number, string> = {
   0: 'موفق',
   1: 'شماره گیرنده نادرست است',
   2: 'شماره فرستنده نادرست است',

@@ -67,13 +67,14 @@ function BrandingTab() {
 }
 
 const DRIVER_LABELS: Record<string, string> = {
-  console: 'کنسول (آزمایشی — بدون ارسال واقعی)', magfa: 'مگفا (Magfa)', kavenegar: 'کاوه‌نگار',
-  ghasedak: 'قاصدک', smsir: 'SMS.ir', melipayamak: 'ملی‌پیامک',
+  console: 'کنسول (آزمایشی — بدون ارسال واقعی)', magfa: 'مگفا — HTTP V2', 'magfa-soap': 'مگفا — SOAP V2',
+  kavenegar: 'کاوه‌نگار', ghasedak: 'قاصدک', smsir: 'SMS.ir', melipayamak: 'ملی‌پیامک',
 };
 // Which fields each provider needs, to show only the relevant inputs.
 const DRIVER_FIELDS: Record<string, string[]> = {
   console: ['sender', 'otpTemplate'],
   magfa: ['username', 'password', 'domain', 'sender', 'otpTemplate'],
+  'magfa-soap': ['username', 'password', 'domain', 'sender', 'otpTemplate'],
   kavenegar: ['apiKey', 'sender', 'otpPattern'],
   ghasedak: ['apiKey', 'sender', 'otpPattern'],
   smsir: ['apiKey', 'sender', 'otpTemplateId'],

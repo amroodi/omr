@@ -7,6 +7,7 @@ import { ConsoleDriver } from './sms/drivers/console.driver';
 import { GhasedakDriver } from './sms/drivers/ghasedak.driver';
 import { KavenegarDriver } from './sms/drivers/kavenegar.driver';
 import { MagfaDriver } from './sms/drivers/magfa.driver';
+import { MagfaSoapDriver } from './sms/drivers/magfa-soap.driver';
 import { MelipayamakDriver } from './sms/drivers/melipayamak.driver';
 import { SmsIrDriver } from './sms/drivers/smsir.driver';
 
@@ -15,6 +16,7 @@ type DriverFactory = (cfg: SmsConfig) => SmsDriver;
 const REGISTRY: Record<string, DriverFactory> = {
   console: (c) => new ConsoleDriver(c),
   magfa: (c) => new MagfaDriver(c),
+  'magfa-soap': (c) => new MagfaSoapDriver(c),
   kavenegar: (c) => new KavenegarDriver(c),
   ghasedak: (c) => new GhasedakDriver(c),
   smsir: (c) => new SmsIrDriver(c),

@@ -31,7 +31,8 @@
     "helmet": "^7.1.0",
     "jalaali-js": "^1.2.7",
     "reflect-metadata": "^0.2.1",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "soap": "^1.13.2"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.3.0",
