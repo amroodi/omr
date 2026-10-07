@@ -40,6 +40,7 @@ export default function CustomerDashboard() {
           <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>وضعیت و سوابق پرداخت پرونده‌های شما</p>
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={() => router.push('/customer/claims/new')} className="btn btn-primary btn-sm">+ ثبت پرونده خسارت</button>
           <NotificationBell realm="customer" />
           <button onClick={() => { clearToken('customer'); router.push('/customer/login'); }} className="btn btn-ghost btn-sm">
             <Icon path="M15 3H5a2 2 0 00-2 2v14a2 2 0 002 2h10M17 16l4-4-4-4M21 12H9" /> خروج
@@ -70,9 +71,12 @@ export default function CustomerDashboard() {
 
       {loading ? (
         <div className="card p-8 text-center text-sm" style={{ color: 'var(--muted)' }}>در حال بارگذاری…</div>
-      ) : cases.length === 0 ? (
-        <div className="card p-8 text-center text-sm" style={{ color: 'var(--muted)' }}>پرونده‌ای یافت نشد.</div>
-      ) : (
+      ) : cases.length === 0 && claims.length === 0 ? (
+        <div className="card p-8 text-center space-y-3">
+          <p className="text-sm" style={{ color: 'var(--muted)' }}>هنوز پرونده‌ای ندارید. برای شروع، یک پرونده خسارت ثبت کنید و سپس مدارک را بارگذاری کنید.</p>
+          <button onClick={() => router.push('/customer/claims/new')} className="btn btn-primary">+ ثبت پرونده خسارت جدید</button>
+        </div>
+      ) : cases.length === 0 ? null : (
         <div className="grid md:grid-cols-2 gap-4">
           {cases.map((c) => (
             <div key={c.caseNumber} className="card card-hover p-5">

@@ -27,7 +27,7 @@ import { CustomerSignupStatus } from '@prisma/client';
 import { ClaimsService } from '../claims/claims.service';
 import { CustomerAuthService } from './customer-auth.service';
 import { CustomerService } from './customer.service';
-import { CustomerRequestOtpDto, CustomerSignupDto, CustomerSignupVerifyDto, CustomerVerifyOtpDto } from './dto';
+import { CustomerFileClaimDto, CustomerRequestOtpDto, CustomerSignupDto, CustomerSignupVerifyDto, CustomerVerifyOtpDto } from './dto';
 
 @Controller('customer')
 export class CustomerController {
@@ -110,6 +110,28 @@ export class CustomerController {
   }
 
   // ── بیمه‌گزار claim self-service (ownership enforced inside ClaimsService) ──
+  @UseGuards(JwtAuthGuard)
+  @Get('insurers')
+  insurers() {
+    return this.claims.listInsurers();
+  }
+
+  /** A بیمه‌گزار files their own claim. channel=BROKER, معرف + policyHolder derived from the session. */
+  @UseGuards(JwtAuthGuard)
+  @Post('claims')
+  fileClaim(@Body() dto: CustomerFileClaimDto) {
+    return this.claims.file({
+      insurerTenantId: dto.insurerTenantId,
+      channel: 'BROKER' as any,
+      claimType: dto.claimType,
+      eventDate: dto.eventDate,
+      policyNumber: dto.policyNumber,
+      claimedAmount: dto.claimedAmount,
+      deceasedFullName: dto.deceasedFullName,
+      deceasedNationalCode: dto.deceasedNationalCode,
+    });
+  }
+
   @UseGuards(JwtAuthGuard)
   @Get('claims')
   myClaims() {
