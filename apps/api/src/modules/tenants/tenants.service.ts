@@ -79,6 +79,34 @@ export class TenantsService {
     return { id: t.id, slug: t.slug, name: t.name, kind: t.kind };
   }
 
+  // ── Broker ↔ insurer partnerships (which insurers a brokerage works with) ──
+  async listPartners(brokerId: string) {
+    const db = this.prisma.unscoped();
+    const broker = await db.tenant.findUnique({ where: { id: brokerId }, select: { kind: true } });
+    if (!broker) throw new BadRequestException('سازمان یافت نشد');
+    const insurers = await db.tenant.findMany({ where: { kind: 'INSURER', isActive: true }, orderBy: { name: 'asc' }, select: { id: true, name: true, slug: true } });
+    const parts = await db.brokerInsurerPartnership.findMany({ where: { brokerTenantId: brokerId, isActive: true }, select: { insurerTenantId: true } });
+    const set = new Set(parts.map((p) => p.insurerTenantId));
+    return { brokerKind: broker.kind, insurers: insurers.map((i) => ({ ...i, partnered: set.has(i.id) })) };
+  }
+
+  async setPartner(brokerId: string, insurerTenantId: string, enabled: boolean) {
+    const db = this.prisma.unscoped();
+    const [b, i] = await Promise.all([
+      db.tenant.findUnique({ where: { id: brokerId }, select: { kind: true } }),
+      db.tenant.findUnique({ where: { id: insurerTenantId }, select: { kind: true } }),
+    ]);
+    if (!b || b.kind !== 'BROKER') throw new BadRequestException('این سازمان از نوع کارگزاری/نمایندگی نیست');
+    if (!i || i.kind !== 'INSURER') throw new BadRequestException('بیمه‌گر نامعتبر است');
+    await db.brokerInsurerPartnership.upsert({
+      where: { brokerTenantId_insurerTenantId: { brokerTenantId: brokerId, insurerTenantId } },
+      update: { isActive: enabled },
+      create: { brokerTenantId: brokerId, insurerTenantId, isActive: enabled },
+    });
+    await this.audit.record({ action: AuditAction.EDIT, actorType: 'SUPER_ADMIN', actorId: getContext()?.actorId, tenantId: brokerId, targetType: 'BrokerInsurerPartnership', metadata: { insurerTenantId, enabled } });
+    return { ok: true };
+  }
+
   /** Provision a new organization (tenant): tenant row, system roles, and its first org admin. */
   async provision(input: ProvisionInput) {
     const db = this.prisma.unscoped();

@@ -65,3 +65,11 @@ export class ResetAdminDto {
   @Length(3, 64)
   username?: string;
 }
+
+export class SetPartnerDto {
+  @IsString()
+  insurerTenantId!: string;
+
+  @IsBoolean()
+  enabled!: boolean;
+}

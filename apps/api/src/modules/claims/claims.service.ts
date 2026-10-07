@@ -95,6 +95,9 @@ export class ClaimsService {
       if (!input.brokerTenantId) throw new BadRequestException('کارگزار (معرف) الزامی است');
       const broker = await db.tenant.findUnique({ where: { id: input.brokerTenantId }, select: { kind: true } });
       if (!broker || broker.kind !== 'BROKER') throw new BadRequestException('کارگزار نامعتبر است');
+      // A brokerage may only file against an insurer it is partnered with.
+      const partner = await db.brokerInsurerPartnership.findFirst({ where: { brokerTenantId: input.brokerTenantId, insurerTenantId: input.insurerTenantId, isActive: true }, select: { id: true } });
+      if (!partner) throw new BadRequestException('این کارگزاری با این بیمه‌گر همکاری فعال ندارد');
       moarefTenantId = input.brokerTenantId;
       moarefRole = 'MOAREF_BROKER';
     } else {
@@ -412,9 +415,14 @@ export class ClaimsService {
     return ctx?.actorType === 'ORG_USER' && ctx.tenantId === pending.holderTenantId;
   }
 
-  /** Active insurers a claim can be filed against. */
-  listInsurers() {
-    return this.db().tenant.findMany({ where: { kind: 'INSURER', isActive: true }, orderBy: { name: 'asc' }, select: { id: true, name: true, slug: true } });
+  /** Insurers the caller's brokerage is partnered with (only these can be filed against). */
+  async listInsurers() {
+    const brokerId = getContext()?.tenantId;
+    if (!brokerId) return [];
+    const parts = await this.db().brokerInsurerPartnership.findMany({ where: { brokerTenantId: brokerId, isActive: true }, select: { insurerTenantId: true } });
+    const ids = parts.map((p) => p.insurerTenantId);
+    if (ids.length === 0) return [];
+    return this.db().tenant.findMany({ where: { id: { in: ids }, kind: 'INSURER', isActive: true }, orderBy: { name: 'asc' }, select: { id: true, name: true, slug: true } });
   }
 
   /** Work queue: claims with a PENDING step the caller must act on. */

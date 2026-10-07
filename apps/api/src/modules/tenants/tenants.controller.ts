@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
 import { SuperAdminOnly } from '../../common/rbac/decorators';
-import { ProvisionTenantDto, ResetAdminDto, SetTenantActiveDto, UpdateTenantDto } from './dto';
+import { ProvisionTenantDto, ResetAdminDto, SetPartnerDto, SetTenantActiveDto, UpdateTenantDto } from './dto';
 import { TenantsService } from './tenants.service';
 
 /** Platform-only: provision and manage organizations (tenants). */
@@ -32,5 +32,16 @@ export class TenantsController {
   @Post(':id/reset-admin')
   resetAdmin(@Param('id') id: string, @Body() dto: ResetAdminDto) {
     return this.tenants.resetAdminPassword(id, dto.username ?? 'admin');
+  }
+
+  /** Insurers a brokerage works with (all insurers + a `partnered` flag). */
+  @Get(':id/insurers')
+  listPartners(@Param('id') id: string) {
+    return this.tenants.listPartners(id);
+  }
+
+  @Post(':id/insurers')
+  setPartner(@Param('id') id: string, @Body() dto: SetPartnerDto) {
+    return this.tenants.setPartner(id, dto.insurerTenantId, dto.enabled);
   }
 }

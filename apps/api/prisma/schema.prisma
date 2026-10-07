@@ -94,6 +94,20 @@ model PlatformConfig {
   updatedAt DateTime @updatedAt @default(now())
 }
 
+// Which insurers a brokerage (معرف/BROKER) works with. A broker may file claims only against its
+// partners; the insurer dropdowns are constrained to these. Managed by the super-admin.
+model BrokerInsurerPartnership {
+  id              String   @id @default(uuid())
+  brokerTenantId  String
+  insurerTenantId String
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  @@unique([brokerTenantId, insurerTenantId])
+  @@index([brokerTenantId])
+  @@index([insurerTenantId])
+}
+
 // Who a notification is for: ORG = the organization's staff (tenant-wide inbox);
 // CUSTOMER = one بیمه‌گزار account (recipientId). Each notification is also sent by SMS.
 enum NotificationAudience {

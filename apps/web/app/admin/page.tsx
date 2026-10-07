@@ -21,6 +21,8 @@ export default function AdminDashboard() {
   const [showPw, setShowPw] = useState(false);
   const [resetResult, setResetResult] = useState<{ name: string; username: string; oneTimePassword: string } | null>(null);
   const [edit, setEdit] = useState<{ id: string; name: string; slug: string; kind: string } | null>(null);
+  const [partnersFor, setPartnersFor] = useState<{ id: string; name: string } | null>(null);
+  const [partners, setPartners] = useState<{ id: string; name: string; partnered: boolean }[] | null>(null);
 
   const load = () => client.get<Tenant[]>('/tenants', 'super').then(setTenants).catch((e) => setError(e.message));
   useEffect(() => {
@@ -65,6 +67,17 @@ export default function AdminDashboard() {
     try { await client.patch(`/tenants/${edit.id}`, { name: edit.name.trim(), slug: edit.slug.trim(), kind: edit.kind }, 'super'); setEdit(null); load(); }
     catch (e: any) { setError(e.message); }
   };
+  const openPartners = async (t: Tenant) => {
+    setError(''); setPartnersFor({ id: t.id, name: t.name }); setPartners(null);
+    try { const d = await client.get<{ insurers: any[] }>(`/tenants/${t.id}/insurers`, 'super'); setPartners(d.insurers); }
+    catch (e: any) { setError(e.message); setPartnersFor(null); }
+  };
+  const togglePartner = async (insurerTenantId: string, enabled: boolean) => {
+    if (!partnersFor) return;
+    setPartners((ps) => ps ? ps.map((i) => i.id === insurerTenantId ? { ...i, partnered: enabled } : i) : ps);
+    try { await client.post(`/tenants/${partnersFor.id}/insurers`, { insurerTenantId, enabled }, 'super'); }
+    catch (e: any) { setError(e.message); setPartners((ps) => ps ? ps.map((i) => i.id === insurerTenantId ? { ...i, partnered: !enabled } : i) : ps); }
+  };
 
   return (
     <div>
@@ -84,6 +97,24 @@ export default function AdminDashboard() {
       </div>
 
       {showPw && <ChangePasswordModal onClose={() => setShowPw(false)} />}
+      {partnersFor && (
+        <div onClick={() => setPartnersFor(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div onClick={(e) => e.stopPropagation()} className="card p-5 space-y-3" style={{ width: '100%', maxWidth: 440, maxHeight: '80vh', overflowY: 'auto' }}>
+            <div className="flex justify-between items-center"><h3 className="font-bold">بیمه‌گرهای طرف قرارداد «{partnersFor.name}»</h3><button onClick={() => setPartnersFor(null)} className="text-sm" style={{ color: 'var(--muted)' }}>✕</button></div>
+            <p className="text-xs" style={{ color: 'var(--muted)' }}>این کارگزاری فقط می‌تواند برای بیمه‌گرهای انتخاب‌شده پرونده ثبت کند.</p>
+            {partners === null ? <p className="text-sm" style={{ color: 'var(--muted)' }}>در حال بارگذاری…</p> :
+              partners.length === 0 ? <p className="text-sm" style={{ color: 'var(--muted)' }}>هیچ شرکت بیمه‌ای تعریف نشده. ابتدا یک سازمان از نوع «شرکت بیمه» بسازید.</p> :
+                <div className="divide-y" style={{ borderColor: 'var(--border)' }}>
+                  {partners.map((i) => (
+                    <label key={i.id} className="flex items-center justify-between gap-2 py-2 text-sm cursor-pointer">
+                      <span>{i.name}</span>
+                      <input type="checkbox" checked={i.partnered} onChange={(e) => togglePartner(i.id, e.target.checked)} />
+                    </label>
+                  ))}
+                </div>}
+          </div>
+        </div>
+      )}
       {edit && (
         <div onClick={() => setEdit(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
           <div onClick={(e) => e.stopPropagation()} className="card p-5 space-y-3" style={{ width: '100%', maxWidth: 420 }}>
@@ -160,6 +191,7 @@ export default function AdminDashboard() {
                   <td>
                     <span className="flex gap-2 whitespace-nowrap">
                       <button onClick={() => setEdit({ id: t.id, name: t.name, slug: t.slug, kind: t.kind })} className="text-xs" style={{ color: 'var(--brand)' }}>ویرایش</button>
+                      {t.kind === 'BROKER' && <button onClick={() => openPartners(t)} className="text-xs" style={{ color: 'var(--brand)' }}>بیمه‌گرها</button>}
                       <button onClick={() => resetAdmin(t)} className="text-xs" style={{ color: 'var(--muted)' }}>بازنشانی رمز</button>
                     </span>
                   </td>
