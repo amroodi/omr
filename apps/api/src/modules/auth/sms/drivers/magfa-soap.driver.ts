@@ -45,11 +45,16 @@ export class MagfaSoapDriver implements SmsDriver {
       throw new Error(`اتصال به وب‌سرویس SOAP مگفا ناموفق بود: ${String((e as Error).message).slice(0, 160)}`);
     }
 
-    // Magfa's WSDL types these as arrays of <item>, so each parameter wraps its values in `item`.
+    // Magfa SOAP `send` takes 7 array params; arrays are typed as <item>. The last four are left
+    // empty so Magfa applies defaults (auto encoding — required for Persian text).
     const args = {
-      messages: { item: [message] },
       senders: { item: [this.cfg.sender] },
       recipients: { item: [toLocalMobile(toPhone)] },
+      messages: { item: [message] },
+      encodings: { item: [] as number[] },
+      udhs: { item: [] as string[] },
+      priorities: { item: [] as number[] },
+      checkingMessageIds: { item: [] as number[] },
     };
     let result: any;
     try {
