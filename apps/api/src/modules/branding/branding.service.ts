@@ -101,6 +101,7 @@ export class BrandingService {
       domain: cfg?.domain ?? '',
       otpPattern: cfg?.otpPattern ?? '',
       otpTemplateId: cfg?.otpTemplateId ?? '',
+      otpTemplate: cfg?.otpTemplate ?? '',
       notifyPhone: cfg?.notifyPhone ?? '',
       hasApiKey: !!cfg?.apiKey,
       hasPassword: !!cfg?.password,
@@ -139,7 +140,8 @@ export class BrandingService {
     if (!cfg) throw new BadRequestException('ابتدا درگاه پیامک را ذخیره کنید');
     if (!phone) throw new BadRequestException('شماره موبایل مقصد را وارد کنید');
     try {
-      await this.sms.buildDriver(cfg).send(phone, 'پیام آزمایشی سامانه بیمس — درگاه پیامک شما با موفقیت کار می‌کند.');
+      // Use the OTP path so the test exercises the approved template (what will really be sent).
+      await this.sms.buildDriver(cfg).sendOtp(phone, '123456');
       return { ok: true };
     } catch (e) {
       throw new BadRequestException(`ارسال آزمایشی ناموفق بود: ${String((e as Error).message)}`);

@@ -72,16 +72,17 @@ const DRIVER_LABELS: Record<string, string> = {
 };
 // Which fields each provider needs, to show only the relevant inputs.
 const DRIVER_FIELDS: Record<string, string[]> = {
-  console: ['sender'],
-  magfa: ['username', 'password', 'domain', 'sender'],
+  console: ['sender', 'otpTemplate'],
+  magfa: ['username', 'password', 'domain', 'sender', 'otpTemplate'],
   kavenegar: ['apiKey', 'sender', 'otpPattern'],
   ghasedak: ['apiKey', 'sender', 'otpPattern'],
   smsir: ['apiKey', 'sender', 'otpTemplateId'],
-  melipayamak: ['username', 'password', 'sender', 'otpPattern'],
+  melipayamak: ['username', 'password', 'sender', 'otpTemplate'],
 };
 const FIELD_LABELS: Record<string, string> = {
   sender: 'شماره خط / نام فرستنده', apiKey: 'کلید API', username: 'نام کاربری', password: 'رمز عبور',
   domain: 'دامنه حساب (Magfa)', otpPattern: 'نام/کد الگوی تایید (OTP)', otpTemplateId: 'شناسه الگوی تایید (SMS.ir)',
+  otpTemplate: 'متن پیامک کد تایید (مطابق الگوی تاییدشده اپراتور؛ از {code} برای جای کد استفاده کنید)',
 };
 const SECRET = new Set(['apiKey', 'password']);
 
@@ -90,12 +91,12 @@ function SmsTab() {
   const [f, setF] = useState<Record<string, string>>({});
   const [testPhone, setTestPhone] = useState('');
   const [msg, setMsg] = useState<{ t: 'ok' | 'err'; m: string } | null>(null);
-  const load = () => client.get<any>('/tenant/sms-config', 'org').then((d) => { setC(d); setF({ driver: d.driver || 'console', sender: d.sender || '', username: d.username || '', domain: d.domain || '', otpPattern: d.otpPattern || '', otpTemplateId: d.otpTemplateId || '', notifyPhone: d.notifyPhone || '', apiKey: '', password: '' }); }).catch((e) => setMsg({ t: 'err', m: e.message }));
+  const load = () => client.get<any>('/tenant/sms-config', 'org').then((d) => { setC(d); setF({ driver: d.driver || 'console', sender: d.sender || '', username: d.username || '', domain: d.domain || '', otpPattern: d.otpPattern || '', otpTemplateId: d.otpTemplateId || '', otpTemplate: d.otpTemplate || '', notifyPhone: d.notifyPhone || '', apiKey: '', password: '' }); }).catch((e) => setMsg({ t: 'err', m: e.message }));
   useEffect(() => { load(); }, []);
   const save = async () => {
     setMsg(null);
     try {
-      const body: Record<string, string> = { driver: f.driver, sender: f.sender, notifyPhone: f.notifyPhone, username: f.username, domain: f.domain, otpPattern: f.otpPattern, otpTemplateId: f.otpTemplateId };
+      const body: Record<string, string> = { driver: f.driver, sender: f.sender, notifyPhone: f.notifyPhone, username: f.username, domain: f.domain, otpPattern: f.otpPattern, otpTemplateId: f.otpTemplateId, otpTemplate: f.otpTemplate };
       if (f.apiKey) body.apiKey = f.apiKey;     // blank = keep stored secret
       if (f.password) body.password = f.password;
       await client.put('/tenant/sms-config', body, 'org'); setMsg({ t: 'ok', m: 'ذخیره شد' }); load();
@@ -138,7 +139,11 @@ function SmsTab() {
       </Field>
       {fields.map((k) => (
         <Field key={k} label={FIELD_LABELS[k] + (SECRET.has(k) && (k === 'apiKey' ? c.hasApiKey : c.hasPassword) ? ' (تنظیم شده — برای تغییر وارد کنید)' : '')}>
-          <input className="input" type={SECRET.has(k) ? 'password' : 'text'} value={f[k] || ''} onChange={(e) => setF({ ...f, [k]: e.target.value })} placeholder={SECRET.has(k) ? '••••••••' : ''} style={{ direction: 'ltr', textAlign: 'left' }} />
+          {k === 'otpTemplate' ? (
+            <textarea className="input" rows={3} value={f[k] || ''} onChange={(e) => setF({ ...f, [k]: e.target.value })} placeholder={'کد تایید دامون: {code}\nاعتبار: ۵ دقیقه\nکارگزاری رسمی بیمه آتیه اندیشان دامون'} />
+          ) : (
+            <input className="input" type={SECRET.has(k) ? 'password' : 'text'} value={f[k] || ''} onChange={(e) => setF({ ...f, [k]: e.target.value })} placeholder={SECRET.has(k) ? '••••••••' : ''} style={{ direction: 'ltr', textAlign: 'left' }} />
+          )}
         </Field>
       ))}
       <Field label="شماره موبایل مدیر برای اطلاع‌رسانی (اختیاری)"><input className="input" value={f.notifyPhone} onChange={(e) => setF({ ...f, notifyPhone: e.target.value })} placeholder="۰۹۱۲…" style={{ direction: 'ltr', textAlign: 'right' }} /></Field>

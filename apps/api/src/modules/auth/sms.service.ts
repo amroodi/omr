@@ -33,10 +33,20 @@ export interface TenantSmsConfig {
   domain?: string;
   otpPattern?: string;
   otpTemplateId?: string;
+  // Free-text OTP body with a {code} placeholder — must match the operator-approved text for
+  // free-text lines (Magfa/Melipayamak), otherwise the operator blocks it (e.g. Magfa status 22).
+  otpTemplate?: string;
   notifyPhone?: string; // where the org wants admin notifications (e.g. new signups) sent
 }
 
-const OTP_MESSAGE = (code: string) => `کد تایید سامانه بیمس: ${code}\nاین کد را در اختیار دیگران قرار ندهید.`;
+const DEFAULT_OTP_MESSAGE = (code: string) => `کد تایید سامانه بیمس: ${code}\nاین کد را در اختیار دیگران قرار ندهید.`;
+
+/** Build the OTP body: use the org's approved template (replacing {code}) when set, else default. */
+function otpMessageFor(tmpl: string | undefined): (code: string) => string {
+  const t = tmpl?.trim();
+  if (!t) return DEFAULT_OTP_MESSAGE;
+  return (code: string) => (/\{code\}/i.test(t) ? t.replace(/\{code\}/gi, code) : `${t}\n${code}`);
+}
 
 /**
  * SMS facade. Resolves the provider PER TENANT from the tenant's encrypted smsConfig (set in the
@@ -137,6 +147,7 @@ export class SmsService {
         domain: this.config.get<string>('SMS_DOMAIN', ''),
         otpPattern: this.config.get<string>('SMS_OTP_PATTERN', ''),
         otpTemplateId: this.config.get<string>('SMS_OTP_TEMPLATE_ID', ''),
+        otpTemplate: this.config.get<string>('SMS_OTP_TEMPLATE', ''),
       };
       const d = this.buildDriver(cfg);
       this.logger.log(`Default SMS provider (env): ${d.name}`);
@@ -156,7 +167,7 @@ export class SmsService {
       domain: cfg.domain ?? '',
       otpPattern: cfg.otpPattern ?? '',
       otpTemplateId: cfg.otpTemplateId ?? '',
-      otpMessage: OTP_MESSAGE,
+      otpMessage: otpMessageFor(cfg.otpTemplate),
     };
   }
 }

@@ -153,17 +153,17 @@ function PlatformSms() {
   const [testPhone, setTestPhone] = useState('');
   const [msg, setMsg] = useState<{ t: 'ok' | 'err'; m: string } | null>(null);
   const DLABEL: Record<string, string> = { console: 'کنسول (آزمایشی)', magfa: 'مگفا', kavenegar: 'کاوه‌نگار', ghasedak: 'قاصدک', smsir: 'SMS.ir', melipayamak: 'ملی‌پیامک' };
-  const DFIELDS: Record<string, string[]> = { console: [], magfa: ['username', 'password', 'domain', 'sender'], kavenegar: ['apiKey', 'sender', 'otpPattern'], ghasedak: ['apiKey', 'sender', 'otpPattern'], smsir: ['apiKey', 'sender', 'otpTemplateId'], melipayamak: ['username', 'password', 'sender', 'otpPattern'] };
-  const FLABEL: Record<string, string> = { sender: 'خط/فرستنده', apiKey: 'کلید API', username: 'نام کاربری', password: 'رمز', domain: 'دامنه', otpPattern: 'الگوی OTP', otpTemplateId: 'شناسه الگو' };
+  const DFIELDS: Record<string, string[]> = { console: ['otpTemplate'], magfa: ['username', 'password', 'domain', 'sender', 'otpTemplate'], kavenegar: ['apiKey', 'sender', 'otpPattern'], ghasedak: ['apiKey', 'sender', 'otpPattern'], smsir: ['apiKey', 'sender', 'otpTemplateId'], melipayamak: ['username', 'password', 'sender', 'otpTemplate'] };
+  const FLABEL: Record<string, string> = { sender: 'خط/فرستنده', apiKey: 'کلید API', username: 'نام کاربری', password: 'رمز', domain: 'دامنه', otpPattern: 'الگوی OTP', otpTemplateId: 'شناسه الگو', otpTemplate: 'متن کد تایید (از {code} استفاده کنید)' };
   const SECRET = new Set(['apiKey', 'password']);
   const load = () => {
-    client.get<any>('/platform/sms-config', 'super').then((d) => { setC(d); setF({ driver: d.driver || 'magfa', sender: d.sender || '', username: d.username || '', domain: d.domain || '', otpPattern: d.otpPattern || '', otpTemplateId: d.otpTemplateId || '', apiKey: '', password: '' }); }).catch((e) => setMsg({ t: 'err', m: e.message }));
+    client.get<any>('/platform/sms-config', 'super').then((d) => { setC(d); setF({ driver: d.driver || 'magfa', sender: d.sender || '', username: d.username || '', domain: d.domain || '', otpPattern: d.otpPattern || '', otpTemplateId: d.otpTemplateId || '', otpTemplate: d.otpTemplate || '', apiKey: '', password: '' }); }).catch((e) => setMsg({ t: 'err', m: e.message }));
     client.get<any[]>('/platform/sms-requests', 'super').then(setReqs).catch(() => {});
   };
   useEffect(() => { load(); }, []);
   const save = async () => {
     setMsg(null);
-    try { const b: Record<string, string> = { driver: f.driver, sender: f.sender, username: f.username, domain: f.domain, otpPattern: f.otpPattern, otpTemplateId: f.otpTemplateId }; if (f.apiKey) b.apiKey = f.apiKey; if (f.password) b.password = f.password; await client.put('/platform/sms-config', b, 'super'); setMsg({ t: 'ok', m: 'ذخیره شد' }); load(); } catch (e: any) { setMsg({ t: 'err', m: e.message }); }
+    try { const b: Record<string, string> = { driver: f.driver, sender: f.sender, username: f.username, domain: f.domain, otpPattern: f.otpPattern, otpTemplateId: f.otpTemplateId, otpTemplate: f.otpTemplate }; if (f.apiKey) b.apiKey = f.apiKey; if (f.password) b.password = f.password; await client.put('/platform/sms-config', b, 'super'); setMsg({ t: 'ok', m: 'ذخیره شد' }); load(); } catch (e: any) { setMsg({ t: 'err', m: e.message }); }
   };
   const test = async () => { setMsg(null); try { await client.post('/platform/sms-config/test', { phone: testPhone }, 'super'); setMsg({ t: 'ok', m: 'پیام آزمایشی ارسال شد' }); } catch (e: any) { setMsg({ t: 'err', m: e.message }); } };
   const setPlatform = async (id: string, enabled: boolean) => { try { await client.post(`/platform/tenants/${id}/sms-platform`, { enabled }, 'super'); load(); } catch (e: any) { setMsg({ t: 'err', m: e.message }); } };
@@ -178,7 +178,11 @@ function PlatformSms() {
         <Field label="ارائه‌دهنده"><select className="input" value={f.driver} onChange={(e) => setF({ ...f, driver: e.target.value })}>{(c.drivers || []).map((d: string) => <option key={d} value={d}>{DLABEL[d] || d}</option>)}</select></Field>
         {fields.map((k) => (
           <Field key={k} label={FLABEL[k] + (SECRET.has(k) && (k === 'apiKey' ? c.hasApiKey : c.hasPassword) ? ' (تنظیم‌شده)' : '')}>
-            <input className="input" type={SECRET.has(k) ? 'password' : 'text'} value={f[k] || ''} onChange={(e) => setF({ ...f, [k]: e.target.value })} placeholder={SECRET.has(k) ? '••••••' : ''} style={{ direction: 'ltr', textAlign: 'left' }} />
+            {k === 'otpTemplate' ? (
+              <textarea className="input" rows={3} value={f[k] || ''} onChange={(e) => setF({ ...f, [k]: e.target.value })} placeholder={'کد تایید دامون: {code}\nاعتبار: ۵ دقیقه\nکارگزاری رسمی بیمه آتیه اندیشان دامون'} />
+            ) : (
+              <input className="input" type={SECRET.has(k) ? 'password' : 'text'} value={f[k] || ''} onChange={(e) => setF({ ...f, [k]: e.target.value })} placeholder={SECRET.has(k) ? '••••••' : ''} style={{ direction: 'ltr', textAlign: 'left' }} />
+            )}
           </Field>
         ))}
       </div>

@@ -42,6 +42,7 @@ export class SmsConfigDto {
   @IsOptional() @IsString() @Length(0, 120) domain?: string;
   @IsOptional() @IsString() @Length(0, 120) otpPattern?: string;
   @IsOptional() @IsString() @Length(0, 60) otpTemplateId?: string;
+  @IsOptional() @IsString() @Length(0, 400) otpTemplate?: string;
   @IsOptional() @IsString() @Length(0, 20) notifyPhone?: string;
 }
 
