@@ -168,7 +168,7 @@ journalctl -u omr-api -f
 Let the `omr` user restart the services without a password (used by `deploy.sh`):
 
 ```bash
-echo 'omr ALL=(root) NOPASSWD: /usr/bin/systemctl restart omr-api omr-web, /usr/bin/systemctl start omr-api omr-web, /usr/bin/systemctl stop omr-api omr-web' \
+echo 'omr ALL=(root) NOPASSWD: /usr/bin/systemctl restart omr-api, /usr/bin/systemctl restart omr-web, /usr/bin/systemctl start omr-api, /usr/bin/systemctl start omr-web, /usr/bin/systemctl stop omr-api, /usr/bin/systemctl stop omr-web' \
   | sudo tee /etc/sudoers.d/omr-deploy
 sudo chmod 440 /etc/sudoers.d/omr-deploy
 ```
