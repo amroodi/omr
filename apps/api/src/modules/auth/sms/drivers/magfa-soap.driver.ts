@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { BasicAuthSecurity, createClientAsync } from 'soap';
-import { SmsConfig, SmsDriver, toLocalMobile } from '../sms-driver';
+import { SmsConfig, SmsDriver, toIntlMobile } from '../sms-driver';
 import { MAGFA_STATUS } from './magfa.driver';
 
 /**
@@ -45,16 +45,18 @@ export class MagfaSoapDriver implements SmsDriver {
       throw new Error(`اتصال به وب‌سرویس SOAP مگفا ناموفق بود: ${String((e as Error).message).slice(0, 160)}`);
     }
 
-    // Magfa SOAP `send` takes 7 array params; arrays are typed as <item>. The last four are left
-    // empty so Magfa applies defaults (auto encoding — required for Persian text).
+    // Magfa SOAP `send` — 7 array parts in this exact order (names/order read from the live WSDL):
+    // messages, senders, recipients, uids, encodings, udhs, priorities. Each wrapped as <item>.
+    // The optional four are empty so Magfa auto-detects encoding (required for Persian). Recipients
+    // must be in 98… form (no "+", no leading 0).
     const args = {
-      senders: { item: [this.cfg.sender] },
-      recipients: { item: [toLocalMobile(toPhone)] },
       messages: { item: [message] },
+      senders: { item: [this.cfg.sender] },
+      recipients: { item: [toIntlMobile(toPhone)] },
+      uids: { item: [] as number[] },
       encodings: { item: [] as number[] },
       udhs: { item: [] as string[] },
       priorities: { item: [] as number[] },
-      checkingMessageIds: { item: [] as number[] },
     };
     let result: any;
     try {
