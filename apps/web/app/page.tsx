@@ -252,7 +252,7 @@ function Preview() {
             <span style={{ width: 11, height: 11, borderRadius: 99, background: '#ff5f57' }} />
             <span style={{ width: 11, height: 11, borderRadius: 99, background: '#febc2e' }} />
             <span style={{ width: 11, height: 11, borderRadius: 99, background: '#28c840' }} />
-            <span className="text-xs mr-3" style={{ color: 'var(--muted)' }}>بیمس — پنل سازمان</span>
+            <span className="text-xs mr-3" style={{ color: 'var(--muted)' }}>دامون — پنل سازمان</span>
           </div>
           <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
             <div className="grid" style={{ gridTemplateColumns: '180px 1fr' }}>

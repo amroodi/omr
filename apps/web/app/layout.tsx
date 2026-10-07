@@ -4,7 +4,7 @@ import { ThemeToggle } from './theme-toggle';
 import { BrandMark } from './components/brand';
 
 export const metadata: Metadata = {
-  title: 'بیمس | سامانه هوشمند مدیریت بیمه',
+  title: 'دامون | سامانه هوشمند مدیریت بیمه',
   description: 'سامانه چندسازمانی مدیریت و استعلام امن پرونده‌های بیمه',
   authors: [{ name: 'Milad Amroodi (میلاد امرودی)' }],
   other: { developer: 'Developed by Milad Amroodi (میلاد امرودی)' },
@@ -28,7 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="mx-auto max-w-6xl px-4 h-16 flex items-center gap-4">
             <a href="/" className="flex items-center gap-2.5">
               <BrandMark />
-              <span className="font-extrabold text-lg">بیمس</span>
+              <span className="font-extrabold text-lg">دامون</span>
             </a>
             <nav className="hidden sm:flex gap-1 text-sm mr-auto">
               <a href="/customer/login" className="px-3 py-1.5 rounded-lg hover:bg-[var(--surface-2)] transition">بیمه‌گزار</a>

@@ -39,7 +39,7 @@ export interface TenantSmsConfig {
   notifyPhone?: string; // where the org wants admin notifications (e.g. new signups) sent
 }
 
-const DEFAULT_OTP_MESSAGE = (code: string) => `کد تایید سامانه بیمس: ${code}\nاین کد را در اختیار دیگران قرار ندهید.`;
+const DEFAULT_OTP_MESSAGE = (code: string) => `کد تایید سامانه دامون: ${code}\nاین کد را در اختیار دیگران قرار ندهید.`;
 
 /** Build the OTP body: use the org's approved template (replacing {code}) when set, else default. */
 function otpMessageFor(tmpl: string | undefined): (code: string) => string {

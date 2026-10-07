@@ -52,7 +52,7 @@ export class NotificationsService {
   private async sendSms(input: NotifyInput): Promise<void> {
     const phone = await this.resolvePhone(input);
     if (!phone) return;
-    const msg = `${input.title}\n${input.body}\nسامانه بیمس`;
+    const msg = `${input.title}\n${input.body}\nسامانه دامون`;
     await this.sms.send(phone, msg, input.tenantId);
   }
 
