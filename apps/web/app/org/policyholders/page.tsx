@@ -5,7 +5,7 @@ import { Shell } from '../../components/Shell';
 import { Field } from '../../components/ui';
 import { ORG_NAV } from '../nav';
 
-interface Acc { id: string; fullName: string | null; nationalCodeMasked: string | null; phoneMasked: string | null; signupStatus: string; isActive: boolean; createdAt: string | null; lastLoginAt: string | null }
+interface Acc { id: string; fullName: string | null; nationalCode: string | null; nationalCodeMasked: string | null; phone: string | null; phoneMasked: string | null; canViewPii: boolean; signupStatus: string; isActive: boolean; createdAt: string | null; lastLoginAt: string | null }
 
 const STATUS: Record<string, { label: string; cls: string }> = {
   PENDING: { label: 'در انتظار تایید', cls: 'badge-warning' },
@@ -35,8 +35,12 @@ export default function Policyholders() {
       setMsg({ t: 'ok', m: 'بیمه‌گزار ثبت شد' }); setF({ nationalCode: '', phone: '', fullName: '' }); load();
     } catch (e: any) { setMsg({ t: 'err', m: e.message }); } finally { setBusy(false); }
   };
-  const act = async (id: string, action: 'approve' | 'reject') => {
-    try { await client.post(`/customer/accounts/${id}/${action}`, {}, 'org'); load(); } catch (e: any) { setMsg({ t: 'err', m: e.message }); }
+  // Change a بیمه‌گزار's status, with a yes/no confirmation to prevent mis-clicks.
+  const setStatus = async (r: Acc, action: 'approve' | 'reject') => {
+    const name = r.fullName || r.nationalCode || r.nationalCodeMasked || 'این حساب';
+    const verb = action === 'approve' ? 'تایید/فعال‌سازی' : (r.signupStatus === 'ACTIVE' ? 'تعلیق (غیرفعال‌سازی)' : 'رد');
+    if (!window.confirm(`${verb} «${name}»؟`)) return;
+    try { await client.post(`/customer/accounts/${r.id}/${action}`, {}, 'org'); setMsg({ t: 'ok', m: 'وضعیت تغییر کرد' }); load(); } catch (e: any) { setMsg({ t: 'err', m: e.message }); }
   };
 
   return (
@@ -66,19 +70,16 @@ export default function Policyholders() {
                   rows.map((r) => (
                     <tr key={r.id}>
                       <td className="font-semibold">{r.fullName || '—'}</td>
-                      <td style={{ direction: 'ltr', textAlign: 'right' }}>{r.nationalCodeMasked}</td>
-                      <td style={{ direction: 'ltr', textAlign: 'right' }}>{r.phoneMasked || '—'}</td>
+                      <td style={{ direction: 'ltr', textAlign: 'right' }}>{r.nationalCode || r.nationalCodeMasked}</td>
+                      <td style={{ direction: 'ltr', textAlign: 'right' }}>{r.phone || r.phoneMasked || '—'}</td>
                       <td><span className={`badge ${STATUS[r.signupStatus]?.cls || 'badge-neutral'}`}>{STATUS[r.signupStatus]?.label || r.signupStatus}</span></td>
                       <td className="text-xs">{r.createdAt || '—'}</td>
                       <td>
-                        {r.signupStatus === 'PENDING' ? (
-                          <span className="flex gap-2">
-                            <button onClick={() => act(r.id, 'approve')} className="text-xs" style={{ color: 'var(--success)' }}>تایید</button>
-                            <button onClick={() => act(r.id, 'reject')} className="text-xs" style={{ color: 'var(--danger)' }}>رد</button>
-                          </span>
-                        ) : r.signupStatus === 'REJECTED' ? (
-                          <button onClick={() => act(r.id, 'approve')} className="text-xs" style={{ color: 'var(--success)' }}>تایید</button>
-                        ) : <span style={{ color: 'var(--muted)' }} className="text-xs">—</span>}
+                        <span className="flex gap-2">
+                          {r.signupStatus !== 'ACTIVE' && <button onClick={() => setStatus(r, 'approve')} className="text-xs" style={{ color: 'var(--success)' }}>{r.signupStatus === 'PENDING' ? 'تایید' : 'فعال‌سازی'}</button>}
+                          {r.signupStatus === 'PENDING' && <button onClick={() => setStatus(r, 'reject')} className="text-xs" style={{ color: 'var(--danger)' }}>رد</button>}
+                          {r.signupStatus === 'ACTIVE' && <button onClick={() => setStatus(r, 'reject')} className="text-xs" style={{ color: 'var(--danger)' }}>تعلیق</button>}
+                        </span>
                       </td>
                     </tr>
                   ))}

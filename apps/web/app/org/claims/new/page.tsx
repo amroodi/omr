@@ -5,6 +5,7 @@ import { toGregorian } from 'jalaali-js';
 import { client } from '../../../../lib/client';
 import { Shell } from '../../../components/Shell';
 import { CLAIM_TYPE_LABELS, ErrorBox, Field } from '../../../components/ui';
+import { JalaliDatePicker } from '../../../components/JalaliDatePicker';
 import { ORG_NAV } from '../../nav';
 
 const toAscii = (s: string) => s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
@@ -96,7 +97,7 @@ export default function NewClaim() {
             {Object.entries(CLAIM_TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
         </Field>
-        <Field label="تاریخ وقوع (شمسی)"><input className="input" value={f.eventDate} onChange={(e) => setF({ ...f, eventDate: e.target.value })} placeholder="۱۴۰۵/۰۷/۰۱" style={{ direction: 'ltr', textAlign: 'right' }} /></Field>
+        <Field label="تاریخ وقوع (شمسی)"><JalaliDatePicker value={f.eventDate} onChange={(v) => setF({ ...f, eventDate: v })} /></Field>
         <Field label="نام بیمه‌شده (متوفی)"><input className="input" value={f.deceasedFullName} onChange={(e) => setF({ ...f, deceasedFullName: e.target.value })} /></Field>
         <Field label="کد ملی بیمه‌شده"><input className="input" value={f.deceasedNationalCode} onChange={(e) => setF({ ...f, deceasedNationalCode: e.target.value })} inputMode="numeric" /></Field>
         <Field label="مبلغ خسارت (ریال)"><input className="input" value={f.claimedAmount} onChange={(e) => setF({ ...f, claimedAmount: e.target.value })} inputMode="numeric" /></Field>

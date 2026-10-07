@@ -133,6 +133,8 @@ export class CustomerService {
   }
 
   async listAccounts(status?: CustomerSignupStatus) {
+    // Full National ID / phone are shown only to org users holding view:pii; otherwise masked.
+    const canPii = (getContext()?.permissions ?? []).includes('view:pii');
     const rows = await this.prisma.scoped.customerAccount.findMany({
       where: status ? { signupStatus: status } : {},
       orderBy: { createdAt: 'desc' },
@@ -140,11 +142,15 @@ export class CustomerService {
     });
     return rows.map((r) => {
       const nid = this.crypto.decrypt(r.nationalCode) ?? '';
+      const phone = r.phone ? (this.crypto.decrypt(r.phone) ?? '') : '';
       return {
         id: r.id,
         fullName: r.fullName ? this.crypto.decrypt(r.fullName) : null,
+        nationalCode: canPii ? nid : null,
         nationalCodeMasked: nid ? `••••••${nid.slice(-4)}` : null,
-        phoneMasked: r.phone ? `••••${(this.crypto.decrypt(r.phone) ?? '').slice(-4)}` : null,
+        phone: canPii ? phone : null,
+        phoneMasked: phone ? `••••${phone.slice(-4)}` : null,
+        canViewPii: canPii,
         signupStatus: r.signupStatus,
         isActive: r.isActive,
         createdAt: toJalali(r.createdAt),
