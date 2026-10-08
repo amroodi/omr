@@ -15,7 +15,6 @@ export default function Landing() {
 
       <Hero />
       <TrustStrip />
-      <Features />
       <HowItWorks />
       <Preview />
       <CTA />
@@ -36,15 +35,8 @@ function Hero() {
         </Reveal>
         <Reveal delay={80}>
           <h1 className="display text-4xl md:text-5xl lg:text-6xl">
-            مدیریت هوشمند بیمه،
-            <br /> با امنیت <span className="gradient-text">بی‌نظیر</span>
+            مدیریت هوشمند بیمه <span className="gradient-text">عمر و حوادث</span>
           </h1>
-        </Reveal>
-        <Reveal delay={160}>
-          <p className="mt-5 text-lg leading-8 max-w-xl" style={{ color: 'var(--muted)' }}>
-            استعلام، پیگیری و صدور پرونده‌های بیمه در یک سامانه یکپارچه. رمزنگاری سطح بانکی،
-            دسترسی نقش‌محور و گزارش‌گیری حرفه‌ای — آماده ارائه به کارگزاری‌های سراسر کشور.
-          </p>
         </Reveal>
         <Reveal delay={240}>
           <div className="flex flex-wrap gap-3 mt-7">
@@ -55,15 +47,6 @@ function Hero() {
             <Link href="/customer/login" className="btn btn-glass" style={{ padding: '0.8rem 1.5rem', fontSize: '0.95rem' }}>
               پورتال بیمه‌گزار
             </Link>
-          </div>
-        </Reveal>
-        <Reveal delay={320}>
-          <div className="flex flex-wrap gap-x-6 gap-y-2 mt-8 text-sm" style={{ color: 'var(--muted)' }}>
-            {['رمزنگاری AES-256', 'احراز هویت پیامکی', 'تقویم شمسی', 'چند-مستأجری کامل'].map((t) => (
-              <span key={t} className="flex items-center gap-1.5">
-                <span style={{ color: 'var(--brand)' }}><Icon path="M20 6L9 17l-5-5" /></span>{t}
-              </span>
-            ))}
           </div>
         </Reveal>
       </div>
@@ -139,7 +122,7 @@ function InquiryCard() {
             <StatusBadge status={result.status} />
           </div>
           {(result.kind === 'claim'
-            ? [['بیمه‌شده (متوفی)', result.deceasedName], ['تاریخ وقوع', result.eventDate], ['تاریخ ثبت', result.createdAt], ['توضیحات', result.description]]
+            ? [['بیمه‌گر', result.insurerName], ['بیمه‌شده (متوفی)', result.deceasedName], ['تاریخ وقوع', result.eventDate], ['تاریخ ثبت', result.createdAt], ['توضیحات', result.description]]
             : [['نام', result.insured?.fullName], ['کد ملی', result.insured?.nationalCodeMasked], ['بیمه‌نامه', result.policy ? `${result.policy.policyNumber} — ${result.policy.carrier}` : null], ['تاریخ پرداخت', result.workflow?.paidAt]]
           ).map(([l, v]) => v ? (
             <div key={l as string} className="flex justify-between py-2 border-b text-sm" style={{ borderColor: 'var(--border)' }}>
@@ -172,40 +155,6 @@ function TrustStrip() {
         ))}
       </div>
     </Reveal>
-  );
-}
-
-/* ─────────────────────────────── Features ─────────────────────────────── */
-function Features() {
-  const feats = [
-    ['M12 2l7 3v6c0 4.2-2.9 7.7-7 9-4.1-1.3-7-4.8-7-9V5l7-3z', 'امنیت سطح بانکی', 'رمزنگاری میدانی AES-256، ایندکس کور برای جستجو، و حذف کامل آسیب‌پذیری افشای اطلاعات.'],
-    ['M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M9 13h.01', 'معماری چند-مستأجری', 'هر سازمان با داده، برند و کاربران کاملاً مجزا. آماده ارائه به‌صورت سرویس به کارگزاری‌ها.'],
-    ['M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8z', 'کنترل دسترسی دقیق', 'نقش‌های سفارشی با مجوزهای تفکیک‌شده، شعبه‌محور و ضدارتقای دسترسی.'],
-    ['M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM14 2v6h6M9 15l2 2 4-4', 'ارزیابی اصالت مدارک', 'صف بررسی اسناد، تایید/رد اصالت و ثبت کامل تصمیمات کارشناسان.'],
-    ['M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3', 'خروجی و ورود دسته‌ای', 'خروجی Excel و PDF با برند سازمان، و ورود انبوه بیمه‌گزاران با اعتبارسنجی پیش از ثبت.'],
-    ['M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z', 'تقویم شمسی یکپارچه', 'نمایش و ثبت همه تاریخ‌ها به‌صورت شمسی در سراسر سامانه، فیلترها و گزارش‌ها.'],
-  ];
-  return (
-    <section className="py-16">
-      <Reveal>
-        <div className="text-center max-w-2xl mx-auto mb-10">
-          <span className="badge badge-neutral mb-3">امکانات</span>
-          <h2 className="display text-3xl md:text-4xl">هرآنچه یک پلتفرم بیمه مدرن نیاز دارد</h2>
-          <p className="mt-3" style={{ color: 'var(--muted)' }}>از امنیت تا گزارش‌گیری، همه در یک تجربه یکپارچه و حرفه‌ای.</p>
-        </div>
-      </Reveal>
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {feats.map(([icon, title, desc], i) => (
-          <Reveal key={title} delay={i * 70}>
-            <div className="glass card-hover h-full p-6" style={{ borderRadius: 18 }}>
-              <span className="feature-icon mb-4"><Icon path={icon} /></span>
-              <h3 className="font-bold text-lg mb-1.5">{title}</h3>
-              <p className="text-sm leading-6" style={{ color: 'var(--muted)' }}>{desc}</p>
-            </div>
-          </Reveal>
-        ))}
-      </div>
-    </section>
   );
 }
 

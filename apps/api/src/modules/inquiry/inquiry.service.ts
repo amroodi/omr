@@ -232,6 +232,10 @@ export class InquiryService {
     });
     if (!c) throw new NotFoundException('پرونده یافت نشد.');
 
+    const insurer = await this.prisma
+      .unscoped()
+      .tenant.findUnique({ where: { id: c.insurerTenantId }, select: { name: true } });
+
     await this.audit.record({ action: AuditAction.VIEW, targetType: 'Claim', targetId: claimId, actorType: 'INSURED' });
 
     const dec = (v: string | null) => (v ? this.crypto.decrypt(v) : null);
@@ -240,6 +244,7 @@ export class InquiryService {
       claimNumber: c.claimNumber,
       status: c.status,
       claimType: c.claimType,
+      insurerName: insurer?.name ?? null,
       deceasedName: dec(c.deceasedFullName),
       eventDate: c.eventDate ? toJalali(c.eventDate, false) : null,
       description: c.description ?? null,

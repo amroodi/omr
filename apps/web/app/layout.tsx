@@ -23,7 +23,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <AppHeader />
         <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
         <footer className="mx-auto max-w-6xl px-4 py-8 text-center text-xs" style={{ color: 'var(--muted)' }}>
-          توسعه توسط میلاد امرودی — Developed by Milad Amroodi · کارگزاری آتیه اندیشان دامون
+          Developed by Milad Amroodi · کارگزاری آتیه اندیشان دامون
         </footer>
       </body>
     </html>
