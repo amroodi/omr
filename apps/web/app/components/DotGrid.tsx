@@ -6,7 +6,7 @@ import { useEffect, useRef } from 'react';
  * cursor touches them and ease back in as it moves away. Pure canvas, fixed & non-interactive,
  * DPR-aware, theme-aware (reads --text), and respects prefers-reduced-motion (static grid then).
  */
-export function DotGrid({ gap = 28, radius = 180, dotSize = 1.7, baseAlpha = 0.38 }: {
+export function DotGrid({ gap = 26, radius = 260, dotSize = 1.3, baseAlpha = 0.18 }: {
   gap?: number; radius?: number; dotSize?: number; baseAlpha?: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -65,8 +65,9 @@ export function DotGrid({ gap = 28, radius = 180, dotSize = 1.7, baseAlpha = 0.3
           const dx = x - mouse.x;
           const dy = y - mouse.y;
           const d2 = dx * dx + dy * dy;
-          // target opacity: 0 right at the cursor, ramping back to 1 at the hover radius
-          const target = d2 < r2 ? Math.sqrt(d2) / radius : 1;
+          // target opacity: fully cleared over most of the radius, ramping back to 1 only near its
+          // edge (the >1 exponent keeps a large inner area strongly faded).
+          const target = d2 < r2 ? Math.pow(Math.sqrt(d2) / radius, 2.4) : 1;
           const i = gy * cols + gx;
           op[i] += (target - op[i]) * 0.2; // ease
           const o = op[i];
