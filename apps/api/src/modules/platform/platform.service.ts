@@ -31,6 +31,7 @@ export class PlatformService {
 
   async getSmsConfig() {
     const cfg = await this.load();
+    const row = await this.db().findUnique({ where: { id: PLATFORM_ID }, select: { inquiryUsePlatform: true } });
     return {
       drivers: SMS_DRIVERS,
       configured: !!cfg,
@@ -43,7 +44,24 @@ export class PlatformService {
       otpTemplate: cfg?.otpTemplate ?? '',
       hasApiKey: !!cfg?.apiKey,
       hasPassword: !!cfg?.password,
+      inquiryUsePlatform: row?.inquiryUsePlatform ?? true,
     };
+  }
+
+  /** Whether quick-inquiry OTPs should use the platform gateway (default true). */
+  async getInquiryUsePlatform(): Promise<boolean> {
+    const row = await this.db().findUnique({ where: { id: PLATFORM_ID }, select: { inquiryUsePlatform: true } });
+    return row?.inquiryUsePlatform ?? true;
+  }
+
+  async setInquiryUsePlatform(enabled: boolean) {
+    await this.db().upsert({
+      where: { id: PLATFORM_ID },
+      update: { inquiryUsePlatform: enabled },
+      create: { id: PLATFORM_ID, inquiryUsePlatform: enabled },
+    });
+    await this.audit.record({ action: AuditAction.EDIT, actorType: 'SUPER_ADMIN', targetType: 'PlatformInquirySms', metadata: { inquiryUsePlatform: enabled } });
+    return { ok: true, inquiryUsePlatform: enabled };
   }
 
   async setSmsConfig(dto: Partial<TenantSmsConfig> & { driver: string }) {

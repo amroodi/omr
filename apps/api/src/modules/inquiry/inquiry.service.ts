@@ -96,8 +96,17 @@ export class InquiryService {
           expiresAt: new Date(Date.now() + ttl * 1000),
         },
       });
+      // Quick-inquiry is a Damuon-branded public service: by default its OTP goes through the
+      // platform gateway (Damuon's Magfa), not each org's own provider. Super-admin can toggle this.
       try {
-        await this.sms.sendOtp(dto.phone, code, tenantId);
+        const pc = await this.prisma
+          .unscoped()
+          .platformConfig.findUnique({ where: { id: 'platform' }, select: { inquiryUsePlatform: true } });
+        if (pc?.inquiryUsePlatform ?? true) {
+          await this.sms.sendOtpViaPlatform(dto.phone, code);
+        } else {
+          await this.sms.sendOtp(dto.phone, code, tenantId);
+        }
       } catch (e) {
         this.logger.error(`Inquiry OTP send failed (tenant ${tenantId}): ${String(e)}`);
       }

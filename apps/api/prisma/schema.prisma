@@ -91,7 +91,10 @@ model ApiKey {
 model PlatformConfig {
   id        String   @id @default("platform")
   smsConfig String? // ENCRYPTED json: the platform SMS provider + credentials
-  updatedAt DateTime @updatedAt @default(now())
+  // Quick-inquiry (استعلام سریع) OTPs go through the platform gateway (Damuon's Magfa) rather than
+  // each org's own SMS provider. Toggled by the super-admin.
+  inquiryUsePlatform Boolean  @default(true)
+  updatedAt          DateTime @updatedAt @default(now())
 }
 
 // Which insurers a brokerage (معرف/BROKER) works with. A broker may file claims only against its
@@ -635,6 +638,15 @@ model Claim {
   policyNumber             String?
   claimedAmount            Decimal @db.Decimal(18, 2)
   description              String? // free-text details from the filer (بیمه‌گزار adds context)
+
+  // ── Historical import ── settled records migrated in bulk from a legacy system.
+  // These are already-final claims kept for reference/follow-up; they skip the routing engine.
+  imported        Boolean @default(false)
+  legacyStatus    String? // raw وضعیت پرونده text from the source system
+  beneficiaryType String? // نوع ذینفع (ذینفع قانونی / وراث قانونی)
+  employerName    String? // نام شرکت محل فعالیت
+  causeOfDeath    String? // علت فوت (free text; more specific than claimType)
+  legacyData      Json? // full source row (PII columns stripped) for later follow-up
 
   status    ClaimStatus @default(DRAFT)
   createdAt DateTime    @default(now())

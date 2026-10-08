@@ -39,4 +39,10 @@ export class PlatformController {
   setTenantPlatformSms(@Param('id') id: string, @Body() dto: SetPlatformSmsDto) {
     return this.platform.setTenantPlatformSms(id, !!dto.enabled);
   }
+
+  /** Toggle whether quick-inquiry (استعلام سریع) OTPs use the platform gateway. */
+  @Put('inquiry-sms')
+  setInquiryUsePlatform(@Body() dto: SetPlatformSmsDto) {
+    return this.platform.setInquiryUsePlatform(!!dto.enabled);
+  }
 }

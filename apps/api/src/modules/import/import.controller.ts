@@ -1,6 +1,7 @@
 import {
   Controller,
   Post,
+  Query,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
@@ -23,11 +24,11 @@ export class ImportController {
     return this.importer.preview(file);
   }
 
-  /** Upload CSV/XLSX and commit valid rows. */
+  /** Upload CSV/XLSX and commit valid rows (settled rows → claims, the rest → insured parties). */
   @Permissions(PERMISSIONS.IMPORT_BATCH)
   @Post('commit')
   @UseInterceptors(FileInterceptor('file', { limits }))
-  commit(@UploadedFile() file: Express.Multer.File) {
-    return this.importer.commit(file);
+  commit(@UploadedFile() file: Express.Multer.File, @Query('insurerTenantId') insurerTenantId?: string) {
+    return this.importer.commit(file, insurerTenantId);
   }
 }

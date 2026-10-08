@@ -22,6 +22,8 @@ export default function UsersRoles() {
   const [nu, setNu] = useState({ username: '', displayName: '', password: '', roleId: '' });
   const [userMsg, setUserMsg] = useState<{ t: 'ok' | 'err'; m: string } | null>(null);
   const [userBusy, setUserBusy] = useState(false);
+  const [confirmDel, setConfirmDel] = useState<string | null>(null);
+  const [delBusy, setDelBusy] = useState(false);
 
   const load = async () => {
     try {
@@ -62,6 +64,12 @@ export default function UsersRoles() {
       setUserMsg({ t: 'ok', m: 'کاربر با موفقیت ساخته شد.' });
       load();
     } catch (e: any) { setUserMsg({ t: 'err', m: e.message }); } finally { setUserBusy(false); }
+  };
+
+  const removeUser = async (id: string) => {
+    setDelBusy(true); setError('');
+    try { await client.del(`/users/${id}`, 'org'); setConfirmDel(null); await load(); }
+    catch (e: any) { setError(e.message); } finally { setDelBusy(false); }
   };
 
   const toggle = (p: string) => { const s = new Set(rolePerms); s.has(p) ? s.delete(p) : s.add(p); setRolePerms(s); };
@@ -105,11 +113,20 @@ export default function UsersRoles() {
           <h2 className="font-bold">کاربران</h2>
           <div className="card divide-y" style={{ borderColor: 'var(--border)' }}>
             {users.map((u) => (
-              <div key={u.id} className="flex justify-between items-center p-3">
+              <div key={u.id} className="flex justify-between items-center p-3 gap-2">
                 <span className="text-sm font-semibold">{u.displayName} <span style={{ color: 'var(--muted)' }} className="font-normal">({u.username})</span></span>
                 <span className="text-xs flex items-center gap-2">
                   <span style={{ color: 'var(--muted)' }}>{u.role?.name}</span>
                   {!u.isActive && <span className="badge badge-danger">غیرفعال</span>}
+                  {confirmDel === u.id ? (
+                    <span className="flex items-center gap-1">
+                      <span style={{ color: 'var(--danger)' }}>حذف شود؟</span>
+                      <button onClick={() => removeUser(u.id)} disabled={delBusy} className="btn btn-sm" style={{ background: 'var(--danger)', color: '#fff' }}>بله</button>
+                      <button onClick={() => setConfirmDel(null)} disabled={delBusy} className="btn btn-ghost btn-sm">خیر</button>
+                    </span>
+                  ) : (
+                    <button onClick={() => setConfirmDel(u.id)} className="btn btn-ghost btn-sm" title="حذف کاربر" style={{ color: 'var(--danger)' }}>حذف</button>
+                  )}
                 </span>
               </div>
             ))}

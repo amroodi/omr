@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import { Permissions } from '../../common/rbac/decorators';
 import { PERMISSIONS } from '../../common/rbac/permissions';
 import { CreateUserDto, ResetPasswordDto, UpdateUserDto } from './dto';
@@ -30,5 +30,11 @@ export class UsersController {
   @Post(':id/reset-password')
   resetPassword(@Param('id') id: string, @Body() dto: ResetPasswordDto) {
     return this.users.resetPassword(id, dto.password);
+  }
+
+  @Permissions(PERMISSIONS.USER_MANAGE)
+  @Delete(':id')
+  remove(@Param('id') id: string) {
+    return this.users.remove(id);
   }
 }

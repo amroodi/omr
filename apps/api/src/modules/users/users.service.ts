@@ -84,6 +84,18 @@ export class UsersService {
     return updated;
   }
 
+  async remove(id: string) {
+    const ctx = getContext();
+    if (ctx?.actorId === id) throw new BadRequestException('نمی‌توانید حساب کاربری خودتان را حذف کنید');
+    const user = await this.prisma.scoped.orgUser.findFirst({ where: { id }, select: { id: true, username: true, roleId: true } });
+    if (!user) throw new NotFoundException('کاربر یافت نشد');
+    // No removing a user whose role grants permissions the caller itself lacks (no escalation).
+    await this.assertRoleAssignable(user.roleId);
+    await this.prisma.scoped.orgUser.delete({ where: { id } });
+    await this.audit.record({ action: AuditAction.DELETE, targetType: 'OrgUser', targetId: id, metadata: { username: user.username } });
+    return { ok: true };
+  }
+
   async resetPassword(id: string, password: string) {
     const user = await this.prisma.scoped.orgUser.findFirst({ where: { id } });
     if (!user) throw new NotFoundException('کاربر یافت نشد');
