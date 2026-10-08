@@ -15,6 +15,7 @@ const DOC_BADGE: Record<string, string> = { PENDING: 'badge-warning', VERIFIED: 
 interface Claim {
   id: string; claimNumber: string; status: string; claimType: string; deceasedName: string | null;
   claimedAmount: string; eventDate: string | null; noticeDeadline: string | null; lateNotice: boolean;
+  description?: string | null;
   steps?: { order: number; partyType: string; state: string }[];
   deficiencies?: { items: string[]; resolvedAt: string | null }[];
 }
@@ -97,6 +98,9 @@ export default function ClaimDetail() {
               <Row label="مبلغ خسارت" value={`${Number(claim.claimedAmount).toLocaleString('fa-IR')} ریال`} />
               <Row label="تاریخ وقوع" value={claim.eventDate} />
               <Row label="مهلت اعلام" value={claim.noticeDeadline} />
+              {claim.description && (
+                <div className="mt-2 text-sm whitespace-pre-wrap" style={{ color: 'var(--muted)' }}>توضیحات بیمه‌گزار: {claim.description}</div>
+              )}
             </div>
 
             {/* claim data / workflow fields (OCR-assisted) */}

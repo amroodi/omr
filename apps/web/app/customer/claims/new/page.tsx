@@ -18,7 +18,7 @@ function jalaliToIso(input: string): string | null {
 export default function CustomerNewClaim() {
   const router = useRouter();
   const [insurers, setInsurers] = useState<{ id: string; name: string }[]>([]);
-  const [f, setF] = useState({ insurerTenantId: '', claimType: 'DEATH_ILLNESS', eventDate: '', deceasedFullName: '', deceasedNationalCode: '', claimedAmount: '', policyNumber: '' });
+  const [f, setF] = useState({ insurerTenantId: '', claimType: 'DEATH_ILLNESS', eventDate: '', deceasedFullName: '', deceasedNationalCode: '', description: '' });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -40,10 +40,9 @@ export default function CustomerNewClaim() {
         claimType: f.claimType,
         deceasedFullName: f.deceasedFullName.trim(),
         deceasedNationalCode: toAscii(f.deceasedNationalCode).trim(),
-        claimedAmount: toAscii(f.claimedAmount).replace(/[^\d]/g, ''),
       };
       if (iso) payload.eventDate = iso;
-      if (f.policyNumber.trim()) payload.policyNumber = f.policyNumber.trim();
+      if (f.description.trim()) payload.description = f.description.trim();
       const c = await client.post<{ id: string }>('/customer/claims', payload, 'customer');
       router.push(`/customer/claims/${c.id}`);
     } catch (e: any) { setError(e.message); } finally { setBusy(false); }
@@ -71,9 +70,10 @@ export default function CustomerNewClaim() {
         <Field label="تاریخ وقوع (شمسی)"><JalaliDatePicker value={f.eventDate} onChange={(v) => setF({ ...f, eventDate: v })} placeholder="۱۴۰۵/۰۷/۰۱" /></Field>
         <Field label="نام بیمه‌شده (متوفی)"><input className="input" value={f.deceasedFullName} onChange={(e) => setF({ ...f, deceasedFullName: e.target.value })} /></Field>
         <Field label="کد ملی بیمه‌شده"><input className="input" value={f.deceasedNationalCode} onChange={(e) => setF({ ...f, deceasedNationalCode: e.target.value })} inputMode="numeric" style={{ direction: 'ltr', textAlign: 'right' }} /></Field>
-        <Field label="مبلغ خسارت (ریال)"><input className="input" value={f.claimedAmount} onChange={(e) => setF({ ...f, claimedAmount: e.target.value })} inputMode="numeric" style={{ direction: 'ltr', textAlign: 'right' }} /></Field>
-        <Field label="شماره بیمه‌نامه (اختیاری)"><input className="input" value={f.policyNumber} onChange={(e) => setF({ ...f, policyNumber: e.target.value })} /></Field>
-        <button onClick={submit} disabled={busy || !f.deceasedFullName || !f.deceasedNationalCode || !f.claimedAmount} className="btn btn-primary w-full">{busy ? '…' : 'ثبت پرونده و ادامه به بارگذاری مدارک'}</button>
+        <Field label="توضیحات (اختیاری)">
+          <textarea className="input" rows={4} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} placeholder="هر توضیح یا جزئیاتی که لازم می‌دانید بنویسید؛ مثلاً شرح حادثه، شماره تماس، یا موارد خاص پرونده." />
+        </Field>
+        <button onClick={submit} disabled={busy || !f.deceasedFullName || !f.deceasedNationalCode} className="btn btn-primary w-full">{busy ? '…' : 'ثبت پرونده و ادامه به بارگذاری مدارک'}</button>
       </div>
     </div>
   );

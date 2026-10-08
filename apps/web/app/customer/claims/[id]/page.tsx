@@ -13,6 +13,7 @@ interface Claim {
   claimNumber: string; status: string; claimType: string; deceasedName: string | null;
   insurerTenantId?: string;
   eventDate: string | null; noticeDeadline: string | null; lateNotice: boolean;
+  description?: string | null;
   deficiencies?: { items: string[]; resolvedAt: string | null }[];
 }
 
@@ -60,6 +61,9 @@ export default function CustomerClaim() {
             </div>
             {claim.insurerTenantId && insurers[claim.insurerTenantId] && (
               <div className="text-sm mt-1">بیمه‌گر: <b>{insurers[claim.insurerTenantId]}</b></div>
+            )}
+            {claim.description && (
+              <div className="text-sm mt-2 whitespace-pre-wrap" style={{ color: 'var(--muted)' }}>توضیحات: {claim.description}</div>
             )}
             {claim.lateNotice && <div className="alert-error mt-3">⚠ اعلام خسارت خارج از مهلت مقرر بوده است (مهلت: {claim.noticeDeadline}).</div>}
           </div>

@@ -1,5 +1,5 @@
 import { ClaimType } from '@prisma/client';
-import { IsEnum, IsISO8601, IsNumberString, IsOptional, IsString, IsUUID, Length, Matches } from 'class-validator';
+import { IsEnum, IsISO8601, IsOptional, IsString, IsUUID, Length, Matches } from 'class-validator';
 
 export class CustomerRequestOtpDto {
   @IsString()
@@ -63,11 +63,9 @@ export class CustomerFileClaimDto {
   @Length(8, 12)
   deceasedNationalCode!: string;
 
-  @IsNumberString()
-  claimedAmount!: string;
-
+  // بیمه‌گزار can't know the exact amount/policy number; free-text details instead.
   @IsOptional()
   @IsString()
-  @Length(0, 60)
-  policyNumber?: string;
+  @Length(0, 2000)
+  description?: string;
 }

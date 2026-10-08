@@ -35,41 +35,41 @@ export class ClaimsController {
   }
 
   /** All claims the caller participates in. */
-  @Permissions(PERMISSIONS.CLAIM_PROCESS)
+  @Permissions(PERMISSIONS.CLAIM_READ)
   @Get()
   list() {
     return this.claims.listMine();
   }
 
   /** The caller's action queue (claims awaiting their step). */
-  @Permissions(PERMISSIONS.CLAIM_PROCESS)
+  @Permissions(PERMISSIONS.CLAIM_READ)
   @Get('queue')
   queue() {
     return this.claims.queue();
   }
 
-  /** Active insurers to file a claim against. */
-  @Permissions(PERMISSIONS.CLAIM_FILE)
+  /** Active insurers to file a claim against (also used by the claims-list filter). */
+  @Permissions(PERMISSIONS.CLAIM_READ)
   @Get('insurers')
   insurers() {
     return this.claims.listInsurers();
   }
 
-  @Permissions(PERMISSIONS.CLAIM_PROCESS)
+  @Permissions(PERMISSIONS.CLAIM_READ)
   @Get(':id')
   get(@Param('id') id: string) {
     return this.claims.get(id);
   }
 
   /** Required-document checklist (filtered by the claim's cause of death). */
-  @Permissions(PERMISSIONS.CLAIM_PROCESS)
+  @Permissions(PERMISSIONS.CLAIM_READ)
   @Get(':id/checklist')
   checklist(@Param('id') id: string) {
     return this.claims.checklist(id);
   }
 
   /** Claim data/workflow fields, grouped, with values, provenance and edit rights. */
-  @Permissions(PERMISSIONS.CLAIM_PROCESS)
+  @Permissions(PERMISSIONS.CLAIM_READ)
   @Get(':id/fields')
   fieldsList(@Param('id') id: string) {
     return this.fields.listForClaim(id);
@@ -87,14 +87,14 @@ export class ClaimsController {
     return this.fields.confirmValue(id, key);
   }
 
-  @Permissions(PERMISSIONS.CLAIM_PROCESS)
+  @Permissions(PERMISSIONS.CLAIM_READ)
   @Get(':id/documents')
   documents(@Param('id') id: string) {
     return this.claims.listDocuments(id);
   }
 
   /** Download/preview a claim document (any party to the claim). */
-  @Permissions(PERMISSIONS.CLAIM_PROCESS)
+  @Permissions(PERMISSIONS.CLAIM_READ)
   @Get(':id/documents/:docId/file')
   async docFile(@Param('id') id: string, @Param('docId') docId: string, @Res() res: Response) {
     const { buffer, mimeType, fileName } = await this.claims.getDocumentFile(id, docId);

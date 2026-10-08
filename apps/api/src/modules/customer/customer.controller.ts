@@ -125,8 +125,7 @@ export class CustomerController {
       channel: 'BROKER' as any,
       claimType: dto.claimType,
       eventDate: dto.eventDate,
-      policyNumber: dto.policyNumber,
-      claimedAmount: dto.claimedAmount,
+      description: dto.description,
       deceasedFullName: dto.deceasedFullName,
       deceasedNationalCode: dto.deceasedNationalCode,
     });

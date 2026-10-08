@@ -634,6 +634,7 @@ model Claim {
   lateNotice               Boolean   @default(false) // filed after the deadline
   policyNumber             String?
   claimedAmount            Decimal @db.Decimal(18, 2)
+  description              String? // free-text details from the filer (بیمه‌گزار adds context)
 
   status    ClaimStatus @default(DRAFT)
   createdAt DateTime    @default(now())

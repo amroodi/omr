@@ -1,6 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditAction, ClaimStatus, ClaimType, Prisma, SalesChannel } from '@prisma/client';
-import { randomBytes } from 'crypto';
 import { AuditService } from '../../common/audit/audit.service';
 import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -28,7 +27,8 @@ interface FileClaimInput {
   claimType?: ClaimType;
   eventDate?: string; // ISO date of the death/accident
   policyNumber?: string;
-  claimedAmount: string;
+  claimedAmount?: string;
+  description?: string; // free-text details (used when بیمه‌گزار files, can't know amount/policy)
   deceasedFullName: string;
   deceasedNationalCode: string;
   policyHolderId?: string;
@@ -110,9 +110,10 @@ export class ClaimsService {
     }
 
     const nid = input.deceasedNationalCode;
+    const claimNumber = await this.newClaimNumber();
     const claim = await db.claim.create({
       data: {
-        claimNumber: this.newClaimNumber(),
+        claimNumber,
         insurerTenantId: input.insurerTenantId,
         channel: input.channel,
         brokerTenantId: input.channel === 'BROKER' ? input.brokerTenantId : null,
@@ -126,7 +127,8 @@ export class ClaimsService {
         noticeDeadline,
         lateNotice,
         policyNumber: input.policyNumber ?? null,
-        claimedAmount: input.claimedAmount,
+        claimedAmount: input.claimedAmount ?? '0',
+        description: input.description ?? null,
         status: ClaimStatus.UNDER_REVIEW,
         participants: {
           create: [
@@ -485,8 +487,16 @@ export class ClaimsService {
     return getContext()?.actorId ?? null;
   }
 
-  private newClaimNumber(): string {
-    return `CLM-${Date.now().toString(36).toUpperCase()}-${randomBytes(2).toString('hex').toUpperCase()}`;
+  /** Short, human-readable, sequential claim number, e.g. CLM-00042. Collision-safe. */
+  private async newClaimNumber(): Promise<string> {
+    const db = this.db();
+    let seq = (await db.claim.count()) + 1;
+    for (;;) {
+      const num = `CLM-${String(seq).padStart(5, '0')}`;
+      const exists = await db.claim.findUnique({ where: { claimNumber: num }, select: { id: true } });
+      if (!exists) return num;
+      seq++;
+    }
   }
 
   private async reload(claimId: string) {
@@ -502,6 +512,8 @@ export class ClaimsService {
       claimType: c.claimType,
       channel: c.channel,
       claimedAmount: c.claimedAmount?.toString(),
+      policyNumber: c.policyNumber ?? null,
+      description: c.description ?? null,
       deceasedName: c.deceasedFullName ? this.crypto.decrypt(c.deceasedFullName) : null,
       insurerTenantId: c.insurerTenantId,
       brokerTenantId: c.brokerTenantId,

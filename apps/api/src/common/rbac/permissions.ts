@@ -16,6 +16,7 @@ export const PERMISSIONS = {
   PAYMENT_APPROVE: 'payment:approve', // approve/reject a proposed payout (checker)
 
   // Death-claim workflow
+  CLAIM_READ: 'claim:read', // view claims, checklist, documents (read-only)
   CLAIM_FILE: 'claim:file', // file a claim / do رفع نقص (بیمه‌گزار side)
   CLAIM_PROCESS: 'claim:process', // معرف control + insurer-level decisions
   LEVEL_MANAGE: 'level:manage', // configure the insurer's approval ladder & ceilings
@@ -67,23 +68,26 @@ export const SYSTEM_ROLES: Record<string, Permission[]> = {
     PERMISSIONS.EXPORT_LIST,
     PERMISSIONS.IMPORT_BATCH,
     PERMISSIONS.PAYMENT_PROPOSE,
+    PERMISSIONS.CLAIM_READ,
     PERMISSIONS.CLAIM_FILE,
     PERMISSIONS.CLAIM_PROCESS,
     PERMISSIONS.CUSTOMER_MANAGE,
   ],
   // Four-eyes approver: can authorize payouts but cannot propose them.
-  'تاییدکننده پرداخت': [PERMISSIONS.CASE_READ, PERMISSIONS.PAYMENT_APPROVE],
-  'فقط مشاهده': [PERMISSIONS.CASE_READ, PERMISSIONS.POLICY_READ, PERMISSIONS.DOC_READ],
+  'تاییدکننده پرداخت': [PERMISSIONS.CASE_READ, PERMISSIONS.CLAIM_READ, PERMISSIONS.PAYMENT_APPROVE],
+  'فقط مشاهده': [PERMISSIONS.CASE_READ, PERMISSIONS.POLICY_READ, PERMISSIONS.DOC_READ, PERMISSIONS.CLAIM_READ],
   // Assessor of document authenticity — reviews uploaded docs for integrity/accuracy.
   'ارزیاب اصالت مدارک': [
     PERMISSIONS.CASE_READ,
     PERMISSIONS.DOC_READ,
     PERMISSIONS.DOC_VERIFY,
+    PERMISSIONS.CLAIM_READ,
   ],
   // Handles bulk data in/out only.
   'مسئول ورود و خروج داده': [
     PERMISSIONS.CASE_READ,
     PERMISSIONS.IMPORT_BATCH,
     PERMISSIONS.EXPORT_LIST,
+    PERMISSIONS.CLAIM_READ,
   ],
 };
