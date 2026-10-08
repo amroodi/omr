@@ -9,6 +9,8 @@ export interface RequestContext {
   userAgent?: string;
   /** For the public inquiry: the single case id a record-token is scoped to. */
   scopedCaseId?: string;
+  /** For the public inquiry: the single (new-model) claim id a record-token is scoped to. */
+  scopedClaimId?: string;
   /** For the customer realm: the customer's blind-index key to match their own cases. */
   customerNidHash?: string;
   /** Org user's branch, when branch-bound. */

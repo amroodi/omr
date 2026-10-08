@@ -1,8 +1,8 @@
 'use client';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { ReactNode, useState } from 'react';
-import { clearToken, Realm } from '../../lib/client';
+import { ReactNode, useEffect, useState } from 'react';
+import { clearToken, hasPerm, Realm } from '../../lib/client';
 import { ChangePasswordModal } from './ChangePasswordModal';
 import { NotificationBell } from './NotificationBell';
 
@@ -10,6 +10,8 @@ export interface NavItem {
   href: string;
   label: string;
   icon: ReactNode;
+  /** Only show this item when the signed-in user holds this permission (or any of the list). */
+  perm?: string | string[];
 }
 
 export function Shell({
@@ -28,6 +30,10 @@ export function Shell({
   const pathname = usePathname();
   const router = useRouter();
   const [showPw, setShowPw] = useState(false);
+  // Permissions live in localStorage (empty during SSR), so only gate after mount to avoid a
+  // hydration mismatch. Before mount we show just the unrestricted items.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   return (
     <div className="grid gap-5" style={{ gridTemplateColumns: 'minmax(0,1fr)' }}>
@@ -36,7 +42,7 @@ export function Shell({
         <aside className="mb-4 lg:mb-0">
           <div className="card p-2 lg:sticky lg:top-20">
             <div className="flex lg:flex-col gap-1 overflow-x-auto">
-              {nav.map((n) => {
+              {nav.filter((n) => !n.perm || (mounted && hasPerm(realm, n.perm))).map((n) => {
                 const active = pathname === n.href;
                 return (
                   <Link

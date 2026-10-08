@@ -443,7 +443,8 @@ model OtpChallenge {
   purpose      String   @default("inquiry") // "inquiry" (one case) | "customer" (login)
   phoneHash    String // blind index of the target phone
   insuredId    String?
-  caseId       String? // record this challenge unlocks (inquiry purpose)
+  caseId       String? // legacy Case this challenge unlocks (inquiry purpose)
+  claimId      String? // new-model Claim this challenge unlocks (self-service بیمه‌گزار inquiry)
   codeHash     String // salted hash of the OTP, never plaintext
   attempts     Int      @default(0)
   maxAttempts  Int      @default(5)

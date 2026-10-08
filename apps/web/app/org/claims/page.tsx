@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { client, getToken } from '../../../lib/client';
+import { client, getToken, hasPerm } from '../../../lib/client';
 import { Shell, Icon } from '../../components/Shell';
 import { CLAIM_TYPE_LABELS, ErrorBox, StatusBadge } from '../../components/ui';
 import { ORG_NAV } from '../nav';
@@ -38,9 +38,11 @@ export default function ClaimsList() {
           <option value="">همه بیمه‌گرها</option>
           {insurers.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
         </select>
-        <Link href="/org/claims/new" className="btn btn-primary btn-sm">
-          <Icon path="M12 5v14M5 12h14" /> پرونده جدید
-        </Link>
+        {!loading && hasPerm('org', 'claim:file') && (
+          <Link href="/org/claims/new" className="btn btn-primary btn-sm">
+            <Icon path="M12 5v14M5 12h14" /> پرونده جدید
+          </Link>
+        )}
       </div>
       <ErrorBox message={error} />
       <div className="card overflow-x-auto">

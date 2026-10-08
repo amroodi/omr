@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { client } from '../../../../lib/client';
+import { client, hasPerm } from '../../../../lib/client';
 import { Shell } from '../../../components/Shell';
 import { CLAIM_TYPE_LABELS, ErrorBox, StatusBadge } from '../../../components/ui';
 import { ORG_NAV } from '../../nav';
@@ -32,6 +32,10 @@ export default function ClaimDetail() {
   const [defText, setDefText] = useState('');
   const [showDef, setShowDef] = useState(false);
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  // UI-gating by permission (the API enforces these independently).
+  const canProcess = hasPerm('org', 'claim:process'); // تایید/رد/پرداخت/اعلام نقص
+  const canFile = hasPerm('org', 'claim:file'); // بارگذاری مدرک / رفع نقص
+  const canVerify = hasPerm('org', 'doc:verify'); // تایید/رد اصالت مدرک
 
   const load = async () => {
     try {
@@ -120,11 +124,13 @@ export default function ClaimDetail() {
                         <span style={{ color: it.uploaded ? 'var(--success)' : 'var(--muted)' }}>{it.uploaded ? '✔' : '○'}</span>
                         {it.label}
                       </span>
-                      <div>
-                        <input ref={(el) => { fileRefs.current[it.code] = el; }} type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }}
-                          onChange={(e) => { const file = e.target.files?.[0]; if (file) upload(it.code, file); e.currentTarget.value = ''; }} />
-                        <button onClick={() => fileRefs.current[it.code]?.click()} disabled={busy} className="btn btn-ghost btn-sm">بارگذاری جایگزین</button>
-                      </div>
+                      {canFile && (
+                        <div>
+                          <input ref={(el) => { fileRefs.current[it.code] = el; }} type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }}
+                            onChange={(e) => { const file = e.target.files?.[0]; if (file) upload(it.code, file); e.currentTarget.value = ''; }} />
+                          <button onClick={() => fileRefs.current[it.code]?.click()} disabled={busy} className="btn btn-ghost btn-sm">بارگذاری جایگزین</button>
+                        </div>
+                      )}
                     </div>
                     {it.documents.length > 0 && (
                       <div className="mt-2 space-y-1.5 mr-6">
@@ -138,8 +144,8 @@ export default function ClaimDetail() {
                             </span>
                             <span className="flex items-center gap-1 shrink-0">
                               <button onClick={() => viewDoc(d.id)} className="btn btn-ghost btn-sm">مشاهده</button>
-                              {d.isLatest && d.status !== 'VERIFIED' && <button onClick={() => verifyDoc(d.id, 'approve')} disabled={busy} className="text-xs" style={{ color: 'var(--success)' }}>تایید</button>}
-                              {d.isLatest && d.status !== 'REJECTED' && <button onClick={() => verifyDoc(d.id, 'reject')} disabled={busy} className="text-xs" style={{ color: 'var(--danger)' }}>رد</button>}
+                              {canVerify && d.isLatest && d.status !== 'VERIFIED' && <button onClick={() => verifyDoc(d.id, 'approve')} disabled={busy} className="text-xs" style={{ color: 'var(--success)' }}>تایید</button>}
+                              {canVerify && d.isLatest && d.status !== 'REJECTED' && <button onClick={() => verifyDoc(d.id, 'reject')} disabled={busy} className="text-xs" style={{ color: 'var(--danger)' }}>رد</button>}
                             </span>
                           </div>
                         ))}
@@ -179,15 +185,20 @@ export default function ClaimDetail() {
               </div>
             </div>
 
+            {(canProcess || canFile) && (
             <div className="card p-5 space-y-2">
               <h3 className="font-bold mb-1">اقدامات</h3>
-              {claim.status === 'RETURNED_INCOMPLETE' ? (
-                <button onClick={rectify} disabled={busy} className="btn btn-primary w-full btn-sm">رفع نقص و ارسال مجدد</button>
-              ) : claim.status === 'APPROVED' ? (
-                <button onClick={pay} disabled={busy} className="btn btn-primary w-full btn-sm">ثبت پرداخت</button>
-              ) : ['PAID', 'REJECTED'].includes(claim.status) ? (
+              {['PAID', 'REJECTED'].includes(claim.status) ? (
                 <p className="text-sm" style={{ color: 'var(--muted)' }}>پرونده بسته شده است.</p>
-              ) : (
+              ) : claim.status === 'RETURNED_INCOMPLETE' ? (
+                canFile
+                  ? <button onClick={rectify} disabled={busy} className="btn btn-primary w-full btn-sm">رفع نقص و ارسال مجدد</button>
+                  : <p className="text-sm" style={{ color: 'var(--muted)' }}>در انتظار رفع نقص توسط بیمه‌گزار.</p>
+              ) : claim.status === 'APPROVED' ? (
+                canProcess
+                  ? <button onClick={pay} disabled={busy} className="btn btn-primary w-full btn-sm">ثبت پرداخت</button>
+                  : <p className="text-sm" style={{ color: 'var(--muted)' }}>در انتظار ثبت پرداخت.</p>
+              ) : canProcess ? (
                 <>
                   <button onClick={endorse} disabled={busy} className="btn btn-primary w-full btn-sm">تایید و ارسال</button>
                   <button onClick={() => setShowDef(!showDef)} disabled={busy} className="btn btn-ghost w-full btn-sm" style={{ color: 'var(--warning)' }}>اعلام نقص مدارک</button>
@@ -199,8 +210,11 @@ export default function ClaimDetail() {
                   )}
                   <button onClick={reject} disabled={busy} className="btn btn-ghost w-full btn-sm" style={{ color: 'var(--danger)' }}>رد پرونده</button>
                 </>
+              ) : (
+                <p className="text-sm" style={{ color: 'var(--muted)' }}>اقدامی برای نقش شما در دسترس نیست.</p>
               )}
             </div>
+            )}
           </div>
         </div>
       )}

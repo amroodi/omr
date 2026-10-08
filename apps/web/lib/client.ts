@@ -50,6 +50,28 @@ export function clearToken(realm: Realm): void {
   }
 }
 
+/** Decode the permissions embedded in the realm's JWT (set at login). UI-gating only — the API
+ * independently enforces every permission, so a tampered token still can't perform the action. */
+export function getPermissions(realm: Realm): string[] {
+  const t = getToken(realm);
+  if (!t) return [];
+  try {
+    const part = t.split('.')[1];
+    if (!part) return [];
+    const b64 = part.replace(/-/g, '+').replace(/_/g, '/').padEnd(part.length + ((4 - (part.length % 4)) % 4), '=');
+    const payload = JSON.parse(decodeURIComponent(escape(atob(b64))));
+    return Array.isArray(payload.permissions) ? payload.permissions : [];
+  } catch {
+    return [];
+  }
+}
+
+/** True if the realm's token grants the permission (or any of them when given a list). */
+export function hasPerm(realm: Realm, perm: string | string[]): boolean {
+  const held = new Set(getPermissions(realm));
+  return (Array.isArray(perm) ? perm : [perm]).some((p) => held.has(p));
+}
+
 function headers(realm?: Realm, json = true): Record<string, string> {
   const h: Record<string, string> = { 'x-tenant-slug': getTenantSlug() };
   if (json) h['Content-Type'] = 'application/json';

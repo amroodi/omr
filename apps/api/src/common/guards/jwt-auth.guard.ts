@@ -48,6 +48,7 @@ export class JwtAuthGuard implements CanActivate {
     if (payload.kind === 'record') {
       ctx.actorType = 'INSURED';
       ctx.scopedCaseId = payload.caseId;
+      ctx.scopedClaimId = payload.claimId;
       ctx.permissions = ['case:read'];
     } else if (payload.kind === 'customer') {
       ctx.actorType = 'CUSTOMER';

@@ -135,10 +135,13 @@ function InquiryCard() {
       {step === 'result' && result && (
         <div className="fade-up">
           <div className="flex items-center justify-between mb-3">
-            <span className="font-bold">پرونده {result.caseNumber}</span>
+            <span className="font-bold">پرونده {result.kind === 'claim' ? result.claimNumber : result.caseNumber}</span>
             <StatusBadge status={result.status} />
           </div>
-          {[['نام', result.insured?.fullName], ['کد ملی', result.insured?.nationalCodeMasked], ['بیمه‌نامه', result.policy ? `${result.policy.policyNumber} — ${result.policy.carrier}` : null], ['تاریخ پرداخت', result.workflow?.paidAt]].map(([l, v]) => v ? (
+          {(result.kind === 'claim'
+            ? [['بیمه‌شده (متوفی)', result.deceasedName], ['تاریخ وقوع', result.eventDate], ['تاریخ ثبت', result.createdAt], ['توضیحات', result.description]]
+            : [['نام', result.insured?.fullName], ['کد ملی', result.insured?.nationalCodeMasked], ['بیمه‌نامه', result.policy ? `${result.policy.policyNumber} — ${result.policy.carrier}` : null], ['تاریخ پرداخت', result.workflow?.paidAt]]
+          ).map(([l, v]) => v ? (
             <div key={l as string} className="flex justify-between py-2 border-b text-sm" style={{ borderColor: 'var(--border)' }}>
               <span style={{ color: 'var(--muted)' }}>{l}</span><span className="font-semibold">{v}</span>
             </div>

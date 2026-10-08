@@ -79,8 +79,27 @@ export class InquiryService {
       caseId = c?.id ?? null;
     }
 
+    // Fallback to the new self-service model: a بیمه‌گزار (CustomerAccount) who filed a Claim.
+    let claimId: string | null = null;
+    let insuredId: string | null = insured?.id ?? null;
+    if (!caseId) {
+      const account = await this.prisma.scoped.customerAccount.findFirst({
+        where: { nationalCodeHash: nidHash, phoneHash },
+        select: { id: true },
+      });
+      if (account) {
+        const claim = await this.prisma
+          .unscoped()
+          .claim.findFirst({ where: { policyHolderId: account.id }, orderBy: { createdAt: 'desc' }, select: { id: true } });
+        if (claim) {
+          claimId = claim.id;
+          insuredId = account.id;
+        }
+      }
+    }
+
     // Always send the same generic response — never reveal whether the pair exists.
-    if (insured && caseId) {
+    if (caseId || claimId) {
       // ConfigService returns raw env strings; coerce to numbers (Prisma Int columns reject strings).
       const code = this.hash.generateOtp(Number(this.config.get('OTP_LENGTH', 6)));
       const ttl = Number(this.config.get('OTP_TTL_SECONDS', 180));
@@ -89,8 +108,9 @@ export class InquiryService {
           tenantId,
           purpose: 'inquiry',
           phoneHash,
-          insuredId: insured.id,
+          insuredId,
           caseId,
+          claimId,
           codeHash: this.hash.hashOtp(code),
           maxAttempts: Number(this.config.get('OTP_MAX_ATTEMPTS', 5)),
           expiresAt: new Date(Date.now() + ttl * 1000),
@@ -112,8 +132,8 @@ export class InquiryService {
       }
       await this.audit.record({
         action: AuditAction.OTP_ISSUE,
-        targetType: 'Case',
-        targetId: caseId,
+        targetType: claimId ? 'Claim' : 'Case',
+        targetId: (claimId ?? caseId) ?? undefined,
         tenantId,
         actorType: 'INSURED',
       });
@@ -158,15 +178,15 @@ export class InquiryService {
       data: { consumedAt: new Date() },
     });
 
-    // Mint a token scoped to exactly one case id — not the National ID.
+    // Mint a token scoped to exactly one record id (case or claim) — not the National ID.
     const token = await this.jwt.signAsync(
-      { kind: 'record', tenantId, caseId: challenge.caseId, sub: challenge.insuredId },
+      { kind: 'record', tenantId, caseId: challenge.caseId, claimId: challenge.claimId, sub: challenge.insuredId },
       { expiresIn: this.config.get<string>('RECORD_TOKEN_TTL', '10m') },
     );
     await this.audit.record({
       action: AuditAction.OTP_VERIFY,
-      targetType: 'Case',
-      targetId: challenge.caseId ?? undefined,
+      targetType: challenge.claimId ? 'Claim' : 'Case',
+      targetId: (challenge.claimId ?? challenge.caseId) ?? undefined,
       tenantId,
       actorType: 'INSURED',
     });
@@ -174,9 +194,12 @@ export class InquiryService {
     return { token, expiresIn: this.config.get<string>('RECORD_TOKEN_TTL', '10m') };
   }
 
-  /** Returns the single case the record token authorizes, decrypted for its owner. */
+  /** Returns the single record (legacy case or new-model claim) the token authorizes. */
   async getScopedCase(): Promise<unknown> {
     const ctx = getContext();
+    const claimId = ctx?.scopedClaimId;
+    if (claimId) return this.getScopedClaim(claimId);
+
     const caseId = ctx?.scopedCaseId;
     if (!caseId) throw new ForbiddenException('توکن نامعتبر است.');
 
@@ -199,6 +222,36 @@ export class InquiryService {
     });
 
     return this.presentCase(c);
+  }
+
+  /** Returns the single new-model claim the token authorizes (self-service بیمه‌گزار inquiry). */
+  private async getScopedClaim(claimId: string): Promise<unknown> {
+    const c = await this.prisma.unscoped().claim.findUnique({
+      where: { id: claimId },
+      include: { steps: { orderBy: { order: 'asc' } }, deficiencies: true },
+    });
+    if (!c) throw new NotFoundException('پرونده یافت نشد.');
+
+    await this.audit.record({ action: AuditAction.VIEW, targetType: 'Claim', targetId: claimId, actorType: 'INSURED' });
+
+    const dec = (v: string | null) => (v ? this.crypto.decrypt(v) : null);
+    return {
+      kind: 'claim',
+      claimNumber: c.claimNumber,
+      status: c.status,
+      claimType: c.claimType,
+      deceasedName: dec(c.deceasedFullName),
+      eventDate: c.eventDate ? toJalali(c.eventDate, false) : null,
+      description: c.description ?? null,
+      createdAt: c.createdAt ? toJalali(c.createdAt, false) : null,
+      steps: (c.steps ?? []).map((s: any) => ({ order: s.order, partyType: s.partyType, state: s.state })),
+      deficiencies: (c.deficiencies ?? []).map((d: any) => ({ items: this.safeParse(d.items), resolvedAt: d.resolvedAt ? toJalali(d.resolvedAt, false) : null })),
+    };
+  }
+
+  private safeParse(v: string | null): string[] {
+    if (!v) return [];
+    try { const p = JSON.parse(v); return Array.isArray(p) ? p : []; } catch { return []; }
   }
 
   /** Decrypt + Jalali-format a case for its owner. National ID is masked even here. */
