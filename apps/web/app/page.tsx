@@ -5,13 +5,14 @@ import { inquiryApi } from '../lib/api';
 import { ErrorBox, Field, StatusBadge } from './components/ui';
 import { Icon } from './components/Shell';
 import { Reveal } from './components/reveal';
+import { DotGrid } from './components/DotGrid';
 
 export default function Landing() {
   return (
     <div className="relative">
       {/* full-bleed animated background */}
       <div className="aurora" style={{ position: 'fixed' }}><span /></div>
-      <div className="grid-overlay" style={{ position: 'fixed' }} />
+      <DotGrid />
 
       <Hero />
       <TrustStrip />
