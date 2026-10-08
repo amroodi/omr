@@ -6,7 +6,7 @@ import { useEffect, useRef } from 'react';
  * cursor touches them and ease back in as it moves away. Pure canvas, fixed & non-interactive,
  * DPR-aware, theme-aware (reads --text), and respects prefers-reduced-motion (static grid then).
  */
-export function DotGrid({ gap = 26, radius = 100, dotSize = 1.3, baseAlpha = 0.18 }: {
+export function DotGrid({ gap = 28, radius = 180, dotSize = 1.7, baseAlpha = 0.38 }: {
   gap?: number; radius?: number; dotSize?: number; baseAlpha?: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
