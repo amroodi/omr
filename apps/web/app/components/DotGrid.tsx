@@ -2,12 +2,13 @@
 import { useEffect, useRef } from 'react';
 
 /**
- * Interactive dotted-grid background. A square lattice of faint dots that fade out where the
- * cursor touches them and ease back in as it moves away. Pure canvas, fixed & non-interactive,
- * DPR-aware, theme-aware (reads --text), and respects prefers-reduced-motion (static grid then).
+ * Interactive dotted-grid background. A square lattice of faint dots that light up brand-orange
+ * where the cursor passes and ease back to their faint base color as it moves away. Pure canvas,
+ * fixed & non-interactive, DPR-aware, theme-aware (reads --text / --brand), respects
+ * prefers-reduced-motion (static grid then).
  */
-export function DotGrid({ gap = 26, radius = 260, dotSize = 1.3, baseAlpha = 0.18 }: {
-  gap?: number; radius?: number; dotSize?: number; baseAlpha?: number;
+export function DotGrid({ gap = 26, radius = 160, dotSize = 1.4, baseAlpha = 0.18, hotAlpha = 0.95 }: {
+  gap?: number; radius?: number; dotSize?: number; baseAlpha?: number; hotAlpha?: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -19,13 +20,26 @@ export function DotGrid({ gap = 26, radius = 260, dotSize = 1.3, baseAlpha = 0.1
 
     const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     let w = 0, h = 0, cols = 0, rows = 0;
-    let op = new Float32Array(0); // per-dot current opacity (0..1)
+    let hot = new Float32Array(0); // per-dot "heat" 0..1 (1 = under cursor)
     const mouse = { x: -9999, y: -9999 };
     let raf = 0;
 
-    const readColor = () =>
-      getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#111';
-    let color = readColor();
+    const cssVar = (name: string, fallback: string) =>
+      getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+    const toRgb = (c: string): [number, number, number] => {
+      c = c.trim();
+      if (c[0] === '#') {
+        let hex = c.slice(1);
+        if (hex.length === 3) hex = hex.split('').map((x) => x + x).join('');
+        const n = parseInt(hex, 16);
+        return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+      }
+      const m = c.match(/(\d+(?:\.\d+)?)/g);
+      return m ? [Number(m[0]) || 0, Number(m[1]) || 0, Number(m[2]) || 0] : [128, 128, 128];
+    };
+    let base = toRgb(cssVar('--text', '#0f1729'));
+    let brand = toRgb(cssVar('--brand', '#ff9500'));
+    const readColors = () => { base = toRgb(cssVar('--text', '#0f1729')); brand = toRgb(cssVar('--brand', '#ff9500')); };
 
     const resize = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -37,26 +51,23 @@ export function DotGrid({ gap = 26, radius = 260, dotSize = 1.3, baseAlpha = 0.1
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       cols = Math.ceil(w / gap) + 1;
       rows = Math.ceil(h / gap) + 1;
-      op = new Float32Array(cols * rows).fill(1);
+      hot = new Float32Array(cols * rows);
       if (reduced) drawStatic();
     };
 
     const drawStatic = () => {
       ctx.clearRect(0, 0, w, h);
-      ctx.fillStyle = color;
-      ctx.globalAlpha = baseAlpha;
+      ctx.fillStyle = `rgba(${base[0]},${base[1]},${base[2]},${baseAlpha})`;
       for (let gy = 0; gy < rows; gy++)
         for (let gx = 0; gx < cols; gx++) {
           ctx.beginPath();
           ctx.arc(gx * gap, gy * gap, dotSize, 0, Math.PI * 2);
           ctx.fill();
         }
-      ctx.globalAlpha = 1;
     };
 
     const draw = () => {
       ctx.clearRect(0, 0, w, h);
-      ctx.fillStyle = color;
       const r2 = radius * radius;
       for (let gy = 0; gy < rows; gy++) {
         const y = gy * gap;
@@ -65,21 +76,22 @@ export function DotGrid({ gap = 26, radius = 260, dotSize = 1.3, baseAlpha = 0.1
           const dx = x - mouse.x;
           const dy = y - mouse.y;
           const d2 = dx * dx + dy * dy;
-          // target opacity: fully cleared over most of the radius, ramping back to 1 only near its
-          // edge (the >1 exponent keeps a large inner area strongly faded).
-          const target = d2 < r2 ? Math.pow(Math.sqrt(d2) / radius, 2.4) : 1;
+          // target heat: 1 at the cursor, easing to 0 at the hover radius
+          const target = d2 < r2 ? 1 - Math.sqrt(d2) / radius : 0;
           const i = gy * cols + gx;
-          op[i] += (target - op[i]) * 0.2; // ease
-          const o = op[i];
-          if (o > 0.02) {
-            ctx.globalAlpha = o * baseAlpha;
-            ctx.beginPath();
-            ctx.arc(x, y, dotSize, 0, Math.PI * 2);
-            ctx.fill();
-          }
+          hot[i] += (target - hot[i]) * 0.2; // ease
+          const t = hot[i];
+          // blend base → brand, and base faintness → full as the dot heats up
+          const r = base[0] + (brand[0] - base[0]) * t;
+          const g = base[1] + (brand[1] - base[1]) * t;
+          const b = base[2] + (brand[2] - base[2]) * t;
+          const a = baseAlpha + (hotAlpha - baseAlpha) * t;
+          ctx.fillStyle = `rgba(${r | 0},${g | 0},${b | 0},${a})`;
+          ctx.beginPath();
+          ctx.arc(x, y, dotSize + t * 0.9, 0, Math.PI * 2); // hot dots swell slightly
+          ctx.fill();
         }
       }
-      ctx.globalAlpha = 1;
       raf = requestAnimationFrame(draw);
     };
 
@@ -93,7 +105,7 @@ export function DotGrid({ gap = 26, radius = 260, dotSize = 1.3, baseAlpha = 0.1
       window.addEventListener('mouseout', onLeave);
       raf = requestAnimationFrame(draw);
     }
-    const obs = new MutationObserver(() => { color = readColor(); if (reduced) drawStatic(); });
+    const obs = new MutationObserver(() => { readColors(); if (reduced) drawStatic(); });
     obs.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme'] });
 
     return () => {
@@ -103,7 +115,7 @@ export function DotGrid({ gap = 26, radius = 260, dotSize = 1.3, baseAlpha = 0.1
       window.removeEventListener('mouseout', onLeave);
       obs.disconnect();
     };
-  }, [gap, radius, dotSize, baseAlpha]);
+  }, [gap, radius, dotSize, baseAlpha, hotAlpha]);
 
   return <canvas ref={canvasRef} aria-hidden="true" style={{ position: 'fixed', inset: 0, zIndex: -1, pointerEvents: 'none' }} />;
 }
