@@ -74,9 +74,14 @@
 }
 html {
   direction: rtl;
+  /* Never let the whole page scroll sideways on mobile — wide tables keep their own
+     .overflow-x-auto scroll container; this only clips stray page-level overflow.
+     `clip` (not `hidden`) so sticky headers/sidebars keep working. */
+  overflow-x: clip;
 }
 body {
   margin: 0;
+  overflow-x: clip;
   color: var(--text);
   font-family: 'Vazirmatn', 'IRANYekanX', Tahoma, sans-serif;
   background:

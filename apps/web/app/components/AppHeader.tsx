@@ -47,10 +47,11 @@ export function AppHeader() {
           {inCustomer && <span className="text-xs shrink-0 px-2 py-0.5 rounded-lg" style={{ background: 'var(--surface-2)', color: 'var(--muted)' }}>پورتال بیمه‌گزار</span>}
         </a>
         {!orgBranded && (
+          // Super-admin («مدیر سکو») is intentionally NOT linked here — it's reached only via the
+          // direct /admin/login URL, so ordinary users (and attackers scanning the UI) don't see it.
           <nav className="hidden sm:flex gap-1 text-sm mr-auto">
             <a href="/customer/login" className="px-3 py-1.5 rounded-lg hover:bg-[var(--surface-2)] transition">بیمه‌گزار</a>
             <a href="/org/login" className="px-3 py-1.5 rounded-lg hover:bg-[var(--surface-2)] transition">پورتال سازمان</a>
-            <a href="/admin/login" className="px-3 py-1.5 rounded-lg hover:bg-[var(--surface-2)] transition">مدیر سکو</a>
           </nav>
         )}
         <div className={orgBranded ? 'mr-auto' : 'sm:mr-0 mr-auto'}>
