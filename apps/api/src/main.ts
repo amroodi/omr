@@ -10,6 +10,12 @@ async function bootstrap(): Promise<void> {
   const config = app.get(ConfigService);
   const logger = new Logger('Bootstrap');
 
+  // Exactly one reverse proxy (Nginx on the same host). This makes req.ip the real client IP from
+  // the proxy's X-Forwarded-For and ignores any XFF a client tries to spoof past that hop — so the
+  // per-IP rate limits (OTP, login) can't be bypassed by rotating the header.
+  // (Nginx must forward it: `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`)
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
+
   // Security headers: CSP, HSTS, no-sniff, frame-deny.
   app.use(helmet());
 

@@ -37,6 +37,14 @@ export class RolesGuard implements CanActivate {
     ]);
     if (!required || required.length === 0) return true;
 
+    // @Permissions() are the ORG-USER trust domain only. Customer, record (inquiry) and API tokens
+    // are issued with narrow permission sets that can overlap org permission strings (e.g.
+    // 'case:read'); without this check such a token could reach org endpoints gated by that string
+    // and read tenant-wide data. Those non-org callers use actorType-scoped routes, never @Permissions.
+    if (ctx.actorType !== 'ORG_USER') {
+      throw new ForbiddenException('این دسترسی مخصوص کاربران سازمان است');
+    }
+
     const held = new Set(ctx.permissions ?? []);
     const missing = required.filter((p) => !held.has(p));
     if (missing.length > 0) {

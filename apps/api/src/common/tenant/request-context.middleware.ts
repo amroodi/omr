@@ -13,7 +13,9 @@ export class RequestContextMiddleware implements NestMiddleware {
     const store: RequestContext = {
       actorType: 'SYSTEM',
       permissions: [],
-      ip: (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip,
+      // req.ip is derived by Express from X-Forwarded-For using the configured `trust proxy` hop
+      // count (set in main.ts), so it is the real client IP and not a client-spoofable header value.
+      ip: req.ip,
       userAgent: req.headers['user-agent'] as string | undefined,
     };
     (req as any).context = store;
