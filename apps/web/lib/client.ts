@@ -82,30 +82,44 @@ function headers(realm?: Realm, json = true): Record<string, string> {
   return h;
 }
 
-async function handle<T>(res: Response): Promise<T> {
+const LOGIN_PATH: Record<Realm, string> = { org: '/org/login', customer: '/customer/login', super: '/admin/login' };
+
+/** On a 401 the stored token is stale/invalid — clear it and bounce to the realm's login instead
+ * of surfacing a raw "Invalid or expired token" on an empty panel. */
+function onUnauthorized(realm?: Realm) {
+  if (!realm || typeof window === 'undefined') return;
+  clearToken(realm);
+  const login = LOGIN_PATH[realm];
+  if (!window.location.pathname.endsWith('/login')) window.location.href = login;
+}
+
+async function handle<T>(res: Response, realm?: Realm): Promise<T> {
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error((data as any).message || `خطا (${res.status})`);
+  if (!res.ok) {
+    if (res.status === 401) onUnauthorized(realm);
+    throw new Error((data as any).message || `خطا (${res.status})`);
+  }
   return data as T;
 }
 
 export const client = {
   get: <T>(path: string, realm?: Realm) =>
-    fetch(`${BASE}${path}`, { headers: headers(realm, false) }).then((r) => handle<T>(r)),
+    fetch(`${BASE}${path}`, { headers: headers(realm, false) }).then((r) => handle<T>(r, realm)),
   post: <T>(path: string, body: unknown, realm?: Realm) =>
-    fetch(`${BASE}${path}`, { method: 'POST', headers: headers(realm), body: JSON.stringify(body) }).then((r) => handle<T>(r)),
+    fetch(`${BASE}${path}`, { method: 'POST', headers: headers(realm), body: JSON.stringify(body) }).then((r) => handle<T>(r, realm)),
   patch: <T>(path: string, body: unknown, realm?: Realm) =>
-    fetch(`${BASE}${path}`, { method: 'PATCH', headers: headers(realm), body: JSON.stringify(body) }).then((r) => handle<T>(r)),
+    fetch(`${BASE}${path}`, { method: 'PATCH', headers: headers(realm), body: JSON.stringify(body) }).then((r) => handle<T>(r, realm)),
   put: <T>(path: string, body: unknown, realm?: Realm) =>
-    fetch(`${BASE}${path}`, { method: 'PUT', headers: headers(realm), body: JSON.stringify(body) }).then((r) => handle<T>(r)),
+    fetch(`${BASE}${path}`, { method: 'PUT', headers: headers(realm), body: JSON.stringify(body) }).then((r) => handle<T>(r, realm)),
   del: <T>(path: string, realm?: Realm) =>
-    fetch(`${BASE}${path}`, { method: 'DELETE', headers: headers(realm, false) }).then((r) => handle<T>(r)),
+    fetch(`${BASE}${path}`, { method: 'DELETE', headers: headers(realm, false) }).then((r) => handle<T>(r, realm)),
   postForm: <T>(path: string, form: FormData, realm?: Realm) =>
-    fetch(`${BASE}${path}`, { method: 'POST', headers: headers(realm, false), body: form }).then((r) => handle<T>(r)),
+    fetch(`${BASE}${path}`, { method: 'POST', headers: headers(realm, false), body: form }).then((r) => handle<T>(r, realm)),
   // For file downloads (returns the URL with tenant header handled via a new tab is not possible;
   // caller fetches the blob).
   download: async (path: string, realm: Realm, filename: string) => {
     const res = await fetch(`${BASE}${path}`, { headers: headers(realm, false) });
-    if (!res.ok) throw new Error(`خطا (${res.status})`);
+    if (!res.ok) { if (res.status === 401) onUnauthorized(realm); throw new Error(`خطا (${res.status})`); }
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -118,6 +132,7 @@ export const client = {
   view: async (path: string, realm: Realm) => {
     const res = await fetch(`${BASE}${path}`, { headers: headers(realm, false) });
     if (!res.ok) {
+      if (res.status === 401) onUnauthorized(realm);
       const data = await res.json().catch(() => ({}));
       throw new Error((data as any).message || `خطا (${res.status})`);
     }
