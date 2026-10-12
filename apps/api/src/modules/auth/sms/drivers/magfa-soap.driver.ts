@@ -91,9 +91,12 @@ export class MagfaSoapDriver implements SmsDriver {
    */
   private extractStatus(result: any): number | null {
     if (!result || typeof result !== 'object') return null;
+    // Magfa may return the status as a number OR a numeric string ("29"); coerce both.
+    const toNum = (v: any): number | null =>
+      typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' && !Number.isNaN(Number(v)) ? Number(v) : null;
 
-    // 1) Top-level request status — any non-zero is an error (18/19/22/12/…).
-    const top = [result.status, result?.return?.status, result?.result?.status].find((c) => typeof c === 'number');
+    // 1) Top-level request status — any non-zero is an error (18/19/22/29/12/…).
+    const top = [result.status, result?.return?.status, result?.result?.status].map(toNum).find((n) => n !== null);
     if (typeof top === 'number' && top !== 0) return top;
 
     // 2) Per-recipient result. SOAP wraps arrays as {item:[…]}.
@@ -101,8 +104,10 @@ export class MagfaSoapDriver implements SmsDriver {
     const arr = Array.isArray(msgs) ? msgs : Array.isArray(msgs?.item) ? msgs.item : null;
     if (arr && arr.length) {
       const first = arr[0];
-      if (typeof first === 'number') return first < 0 ? first : 0; // positive = dispatch id (OK)
-      if (first && typeof first.status === 'number') return first.status;
+      const n = toNum(first);
+      if (n !== null) return n < 0 ? n : 0; // positive = dispatch id (OK)
+      const ms = toNum(first?.status);
+      if (ms !== null) return ms;
     }
     return typeof top === 'number' ? top : null;
   }
