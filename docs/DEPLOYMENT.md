@@ -69,7 +69,8 @@ Create a dedicated service user and directories:
 sudo useradd --system --create-home --shell /bin/bash omr
 sudo usermod -aG docker omr                     # lets omr run the Postgres container
 sudo mkdir -p /opt/omr /etc/omr /var/lib/omr/storage
-sudo chown -R omr:omr /opt/omr /var/lib/omr
+# /etc/omr must be omr-owned too, or `deploy.sh` (run as omr) can't read /etc/omr/api.env.
+sudo chown -R omr:omr /opt/omr /var/lib/omr /etc/omr
 sudo chmod 750 /etc/omr
 ```
 
