@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 # Pull, build, migrate, and restart. Run AS THE omr USER:
 #   sudo -u omr bash /opt/omr/deploy/deploy.sh
-# The restart step uses passwordless sudo for omr — see deploy/README or DEPLOYMENT.md
-# (/etc/sudoers.d/omr-deploy). Override the public URL with: PUBLIC_API_BASE=... before the command.
+# The restart step uses passwordless sudo for omr — see DEPLOYMENT.md (/etc/sudoers.d/omr-deploy).
+#
+# PER-SERVER CONFIG lives in /etc/omr/api.env (never in git), so this script is identical on every
+# server and `git pull --ff-only` never conflicts. Set these there for the web build:
+#   PUBLIC_API_BASE=https://your-domain/api/v1     (required on a non-damuon server)
+#   PUBLIC_TENANT_SLUG=your-slug                   (optional; default "damuon")
+# A one-off run can still override, e.g.  PUBLIC_API_BASE=... bash deploy/deploy.sh
 set -euo pipefail
 
 APP_DIR="/opt/omr"
 API_ENV="/etc/omr/api.env"
-# Public URL Nginx serves the panel on, baked into the web build. Override via env if needed.
-PUBLIC_API_BASE="${PUBLIC_API_BASE:-https://omr.damuon.com/api/v1}"
 
 cd "$APP_DIR"
 
@@ -18,15 +21,23 @@ git pull --ff-only
 echo "==> Installing dependencies (clean, includes build tools)"
 npm ci
 
+# Load per-server config. Capture any one-off shell overrides first so they win over api.env.
+OVERRIDE_API_BASE="${PUBLIC_API_BASE:-}"
+OVERRIDE_TENANT_SLUG="${PUBLIC_TENANT_SLUG:-}"
+set -a; source "$API_ENV"; set +a          # DATABASE_URL (+ optional PUBLIC_* for the web build)
+# Precedence: shell override > /etc/omr/api.env > built-in default.
+PUBLIC_API_BASE="${OVERRIDE_API_BASE:-${PUBLIC_API_BASE:-https://omr.damuon.com/api/v1}}"
+PUBLIC_TENANT_SLUG="${OVERRIDE_TENANT_SLUG:-${PUBLIC_TENANT_SLUG:-damuon}}"
+
 echo "==> Prisma: generate client + apply migrations + sync system-role permissions"
-set -a; source "$API_ENV"; set +a          # export DATABASE_URL for prisma
 ( cd apps/api && npx prisma generate && npx prisma migrate deploy && npx ts-node prisma/sync-roles.ts )
 
 echo "==> Building API"
 npm --workspace apps/api run build
 
-echo "==> Building web (NEXT_PUBLIC_API_BASE=$PUBLIC_API_BASE)"
-NEXT_PUBLIC_API_BASE="$PUBLIC_API_BASE" npm --workspace apps/web run build
+echo "==> Building web (NEXT_PUBLIC_API_BASE=$PUBLIC_API_BASE, NEXT_PUBLIC_TENANT_SLUG=$PUBLIC_TENANT_SLUG)"
+NEXT_PUBLIC_API_BASE="$PUBLIC_API_BASE" NEXT_PUBLIC_TENANT_SLUG="$PUBLIC_TENANT_SLUG" \
+  npm --workspace apps/web run build
 
 echo "==> Restarting services"
 # Restarted one unit per call so a single NOPASSWD sudoers line can match each exactly.

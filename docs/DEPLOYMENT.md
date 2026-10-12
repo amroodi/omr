@@ -119,6 +119,7 @@ sudo chmod 600 /etc/omr/api.env
 In `/etc/omr/api.env` make sure:
 - `DATABASE_URL` uses the same password you set in step 3, host `127.0.0.1:15987`, user `omr`, db `omr_damuon`.
 - `CORS_ORIGINS="https://panel.damuon.com"` (add every tenant/white-label domain, comma-separated).
+- `PUBLIC_API_BASE="https://panel.damuon.com/api/v1"` — **this server's** public API URL; `deploy.sh` bakes it into the web build. (Optional: `PUBLIC_TENANT_SLUG` if the default org slug isn't `damuon`.)
 - `STORAGE_DIR="/var/lib/omr/storage"`.
 - `PORT=17421`, `HOST=127.0.0.1` (match the Nginx `proxy_pass`).
 - SMS provider set — see **§8a** below (or keep `console` for a dry run; codes then go to `journalctl`).
@@ -137,7 +138,7 @@ sudo -u omr -E bash -c 'cd apps/api && npx prisma generate && npx prisma migrate
 
 # Build both apps (web bakes in the public API URL at build time!)
 sudo -u omr npm --workspace apps/api run build
-sudo -u omr -E NEXT_PUBLIC_API_BASE="https://panel.damuon.com/api/v1" \
+sudo -u omr -E NEXT_PUBLIC_API_BASE="$PUBLIC_API_BASE" NEXT_PUBLIC_TENANT_SLUG="${PUBLIC_TENANT_SLUG:-damuon}" \
      npm --workspace apps/web run build
 
 # Provision the first tenant + super-admin + org admin for PRODUCTION.
@@ -249,13 +250,19 @@ Automate (a) and (b) with a daily cron/systemd-timer and copy off-box. Restore t
 
 ## 10. Updating to a new version
 
-After the first setup, every deploy is one command (edit `PUBLIC_API_BASE` at the top of the script once to match your domain):
+After the first setup, every deploy is two commands:
 
 ```bash
+cd /opt/omr && sudo -u omr git pull --ff-only
 sudo -u omr bash /opt/omr/deploy/deploy.sh
 ```
 
-It pulls, `npm ci`, generates the Prisma client, runs `migrate deploy`, rebuilds both apps, and restarts the services. It never re-seeds.
+`deploy.sh` pulls, `npm ci`, generates the Prisma client, runs `migrate deploy` + `sync-roles`, rebuilds both apps (with `PUBLIC_API_BASE`/`PUBLIC_TENANT_SLUG` read from `/etc/omr/api.env`), and restarts the services. It never re-seeds.
+
+> **Do not edit `deploy.sh` on the server.** The per-server public URL lives in `/etc/omr/api.env`
+> (`PUBLIC_API_BASE=`), not in the tracked script — so `git pull --ff-only` never conflicts and the
+> exact same two commands work on every server. (`deploy.sh` already does `git pull` itself; the
+> explicit first command above is just so you see the pull result before building.)
 
 ---
 
@@ -291,3 +298,40 @@ It pulls, `npm ci`, generates the Prisma client, runs `migrate deploy`, rebuilds
 - **`npm ci`** occasionally stalls against the public registry; if so set a mirror: `npm config set registry https://registry.npmmirror.com` (or your org's).
 - Docker Hub image pulls may need a mirror/proxy. If `postgres:16` won't pull, configure a registry mirror in `/etc/docker/daemon.json` or load the image from a tarball.
 - Keep everything **on-prem/in-country** for data residency — this setup already does; don't add foreign object storage or OCR endpoints without a data-residency review. OCR stays stubbed for this pilot.
+
+---
+
+## 14. Standing up an additional server (second VPS)
+
+Goal: a new VPS where the same two update commands work:
+
+```bash
+cd /opt/omr && sudo -u omr git pull --ff-only
+sudo -u omr bash /opt/omr/deploy/deploy.sh
+```
+
+Decide the scenario first — the **crypto keys are irreversible**:
+
+**A) Independent deployment** (different domain/client, its own fresh data)
+Follow §1–§9 on the new VPS. **Generate NEW secrets** (§4), set `PUBLIC_API_BASE` to the new domain in `/etc/omr/api.env`, and **provision** its own super-admin/org (§5).
+
+**B) Replica / migration of the SAME site** (must read the same data)
+Do §1–§3 and §6–§7 as usual, but in §4 **copy the crypto secrets** (`FIELD_ENCRYPTION_KEY`, `FIELD_ENCRYPTION_KEY_VERSION`, `BLIND_INDEX_PEPPER`) verbatim from the old server — encrypted PII and National-ID/phone lookups only work with the identical keys. Then **restore** instead of provisioning (§9):
+```bash
+gunzip -c omr_YYYY-MM-DD.sql.gz | docker exec -i omr-postgres psql -U omr -d omr_damuon
+tar xzf omr_storage_YYYY-MM-DD.tar.gz -C /var/lib/omr
+```
+`JWT_SECRET` may be new (logs everyone out) or copied (keeps sessions valid).
+
+**Condensed checklist (both cases):**
+1. Base server + `omr` user + dirs + firewall (§1).
+2. **Repo access for the `omr` user.** Public repo → nothing to do. Private repo → add a read-only **deploy key**: `sudo -u omr ssh-keygen -t ed25519 -f ~omr/.ssh/id_ed25519 -N ''`, add the `.pub` to GitHub → repo → *Settings → Deploy keys*, and clone via SSH (`git@github.com:amroodi/omr.git`). (Needed or `git pull --ff-only` will fail on the new box.)
+3. Clone to `/opt/omr` (§2).
+4. Start Postgres (§3).
+5. `/etc/omr/api.env`: secrets + `DATABASE_URL` + `CORS_ORIGINS` + **`PUBLIC_API_BASE`** = the new domain (§4).
+6. First build, then **provision (A)** or **restore (B)** (§5 / §9).
+7. systemd units + the `omr-deploy` sudoers NOPASSWD line (§6).
+8. Nginx + certbot for the new domain (§7).
+9. Point the new domain's **DNS A record** at the new VPS IP.
+
+From then on, only the two commands above — `PUBLIC_API_BASE` comes from `/etc/omr/api.env`, so `deploy.sh` is never edited and `git pull --ff-only` never conflicts.
