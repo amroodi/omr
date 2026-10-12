@@ -67,6 +67,10 @@ export class MagfaSoapDriver implements SmsDriver {
       throw new Error(`مگفا (SOAP): ${String((e as Error).message).slice(0, 200)}`);
     }
 
+    // Log the raw response once per send — Magfa's accept/reject only shows here, and "accepted
+    // request / rejected message" (bad sender, no credit, unapproved text) is otherwise silent.
+    this.logger.log(`Magfa SOAP response: ${JSON.stringify(result).slice(0, 500)}`);
+
     const status = this.extractStatus(result);
     if (status !== null && status !== 0) {
       const hint = MAGFA_STATUS[status] ? ` — ${MAGFA_STATUS[status]}` : '';
@@ -79,13 +83,27 @@ export class MagfaSoapDriver implements SmsDriver {
     await this.send(toPhone, this.cfg.otpMessage(code));
   }
 
-  /** The SOAP response shape can vary; look for a numeric status at the common locations. */
+  /**
+   * The SOAP response shape varies. Magfa v2 returns a top-level request `status` (0 = accepted)
+   * AND a per-recipient result. Both must be OK: a request can be accepted (status 0) while the
+   * single message is rejected (invalid sender/recipient, no credit, unapproved text). Per recipient
+   * Magfa returns either a positive dispatch id (queued/OK) or a NEGATIVE/non-zero error status.
+   */
   private extractStatus(result: any): number | null {
     if (!result || typeof result !== 'object') return null;
-    const candidates = [result.status, result?.return?.status, result?.result?.status];
-    for (const c of candidates) if (typeof c === 'number') return c;
-    const arr = result.messages ?? result?.return?.messages ?? result?.result?.messages;
-    if (Array.isArray(arr) && arr[0] && typeof arr[0].status === 'number') return arr[0].status;
-    return null;
+
+    // 1) Top-level request status — any non-zero is an error (18/19/22/12/…).
+    const top = [result.status, result?.return?.status, result?.result?.status].find((c) => typeof c === 'number');
+    if (typeof top === 'number' && top !== 0) return top;
+
+    // 2) Per-recipient result. SOAP wraps arrays as {item:[…]}.
+    const msgs = result.messages ?? result?.return?.messages ?? result?.result?.messages ?? result?.return ?? result?.result;
+    const arr = Array.isArray(msgs) ? msgs : Array.isArray(msgs?.item) ? msgs.item : null;
+    if (arr && arr.length) {
+      const first = arr[0];
+      if (typeof first === 'number') return first < 0 ? first : 0; // positive = dispatch id (OK)
+      if (first && typeof first.status === 'number') return first.status;
+    }
+    return typeof top === 'number' ? top : null;
   }
 }
