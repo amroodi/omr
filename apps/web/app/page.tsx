@@ -1,7 +1,9 @@
 'use client';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { inquiryApi } from '../lib/api';
+import { client, setToken, setTenantSlug } from '../lib/client';
 import { ErrorBox, Field, StatusBadge } from './components/ui';
 import { Icon } from './components/Shell';
 import { Reveal } from './components/reveal';
@@ -15,8 +17,7 @@ export default function Landing() {
       <DotGrid />
 
       <Hero />
-      <TrustStrip />
-      <HowItWorks />
+      <LoginSection />
       <Preview />
       <CTA />
     </div>
@@ -26,29 +27,12 @@ export default function Landing() {
 /* ─────────────────────────────── Hero ─────────────────────────────── */
 function Hero() {
   return (
-    <section className="grid lg:grid-cols-[1.1fr_.9fr] gap-10 items-center pt-8 lg:pt-16 pb-16">
+    <section className="grid lg:grid-cols-[1.1fr_.9fr] gap-10 items-center pt-8 lg:pt-16 pb-10">
       <div className="order-2 lg:order-1">
-        <Reveal>
-          <span className="badge badge-info mb-5" style={{ fontSize: '0.8rem', padding: '0.35rem 0.8rem' }}>
-            <span style={{ width: 7, height: 7, borderRadius: 99, background: 'var(--brand)', display: 'inline-block' }} />
-            پلتفرم چندسازمانی بیمه — نسل جدید
-          </span>
-        </Reveal>
         <Reveal delay={80}>
           <h1 className="display text-4xl md:text-5xl lg:text-6xl">
             مدیریت هوشمند بیمه <span className="gradient-text">عمر و حوادث</span>
           </h1>
-        </Reveal>
-        <Reveal delay={240}>
-          <div className="flex flex-wrap gap-3 mt-7">
-            <Link href="/org/login" className="btn btn-primary" style={{ padding: '0.8rem 1.5rem', fontSize: '0.95rem' }}>
-              ورود سازمان‌ها
-              <Icon path="M5 12h14M13 6l6 6-6 6" />
-            </Link>
-            <Link href="/customer/login" className="btn btn-glass" style={{ padding: '0.8rem 1.5rem', fontSize: '0.95rem' }}>
-              پورتال بیمه‌گزار
-            </Link>
-          </div>
         </Reveal>
       </div>
 
@@ -137,55 +121,104 @@ function InquiryCard() {
   );
 }
 
-/* ─────────────────────────── Trust / stats strip ─────────────────────────── */
-function TrustStrip() {
-  const items = [
-    ['۲۵۶', 'بیتی رمزنگاری AES'],
-    ['۳', 'لایه کنترل دسترسی'],
-    ['۱۰۰٪', 'ایزوله‌سازی داده سازمان'],
-    ['∞', 'سازمان و شعبه'],
-  ];
+/* ─────────────────────── Side-by-side logins (functional) ─────────────────────── */
+function LoginSection() {
   return (
-    <Reveal>
-      <div className="glass grid grid-cols-2 md:grid-cols-4 divide-x divide-x-reverse" style={{ borderRadius: 18, borderColor: 'var(--border)' }}>
-        {items.map(([n, l], i) => (
-          <div key={i} className="p-5 text-center" style={{ borderColor: 'var(--border)' }}>
-            <div className="text-3xl font-extrabold gradient-text">{n}</div>
-            <div className="text-xs mt-1" style={{ color: 'var(--muted)' }}>{l}</div>
-          </div>
-        ))}
+    <section className="pb-16">
+      <div className="grid md:grid-cols-2 gap-5 max-w-4xl mx-auto">
+        <Reveal><CustomerLoginCard /></Reveal>
+        <Reveal delay={100}><OrgLoginCard /></Reveal>
       </div>
-    </Reveal>
+    </section>
   );
 }
 
-/* ─────────────────────────────── How it works ─────────────────────────────── */
-function HowItWorks() {
-  const steps = [
-    ['۱', 'شناسایی', 'کد ملی و شماره موبایل ثبت‌شده را وارد کنید. هیچ اطلاعاتی در آدرس صفحه قرار نمی‌گیرد.'],
-    ['۲', 'تایید پیامکی', 'کد یکبارمصرف به شماره شما ارسال می‌شود و یک توکن کوتاه‌مدت مخصوص همان پرونده صادر می‌گردد.'],
-    ['۳', 'مشاهده امن', 'اطلاعات پرونده فقط برای شما و تنها برای همان رکورد نمایش داده می‌شود.'],
-  ];
+const PERSON_ICON = 'M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8z';
+const ORG_ICON = 'M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M9 13h.01M9 17h.01M15 9h.01M15 13h.01M15 17h.01';
+
+function CardShell({ icon, title, subtitle, children }: { icon: string; title: string; subtitle: string; children: React.ReactNode }) {
   return (
-    <section className="py-16">
-      <Reveal>
-        <div className="text-center mb-10">
-          <span className="badge badge-neutral mb-3">فرآیند استعلام</span>
-          <h2 className="display text-3xl md:text-4xl">امنیت در سه گام ساده</h2>
+    <div className="glass p-6 lg:p-7 h-full" style={{ borderRadius: 22, boxShadow: 'var(--shadow-lg)' }}>
+      <div className="flex items-center gap-3 mb-5">
+        <span className="feature-icon" style={{ width: 40, height: 40 }}><Icon path={icon} /></span>
+        <div>
+          <div className="font-bold text-lg">{title}</div>
+          <div className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>{subtitle}</div>
         </div>
-      </Reveal>
-      <div className="grid md:grid-cols-3 gap-4">
-        {steps.map(([n, t, d], i) => (
-          <Reveal key={t} delay={i * 90}>
-            <div className="relative p-6 h-full glass" style={{ borderRadius: 18 }}>
-              <div className="text-5xl font-extrabold" style={{ color: 'color-mix(in srgb, var(--brand) 25%, transparent)' }}>{n}</div>
-              <h3 className="font-bold text-lg mt-2 mb-1.5">{t}</h3>
-              <p className="text-sm leading-6" style={{ color: 'var(--muted)' }}>{d}</p>
-            </div>
-          </Reveal>
-        ))}
       </div>
-    </section>
+      {children}
+    </div>
+  );
+}
+
+/** بیمه‌گزار login — National ID + phone → OTP → /customer. Signup goes to the full page. */
+function CustomerLoginCard() {
+  const router = useRouter();
+  const [tenant, setTenant] = useState('damuon');
+  const [nationalCode, setNid] = useState('');
+  const [phone, setPhone] = useState('');
+  const [code, setCode] = useState('');
+  const [step, setStep] = useState<'id' | 'otp'>('id');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const wrap = async (fn: () => Promise<void>) => { setError(''); setLoading(true); try { await fn(); } catch (e: any) { setError(e.message); } finally { setLoading(false); } };
+  const request = () => wrap(async () => { setTenantSlug(tenant); await client.post('/customer/login/request-otp', { nationalCode, phone }); setStep('otp'); });
+  const verify = () => wrap(async () => { const r = await client.post<{ token: string }>('/customer/login/verify-otp', { nationalCode, phone, code }); setToken('customer', r.token); router.push('/customer'); });
+
+  return (
+    <CardShell icon={PERSON_ICON} title="پورتال بیمه‌گزار" subtitle="پیگیری پرونده و بارگذاری مدارک">
+      <div className="space-y-3.5">
+        <ErrorBox message={error} />
+        {step === 'id' ? (
+          <>
+            <Field label="شناسه سازمان"><input className="input" value={tenant} onChange={(e) => setTenant(e.target.value)} style={{ direction: 'ltr', textAlign: 'left' }} /></Field>
+            <Field label="کد ملی"><input className="input" value={nationalCode} onChange={(e) => setNid(e.target.value)} inputMode="numeric" style={{ direction: 'ltr', textAlign: 'right' }} /></Field>
+            <Field label="موبایل ثبت‌شده"><input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="numeric" placeholder="۰۹۱۲…" style={{ direction: 'ltr', textAlign: 'right' }} onKeyDown={(e) => e.key === 'Enter' && nationalCode && phone && request()} /></Field>
+            <button onClick={request} disabled={loading || !nationalCode || !phone} className="btn btn-primary w-full" style={{ padding: '0.75rem' }}>{loading ? '…' : 'ارسال کد'}</button>
+            <Link href="/customer/login" className="btn btn-ghost btn-sm w-full">حساب ندارید؟ ثبت‌نام بیمه‌گزار</Link>
+          </>
+        ) : (
+          <>
+            <p className="text-sm" style={{ color: 'var(--muted)' }}>کد تایید به شماره {phone} ارسال شد.</p>
+            <Field label="کد تایید"><input className="input text-center tracking-[0.5em] text-lg" value={code} onChange={(e) => setCode(e.target.value)} inputMode="numeric" placeholder="––––––" onKeyDown={(e) => e.key === 'Enter' && code.length >= 4 && verify()} /></Field>
+            <button onClick={verify} disabled={loading || code.length < 4} className="btn btn-primary w-full" style={{ padding: '0.75rem' }}>{loading ? '…' : 'ورود'}</button>
+            <button onClick={() => { setStep('id'); setError(''); }} className="btn btn-ghost btn-sm w-full">بازگشت</button>
+          </>
+        )}
+      </div>
+    </CardShell>
+  );
+}
+
+/** Organization login — slug + username + password → /org. */
+function OrgLoginCard() {
+  const router = useRouter();
+  const [slug, setSlug] = useState('damuon');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const submit = async () => {
+    setError(''); setLoading(true);
+    try {
+      setTenantSlug(slug);
+      const r = await client.post<{ token: string }>('/auth/org/login', { tenantSlug: slug, username, password });
+      setToken('org', r.token); router.push('/org');
+    } catch (e: any) { setError(e.message); } finally { setLoading(false); }
+  };
+
+  return (
+    <CardShell icon={ORG_ICON} title="ورود سازمان‌ها" subtitle="پنل مدیریت پرونده‌های سازمان">
+      <div className="space-y-3.5">
+        <ErrorBox message={error} />
+        <Field label="شناسه سازمان"><input className="input" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="damuon" style={{ direction: 'ltr', textAlign: 'left' }} /></Field>
+        <Field label="نام کاربری"><input className="input" value={username} onChange={(e) => setUsername(e.target.value)} /></Field>
+        <Field label="رمز عبور"><input type="password" className="input" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && username && password && submit()} /></Field>
+        <button onClick={submit} disabled={loading || !username || !password} className="btn btn-primary w-full" style={{ padding: '0.75rem' }}>{loading ? '…' : 'ورود'}</button>
+      </div>
+    </CardShell>
   );
 }
 
