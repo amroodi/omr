@@ -229,6 +229,7 @@ function PlatformSms() {
   const test = async () => { setMsg(null); try { await client.post('/platform/sms-config/test', { phone: testPhone }, 'super'); setMsg({ t: 'ok', m: 'پیام آزمایشی ارسال شد' }); } catch (e: any) { setMsg({ t: 'err', m: e.message }); } };
   const setPlatform = async (id: string, enabled: boolean) => { try { await client.post(`/platform/tenants/${id}/sms-platform`, { enabled }, 'super'); load(); } catch (e: any) { setMsg({ t: 'err', m: e.message }); } };
   const setInquiry = async (enabled: boolean) => { setMsg(null); try { await client.put('/platform/inquiry-sms', { enabled }, 'super'); setC({ ...c, inquiryUsePlatform: enabled }); } catch (e: any) { setMsg({ t: 'err', m: e.message }); } };
+  const setOtp = async (enabled: boolean) => { setMsg(null); try { await client.put('/platform/otp-enabled', { enabled }, 'super'); setC({ ...c, otpEnabled: enabled }); } catch (e: any) { setMsg({ t: 'err', m: e.message }); } };
   if (!c) return null;
   const fields = DFIELDS[f.driver] || [];
   return (
@@ -259,6 +260,17 @@ function PlatformSms() {
           <span>کد تایید «استعلام سریع پرونده» از همین درگاه پیامک سکو ارسال شود</span>
         </label>
         <p className="text-xs mt-1" style={{ color: 'var(--muted)' }}>اگر خاموش باشد، استعلام سریع از درگاه اختصاصی همان سازمان استفاده می‌کند.</p>
+      </div>
+      <div className="pt-3 mt-2" style={{ borderTop: '1px solid var(--border)' }}>
+        <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <input type="checkbox" checked={c.otpEnabled ?? true} onChange={(e) => setOtp(e.target.checked)} />
+          <span>فعال‌بودن کد تایید (OTP) برای ورود، استعلام و ثبت‌نام</span>
+        </label>
+        <p className="text-xs mt-1" style={{ color: c.otpEnabled === false ? 'var(--danger)' : 'var(--muted)' }}>
+          {c.otpEnabled === false
+            ? '⚠ هشدار امنیتی: کد تایید خاموش است — کاربران فقط با کد ملی و موبایل و بدون ارسال پیامک وارد می‌شوند.'
+            : 'اگر خاموش کنید، کاربران بدون دریافت کد پیامکی (فقط با کد ملی و موبایل) وارد می‌شوند. فقط برای زمانی که پیامک در دسترس نیست.'}
+        </p>
       </div>
       <div className="pt-3 mt-2" style={{ borderTop: '1px solid var(--border)' }}>
         <h4 className="text-sm font-semibold mb-2">سازمان‌های متقاضی/مجاز استفاده از پیامک سکو</h4>

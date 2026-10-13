@@ -33,11 +33,16 @@ export class CustomerAuthService {
   ) {}
 
   // ── Self-signup phone verification (OTP sent via the HOST/platform gateway) ──
-  async requestSignupOtp(tenantSlug: string, nationalCode: string, phone: string): Promise<{ ok: true; message: string }> {
+  async requestSignupOtp(tenantSlug: string, nationalCode: string, phone: string): Promise<{ ok: true; message: string; otpRequired: boolean }> {
     const ip = getContext()?.ip ?? 'unknown';
     const db = this.prisma.unscoped();
     const tenant = await db.tenant.findUnique({ where: { slug: tenantSlug.trim() }, select: { id: true, isActive: true } });
     if (!tenant || !tenant.isActive) throw new NotFoundException('سازمان یافت نشد');
+
+    // OTP disabled platform-wide → sign up directly (client calls /signup/direct), no SMS.
+    if (!(await this.otpEnabled())) {
+      return { ok: true, otpRequired: false, message: 'ثبت‌نام بدون کد تایید فعال است.' };
+    }
 
     if (!this.rateLimit.hit(`signupotp:ip:${ip}`, 10, 3600)) throw new TooManyRequestsException('تعداد درخواست‌ها زیاد است.');
     const phoneHash = this.crypto.blindIndex(this.normalizePhone(phone))!;
@@ -65,7 +70,7 @@ export class CustomerAuthService {
       this.logger.error(`Signup OTP send failed (platform): ${String(e)}`);
     }
     await this.audit.record({ action: AuditAction.OTP_ISSUE, tenantId: tenant.id, actorType: 'INSURED', metadata: { realm: 'signup' } });
-    return { ok: true, message: 'کد تایید به شماره شما ارسال شد.' };
+    return { ok: true, otpRequired: true, message: 'کد تایید به شماره شما ارسال شد.' };
   }
 
   async verifySignupOtp(dto: { tenantSlug: string; nationalCode: string; phone: string; code: string; fullName?: string }) {
@@ -91,11 +96,22 @@ export class CustomerAuthService {
     return this.customers.signup({ tenantSlug: dto.tenantSlug, nationalCode: dto.nationalCode, phone: dto.phone, fullName: dto.fullName });
   }
 
-  async requestOtp(nationalCode: string, phone: string): Promise<{ ok: true; message: string }> {
+  /** Platform master switch: is OTP required at all? (false = direct login, no code). */
+  private async otpEnabled(): Promise<boolean> {
+    const pc = await this.prisma.unscoped().platformConfig.findUnique({ where: { id: 'platform' }, select: { otpEnabled: true } });
+    return pc?.otpEnabled ?? true;
+  }
+
+  async requestOtp(nationalCode: string, phone: string): Promise<{ ok: true; message: string; otpRequired: boolean }> {
     const tenantId = getTenantIdOrThrow();
     const ip = getContext()?.ip ?? 'unknown';
     const nidHash = this.crypto.blindIndex(nationalCode)!;
     const phoneHash = this.crypto.blindIndex(this.normalizePhone(phone))!;
+
+    // OTP disabled platform-wide → tell the client to log in directly (no SMS, no code).
+    if (!(await this.otpEnabled())) {
+      return { ok: true, otpRequired: false, message: 'ورود بدون کد تایید فعال است.' };
+    }
 
     if (!this.rateLimit.hit(`custotp:ip:${ip}`, 10, 3600)) {
       throw new TooManyRequestsException('تعداد درخواست‌ها زیاد است.');
@@ -130,7 +146,7 @@ export class CustomerAuthService {
         this.logger.error(`Customer OTP send failed (tenant ${tenantId}): ${String(e)}`);
       }
       await this.audit.record({ action: AuditAction.OTP_ISSUE, tenantId, actorType: 'CUSTOMER', metadata: { realm: 'customer' } });
-      return { ok: true, message: 'در صورت وجود حساب، کد تایید ارسال شد.' };
+      return { ok: true, otpRequired: true, message: 'در صورت وجود حساب، کد تایید ارسال شد.' };
     }
 
     // No ACTIVE account. If a signup exists but is pending/rejected, say so clearly so the user
@@ -146,7 +162,7 @@ export class CustomerAuthService {
       throw new ForbiddenException('درخواست ثبت‌نام شما تایید نشد. برای پیگیری با سازمان تماس بگیرید.');
     }
 
-    return { ok: true, message: 'در صورت وجود حساب، کد تایید ارسال شد.' };
+    return { ok: true, otpRequired: true, message: 'در صورت وجود حساب، کد تایید ارسال شد.' };
   }
 
   async verifyOtp(nationalCode: string, phone: string, code: string): Promise<{ token: string; expiresIn: string }> {
@@ -186,6 +202,30 @@ export class CustomerAuthService {
     );
     await this.audit.record({ action: AuditAction.OTP_VERIFY, tenantId, actorType: 'CUSTOMER', actorId: account.id, metadata: { realm: 'customer' } });
     return { token, expiresIn };
+  }
+
+  /** Log in with National ID + phone and NO code — only permitted when OTP is disabled. */
+  async directLogin(nationalCode: string, phone: string): Promise<{ token: string; expiresIn: string }> {
+    if (await this.otpEnabled()) throw new ForbiddenException('کد تایید لازم است.');
+    const tenantId = getTenantIdOrThrow();
+    const nidHash = this.crypto.blindIndex(nationalCode)!;
+    const phoneHash = this.crypto.blindIndex(this.normalizePhone(phone))!;
+    const account = await this.prisma.scoped.customerAccount.findFirst({
+      where: { nationalCodeHash: nidHash, phoneHash, isActive: true, signupStatus: 'ACTIVE' },
+      select: { id: true },
+    });
+    if (!account) throw new ForbiddenException('حساب یافت نشد.');
+    await this.prisma.scoped.customerAccount.update({ where: { id: account.id }, data: { lastLoginAt: new Date() } });
+    const expiresIn = this.config.get<string>('JWT_SESSION_TTL', '8h');
+    const token = await this.jwt.signAsync({ kind: 'customer', sub: account.id, tenantId, nidHash }, { expiresIn });
+    await this.audit.record({ action: AuditAction.LOGIN, tenantId, actorType: 'CUSTOMER', actorId: account.id, metadata: { realm: 'customer', otp: false } });
+    return { token, expiresIn };
+  }
+
+  /** Create a pending signup with NO phone verification — only permitted when OTP is disabled. */
+  async directSignup(dto: { tenantSlug: string; nationalCode: string; phone: string; fullName?: string }) {
+    if (await this.otpEnabled()) throw new ForbiddenException('کد تایید لازم است.');
+    return this.customers.signup({ tenantSlug: dto.tenantSlug, nationalCode: dto.nationalCode, phone: dto.phone, fullName: dto.fullName });
   }
 
   private normalizePhone(phone: string): string {

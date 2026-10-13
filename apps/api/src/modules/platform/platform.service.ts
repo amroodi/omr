@@ -31,7 +31,7 @@ export class PlatformService {
 
   async getSmsConfig() {
     const cfg = await this.load();
-    const row = await this.db().findUnique({ where: { id: PLATFORM_ID }, select: { inquiryUsePlatform: true } });
+    const row = await this.db().findUnique({ where: { id: PLATFORM_ID }, select: { inquiryUsePlatform: true, otpEnabled: true } });
     return {
       drivers: SMS_DRIVERS,
       configured: !!cfg,
@@ -45,7 +45,18 @@ export class PlatformService {
       hasApiKey: !!cfg?.apiKey,
       hasPassword: !!cfg?.password,
       inquiryUsePlatform: row?.inquiryUsePlatform ?? true,
+      otpEnabled: row?.otpEnabled ?? true,
     };
+  }
+
+  async setOtpEnabled(enabled: boolean) {
+    await this.db().upsert({
+      where: { id: PLATFORM_ID },
+      update: { otpEnabled: enabled },
+      create: { id: PLATFORM_ID, otpEnabled: enabled },
+    });
+    await this.audit.record({ action: AuditAction.EDIT, actorType: 'SUPER_ADMIN', targetType: 'PlatformOtp', metadata: { otpEnabled: enabled } });
+    return { ok: true, otpEnabled: enabled };
   }
 
   /** Whether quick-inquiry OTPs should use the platform gateway (default true). */

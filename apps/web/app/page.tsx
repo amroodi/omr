@@ -145,9 +145,9 @@ function ResendRow({ left, onResend, loading, onBack }: { left: number; onResend
 function PartnerLogos() {
   return (
     <div className="mt-6 pt-5" style={{ borderTop: '1px solid var(--border)' }}>
-      <div className="relative mx-auto" style={{ maxWidth: 360, background: '#fff', borderRadius: 12, padding: '10px 18px' }}>
+      <div className="partner-logos relative mx-auto" style={{ maxWidth: 360 }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/partners.webp" alt="بیمس و آتیه اندیشان دامون" style={{ width: '100%', height: 'auto', display: 'block' }} />
+        <img src="/partners.svg" alt="بیمس و آتیه اندیشان دامون" style={{ width: '100%', height: 'auto', display: 'block' }} />
         <a href="https://bimmes.ir" target="_blank" rel="noopener noreferrer" aria-label="بیمس" style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: '52%' }} />
         <a href="https://damuon.com" target="_blank" rel="noopener noreferrer" aria-label="آتیه اندیشان دامون" style={{ position: 'absolute', top: 0, bottom: 0, left: '52%', right: 0 }} />
       </div>
@@ -168,7 +168,14 @@ function InquiryForm() {
   const { left, start } = useCountdown();
 
   const run = async (fn: () => Promise<void>) => { setError(''); setLoading(true); try { await fn(); } catch (e: any) { setError(e.message || 'خطا'); } finally { setLoading(false); } };
-  const request = () => run(async () => { const r = await inquiryApi.requestOtp(nid, phone); setMsg(r.message); setStep('otp'); start(120); });
+  const request = () => run(async () => {
+    const r = await inquiryApi.requestOtp(nid, phone);
+    if (r.otpRequired === false) { // OTP disabled platform-wide → view directly
+      const t = await inquiryApi.direct(nid, phone);
+      setResult(await inquiryApi.getCase(t.token)); setStep('result'); return;
+    }
+    setMsg(r.message); setStep('otp'); start(120);
+  });
   const verify = () => run(async () => { const r = await inquiryApi.verifyOtp(nid, phone, code); setResult(await inquiryApi.getCase(r.token)); setStep('result'); });
 
   return (
@@ -226,7 +233,15 @@ function CustomerForm() {
   const { left, start } = useCountdown();
 
   const run = async (fn: () => Promise<void>) => { setError(''); setLoading(true); try { await fn(); } catch (e: any) { setError(e.message); } finally { setLoading(false); } };
-  const request = () => run(async () => { setTenantSlug(tenant); await client.post('/customer/login/request-otp', { nationalCode: nid, phone }); setStep('otp'); start(120); });
+  const request = () => run(async () => {
+    setTenantSlug(tenant);
+    const r = await client.post<{ otpRequired?: boolean }>('/customer/login/request-otp', { nationalCode: nid, phone });
+    if (r.otpRequired === false) { // OTP disabled platform-wide → log in directly
+      const t = await client.post<{ token: string }>('/customer/login/direct', { nationalCode: nid, phone });
+      setToken('customer', t.token); router.push('/customer'); return;
+    }
+    setStep('otp'); start(120);
+  });
   const verify = () => run(async () => { const r = await client.post<{ token: string }>('/customer/login/verify-otp', { nationalCode: nid, phone, code }); setToken('customer', r.token); router.push('/customer'); });
 
   return (

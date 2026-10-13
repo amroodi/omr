@@ -25,6 +25,14 @@ export class InquiryController {
     return this.inquiry.verifyOtp(dto);
   }
 
+  /** Direct record view with no code — only works when OTP is disabled platform-wide. */
+  @Public()
+  @UseGuards(TenantResolverGuard)
+  @Post('direct')
+  direct(@Body() dto: RequestOtpDto) {
+    return this.inquiry.directVerify(dto);
+  }
+
   /** Step 3 — requires the record token from step 2. Returns that one case only. */
   @UseGuards(JwtAuthGuard)
   @Get('case')

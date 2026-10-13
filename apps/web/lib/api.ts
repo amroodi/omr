@@ -27,12 +27,15 @@ async function get<T>(path: string, token: string): Promise<T> {
 
 export const inquiryApi = {
   requestOtp: (nationalCode: string, phone: string) =>
-    post<{ ok: boolean; message: string }>('/inquiry/request-otp', { nationalCode, phone }),
+    post<{ ok: boolean; message: string; otpRequired?: boolean }>('/inquiry/request-otp', { nationalCode, phone }),
   verifyOtp: (nationalCode: string, phone: string, code: string) =>
     post<{ token: string; expiresIn: string }>('/inquiry/verify-otp', {
       nationalCode,
       phone,
       code,
     }),
+  // Direct record view when OTP is disabled platform-wide (no code).
+  direct: (nationalCode: string, phone: string) =>
+    post<{ token: string; expiresIn: string }>('/inquiry/direct', { nationalCode, phone }),
   getCase: (token: string) => get<any>('/inquiry/case', token),
 };

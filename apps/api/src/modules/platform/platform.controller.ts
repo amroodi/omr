@@ -45,4 +45,10 @@ export class PlatformController {
   setInquiryUsePlatform(@Body() dto: SetPlatformSmsDto) {
     return this.platform.setInquiryUsePlatform(!!dto.enabled);
   }
+
+  /** Master switch: require OTP on login/inquiry/signup, or allow proceeding without a code. */
+  @Put('otp-enabled')
+  setOtpEnabled(@Body() dto: SetPlatformSmsDto) {
+    return this.platform.setOtpEnabled(!!dto.enabled);
+  }
 }

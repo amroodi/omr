@@ -51,6 +51,14 @@ export class CustomerController {
     return this.auth.verifyOtp(dto.nationalCode, dto.phone, dto.code);
   }
 
+  /** Direct login with no code — only works when OTP is disabled platform-wide. */
+  @Public()
+  @UseGuards(TenantResolverGuard)
+  @Post('login/direct')
+  directLogin(@Body() dto: CustomerRequestOtpDto) {
+    return this.auth.directLogin(dto.nationalCode, dto.phone);
+  }
+
   // ── Public self-signup (choose an organization; creates a PENDING request) ──
   @Public()
   @Get('orgs')
@@ -68,6 +76,13 @@ export class CustomerController {
   @Post('signup/verify-otp')
   signupVerifyOtp(@Body() dto: CustomerSignupVerifyDto) {
     return this.auth.verifySignupOtp(dto);
+  }
+
+  /** Direct signup with no code — only works when OTP is disabled platform-wide. */
+  @Public()
+  @Post('signup/direct')
+  signupDirect(@Body() dto: CustomerSignupDto) {
+    return this.auth.directSignup(dto);
   }
 
   // ── Org-side بیمه‌گزار onboarding + approvals (org token + customer:manage) ──

@@ -28,13 +28,25 @@ export default function CustomerLogin() {
     setError(''); setLoading(true);
     try { await fn(); } catch (e: any) { setError(e.message); } finally { setLoading(false); }
   };
-  const request = () => wrap(async () => { setTenantSlug(tenant); await client.post('/customer/login/request-otp', { nationalCode, phone }); setStep('otp'); });
+  const request = () => wrap(async () => {
+    setTenantSlug(tenant);
+    const r = await client.post<{ otpRequired?: boolean }>('/customer/login/request-otp', { nationalCode, phone });
+    if (r.otpRequired === false) { // OTP disabled platform-wide → log in directly
+      const t = await client.post<{ token: string }>('/customer/login/direct', { nationalCode, phone });
+      setToken('customer', t.token); router.push('/customer'); return;
+    }
+    setStep('otp');
+  });
   const verify = () => wrap(async () => {
     const r = await client.post<{ token: string }>('/customer/login/verify-otp', { nationalCode, phone, code });
     setToken('customer', r.token); router.push('/customer');
   });
   const signupRequestOtp = () => wrap(async () => {
-    await client.post('/customer/signup/request-otp', { tenantSlug: tenant, nationalCode, phone });
+    const r = await client.post<{ otpRequired?: boolean }>('/customer/signup/request-otp', { tenantSlug: tenant, nationalCode, phone });
+    if (r.otpRequired === false) { // OTP disabled → submit the signup request directly
+      const d = await client.post<{ message: string }>('/customer/signup/direct', { tenantSlug: tenant, nationalCode, phone, fullName });
+      setSignupDone(d.message || 'درخواست ثبت‌نام ارسال شد.'); return;
+    }
     setSignupStep('otp');
   });
   const signupVerify = () => wrap(async () => {

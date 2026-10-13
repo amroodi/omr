@@ -94,6 +94,9 @@ model PlatformConfig {
   // Quick-inquiry (استعلام سریع) OTPs go through the platform gateway (Damuon's Magfa) rather than
   // each org's own SMS provider. Toggled by the super-admin.
   inquiryUsePlatform Boolean  @default(true)
+  // Master switch for OTP on login/inquiry/signup. When false, users proceed without a code
+  // (no SMS sent, no code checked). Super-admin toggle — a deliberate security downgrade.
+  otpEnabled         Boolean  @default(true)
   updatedAt          DateTime @updatedAt @default(now())
 }
 

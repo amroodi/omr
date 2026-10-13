@@ -44,7 +44,33 @@ export class InquiryService {
     private readonly config: ConfigService,
   ) {}
 
-  async requestOtp(dto: RequestOtpDto): Promise<{ ok: true; message: string }> {
+  /** Platform master switch: is OTP required at all? (false = view record directly, no code). */
+  private async otpEnabled(): Promise<boolean> {
+    const pc = await this.prisma.unscoped().platformConfig.findUnique({ where: { id: 'platform' }, select: { otpEnabled: true } });
+    return pc?.otpEnabled ?? true;
+  }
+
+  /** Resolve the single record (legacy Case or new Claim) a National ID + phone unlocks. */
+  private async matchRecord(nidHash: string, phoneHash: string): Promise<{ caseId: string | null; claimId: string | null; insuredId: string | null }> {
+    const insured = await this.prisma.scoped.insuredParty.findFirst({ where: { nationalCodeHash: nidHash, phoneHash }, select: { id: true } });
+    let caseId: string | null = null;
+    if (insured) {
+      const c = await this.prisma.scoped.case.findFirst({ where: { insuredId: insured.id }, orderBy: { updatedAt: 'desc' }, select: { id: true } });
+      caseId = c?.id ?? null;
+    }
+    let claimId: string | null = null;
+    let insuredId: string | null = insured?.id ?? null;
+    if (!caseId) {
+      const account = await this.prisma.scoped.customerAccount.findFirst({ where: { nationalCodeHash: nidHash, phoneHash }, select: { id: true } });
+      if (account) {
+        const claim = await this.prisma.unscoped().claim.findFirst({ where: { policyHolderId: account.id }, orderBy: { createdAt: 'desc' }, select: { id: true } });
+        if (claim) { claimId = claim.id; insuredId = account.id; }
+      }
+    }
+    return { caseId, claimId, insuredId };
+  }
+
+  async requestOtp(dto: RequestOtpDto): Promise<{ ok: true; message: string; otpRequired: boolean }> {
     const tenantId = getTenantIdOrThrow();
     const ctx = getContext();
     const ip = ctx?.ip ?? 'unknown';
@@ -60,43 +86,13 @@ export class InquiryService {
       throw new TooManyRequestsException('تعداد درخواست‌ها زیاد است. بعداً تلاش کنید.');
     }
 
+    // OTP disabled platform-wide → client views the record directly (via /inquiry/direct).
+    if (!(await this.otpEnabled())) {
+      return { ok: true, otpRequired: false, message: 'مشاهده پرونده بدون کد تایید فعال است.' };
+    }
+
     const phoneHash = this.crypto.blindIndex(this.normalizePhone(dto.phone))!;
-
-    // Look up by blind index only — plaintext National ID is never queried.
-    const insured = await this.prisma.scoped.insuredParty.findFirst({
-      where: { nationalCodeHash: nidHash, phoneHash },
-      select: { id: true },
-    });
-
-    // Find the most relevant case for this insured (if the pair matched).
-    let caseId: string | null = null;
-    if (insured) {
-      const c = await this.prisma.scoped.case.findFirst({
-        where: { insuredId: insured.id },
-        orderBy: { updatedAt: 'desc' },
-        select: { id: true },
-      });
-      caseId = c?.id ?? null;
-    }
-
-    // Fallback to the new self-service model: a بیمه‌گزار (CustomerAccount) who filed a Claim.
-    let claimId: string | null = null;
-    let insuredId: string | null = insured?.id ?? null;
-    if (!caseId) {
-      const account = await this.prisma.scoped.customerAccount.findFirst({
-        where: { nationalCodeHash: nidHash, phoneHash },
-        select: { id: true },
-      });
-      if (account) {
-        const claim = await this.prisma
-          .unscoped()
-          .claim.findFirst({ where: { policyHolderId: account.id }, orderBy: { createdAt: 'desc' }, select: { id: true } });
-        if (claim) {
-          claimId = claim.id;
-          insuredId = account.id;
-        }
-      }
-    }
+    const { caseId, claimId, insuredId } = await this.matchRecord(nidHash, phoneHash);
 
     // Always send the same generic response — never reveal whether the pair exists.
     if (caseId || claimId) {
@@ -141,8 +137,32 @@ export class InquiryService {
 
     return {
       ok: true,
+      otpRequired: true,
       message: 'در صورت تطابق اطلاعات، کد تایید برای شماره ثبت‌شده ارسال شد.',
     };
+  }
+
+  /** View a record with no code — only when OTP is disabled. Mints the same record-scoped token. */
+  async directVerify(dto: RequestOtpDto): Promise<{ token: string; expiresIn: string }> {
+    if (await this.otpEnabled()) throw new ForbiddenException('کد تایید لازم است.');
+    const tenantId = getTenantIdOrThrow();
+    const nidHash = this.crypto.blindIndex(dto.nationalCode)!;
+    const phoneHash = this.crypto.blindIndex(this.normalizePhone(dto.phone))!;
+    const { caseId, claimId, insuredId } = await this.matchRecord(nidHash, phoneHash);
+    if (!caseId && !claimId) throw new ForbiddenException('پرونده‌ای برای این مشخصات یافت نشد.');
+
+    const token = await this.jwt.signAsync(
+      { kind: 'record', tenantId, caseId, claimId, sub: insuredId },
+      { expiresIn: this.config.get<string>('RECORD_TOKEN_TTL', '10m') },
+    );
+    await this.audit.record({
+      action: AuditAction.OTP_VERIFY,
+      targetType: claimId ? 'Claim' : 'Case',
+      targetId: (claimId ?? caseId) ?? undefined,
+      tenantId,
+      actorType: 'INSURED',
+    });
+    return { token, expiresIn: this.config.get<string>('RECORD_TOKEN_TTL', '10m') };
   }
 
   async verifyOtp(dto: VerifyOtpDto): Promise<{ token: string; expiresIn: string }> {
