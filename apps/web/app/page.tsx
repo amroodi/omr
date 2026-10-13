@@ -1,13 +1,15 @@
 'use client';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { inquiryApi } from '../lib/api';
 import { client, setToken, setTenantSlug } from '../lib/client';
 import { ErrorBox, Field, StatusBadge } from './components/ui';
 import { Icon } from './components/Shell';
 import { Reveal } from './components/reveal';
 import { DotGrid } from './components/DotGrid';
+
+type Tab = 'inquiry' | 'customer' | 'org';
 
 export default function Landing() {
   return (
@@ -17,7 +19,7 @@ export default function Landing() {
       <DotGrid />
 
       <Hero />
-      <LoginSection />
+      <AuthHub />
       <Preview />
       <CTA />
     </div>
@@ -27,172 +29,234 @@ export default function Landing() {
 /* ─────────────────────────────── Hero ─────────────────────────────── */
 function Hero() {
   return (
-    <section className="grid lg:grid-cols-[1.1fr_.9fr] gap-10 items-center pt-8 lg:pt-16 pb-10">
-      <div className="order-2 lg:order-1">
-        <Reveal delay={80}>
-          <h1 className="display text-4xl md:text-5xl lg:text-6xl">
-            مدیریت هوشمند بیمه <span className="gradient-text">عمر و حوادث</span>
-          </h1>
-        </Reveal>
-      </div>
-
-      <div className="order-1 lg:order-2">
-        <Reveal delay={160}>
-          <div className="floaty">
-            <InquiryCard />
-          </div>
-        </Reveal>
-      </div>
+    <section className="pt-10 lg:pt-16 pb-8 text-center">
+      <Reveal>
+        <h1 className="display text-4xl md:text-5xl lg:text-6xl">
+          مدیریت هوشمند بیمه <span className="gradient-text">عمر و حوادث</span>
+        </h1>
+      </Reveal>
     </section>
   );
 }
 
-/* ───────────────────────── Inquiry card (functional) ───────────────────────── */
-type Step = 'identify' | 'otp' | 'result';
-function InquiryCard() {
-  const [step, setStep] = useState<Step>('identify');
-  const [nationalCode, setNationalCode] = useState('');
+/* ───────────────────── Auth hub — one panel, three tabs ───────────────────── */
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'inquiry', label: 'استعلام سریع پرونده' },
+  { id: 'customer', label: 'پورتال بیمه‌گزار' },
+  { id: 'org', label: 'ورود سازمان‌ها' },
+];
+
+function AuthHub() {
+  const [tab, setTab] = useState<Tab>('inquiry');
+  return (
+    <section className="pb-16">
+      <Reveal delay={120}>
+        <div className="floaty glass max-w-4xl mx-auto overflow-hidden" style={{ borderRadius: 24, boxShadow: 'var(--shadow-lg)' }}>
+          <div className="flex flex-col md:flex-row-reverse">
+            {/* tab buttons (left on desktop, top on mobile) */}
+            <div className="p-5 md:p-6 md:w-[38%] flex flex-col gap-3 justify-center" style={{ background: 'var(--surface-2)', borderLeft: '1px solid var(--border)' }}>
+              {TABS.map((t) => {
+                const active = tab === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => setTab(t.id)}
+                    className="flex items-center justify-between gap-2 px-4 py-3.5 rounded-xl text-sm font-bold transition"
+                    style={active
+                      ? { background: 'linear-gradient(135deg, var(--brand), var(--brand-600))', color: '#fff', boxShadow: '0 10px 22px -10px rgba(255,120,0,.65)' }
+                      : { background: 'var(--surface)', color: 'var(--muted)', border: '1px solid var(--border)' }}
+                  >
+                    <span>{t.label}</span>
+                    <Icon path="M5 12h14M13 6l6 6-6 6" />
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* active form (right on desktop) */}
+            <div className="relative p-6 md:p-8 md:flex-1">
+              <span style={{ position: 'absolute', top: 0, right: 0, width: '55%', height: 4, background: 'linear-gradient(90deg, transparent, var(--brand))' }} />
+              {tab === 'inquiry' && <InquiryForm />}
+              {tab === 'customer' && <CustomerForm />}
+              {tab === 'org' && <OrgForm />}
+              <PartnerLogos />
+            </div>
+          </div>
+        </div>
+      </Reveal>
+    </section>
+  );
+}
+
+/* ─────────────────────────── shared bits ─────────────────────────── */
+const FA = '۰۱۲۳۴۵۶۷۸۹';
+const faDigits = (s: string) => s.replace(/\d/g, (d) => FA[+d]);
+const mmss = (s: number) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+
+/** 2-minute (default) countdown for OTP resend. */
+function useCountdown() {
+  const [left, setLeft] = useState(0);
+  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const start = (secs = 120) => {
+    setLeft(secs);
+    if (timer.current) clearInterval(timer.current);
+    timer.current = setInterval(() => setLeft((s) => {
+      if (s <= 1) { if (timer.current) clearInterval(timer.current); return 0; }
+      return s - 1;
+    }), 1000);
+  };
+  useEffect(() => () => { if (timer.current) clearInterval(timer.current); }, []);
+  return { left, start };
+}
+
+function FormHeader({ title, subtitle }: { title: string; subtitle: string }) {
+  return (
+    <div className="mb-5">
+      <h2 className="text-2xl font-extrabold">{title}</h2>
+      <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>{subtitle}</p>
+    </div>
+  );
+}
+
+/** Input with the shared vector icon inside (used for کد ملی / نام کاربری). */
+function IconField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <Field label={label}>
+      <div className="relative">
+        {children}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/field-icon.webp" alt="" aria-hidden="true" width={18} style={{ position: 'absolute', top: '50%', right: 12, transform: 'translateY(-50%)', opacity: 0.5, pointerEvents: 'none' }} />
+      </div>
+    </Field>
+  );
+}
+
+function ResendRow({ left, onResend, loading, onBack }: { left: number; onResend: () => void; loading: boolean; onBack: () => void }) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <button onClick={onBack} className="btn btn-ghost btn-sm">بازگشت</button>
+      {left > 0
+        ? <span className="text-xs" style={{ color: 'var(--muted)' }}>ارسال مجدد کد تا {faDigits(mmss(left))} دیگر</span>
+        : <button onClick={onResend} disabled={loading} className="btn btn-ghost btn-sm" style={{ color: 'var(--brand)' }}>ارسال مجدد کد</button>}
+    </div>
+  );
+}
+
+function PartnerLogos() {
+  return (
+    <div className="mt-6 pt-5" style={{ borderTop: '1px solid var(--border)' }}>
+      <div className="relative mx-auto" style={{ maxWidth: 360, background: '#fff', borderRadius: 12, padding: '10px 18px' }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/partners.webp" alt="بیمس و آتیه اندیشان دامون" style={{ width: '100%', height: 'auto', display: 'block' }} />
+        <a href="https://bimmes.ir" target="_blank" rel="noopener noreferrer" aria-label="بیمس" style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: '52%' }} />
+        <a href="https://damuon.com" target="_blank" rel="noopener noreferrer" aria-label="آتیه اندیشان دامون" style={{ position: 'absolute', top: 0, bottom: 0, left: '52%', right: 0 }} />
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────── استعلام سریع (inquiry) ─────────────────────── */
+function InquiryForm() {
+  const [step, setStep] = useState<'id' | 'otp' | 'result'>('id');
+  const [nid, setNid] = useState('');
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
   const [result, setResult] = useState<any>(null);
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const { left, start } = useCountdown();
 
-  const run = async (fn: () => Promise<void>) => {
-    setError(''); setLoading(true);
-    try { await fn(); } catch (e: any) { setError(e.message || 'خطا'); } finally { setLoading(false); }
-  };
-  const submitIdentify = () => run(async () => { const r = await inquiryApi.requestOtp(nationalCode, phone); setMsg(r.message); setStep('otp'); });
-  const submitOtp = () => run(async () => { const r = await inquiryApi.verifyOtp(nationalCode, phone, code); setResult(await inquiryApi.getCase(r.token)); setStep('result'); });
+  const run = async (fn: () => Promise<void>) => { setError(''); setLoading(true); try { await fn(); } catch (e: any) { setError(e.message || 'خطا'); } finally { setLoading(false); } };
+  const request = () => run(async () => { const r = await inquiryApi.requestOtp(nid, phone); setMsg(r.message); setStep('otp'); start(120); });
+  const verify = () => run(async () => { const r = await inquiryApi.verifyOtp(nid, phone, code); setResult(await inquiryApi.getCase(r.token)); setStep('result'); });
 
   return (
-    <div className="glass p-6 lg:p-7" style={{ borderRadius: 22, boxShadow: 'var(--shadow-lg)' }}>
-      <div className="flex items-center justify-between mb-5">
-        <div>
-          <div className="font-bold text-lg">استعلام سریع پرونده</div>
-          <div className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>امن، بدون درج کد ملی در آدرس</div>
-        </div>
-        <span className="feature-icon" style={{ width: 40, height: 40 }}><Icon path="M12 2l7 3v6c0 4.2-2.9 7.7-7 9-4.1-1.3-7-4.8-7-9V5l7-3z" /></span>
-      </div>
-
-      <div className="flex items-center gap-1.5 mb-5">
-        {(['identify', 'otp', 'result'] as Step[]).map((s, i) => {
-          const idx = step === 'identify' ? 0 : step === 'otp' ? 1 : 2;
-          return <span key={s} className="h-1.5 rounded-full flex-1 transition-all" style={{ background: i <= idx ? 'var(--brand)' : 'var(--border-strong)' }} />;
-        })}
-      </div>
-
-      <ErrorBox message={error} />
-
-      {step === 'identify' && (
-        <div className="space-y-3.5">
-          <Field label="کد ملی"><input className="input" value={nationalCode} onChange={(e) => setNationalCode(e.target.value)} placeholder="کد ملی ۱۰ رقمی" inputMode="numeric" /></Field>
-          <Field label="شماره موبایل"><input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="۰۹۱۲۳۴۵۶۷۸۹" inputMode="numeric" /></Field>
-          <button onClick={submitIdentify} disabled={loading || !nationalCode || !phone} className="btn btn-primary w-full" style={{ padding: '0.75rem' }}>{loading ? 'در حال ارسال…' : 'دریافت کد تایید'}</button>
-        </div>
-      )}
-      {step === 'otp' && (
-        <div className="space-y-3.5">
-          <p className="text-sm" style={{ color: 'var(--muted)' }}>{msg}</p>
-          <Field label="کد تایید"><input className="input text-center text-xl tracking-[0.5em]" value={code} onChange={(e) => setCode(e.target.value)} placeholder="––––––" inputMode="numeric" /></Field>
-          <button onClick={submitOtp} disabled={loading || code.length < 4} className="btn btn-primary w-full" style={{ padding: '0.75rem' }}>{loading ? 'در حال بررسی…' : 'مشاهده پرونده'}</button>
-          <button onClick={() => setStep('identify')} className="btn btn-glass btn-sm w-full">بازگشت</button>
-        </div>
-      )}
-      {step === 'result' && result && (
-        <div className="fade-up">
-          <div className="flex items-center justify-between mb-3">
-            <span className="font-bold">پرونده {result.kind === 'claim' ? result.claimNumber : result.caseNumber}</span>
-            <StatusBadge status={result.status} />
-          </div>
-          {(result.kind === 'claim'
-            ? [['بیمه‌گر', result.insurerName], ['بیمه‌شده (متوفی)', result.deceasedName], ['تاریخ وقوع', result.eventDate], ['تاریخ ثبت', result.createdAt], ['توضیحات', result.description]]
-            : [['نام', result.insured?.fullName], ['کد ملی', result.insured?.nationalCodeMasked], ['بیمه‌نامه', result.policy ? `${result.policy.policyNumber} — ${result.policy.carrier}` : null], ['تاریخ پرداخت', result.workflow?.paidAt]]
-          ).map(([l, v]) => v ? (
-            <div key={l as string} className="flex justify-between py-2 border-b text-sm" style={{ borderColor: 'var(--border)' }}>
-              <span style={{ color: 'var(--muted)' }}>{l}</span><span className="font-semibold">{v}</span>
+    <div>
+      <FormHeader title="استعلام سریع پرونده" subtitle="برای مشاهده اطلاعات پرونده، کد ملی و موبایل خود را وارد کنید." />
+      <div className="space-y-3.5">
+        <ErrorBox message={error} />
+        {step === 'id' && (
+          <>
+            <IconField label="کد ملی"><input className="input" style={{ paddingRight: 40, direction: 'ltr', textAlign: 'right' }} value={nid} onChange={(e) => setNid(e.target.value)} inputMode="numeric" placeholder="کد ملی ۱۰ رقمی خود را وارد کنید" /></IconField>
+            <Field label="شماره موبایل"><input className="input" style={{ direction: 'ltr', textAlign: 'right' }} value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="numeric" placeholder="۰۹۱۲۳۴۵۶۷۸۹" onKeyDown={(e) => e.key === 'Enter' && nid && phone && request()} /></Field>
+            <button onClick={request} disabled={loading || !nid || !phone} className="btn btn-primary w-full" style={{ padding: '0.8rem' }}>{loading ? 'در حال ارسال…' : 'دریافت کد تایید'}</button>
+          </>
+        )}
+        {step === 'otp' && (
+          <>
+            <p className="text-sm" style={{ color: 'var(--muted)' }}>{msg}</p>
+            <Field label="کد تایید"><input className="input text-center tracking-[0.5em] text-lg" value={code} onChange={(e) => setCode(e.target.value)} inputMode="numeric" placeholder="––––––" onKeyDown={(e) => e.key === 'Enter' && code.length >= 4 && verify()} /></Field>
+            <button onClick={verify} disabled={loading || code.length < 4} className="btn btn-primary w-full" style={{ padding: '0.8rem' }}>{loading ? 'در حال بررسی…' : 'مشاهده پرونده'}</button>
+            <ResendRow left={left} onResend={request} loading={loading} onBack={() => setStep('id')} />
+          </>
+        )}
+        {step === 'result' && result && (
+          <div className="fade-up">
+            <div className="flex items-center justify-between mb-3">
+              <span className="font-bold">پرونده {result.kind === 'claim' ? result.claimNumber : result.caseNumber}</span>
+              <StatusBadge status={result.status} />
             </div>
-          ) : null)}
-          <button onClick={() => { setStep('identify'); setResult(null); setCode(''); }} className="btn btn-glass btn-sm w-full mt-4">استعلام جدید</button>
-        </div>
-      )}
+            {(result.kind === 'claim'
+              ? [['بیمه‌گر', result.insurerName], ['بیمه‌شده (متوفی)', result.deceasedName], ['تاریخ وقوع', result.eventDate], ['تاریخ ثبت', result.createdAt], ['توضیحات', result.description]]
+              : [['نام', result.insured?.fullName], ['کد ملی', result.insured?.nationalCodeMasked], ['بیمه‌نامه', result.policy ? `${result.policy.policyNumber} — ${result.policy.carrier}` : null], ['تاریخ پرداخت', result.workflow?.paidAt]]
+            ).map(([l, v]) => v ? (
+              <div key={l as string} className="flex justify-between py-2 border-b text-sm" style={{ borderColor: 'var(--border)' }}>
+                <span style={{ color: 'var(--muted)' }}>{l}</span><span className="font-semibold">{v}</span>
+              </div>
+            ) : null)}
+            <button onClick={() => { setStep('id'); setResult(null); setCode(''); }} className="btn btn-glass btn-sm w-full mt-4">استعلام جدید</button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-/* ─────────────────────── Side-by-side logins (functional) ─────────────────────── */
-function LoginSection() {
-  return (
-    <section className="pb-16">
-      <div className="grid md:grid-cols-2 gap-5 max-w-4xl mx-auto">
-        <Reveal><CustomerLoginCard /></Reveal>
-        <Reveal delay={100}><OrgLoginCard /></Reveal>
-      </div>
-    </section>
-  );
-}
-
-const PERSON_ICON = 'M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8z';
-const ORG_ICON = 'M3 21h18M5 21V7l7-4 7 4v14M9 9h.01M9 13h.01M9 17h.01M15 9h.01M15 13h.01M15 17h.01';
-
-function CardShell({ icon, title, subtitle, children }: { icon: string; title: string; subtitle: string; children: React.ReactNode }) {
-  return (
-    <div className="glass p-6 lg:p-7 h-full" style={{ borderRadius: 22, boxShadow: 'var(--shadow-lg)' }}>
-      <div className="flex items-center gap-3 mb-5">
-        <span className="feature-icon" style={{ width: 40, height: 40 }}><Icon path={icon} /></span>
-        <div>
-          <div className="font-bold text-lg">{title}</div>
-          <div className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>{subtitle}</div>
-        </div>
-      </div>
-      {children}
-    </div>
-  );
-}
-
-/** بیمه‌گزار login — National ID + phone → OTP → /customer. Signup goes to the full page. */
-function CustomerLoginCard() {
+/* ─────────────────────── پورتال بیمه‌گزار (customer) ─────────────────────── */
+function CustomerForm() {
   const router = useRouter();
   const [tenant, setTenant] = useState('damuon');
-  const [nationalCode, setNid] = useState('');
+  const [nid, setNid] = useState('');
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
   const [step, setStep] = useState<'id' | 'otp'>('id');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const { left, start } = useCountdown();
 
-  const wrap = async (fn: () => Promise<void>) => { setError(''); setLoading(true); try { await fn(); } catch (e: any) { setError(e.message); } finally { setLoading(false); } };
-  const request = () => wrap(async () => { setTenantSlug(tenant); await client.post('/customer/login/request-otp', { nationalCode, phone }); setStep('otp'); });
-  const verify = () => wrap(async () => { const r = await client.post<{ token: string }>('/customer/login/verify-otp', { nationalCode, phone, code }); setToken('customer', r.token); router.push('/customer'); });
+  const run = async (fn: () => Promise<void>) => { setError(''); setLoading(true); try { await fn(); } catch (e: any) { setError(e.message); } finally { setLoading(false); } };
+  const request = () => run(async () => { setTenantSlug(tenant); await client.post('/customer/login/request-otp', { nationalCode: nid, phone }); setStep('otp'); start(120); });
+  const verify = () => run(async () => { const r = await client.post<{ token: string }>('/customer/login/verify-otp', { nationalCode: nid, phone, code }); setToken('customer', r.token); router.push('/customer'); });
 
   return (
-    <CardShell icon={PERSON_ICON} title="پورتال بیمه‌گزار" subtitle="پیگیری پرونده و بارگذاری مدارک">
+    <div>
+      <FormHeader title="پورتال بیمه‌گزار" subtitle="پیگیری پرونده‌های خسارت و بارگذاری مدارک" />
       <div className="space-y-3.5">
         <ErrorBox message={error} />
         {step === 'id' ? (
           <>
-            <Field label="شناسه سازمان"><input className="input" value={tenant} onChange={(e) => setTenant(e.target.value)} style={{ direction: 'ltr', textAlign: 'left' }} /></Field>
-            <Field label="کد ملی"><input className="input" value={nationalCode} onChange={(e) => setNid(e.target.value)} inputMode="numeric" style={{ direction: 'ltr', textAlign: 'right' }} /></Field>
-            <Field label="موبایل ثبت‌شده"><input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="numeric" placeholder="۰۹۱۲…" style={{ direction: 'ltr', textAlign: 'right' }} onKeyDown={(e) => e.key === 'Enter' && nationalCode && phone && request()} /></Field>
-            <button onClick={request} disabled={loading || !nationalCode || !phone} className="btn btn-primary w-full" style={{ padding: '0.75rem' }}>{loading ? '…' : 'ارسال کد'}</button>
+            <Field label="شناسه سازمان"><input className="input" style={{ direction: 'ltr', textAlign: 'left' }} value={tenant} onChange={(e) => setTenant(e.target.value)} /></Field>
+            <IconField label="کد ملی"><input className="input" style={{ paddingRight: 40, direction: 'ltr', textAlign: 'right' }} value={nid} onChange={(e) => setNid(e.target.value)} inputMode="numeric" placeholder="کد ملی خود را وارد کنید" /></IconField>
+            <Field label="موبایل ثبت‌شده"><input className="input" style={{ direction: 'ltr', textAlign: 'right' }} value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="numeric" placeholder="۰۹۱۲…" onKeyDown={(e) => e.key === 'Enter' && nid && phone && request()} /></Field>
+            <button onClick={request} disabled={loading || !nid || !phone} className="btn btn-primary w-full" style={{ padding: '0.8rem' }}>{loading ? '…' : 'ارسال کد'}</button>
             <Link href="/customer/login" className="btn btn-ghost btn-sm w-full">حساب ندارید؟ ثبت‌نام بیمه‌گزار</Link>
           </>
         ) : (
           <>
-            <p className="text-sm" style={{ color: 'var(--muted)' }}>کد تایید به شماره {phone} ارسال شد.</p>
+            <p className="text-sm" style={{ color: 'var(--muted)' }}>کد تایید به شماره {faDigits(phone)} ارسال شد.</p>
             <Field label="کد تایید"><input className="input text-center tracking-[0.5em] text-lg" value={code} onChange={(e) => setCode(e.target.value)} inputMode="numeric" placeholder="––––––" onKeyDown={(e) => e.key === 'Enter' && code.length >= 4 && verify()} /></Field>
-            <button onClick={verify} disabled={loading || code.length < 4} className="btn btn-primary w-full" style={{ padding: '0.75rem' }}>{loading ? '…' : 'ورود'}</button>
-            <button onClick={() => { setStep('id'); setError(''); }} className="btn btn-ghost btn-sm w-full">بازگشت</button>
+            <button onClick={verify} disabled={loading || code.length < 4} className="btn btn-primary w-full" style={{ padding: '0.8rem' }}>{loading ? '…' : 'ورود'}</button>
+            <ResendRow left={left} onResend={request} loading={loading} onBack={() => setStep('id')} />
           </>
         )}
       </div>
-    </CardShell>
+    </div>
   );
 }
 
-/** Organization login — slug + username + password → /org. */
-function OrgLoginCard() {
+/* ─────────────────────── ورود سازمان‌ها (org) ─────────────────────── */
+function OrgForm() {
   const router = useRouter();
   const [slug, setSlug] = useState('damuon');
   const [username, setUsername] = useState('');
@@ -210,15 +274,16 @@ function OrgLoginCard() {
   };
 
   return (
-    <CardShell icon={ORG_ICON} title="ورود سازمان‌ها" subtitle="پنل مدیریت پرونده‌های سازمان">
+    <div>
+      <FormHeader title="ورود سازمان‌ها" subtitle="پنل مدیریت پرونده‌های سازمان" />
       <div className="space-y-3.5">
         <ErrorBox message={error} />
-        <Field label="شناسه سازمان"><input className="input" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="damuon" style={{ direction: 'ltr', textAlign: 'left' }} /></Field>
-        <Field label="نام کاربری"><input className="input" value={username} onChange={(e) => setUsername(e.target.value)} /></Field>
+        <Field label="شناسه سازمان"><input className="input" style={{ direction: 'ltr', textAlign: 'left' }} value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="damuon" /></Field>
+        <IconField label="نام کاربری"><input className="input" style={{ paddingRight: 40 }} value={username} onChange={(e) => setUsername(e.target.value)} /></IconField>
         <Field label="رمز عبور"><input type="password" className="input" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && username && password && submit()} /></Field>
-        <button onClick={submit} disabled={loading || !username || !password} className="btn btn-primary w-full" style={{ padding: '0.75rem' }}>{loading ? '…' : 'ورود'}</button>
+        <button onClick={submit} disabled={loading || !username || !password} className="btn btn-primary w-full" style={{ padding: '0.8rem' }}>{loading ? '…' : 'ورود به سامانه'}</button>
       </div>
-    </CardShell>
+    </div>
   );
 }
 
@@ -284,7 +349,6 @@ function CTA() {
           <p className="mt-3 text-white/90 max-w-xl mx-auto">پلتفرمی که می‌توانید با برند خودتان به شرکت‌های بیمه و کارگزاری‌های دیگر ارائه دهید.</p>
           <div className="flex flex-wrap gap-3 justify-center mt-7">
             <Link href="/org/login" className="btn" style={{ background: '#fff', color: '#c96e00', padding: '0.8rem 1.6rem', fontWeight: 700 }}>شروع کنید</Link>
-            <Link href="/admin/login" className="btn" style={{ background: 'rgba(255,255,255,0.16)', color: '#fff', border: '1px solid rgba(255,255,255,0.4)', padding: '0.8rem 1.6rem' }}>پنل مدیر سکو</Link>
           </div>
         </div>
       </Reveal>
