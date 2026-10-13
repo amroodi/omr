@@ -367,7 +367,8 @@ h1, h2, h3 {
   .reveal { transition: none; opacity: 1; transform: none; }
 }
 
-/* Partner logos: background-free on light; a light chip on dark so the navy stays legible
-   (interim until a true vector/dark-variant logo is supplied). */
-.partner-logos { border-radius: 12px; }
-.dark .partner-logos { background: #ffffff; padding: 8px 18px; }
+/* Partner logos: no background; swap the navy-text (light) and white-text (dark) variants. */
+.partner-logos .logo-light { display: block; }
+.partner-logos .logo-dark { display: none; }
+.dark .partner-logos .logo-light { display: none; }
+.dark .partner-logos .logo-dark { display: block; }

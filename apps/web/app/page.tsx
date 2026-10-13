@@ -146,8 +146,11 @@ function PartnerLogos() {
   return (
     <div className="mt-6 pt-5" style={{ borderTop: '1px solid var(--border)' }}>
       <div className="partner-logos relative mx-auto" style={{ maxWidth: 360 }}>
+        {/* Theme-specific variants (navy on light, white on dark) — swapped by CSS, no background. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/partners.svg" alt="بیمس و آتیه اندیشان دامون" style={{ width: '100%', height: 'auto', display: 'block' }} />
+        <img className="logo-light" src="/partners-light.webp" alt="بیمس و آتیه اندیشان دامون" style={{ width: '100%', height: 'auto' }} />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img className="logo-dark" src="/partners-dark.webp" alt="بیمس و آتیه اندیشان دامون" style={{ width: '100%', height: 'auto' }} />
         <a href="https://bimmes.ir" target="_blank" rel="noopener noreferrer" aria-label="بیمس" style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: '52%' }} />
         <a href="https://damuon.com" target="_blank" rel="noopener noreferrer" aria-label="آتیه اندیشان دامون" style={{ position: 'absolute', top: 0, bottom: 0, left: '52%', right: 0 }} />
       </div>
