@@ -17,10 +17,11 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { Permissions, Public } from '../../common/rbac/decorators';
 import { PERMISSIONS } from '../../common/rbac/permissions';
 import { TenantResolverGuard } from '../../common/tenant/tenant-resolver.guard';
+import { ToAsciiDigits } from '../../common/validation/to-ascii.decorator';
 
 class CreateCustomerDto {
-  @IsString() @Length(8, 12) nationalCode!: string;
-  @IsString() @Matches(/^0?9\d{9}$/) phone!: string;
+  @ToAsciiDigits() @IsString() @Length(8, 12) nationalCode!: string;
+  @ToAsciiDigits() @IsString() @Matches(/^0?9\d{9}$/) phone!: string;
   @IsOptional() @IsString() @Length(2, 120) fullName?: string;
 }
 import { CustomerSignupStatus } from '@prisma/client';
