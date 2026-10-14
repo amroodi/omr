@@ -257,7 +257,61 @@ export class ClaimsService {
     const claim = await this.db().claim.findUnique({ where: { id: claimId }, include: { steps: { orderBy: { order: 'asc' } }, deficiencies: true } });
     if (!claim) throw new NotFoundException('پرونده یافت نشد');
     this.assertParticipant(claim);
-    return this.present(claim, true);
+    const result: any = this.present(claim, true);
+    await this.enrichParties(claim, result);
+    return result;
+  }
+
+  private nidMasked(nid: string | null): string | null {
+    if (!nid) return null;
+    const canPii = (getContext()?.permissions ?? []).includes('view:pii');
+    return canPii ? nid : `••••••${nid.slice(-4)}`;
+  }
+
+  /** Resolve every party on a claim to names/branches/levels + who acted, for a traceable workflow. */
+  private async enrichParties(claim: any, result: any) {
+    const db = this.db();
+    const steps: any[] = claim.steps ?? [];
+    const tenantIds = [...new Set([claim.insurerTenantId, ...(claim.brokerTenantId ? [claim.brokerTenantId] : []), ...steps.map((s) => s.holderTenantId)].filter(Boolean))];
+    const branchIds = [...new Set([...(claim.sellingBranchId ? [claim.sellingBranchId] : []), ...steps.map((s) => s.holderBranchId)].filter(Boolean))] as string[];
+    const levelIds = [...new Set(steps.map((s) => s.levelId).filter(Boolean))] as string[];
+    const actorIds = [...new Set(steps.map((s) => s.decidedById).filter(Boolean))] as string[];
+
+    const [tenants, branches, levels, orgUsers] = await Promise.all([
+      db.tenant.findMany({ where: { id: { in: tenantIds } }, select: { id: true, name: true, kind: true } }),
+      branchIds.length ? db.branch.findMany({ where: { id: { in: branchIds } }, select: { id: true, name: true } }) : Promise.resolve([] as { id: string; name: string }[]),
+      levelIds.length ? db.approvalLevel.findMany({ where: { id: { in: levelIds } }, select: { id: true, name: true } }) : Promise.resolve([] as { id: string; name: string }[]),
+      actorIds.length ? db.orgUser.findMany({ where: { id: { in: actorIds } }, select: { id: true, displayName: true } }) : Promise.resolve([] as { id: string; displayName: string }[]),
+    ]);
+    const tMap = new Map(tenants.map((t) => [t.id, t]));
+    const bMap = new Map(branches.map((b) => [b.id, b.name]));
+    const lMap = new Map(levels.map((l) => [l.id, l.name]));
+    const uMap = new Map(orgUsers.map((u) => [u.id, u.displayName]));
+
+    if (claim.policyHolderId) {
+      const ph = await db.customerAccount.findUnique({ where: { id: claim.policyHolderId }, select: { fullName: true, nationalCode: true } });
+      if (ph) {
+        const nid = ph.nationalCode ? this.crypto.decrypt(ph.nationalCode) : null;
+        result.policyHolder = { name: ph.fullName ? this.crypto.decrypt(ph.fullName) : null, nationalCode: this.nidMasked(nid) };
+      }
+    }
+    const ins = tMap.get(claim.insurerTenantId);
+    result.insurer = ins ? { name: ins.name } : null;
+    result.broker = claim.brokerTenantId && tMap.get(claim.brokerTenantId) ? { name: tMap.get(claim.brokerTenantId)!.name } : null;
+    result.sellingBranchName = claim.sellingBranchId ? (bMap.get(claim.sellingBranchId) ?? null) : null;
+
+    result.steps = (result.steps ?? []).map((s: any, i: number) => {
+      const raw = steps[i] ?? {};
+      const t = raw.holderTenantId ? tMap.get(raw.holderTenantId) : undefined;
+      return {
+        ...s,
+        holderName: t?.name ?? null,
+        holderKind: t?.kind ?? null,
+        branchName: raw.holderBranchId ? (bMap.get(raw.holderBranchId) ?? null) : null,
+        levelName: raw.levelId ? (lMap.get(raw.levelId) ?? null) : null,
+        decidedByName: raw.decidedById ? (uMap.get(raw.decidedById) ?? null) : null,
+      };
+    });
   }
 
   /** Required-document checklist for a claim, filtered by its cause of death. */

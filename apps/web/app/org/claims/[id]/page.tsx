@@ -12,11 +12,16 @@ interface ChecklistItem { code: string; label: string; uploaded: boolean; latest
 interface Checklist { claimType: string; complete: boolean; items: ChecklistItem[] }
 
 const DOC_BADGE: Record<string, string> = { PENDING: 'badge-warning', VERIFIED: 'badge-success', REJECTED: 'badge-danger', NEEDS_INFO: 'badge-warning' };
+interface Step { order: number; partyType: string; state: string; holderName?: string | null; holderKind?: string | null; branchName?: string | null; levelName?: string | null; decidedByName?: string | null; decidedAt?: string | null }
 interface Claim {
   id: string; claimNumber: string; status: string; claimType: string; deceasedName: string | null;
   claimedAmount: string; eventDate: string | null; noticeDeadline: string | null; lateNotice: boolean;
   description?: string | null;
-  steps?: { order: number; partyType: string; state: string }[];
+  policyHolder?: { name: string | null; nationalCode: string | null } | null;
+  insurer?: { name: string } | null;
+  broker?: { name: string } | null;
+  sellingBranchName?: string | null;
+  steps?: Step[];
   deficiencies?: { items: string[]; resolvedAt: string | null }[];
 }
 
@@ -175,18 +180,57 @@ export default function ClaimDetail() {
             )}
           </div>
 
-          {/* sidebar: steps + actions */}
+          {/* sidebar: parties + workflow + actions */}
           <div className="space-y-5">
+            {/* Parties — who is who on this claim */}
+            <div className="card p-5">
+              <h3 className="font-bold mb-3">طرف‌های پرونده</h3>
+              <div className="space-y-2 text-sm">
+                {claim.policyHolder && (
+                  <div className="flex justify-between gap-2 py-1.5 border-b" style={{ borderColor: 'var(--border)' }}>
+                    <span style={{ color: 'var(--muted)' }}>بیمه‌گزار</span>
+                    <span className="font-semibold text-left">{claim.policyHolder.name || '—'}{claim.policyHolder.nationalCode ? <span className="block text-xs font-normal" style={{ color: 'var(--muted)', direction: 'ltr' }}>کد ملی: {claim.policyHolder.nationalCode}</span> : null}</span>
+                  </div>
+                )}
+                {claim.broker && (
+                  <div className="flex justify-between gap-2 py-1.5 border-b" style={{ borderColor: 'var(--border)' }}>
+                    <span style={{ color: 'var(--muted)' }}>معرف (کارگزاری/نمایندگی)</span>
+                    <span className="font-semibold">{claim.broker.name}</span>
+                  </div>
+                )}
+                {claim.insurer && (
+                  <div className="flex justify-between gap-2 py-1.5 border-b" style={{ borderColor: 'var(--border)' }}>
+                    <span style={{ color: 'var(--muted)' }}>بیمه‌گر</span>
+                    <span className="font-semibold">{claim.insurer.name}{claim.sellingBranchName ? <span className="block text-xs font-normal" style={{ color: 'var(--muted)' }}>شعبه فروشنده: {claim.sellingBranchName}</span> : null}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
             <div className="card p-5">
               <h3 className="font-bold mb-3">مسیر گردش کار</h3>
-              <div className="space-y-2">
-                {(claim.steps || []).map((s, i) => (
-                  <div key={i} className="flex items-center gap-2 text-sm">
-                    <span className="flex items-center justify-center rounded-full" style={{ width: 24, height: 24, background: s.state === 'PENDING' ? 'var(--brand)' : 'var(--surface-2)', color: s.state === 'PENDING' ? '#fff' : 'var(--muted)', fontSize: 11 }}>{s.order}</span>
-                    <span>{STEP_PARTY[s.partyType] || s.partyType}</span>
-                    <span className="badge badge-neutral mr-auto">{STEP_STATE[s.state] || s.state}</span>
-                  </div>
-                ))}
+              <div className="space-y-3">
+                {(claim.steps || []).map((s, i) => {
+                  const active = s.state === 'PENDING';
+                  // Who must act / acted at this stage
+                  const role = s.partyType === 'INSURER_LEVEL' ? (s.levelName || 'سطح بیمه‌گر') : (STEP_PARTY[s.partyType] || s.partyType);
+                  const org = s.holderName ? `${s.holderKind === 'INSURER' ? 'بیمه‌گر' : s.holderKind === 'BROKER' ? 'کارگزاری' : ''} ${s.holderName}`.trim() : '';
+                  const where = s.branchName ? s.branchName : (s.holderKind ? 'دفتر مرکزی' : '');
+                  return (
+                    <div key={i} className="flex gap-2.5 text-sm">
+                      <span className="flex items-center justify-center rounded-full shrink-0 mt-0.5" style={{ width: 24, height: 24, background: active ? 'var(--brand)' : s.state === 'APPROVED' ? 'var(--success)' : 'var(--surface-2)', color: active || s.state === 'APPROVED' ? '#fff' : 'var(--muted)', fontSize: 11 }}>{s.order}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-semibold">{role}</span>
+                          <span className={`badge ${active ? 'badge-warning' : s.state === 'APPROVED' ? 'badge-success' : s.state === 'REJECTED' ? 'badge-danger' : 'badge-neutral'}`}>{STEP_STATE[s.state] || s.state}</span>
+                        </div>
+                        {org && <div className="text-xs" style={{ color: 'var(--muted)' }}>{org}{where ? ` — ${where}` : ''}</div>}
+                        {active && <div className="text-xs" style={{ color: 'var(--brand)' }}>در انتظار اقدام این مرحله</div>}
+                        {s.decidedByName && <div className="text-[11px]" style={{ color: 'var(--muted)' }}>اقدام‌کننده: {s.decidedByName}{s.decidedAt ? ` — ${s.decidedAt}` : ''}</div>}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 

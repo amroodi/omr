@@ -1,103 +1,83 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { client, getToken } from '../../lib/client';
+import Link from 'next/link';
+import { client, getToken, hasPerm } from '../../lib/client';
 import { Shell, Icon } from '../components/Shell';
-import { ErrorBox, StatCard, StatusBadge } from '../components/ui';
+import { CLAIM_TYPE_LABELS, ErrorBox, StatCard, StatusBadge } from '../components/ui';
 import { ORG_NAV } from './nav';
 
-const STATUS = [
-  { v: '', l: 'همه' },
-  { v: 'REVIEWING', l: 'در حال بررسی' },
-  { v: 'PAID', l: 'پرداخت شده' },
-  { v: 'UNPAYABLE', l: 'غیرقابل پرداخت' },
-  { v: 'OTHER', l: 'سایر' },
-];
-
-interface CaseRow {
-  id: string; caseNumber: string; status: string;
-  insuredName: string | null; nationalCode: string | null;
-  policyNumber: string | null; stageDate: string | null;
+interface Claim {
+  id: string; claimNumber: string; status: string; claimType: string; insurerTenantId?: string;
+  deceasedName: string | null; claimedAmount: string; lateNotice: boolean; needsAction: boolean;
 }
 
-export default function OrgCases() {
+export default function OrgDashboard() {
   const router = useRouter();
-  const [rows, setRows] = useState<CaseRow[]>([]);
-  const [total, setTotal] = useState(0);
-  const [status, setStatus] = useState('');
+  const [rows, setRows] = useState<Claim[]>([]);
+  const [insurers, setInsurers] = useState<Record<string, string>>({});
   const [q, setQ] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
     setLoading(true); setError('');
-    try {
-      const params = new URLSearchParams();
-      if (status) params.set('status', status);
-      if (q) params.set('q', q);
-      const r = await client.get<{ items: CaseRow[]; total: number }>(`/cases?${params}`, 'org');
-      setRows(r.items); setTotal(r.total);
-    } catch (e: any) { setError(e.message); } finally { setLoading(false); }
+    try { setRows(await client.get<Claim[]>('/claims', 'org')); } catch (e: any) { setError(e.message); } finally { setLoading(false); }
   };
-
   useEffect(() => {
     if (!getToken('org')) { router.push('/org/login'); return; }
     load();
+    client.get<{ id: string; name: string }[]>('/claims/insurers', 'org').then((a) => setInsurers(Object.fromEntries(a.map((i) => [i.id, i.name])))).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const counts = useMemo(() => ({
-    reviewing: rows.filter((r) => r.status === 'REVIEWING').length,
+    reviewing: rows.filter((r) => ['SUBMITTED', 'UNDER_REVIEW', 'RETURNED_INCOMPLETE', 'APPROVED'].includes(r.status)).length,
     paid: rows.filter((r) => r.status === 'PAID').length,
+    action: rows.filter((r) => r.needsAction).length,
   }), [rows]);
 
-  const exportXlsx = () => client.download(`/exports/cases.xlsx${status ? `?status=${status}` : ''}`, 'org', 'cases.xlsx').catch((e) => setError(e.message));
+  const shown = q ? rows.filter((r) => `${r.claimNumber} ${r.deceasedName || ''}`.toLowerCase().includes(q.toLowerCase())) : rows;
 
   return (
-    <Shell title="مدیریت پرونده‌ها" subtitle="پرونده‌های خسارت و پیگیری مراحل" nav={ORG_NAV} realm="org">
+    <Shell title="مدیریت پرونده‌ها" subtitle="پرونده‌های خسارت فوت و حوادث و پیگیری مراحل" nav={ORG_NAV} realm="org">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-        <StatCard label="کل پرونده‌ها" value={total} tone="brand" icon={<Icon path="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />} />
-        <StatCard label="در حال بررسی" value={counts.reviewing} tone="warning" icon={<Icon path="M12 6v6l4 2M12 22a10 10 0 100-20 10 10 0 000 20z" />} />
+        <StatCard label="کل پرونده‌ها" value={rows.length} tone="brand" icon={<Icon path="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />} />
+        <StatCard label="در جریان" value={counts.reviewing} tone="warning" icon={<Icon path="M12 6v6l4 2M12 22a10 10 0 100-20 10 10 0 000 20z" />} />
         <StatCard label="پرداخت‌شده" value={counts.paid} tone="success" icon={<Icon path="M20 6L9 17l-5-5" />} />
-        <StatCard label="این صفحه" value={rows.length} tone="muted" icon={<Icon path="M4 6h16M4 12h16M4 18h16" />} />
+        <StatCard label="نیازمند اقدام" value={counts.action} tone="muted" icon={<Icon path="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />} />
       </div>
 
       <ErrorBox message={error} />
 
-      <div className="card">
-        <div className="flex flex-wrap gap-2 items-center p-3 border-b" style={{ borderColor: 'var(--border)' }}>
-          <select value={status} onChange={(e) => setStatus(e.target.value)} className="input" style={{ width: 'auto' }}>
-            {STATUS.map((s) => <option key={s.v} value={s.v}>{s.l}</option>)}
-          </select>
-          <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && load()} placeholder="جستجوی شماره پرونده یا بیمه‌نامه…" className="input" style={{ maxWidth: 280 }} />
-          <button onClick={load} className="btn btn-ghost btn-sm">اعمال فیلتر</button>
-          <button onClick={exportXlsx} className="btn btn-primary btn-sm mr-auto">
-            <Icon path="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" /> خروجی Excel
-          </button>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="table">
-            <thead>
-              <tr>{['شماره پرونده', 'بیمه‌گذار', 'کد ملی', 'بیمه‌نامه', 'مرحله', 'وضعیت'].map((h) => <th key={h}>{h}</th>)}</tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan={6} className="text-center py-8" style={{ color: 'var(--muted)' }}>در حال بارگذاری…</td></tr>
-              ) : rows.length === 0 ? (
-                <tr><td colSpan={6} className="text-center py-8" style={{ color: 'var(--muted)' }}>پرونده‌ای یافت نشد</td></tr>
-              ) : rows.map((r) => (
-                <tr key={r.id}>
-                  <td className="font-semibold">{r.caseNumber}</td>
-                  <td>{r.insuredName}</td>
-                  <td style={{ direction: 'ltr', textAlign: 'right' }}>{r.nationalCode}</td>
-                  <td>{r.policyNumber}</td>
-                  <td>{r.stageDate}</td>
-                  <td><StatusBadge status={r.status} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <div className="flex justify-between items-center gap-2 mb-3">
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="جستجوی شماره پرونده یا نام…" className="input" style={{ maxWidth: 280 }} />
+        {hasPerm('org', 'claim:file') && (
+          <Link href="/org/claims/new" className="btn btn-primary btn-sm"><Icon path="M12 5v14M5 12h14" /> پرونده جدید</Link>
+        )}
+      </div>
+
+      <div className="card overflow-x-auto">
+        <table className="table">
+          <thead><tr>{['شماره', 'نوع', 'بیمه‌گر', 'بیمه‌شده', 'مبلغ', 'وضعیت', ''].map((h) => <th key={h}>{h}</th>)}</tr></thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={7} className="text-center py-8" style={{ color: 'var(--muted)' }}>در حال بارگذاری…</td></tr>
+            ) : shown.length === 0 ? (
+              <tr><td colSpan={7} className="text-center py-8" style={{ color: 'var(--muted)' }}>پرونده‌ای یافت نشد</td></tr>
+            ) : shown.map((c) => (
+              <tr key={c.id} style={{ cursor: 'pointer' }} onClick={() => router.push(`/org/claims/${c.id}`)}>
+                <td className="font-semibold">{c.claimNumber}</td>
+                <td>{CLAIM_TYPE_LABELS[c.claimType] || c.claimType}</td>
+                <td>{(c.insurerTenantId && insurers[c.insurerTenantId]) || '—'}</td>
+                <td>{c.deceasedName}</td>
+                <td style={{ direction: 'ltr', textAlign: 'right' }}>{Number(c.claimedAmount).toLocaleString('fa-IR')}</td>
+                <td><StatusBadge status={c.status} />{c.lateNotice && <span className="badge badge-danger mr-1">خارج از مهلت</span>}</td>
+                <td>{c.needsAction && <span className="badge badge-warning">نیازمند اقدام</span>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </Shell>
   );
