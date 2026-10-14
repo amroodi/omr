@@ -288,11 +288,17 @@ export class ClaimsService {
     const lMap = new Map(levels.map((l) => [l.id, l.name]));
     const uMap = new Map(orgUsers.map((u) => [u.id, u.displayName]));
 
+    let phPerson: { name: string | null; phone: string | null; nationalCode: string | null } | null = null;
     if (claim.policyHolderId) {
-      const ph = await db.customerAccount.findUnique({ where: { id: claim.policyHolderId }, select: { fullName: true, nationalCode: true } });
+      const ph = await db.customerAccount.findUnique({ where: { id: claim.policyHolderId }, select: { fullName: true, nationalCode: true, phone: true } });
       if (ph) {
         const nid = ph.nationalCode ? this.crypto.decrypt(ph.nationalCode) : null;
-        result.policyHolder = { name: ph.fullName ? this.crypto.decrypt(ph.fullName) : null, nationalCode: this.nidMasked(nid) };
+        phPerson = {
+          name: ph.fullName ? this.crypto.decrypt(ph.fullName) : null,
+          phone: ph.phone ? this.crypto.decrypt(ph.phone) : null,
+          nationalCode: this.nidMasked(nid),
+        };
+        result.policyHolder = phPerson;
       }
     }
     const ins = tMap.get(claim.insurerTenantId);
@@ -303,13 +309,17 @@ export class ClaimsService {
     result.steps = (result.steps ?? []).map((s: any, i: number) => {
       const raw = steps[i] ?? {};
       const t = raw.holderTenantId ? tMap.get(raw.holderTenantId) : undefined;
+      // A POLICYHOLDER step is held by a PERSON (the claimant), not an org/branch. The stored
+      // holderTenantId is only a routing placeholder (the insurer), so surface the person instead.
+      const isPolicyHolder = s.partyType === 'POLICYHOLDER';
       return {
         ...s,
-        holderName: t?.name ?? null,
-        holderKind: t?.kind ?? null,
-        branchName: raw.holderBranchId ? (bMap.get(raw.holderBranchId) ?? null) : null,
+        holderName: isPolicyHolder ? (phPerson?.name ?? null) : (t?.name ?? null),
+        holderKind: isPolicyHolder ? 'POLICYHOLDER' : (t?.kind ?? null),
+        branchName: isPolicyHolder ? null : raw.holderBranchId ? (bMap.get(raw.holderBranchId) ?? null) : null,
         levelName: raw.levelId ? (lMap.get(raw.levelId) ?? null) : null,
         decidedByName: raw.decidedById ? (uMap.get(raw.decidedById) ?? null) : null,
+        person: isPolicyHolder ? phPerson : null,
       };
     });
   }

@@ -12,7 +12,8 @@ interface ChecklistItem { code: string; label: string; uploaded: boolean; latest
 interface Checklist { claimType: string; complete: boolean; items: ChecklistItem[] }
 
 const DOC_BADGE: Record<string, string> = { PENDING: 'badge-warning', VERIFIED: 'badge-success', REJECTED: 'badge-danger', NEEDS_INFO: 'badge-warning' };
-interface Step { order: number; partyType: string; state: string; holderName?: string | null; holderKind?: string | null; branchName?: string | null; levelName?: string | null; decidedByName?: string | null; decidedAt?: string | null }
+interface StepPerson { name: string | null; phone: string | null; nationalCode: string | null }
+interface Step { order: number; partyType: string; state: string; holderName?: string | null; holderKind?: string | null; branchName?: string | null; levelName?: string | null; decidedByName?: string | null; decidedAt?: string | null; person?: StepPerson | null }
 interface Claim {
   id: string; claimNumber: string; status: string; claimType: string; deceasedName: string | null;
   claimedAmount: string; eventDate: string | null; noticeDeadline: string | null; lateNotice: boolean;
@@ -214,8 +215,9 @@ export default function ClaimDetail() {
                   const active = s.state === 'PENDING';
                   // Who must act / acted at this stage
                   const role = s.partyType === 'INSURER_LEVEL' ? (s.levelName || 'سطح بیمه‌گر') : (STEP_PARTY[s.partyType] || s.partyType);
-                  const org = s.holderName ? `${s.holderKind === 'INSURER' ? 'بیمه‌گر' : s.holderKind === 'BROKER' ? 'کارگزاری' : ''} ${s.holderName}`.trim() : '';
-                  const where = s.branchName ? s.branchName : (s.holderKind ? 'دفتر مرکزی' : '');
+                  const isPerson = s.holderKind === 'POLICYHOLDER';
+                  const org = !isPerson && s.holderName ? `${s.holderKind === 'INSURER' ? 'بیمه‌گر' : s.holderKind === 'BROKER' ? 'کارگزاری' : ''} ${s.holderName}`.trim() : '';
+                  const where = !isPerson && (s.branchName ? s.branchName : (s.holderKind ? 'دفتر مرکزی' : ''));
                   return (
                     <div key={i} className="flex gap-2.5 text-sm">
                       <span className="flex items-center justify-center rounded-full shrink-0 mt-0.5" style={{ width: 24, height: 24, background: active ? 'var(--brand)' : s.state === 'APPROVED' ? 'var(--success)' : 'var(--surface-2)', color: active || s.state === 'APPROVED' ? '#fff' : 'var(--muted)', fontSize: 11 }}>{s.order}</span>
@@ -225,6 +227,19 @@ export default function ClaimDetail() {
                           <span className={`badge ${active ? 'badge-warning' : s.state === 'APPROVED' ? 'badge-success' : s.state === 'REJECTED' ? 'badge-danger' : 'badge-neutral'}`}>{STEP_STATE[s.state] || s.state}</span>
                         </div>
                         {org && <div className="text-xs" style={{ color: 'var(--muted)' }}>{org}{where ? ` — ${where}` : ''}</div>}
+                        {isPerson && (
+                          <details className="mt-0.5 text-xs">
+                            <summary className="cursor-pointer select-none" style={{ color: 'var(--muted)' }}>
+                              <span style={{ color: 'var(--text)' }}>{s.person?.name || 'بیمه‌گزار'}</span>
+                              <span className="mr-1" style={{ color: 'var(--brand)' }}>— مشاهده اطلاعات</span>
+                            </summary>
+                            <div className="mt-1 rounded-lg p-2 space-y-0.5" style={{ background: 'var(--surface-2)' }}>
+                              <div><span style={{ color: 'var(--muted)' }}>نام: </span>{s.person?.name || '—'}</div>
+                              <div style={{ direction: 'ltr', textAlign: 'right' }}><span style={{ color: 'var(--muted)' }}>تلفن: </span>{s.person?.phone || '—'}</div>
+                              <div style={{ direction: 'ltr', textAlign: 'right' }}><span style={{ color: 'var(--muted)' }}>کد ملی: </span>{s.person?.nationalCode || '—'}</div>
+                            </div>
+                          </details>
+                        )}
                         {active && <div className="text-xs" style={{ color: 'var(--brand)' }}>در انتظار اقدام این مرحله</div>}
                         {s.decidedByName && <div className="text-[11px]" style={{ color: 'var(--muted)' }}>اقدام‌کننده: {s.decidedByName}{s.decidedAt ? ` — ${s.decidedAt}` : ''}</div>}
                       </div>
