@@ -1,4 +1,4 @@
-import { IsArray, IsHexColor, IsInt, IsOptional, IsString, Length, Matches, Max, Min } from 'class-validator';
+import { IsArray, IsBoolean, IsHexColor, IsInt, IsOptional, IsString, Length, Matches, Max, Min } from 'class-validator';
 
 export class UpdateBrandingDto {
   @IsOptional()
@@ -11,6 +11,10 @@ export class UpdateBrandingDto {
   @Min(1)
   @Max(365)
   noticeDays?: number; // insurer's claim-notice deadline window
+
+  @IsOptional()
+  @IsBoolean()
+  lateNoticeWarning?: boolean; // show/hide the "خارج از مهلت" warning
 
   @IsOptional()
   @IsHexColor()

@@ -26,6 +26,7 @@ export default function CustomerClaim() {
   const [insurers, setInsurers] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [lateWarn, setLateWarn] = useState(true);
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const camRefs = useRef<Record<string, HTMLInputElement | null>>({}); // mobile camera capture
 
@@ -35,6 +36,7 @@ export default function CustomerClaim() {
       setClaim(c); setChecklist(cl);
     } catch (e: any) { setError(e.message); }
     client.get<{ id: string; name: string }[]>('/customer/insurers', 'customer').then((a) => setInsurers(Object.fromEntries(a.map((i) => [i.id, i.name])))).catch(() => {});
+    client.get<{ lateNoticeWarning?: boolean }>('/tenant/branding', 'customer').then((b) => setLateWarn(b.lateNoticeWarning !== false)).catch(() => {});
   };
   useEffect(() => {
     if (!getToken('customer')) { router.push('/customer/login'); return; }
@@ -67,7 +69,7 @@ export default function CustomerClaim() {
             {claim.description && (
               <div className="text-sm mt-2 whitespace-pre-wrap" style={{ color: 'var(--muted)' }}>توضیحات: {claim.description}</div>
             )}
-            {claim.lateNotice && <div className="alert-error mt-3">⚠ اعلام خسارت خارج از مهلت مقرر بوده است (مهلت: {claim.noticeDeadline}).</div>}
+            {claim.lateNotice && lateWarn && <div className="alert-error mt-3">⚠ اعلام خسارت خارج از مهلت مقرر بوده است (مهلت: {claim.noticeDeadline}).</div>}
           </div>
 
           {claim.status === 'RETURNED_INCOMPLETE' && (

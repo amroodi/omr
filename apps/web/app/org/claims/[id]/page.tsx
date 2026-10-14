@@ -38,13 +38,14 @@ export default function ClaimDetail() {
   const canFile = hasPerm('org', 'claim:file'); // بارگذاری مدرک / رفع نقص
   const canVerify = hasPerm('org', 'doc:verify'); // تایید/رد اصالت مدرک
 
+  const [lateWarn, setLateWarn] = useState(true); // org's "show late-notice warning" setting
   const load = async () => {
     try {
       const [c, cl] = await Promise.all([client.get<Claim>(`/claims/${id}`, 'org'), client.get<Checklist>(`/claims/${id}/checklist`, 'org')]);
       setClaim(c); setChecklist(cl);
     } catch (e: any) { setError(e.message); }
   };
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [id]);
+  useEffect(() => { load(); client.get<{ lateNoticeWarning?: boolean }>('/tenant/branding', 'org').then((b) => setLateWarn(b.lateNoticeWarning !== false)).catch(() => {}); /* eslint-disable-next-line */ }, [id]);
 
   const act = async (fn: () => Promise<any>) => {
     setError(''); setBusy(true);
@@ -91,7 +92,7 @@ export default function ClaimDetail() {
         <div className="grid lg:grid-cols-[1fr_320px] gap-5">
           {/* main */}
           <div className="space-y-5">
-            {claim.lateNotice && (
+            {claim.lateNotice && lateWarn && (
               <div className="alert-error">⚠ اعلام خسارت خارج از مهلت مقرر انجام شده است (مهلت: {claim.noticeDeadline}).</div>
             )}
             <div className="card p-5">

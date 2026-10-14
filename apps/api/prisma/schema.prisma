@@ -41,6 +41,7 @@ model Tenant {
   smsUsePlatformRequested Boolean @default(false) // org asked to use the platform gateway (awaits super-admin)
   fontFamily    String?  @default("Vazirmatn")
   noticeDays    Int      @default(30) // deadline (days from event) for the بیمه‌گزار to report
+  lateNoticeWarning Boolean @default(true) // show the "خارج از مهلت" warning on this org's claims
   // Origins allowed to embed the inquiry widget in an <iframe> (CSP frame-ancestors allowlist).
   embedOrigins  String[] @default([])
   isActive      Boolean  @default(true)

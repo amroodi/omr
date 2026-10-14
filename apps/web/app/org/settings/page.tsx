@@ -41,7 +41,7 @@ function BrandingTab() {
   useEffect(() => { load(); }, []);
   const save = async () => {
     setMsg(null);
-    try { await client.patch('/tenant/settings', { name: s.name, primaryColor: s.primaryColor, contactHeader: s.contactHeader, noticeDays: Number(s.noticeDays) }, 'org'); setMsg({ t: 'ok', m: 'ذخیره شد' }); load(); }
+    try { await client.patch('/tenant/settings', { name: s.name, primaryColor: s.primaryColor, contactHeader: s.contactHeader, noticeDays: Number(s.noticeDays), lateNoticeWarning: s.lateNoticeWarning !== false }, 'org'); setMsg({ t: 'ok', m: 'ذخیره شد' }); load(); }
     catch (e: any) { setMsg({ t: 'err', m: e.message }); }
   };
   const uploadLogo = async (file: File) => {
@@ -56,6 +56,10 @@ function BrandingTab() {
       <Field label="رنگ اصلی"><input className="input" type="text" value={s.primaryColor || ''} onChange={(e) => setS({ ...s, primaryColor: e.target.value })} placeholder="#FF9500" style={{ direction: 'ltr' }} /></Field>
       <Field label="سربرگ تماس (در خروجی‌ها)"><input className="input" value={s.contactHeader || ''} onChange={(e) => setS({ ...s, contactHeader: e.target.value })} /></Field>
       <Field label="مهلت اعلام خسارت (روز)"><input className="input" type="number" value={s.noticeDays ?? 30} onChange={(e) => setS({ ...s, noticeDays: e.target.value })} style={{ direction: 'ltr', textAlign: 'right' }} /></Field>
+      <label className="flex items-center gap-2 text-sm cursor-pointer">
+        <input type="checkbox" checked={s.lateNoticeWarning !== false} onChange={(e) => setS({ ...s, lateNoticeWarning: e.target.checked })} />
+        <span>نمایش هشدار «خارج از مهلت مقرر» روی پرونده‌ها</span>
+      </label>
       <div className="flex gap-2 items-center">
         <input ref={logoRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadLogo(f); }} />
         <button onClick={() => logoRef.current?.click()} className="btn btn-ghost btn-sm">{s.hasLogo ? 'تغییر لوگو' : 'بارگذاری لوگو'}</button>
@@ -228,24 +232,56 @@ function LevelsTab() {
 function DocsTab() {
   const [rows, setRows] = useState<any[]>([]);
   const [err, setErr] = useState('');
+  const [label, setLabel] = useState('');
+  const [types, setTypes] = useState<Set<string>>(new Set(['DEATH_ILLNESS', 'DEATH_ACCIDENT']));
+  const [busy, setBusy] = useState(false);
   const load = () => client.get<any[]>('/required-documents', 'org').then(setRows).catch((e) => setErr(e.message));
   useEffect(() => { load(); }, []);
   const seed = async () => { try { await client.post('/required-documents/seed-defaults', {}, 'org'); load(); } catch (e: any) { setErr(e.message); } };
   const toggle = async (r: any) => { try { await client.patch(`/required-documents/${r.id}`, { isActive: !r.isActive }, 'org'); load(); } catch (e: any) { setErr(e.message); } };
+  const remove = async (r: any) => { if (!confirm(`حذف «${r.label}»؟`)) return; try { await client.del(`/required-documents/${r.id}`, 'org'); load(); } catch (e: any) { setErr(e.message); } };
+  const toggleType = (t: string) => { const s = new Set(types); s.has(t) ? s.delete(t) : s.add(t); setTypes(s); };
+  const add = async () => {
+    setErr('');
+    if (label.trim().length < 2) return setErr('شرح مدرک را وارد کنید');
+    if (types.size === 0) return setErr('حداقل یک نوع پرونده را انتخاب کنید');
+    setBusy(true);
+    try {
+      const maxOrder = rows.reduce((m, r) => Math.max(m, r.order || 0), 0);
+      await client.post('/required-documents', { code: `other_${Date.now().toString(36)}`, label: label.trim(), appliesToTypes: [...types], order: Math.max(100, maxOrder + 1) }, 'org');
+      setLabel(''); load();
+    } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+  };
   return (
     <div className="space-y-3">
-      <div className="flex justify-between items-center">
-        <ErrorBox message={err} />
-        {rows.length === 0 && <button onClick={seed} className="btn btn-primary btn-sm">بارگذاری فهرست پیش‌فرض</button>}
-      </div>
+      <ErrorBox message={err} />
+      {rows.length === 0 && <button onClick={seed} className="btn btn-primary btn-sm">بارگذاری فهرست پیش‌فرض</button>}
       <div className="card divide-y" style={{ borderColor: 'var(--border)' }}>
         {rows.length === 0 ? <div className="p-5 text-sm text-center" style={{ color: 'var(--muted)' }}>مدرکی تعریف نشده — فهرست پیش‌فرض را بارگذاری کنید</div> :
           rows.map((r) => (
             <div key={r.id} className="flex justify-between items-center p-3 gap-3">
               <span className="text-sm">{r.label} <span className="badge badge-neutral">{(r.appliesToTypes || []).map((t: string) => CLAIM_TYPE_LABELS[t] || t).join('، ')}</span></span>
-              <button onClick={() => toggle(r)} className={`badge ${r.isActive ? 'badge-success' : 'badge-neutral'}`} style={{ cursor: 'pointer' }}>{r.isActive ? 'فعال' : 'غیرفعال'}</button>
+              <span className="flex items-center gap-2 shrink-0">
+                <button onClick={() => toggle(r)} className={`badge ${r.isActive ? 'badge-success' : 'badge-neutral'}`} style={{ cursor: 'pointer' }}>{r.isActive ? 'فعال' : 'غیرفعال'}</button>
+                <button onClick={() => remove(r)} className="text-xs" style={{ color: 'var(--danger)' }}>حذف</button>
+              </span>
             </div>
           ))}
+      </div>
+
+      {/* سایر مدارک — add a custom required document (بیمه‌گزار uploads one file per item). */}
+      <div className="card p-4 space-y-3">
+        <h4 className="font-semibold text-sm">افزودن سایر مدارک</h4>
+        <Field label="شرح مدرک"><input className="input" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="مثلاً: رضایت‌نامه محضری وراث" /></Field>
+        <div>
+          <div className="label mb-1">برای کدام نوع پرونده الزامی است؟</div>
+          <div className="flex flex-wrap gap-1.5">
+            {Object.entries(CLAIM_TYPE_LABELS).map(([v, l]) => (
+              <button key={v} type="button" onClick={() => toggleType(v)} className="badge" style={types.has(v) ? { background: 'var(--brand)', color: '#fff', cursor: 'pointer' } : { background: 'var(--surface-2)', color: 'var(--muted)', border: '1px solid var(--border)', cursor: 'pointer' }}>{l}</button>
+            ))}
+          </div>
+        </div>
+        <button onClick={add} disabled={busy} className="btn btn-primary btn-sm">{busy ? '…' : 'افزودن مدرک'}</button>
       </div>
     </div>
   );

@@ -26,6 +26,7 @@ interface UpdateSettings {
   contactHeader?: string;
   fontFamily?: string;
   noticeDays?: number;
+  lateNoticeWarning?: boolean;
   embedOrigins?: string[];
 }
 
@@ -54,6 +55,7 @@ export class BrandingService {
       contactHeader: t.contactHeader,
       fontFamily: t.fontFamily,
       noticeDays: t.noticeDays,
+      lateNoticeWarning: t.lateNoticeWarning,
       embedOrigins: t.embedOrigins,
       hasLogo: !!t.logoKey,
       hasFavicon: !!t.faviconKey,
@@ -72,6 +74,7 @@ export class BrandingService {
         ...(dto.contactHeader !== undefined ? { contactHeader: dto.contactHeader } : {}),
         ...(dto.fontFamily ? { fontFamily: dto.fontFamily.trim() } : {}),
         ...(dto.noticeDays !== undefined ? { noticeDays: dto.noticeDays } : {}),
+        ...(dto.lateNoticeWarning !== undefined ? { lateNoticeWarning: dto.lateNoticeWarning } : {}),
         ...(dto.embedOrigins !== undefined ? { embedOrigins: dto.embedOrigins } : {}),
       },
     });
@@ -192,6 +195,7 @@ export class BrandingService {
       name: t.name,
       primaryColor: t.primaryColor,
       fontFamily: t.fontFamily,
+      lateNoticeWarning: t.lateNoticeWarning,
       logoUrl: t.logoKey ? '/tenant/assets/logo' : null,
       faviconUrl: t.faviconKey ? '/tenant/assets/favicon' : null,
       fontUrl: t.fontKey ? '/tenant/assets/font' : null,
