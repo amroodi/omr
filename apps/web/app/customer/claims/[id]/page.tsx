@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { client, getToken } from '../../../../lib/client';
 import { CLAIM_TYPE_LABELS, ErrorBox, StatusBadge } from '../../../components/ui';
+import { Icon } from '../../../components/Shell';
 
 interface ClaimDoc { id: string; fileName: string; status: string; statusLabel: string; note: string | null; uploadedAt: string | null; version: number; isLatest: boolean }
 interface ChecklistItem { code: string; label: string; uploaded: boolean; latestStatus: string | null; documents: ClaimDoc[] }
@@ -26,6 +27,7 @@ export default function CustomerClaim() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const camRefs = useRef<Record<string, HTMLInputElement | null>>({}); // mobile camera capture
 
   const load = async () => {
     try {
@@ -91,9 +93,13 @@ export default function CustomerClaim() {
                     <span className="text-sm flex items-center gap-2">
                       <span style={{ color: it.uploaded ? 'var(--success)' : 'var(--muted)' }}>{it.uploaded ? '✔' : '○'}</span>{it.label}
                     </span>
-                    <div>
+                    <div className="flex items-center gap-1.5 shrink-0">
                       <input ref={(el) => { fileRefs.current[it.code] = el; }} type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }}
                         onChange={(e) => { const file = e.target.files?.[0]; if (file) upload(it.code, file); e.currentTarget.value = ''; }} />
+                      {/* Mobile-only camera capture */}
+                      <input ref={(el) => { camRefs.current[it.code] = el; }} type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
+                        onChange={(e) => { const file = e.target.files?.[0]; if (file) upload(it.code, file); e.currentTarget.value = ''; }} />
+                      <button onClick={() => camRefs.current[it.code]?.click()} disabled={busy} className="btn btn-ghost btn-sm sm:hidden" title="گرفتن عکس با دوربین" aria-label="دوربین"><Icon path="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2zM12 17a4 4 0 100-8 4 4 0 000 8z" /></button>
                       <button onClick={() => fileRefs.current[it.code]?.click()} disabled={busy} className="btn btn-ghost btn-sm">{it.uploaded ? 'بارگذاری مجدد' : 'بارگذاری'}</button>
                     </div>
                   </div>

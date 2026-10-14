@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { client, hasPerm } from '../../../../lib/client';
-import { Shell } from '../../../components/Shell';
+import { Shell, Icon } from '../../../components/Shell';
 import { CLAIM_TYPE_LABELS, ErrorBox, StatusBadge } from '../../../components/ui';
 import { ORG_NAV } from '../../nav';
 import { FieldsSection } from './fields-section';
@@ -32,6 +32,7 @@ export default function ClaimDetail() {
   const [defText, setDefText] = useState('');
   const [showDef, setShowDef] = useState(false);
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const camRefs = useRef<Record<string, HTMLInputElement | null>>({}); // mobile camera capture
   // UI-gating by permission (the API enforces these independently).
   const canProcess = hasPerm('org', 'claim:process'); // تایید/رد/پرداخت/اعلام نقص
   const canFile = hasPerm('org', 'claim:file'); // بارگذاری مدرک / رفع نقص
@@ -125,9 +126,12 @@ export default function ClaimDetail() {
                         {it.label}
                       </span>
                       {canFile && (
-                        <div>
+                        <div className="flex items-center gap-1.5">
                           <input ref={(el) => { fileRefs.current[it.code] = el; }} type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }}
                             onChange={(e) => { const file = e.target.files?.[0]; if (file) upload(it.code, file); e.currentTarget.value = ''; }} />
+                          <input ref={(el) => { camRefs.current[it.code] = el; }} type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
+                            onChange={(e) => { const file = e.target.files?.[0]; if (file) upload(it.code, file); e.currentTarget.value = ''; }} />
+                          <button onClick={() => camRefs.current[it.code]?.click()} disabled={busy} className="btn btn-ghost btn-sm sm:hidden" title="گرفتن عکس با دوربین" aria-label="دوربین"><Icon path="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2zM12 17a4 4 0 100-8 4 4 0 000 8z" /></button>
                           <button onClick={() => fileRefs.current[it.code]?.click()} disabled={busy} className="btn btn-ghost btn-sm">بارگذاری جایگزین</button>
                         </div>
                       )}

@@ -45,6 +45,7 @@ export const DEFAULT_REQUIRED_DOCS: {
   { code: 'first_medical_facility_cert', label: 'گواهی اولین مرجع درمانی که بیمه‌شده بلافاصله پس از حادثه به آن مراجعه نموده است.', appliesToTypes: [DISABILITY], order: 18 },
   { code: 'insured_id_national_card', label: 'رونوشت برابر اصل شناسنامه و کارت ملی بیمه‌شده.', appliesToTypes: [DISABILITY], order: 19 },
   { code: 'personnel_order_payslip', label: 'رونوشت برابر اصل آخرین حکم کارگزینی و فیش حقوقی بیمه‌شده.', appliesToTypes: [DISABILITY], order: 20 },
-  { code: 'retirement_deductions_3m', label: 'لیست کسورات بازنشستگی ۳ ماه آخر منتهی به تاریخ وقوع خسارت.', appliesToTypes: [DISABILITY], order: 21 },
+  { code: 'retirement_deductions_3m', label: 'لیست کسورات بازنشستگی ۳ ماه آخر منتهی به تاریخ وقوع حادثه.', appliesToTypes: [DISABILITY], order: 21 },
   { code: 'driving_license', label: 'رونوشت برابر اصل گواهینامه رانندگی بیمه‌شده (در صورتی که راننده وسیله نقلیه بوده).', appliesToTypes: [DISABILITY], order: 22 },
+  { code: 'insured_iban', label: 'پرینت شماره شبای بیمه‌شده.', appliesToTypes: [DISABILITY], order: 23 },
 ];
