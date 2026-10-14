@@ -1,6 +1,9 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { client, Realm } from '../../../../lib/client';
+import { JalaliDatePicker } from '../../../components/JalaliDatePicker';
+
+const faD = (s: string) => s.replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[+d]);
 
 interface FieldRow {
   key: string; label: string; type: string; options: string[];
@@ -29,11 +32,12 @@ export function FieldsSection({ claimId, realm, basePath }: { claimId: string; r
   }).catch(() => {});
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [claimId]);
 
-  const save = async (f: FieldRow) => {
-    if (!f.canEdit || drafts[f.key] === (f.value ?? '')) return;
+  const save = async (f: FieldRow, override?: string) => {
+    const val = override ?? drafts[f.key] ?? '';
+    if (!f.canEdit || val === (f.value ?? '')) return;
     setBusy(f.key); setMsg((m) => ({ ...m, [f.key]: undefined as any }));
     try {
-      await client.put(`${basePath}/${claimId}/fields/${f.key}`, { value: drafts[f.key] }, realm);
+      await client.put(`${basePath}/${claimId}/fields/${f.key}`, { value: val }, realm);
       setMsg((m) => ({ ...m, [f.key]: { t: 'ok', m: 'ذخیره شد' } }));
       load();
     } catch (e: any) { setMsg((m) => ({ ...m, [f.key]: { t: 'err', m: e.message } })); } finally { setBusy(null); }
@@ -66,6 +70,14 @@ export function FieldsSection({ claimId, realm, basePath }: { claimId: string; r
                       <option value="">—</option>
                       {f.options.map((o) => <option key={o} value={o}>{o}</option>)}
                     </select>
+                  ) : f.type === 'DATE' ? (
+                    f.canEdit ? (
+                      <div style={{ outline: borderColor === 'var(--border-strong)' ? undefined : `1px solid ${borderColor}`, borderRadius: 10 }}>
+                        <JalaliDatePicker value={drafts[f.key] ?? ''} onChange={(v) => { setDrafts((d) => ({ ...d, [f.key]: v })); save(f, v); }} />
+                      </div>
+                    ) : (
+                      <input className="input" readOnly value={drafts[f.key] ? faD(drafts[f.key]) : ''} placeholder="—" style={{ borderColor, direction: 'ltr', textAlign: 'right' }} />
+                    )
                   ) : (
                     <input className="input" value={drafts[f.key] ?? ''} disabled={!f.canEdit || busy === f.key}
                       onChange={(e) => setDrafts({ ...drafts, [f.key]: e.target.value })} onBlur={() => save(f)}
