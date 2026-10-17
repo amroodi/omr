@@ -38,31 +38,32 @@ export const DEFAULT_CLAIM_FIELDS: FieldDefSeed[] = [
   { key: 'beneficiary_iban', label: 'شماره شبا ذینفع', type: 'IBAN', group: 'BENEFICIARY', editableBy: BOTH, order: 21 },
 
   // ── Workflow stages: brokerage ──
+  // وضعیت fields are SELECT with common presets; the UI also lets the user type a custom value.
   { key: 'broker_to_insurer_date', label: 'تاریخ اعلام کارگزاری به بیمه‌گر', type: 'DATE', group: 'WORKFLOW_STAGE', editableBy: [MOAREF], order: 30 },
-  { key: 'broker_to_insurer_status', label: 'وضعیت اعلام کارگزاری به بیمه‌گر', type: 'TEXT', group: 'WORKFLOW_STAGE', editableBy: [MOAREF], order: 31 },
+  { key: 'broker_to_insurer_status', label: 'وضعیت اعلام کارگزاری به بیمه‌گر', type: 'SELECT', group: 'WORKFLOW_STAGE', editableBy: [MOAREF], options: ['نامه اعلام فوت و ارسال مدارک ارسال شد', 'نامه اعلام فوت ارسال شد', 'در حال پیگیری', 'انجام شد'], order: 31 },
   { key: 'death_notice_date', label: 'تاریخ اعلام فوت', type: 'DATE', group: 'WORKFLOW_STAGE', editableBy: [MOAREF], order: 32 },
-  { key: 'death_notice_status', label: 'وضعیت اعلام فوت', type: 'TEXT', group: 'WORKFLOW_STAGE', editableBy: [MOAREF], order: 33 },
+  { key: 'death_notice_status', label: 'وضعیت اعلام فوت', type: 'SELECT', group: 'WORKFLOW_STAGE', editableBy: [MOAREF], options: ['نامه اعلام فوت ارسال شد', 'نامه ارسال مدارک ارسال شد', 'در حال پیگیری', 'انجام شد'], order: 33 },
   { key: 'execution_stages', label: 'مراحل اجرایی', type: 'TEXT', group: 'WORKFLOW_STAGE', editableBy: BOTH, order: 34 },
 
   // ── Workflow stages: document handling ──
   { key: 'docs_request_date', label: 'تاریخ درخواست مدارک', type: 'DATE', group: 'WORKFLOW_STAGE', editableBy: BOTH, order: 40 },
-  { key: 'docs_request_status', label: 'وضعیت درخواست مدارک', type: 'TEXT', group: 'WORKFLOW_STAGE', editableBy: BOTH, order: 41 },
+  { key: 'docs_request_status', label: 'وضعیت درخواست مدارک', type: 'SELECT', group: 'WORKFLOW_STAGE', editableBy: BOTH, options: ['مدارک درخواست شد', 'در انتظار مدارک', 'مدارک دریافت شد', 'انجام شد'], order: 41 },
   { key: 'docs_receive_date', label: 'تاریخ دریافت مدارک', type: 'DATE', group: 'WORKFLOW_STAGE', editableBy: BOTH, order: 42 },
-  { key: 'docs_receive_status', label: 'وضعیت دریافت مدارک', type: 'TEXT', group: 'WORKFLOW_STAGE', editableBy: BOTH, order: 43 },
+  { key: 'docs_receive_status', label: 'وضعیت دریافت مدارک', type: 'SELECT', group: 'WORKFLOW_STAGE', editableBy: BOTH, options: ['مدارک دریافت شد', 'کامل', 'ناقص'], order: 43 },
   { key: 'missing_docs_request_date', label: 'تاریخ درخواست کسری مدارک', type: 'DATE', group: 'WORKFLOW_STAGE', editableBy: BOTH, order: 44 },
-  { key: 'missing_docs_request_status', label: 'وضعیت درخواست کسری مدارک', type: 'TEXT', group: 'WORKFLOW_STAGE', editableBy: BOTH, order: 45 },
+  { key: 'missing_docs_request_status', label: 'وضعیت درخواست کسری مدارک', type: 'SELECT', group: 'WORKFLOW_STAGE', editableBy: BOTH, options: ['کسری اعلام شد', 'رفع شد', 'ندارد'], order: 45 },
   { key: 'case_complete_date', label: 'تاریخ تکمیل پرونده', type: 'DATE', group: 'WORKFLOW_STAGE', editableBy: BOTH, order: 46 },
-  { key: 'case_complete_status', label: 'وضعیت تکمیل پرونده', type: 'TEXT', group: 'WORKFLOW_STAGE', editableBy: BOTH, order: 47 },
+  { key: 'case_complete_status', label: 'وضعیت تکمیل پرونده', type: 'SELECT', group: 'WORKFLOW_STAGE', editableBy: BOTH, options: ['پرونده کامل شده است', 'پرونده تکمیل شده و کسری ندارد', 'ناقص'], order: 47 },
 
   // ── Workflow stages: insurer / HQ / council ──
   { key: 'send_to_hq_date', label: 'تاریخ ارسال به ستاد', type: 'DATE', group: 'WORKFLOW_STAGE', editableBy: [INS], order: 50 },
-  { key: 'send_to_hq_status', label: 'وضعیت ارسال به ستاد', type: 'TEXT', group: 'WORKFLOW_STAGE', editableBy: [INS], order: 51 },
+  { key: 'send_to_hq_status', label: 'وضعیت ارسال به ستاد', type: 'SELECT', group: 'WORKFLOW_STAGE', editableBy: [INS], options: ['پرونده جهت بررسی به تهران ارسال شد', 'ارسال شد', 'در حال بررسی ستاد'], order: 51 },
   { key: 'return_to_branch_date', label: 'تاریخ برگشت به شعبه', type: 'DATE', group: 'WORKFLOW_STAGE', editableBy: [INS], order: 52 },
-  { key: 'return_to_branch_status', label: 'وضعیت برگشت به شعبه', type: 'TEXT', group: 'WORKFLOW_STAGE', editableBy: [INS], order: 53 },
+  { key: 'return_to_branch_status', label: 'وضعیت برگشت به شعبه', type: 'SELECT', group: 'WORKFLOW_STAGE', editableBy: [INS], options: ['پرونده جهت مجوز پرداخت به شعبه برگشته', 'برگشت به شعبه', 'در حال اقدام'], order: 53 },
   { key: 'council_approve_date', label: 'تاریخ تایید شورای فنی و سایر', type: 'DATE', group: 'WORKFLOW_STAGE', editableBy: [INS], order: 54 },
-  { key: 'council_approve_status', label: 'وضعیت تایید شورای فنی و سایر', type: 'TEXT', group: 'WORKFLOW_STAGE', editableBy: [INS], order: 55 },
+  { key: 'council_approve_status', label: 'وضعیت تایید شورای فنی و سایر', type: 'SELECT', group: 'WORKFLOW_STAGE', editableBy: [INS], options: ['پرونده تایید شد', 'در حال بررسی', 'رد شد'], order: 55 },
   { key: 'payment_order_date', label: 'تاریخ حواله پرداخت', type: 'DATE', group: 'WORKFLOW_STAGE', editableBy: [INS], order: 56 },
-  { key: 'payment_order_status', label: 'وضعیت حواله پرداخت', type: 'TEXT', group: 'WORKFLOW_STAGE', editableBy: [INS], order: 57 },
+  { key: 'payment_order_status', label: 'وضعیت حواله پرداخت', type: 'SELECT', group: 'WORKFLOW_STAGE', editableBy: [INS], options: ['حواله پرداخت ثبت شد', 'پرداخت شد', 'در انتظار پرداخت'], order: 57 },
   { key: 'payment_order', label: 'حواله پرداخت', type: 'TEXT', group: 'WORKFLOW_STAGE', editableBy: [INS], order: 58 },
 
   { key: 'case_notes', label: 'توضیحات پرونده', type: 'TEXT', group: 'WORKFLOW_STAGE', editableBy: BOTH, order: 60 },

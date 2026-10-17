@@ -28,11 +28,16 @@ const GROUP_LABELS: Record<string, string> = {
   WORKFLOW_STAGE: 'مراحل و وضعیت گردش کار',
 };
 
+// Fields whose content is long free text — render as a full-width, multi-line box so it's fully visible.
+const LONG_TEXT_KEYS = new Set(['full_name', 'company_name', 'payment_order', 'case_notes', 'execution_stages']);
+const CUSTOM = '__custom__'; // sentinel option: "type my own value" for SELECT fields
+
 export function FieldsSection({ claimId, realm, basePath, groups }: { claimId: string; realm: Realm; basePath: string; groups?: string[] }) {
   const [data, setData] = useState<FieldsData | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [msg, setMsg] = useState<Record<string, { t: 'ok' | 'err'; m: string }>>({});
   const [busy, setBusy] = useState<string | null>(null);
+  const [customMode, setCustomMode] = useState<Record<string, boolean>>({}); // SELECT fields switched to free text
 
   const load = () => client.get<FieldsData>(`${basePath}/${claimId}/fields`, realm).then((d) => {
     setData(d);
@@ -68,18 +73,37 @@ export function FieldsSection({ claimId, realm, basePath, groups }: { claimId: s
             {fields.map((f) => {
               const isOcrDraft = f.source === 'OCR' && !f.confirmed;
               const borderColor = isOcrDraft ? 'var(--warning)' : f.confirmed ? 'var(--success)' : 'var(--border-strong)';
+              const curVal = drafts[f.key] ?? '';
+              const longText = LONG_TEXT_KEYS.has(f.key);
+              // A stored SELECT value that isn't one of the presets → show the free-text box.
+              const isCustom = customMode[f.key] || (f.type === 'SELECT' && curVal !== '' && !f.options.includes(curVal));
+              const wide = longText || f.type === 'SELECT';
               return (
-                <div key={f.key}>
+                <div key={f.key} className={wide ? 'md:col-span-2 xl:col-span-3' : ''}>
                   <label className="label flex items-center justify-between">
                     <span>{f.label}{f.required && <span style={{ color: 'var(--danger)' }}> *</span>}</span>
                     {isOcrDraft && <span className="badge badge-warning">OCR {f.confidence != null ? `${Math.round(f.confidence * 100)}٪` : ''}</span>}
                     {f.confirmed && f.value && <span style={{ color: 'var(--success)' }}>✔</span>}
                   </label>
                   {f.type === 'SELECT' ? (
-                    <select className="input" value={drafts[f.key] ?? ''} disabled={!f.canEdit || busy === f.key} onChange={(e) => setDrafts({ ...drafts, [f.key]: e.target.value })} onBlur={() => save(f)} style={{ borderColor }}>
-                      <option value="">—</option>
-                      {f.options.map((o) => <option key={o} value={o}>{o}</option>)}
-                    </select>
+                    // Drop-down of presets + a "custom" choice that reveals a free-text box.
+                    <div className="space-y-1.5">
+                      <select className="input" value={isCustom ? CUSTOM : curVal} disabled={!f.canEdit || busy === f.key}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (v === CUSTOM) { setCustomMode({ ...customMode, [f.key]: true }); }
+                          else { setCustomMode({ ...customMode, [f.key]: false }); setDrafts({ ...drafts, [f.key]: v }); save(f, v); }
+                        }} style={{ borderColor }}>
+                        <option value="">—</option>
+                        {f.options.map((o) => <option key={o} value={o}>{o}</option>)}
+                        <option value={CUSTOM}>✎ مقدار دلخواه…</option>
+                      </select>
+                      {isCustom && (
+                        <textarea className="input" rows={2} value={curVal} disabled={!f.canEdit || busy === f.key}
+                          placeholder="متن دلخواه را وارد کنید" onChange={(e) => setDrafts({ ...drafts, [f.key]: e.target.value })}
+                          onBlur={() => save(f)} style={{ borderColor, direction: 'rtl', textAlign: 'right' }} />
+                      )}
+                    </div>
                   ) : f.type === 'DATE' ? (
                     f.canEdit ? (
                       <div style={{ outline: borderColor === 'var(--border-strong)' ? undefined : `1px solid ${borderColor}`, borderRadius: 10 }}>
@@ -98,11 +122,15 @@ export function FieldsSection({ claimId, realm, basePath, groups }: { claimId: s
                     <input className="input" inputMode="numeric" value={faD(toAsciiNum(drafts[f.key] ?? ''))} disabled={!f.canEdit || busy === f.key}
                       onChange={(e) => setDrafts({ ...drafts, [f.key]: toAsciiNum(e.target.value) })} onBlur={() => save(f)}
                       style={{ borderColor, direction: 'ltr', textAlign: 'right' }} />
+                  ) : longText ? (
+                    // Long free text: full-width, multi-line so the whole content is visible at a glance.
+                    <textarea className="input" rows={2} value={curVal} disabled={!f.canEdit || busy === f.key}
+                      onChange={(e) => setDrafts({ ...drafts, [f.key]: e.target.value })} onBlur={() => save(f)}
+                      style={{ borderColor, direction: 'rtl', textAlign: 'right' }} />
                   ) : (
                     <input className="input" value={drafts[f.key] ?? ''} disabled={!f.canEdit || busy === f.key}
                       onChange={(e) => setDrafts({ ...drafts, [f.key]: e.target.value })} onBlur={() => save(f)}
-                      placeholder={f.type === 'DATE' ? '۱۴۰۵/۰۷/۰۱' : ''}
-                      style={{ borderColor, direction: ['AMOUNT', 'NUMBER', 'NATIONAL_CODE', 'IBAN', 'DATE'].includes(f.type) ? 'ltr' : 'rtl', textAlign: 'right' }} />
+                      style={{ borderColor, direction: ['IBAN'].includes(f.type) ? 'ltr' : 'rtl', textAlign: 'right' }} />
                   )}
                   <div className="flex items-center gap-2 mt-1 min-h-[18px]">
                     {msg[f.key] && <span className="text-xs" style={{ color: msg[f.key].t === 'ok' ? 'var(--success)' : 'var(--danger)' }}>{msg[f.key].m}</span>}
