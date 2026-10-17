@@ -244,8 +244,15 @@ export class ImportService {
   /** Map a parsed import row to claim-field (key → value) pairs, skipping blanks. */
   private importedFieldValues(r: ParsedRow): { key: string; value: string }[] {
     const d = r.data;
-    const date = (v?: string) => (v ? toAsciiDigits(v).trim() : '');
+    const raw = r.raw;
+    const date = (v?: string | null) => (v ? toAsciiDigits(String(v)).trim() : '');
+    // Workflow-stage columns aren't in HEADER_MAP; read them straight from the raw headers.
+    const rawGet = (...headers: string[]): string | null => {
+      for (const h of headers) if (raw[h] != null && String(raw[h]).trim()) return String(raw[h]).trim();
+      return null;
+    };
     const pairs: [string, string | null | undefined][] = [
+      // ── claim / policy / beneficiary ──
       ['full_name', d.fullName],
       ['national_code', d.nationalCode],
       ['birth_date', date(d.birthDate)],
@@ -258,6 +265,26 @@ export class ImportService {
       ['accident_capital', this.parseAmount(d.accidentCapital)],
       ['payable_amount', this.parseAmount(d.payableAmount)],
       ['beneficiary_type', d.beneficiaryType],
+      // ── workflow stages (date/status pairs, read from the raw Excel headers) ──
+      ['death_notice_date', date(rawGet('تاریخ اعلام فوت'))],
+      ['death_notice_status', rawGet('وضعیت اعلام فوت')],
+      ['broker_to_insurer_date', date(rawGet('تاریخ اعلام کارگزاری به بیمه‌گر', 'تاریخ اعلام کارگزاری به بیمه گر'))],
+      ['broker_to_insurer_status', rawGet('وضعیت اعلام کارگزاری به بیمه‌گر', 'وضعیت اعلام کارگزاری به بیمه گر')],
+      ['docs_request_date', date(rawGet('تاریخ درخواست مدارک'))],
+      ['docs_request_status', rawGet('وضعیت درخواست مدارک')],
+      ['missing_docs_request_date', date(rawGet('تاریخ درخواست کسری مدارک'))],
+      ['missing_docs_request_status', rawGet('وضعیت درخواست کسری مدارک')],
+      ['send_to_hq_date', date(rawGet('تاریخ ارسال به ستاد'))],
+      ['send_to_hq_status', rawGet('وضعیت ارسال به ستاد')],
+      ['council_approve_date', date(rawGet('تاریخ تایید شورای فنی و سایر', 'تاریخ تایید شورای فنی'))],
+      ['council_approve_status', rawGet('وضعیت تایید شورای فنی و سایر', 'وضعیت تایید شورای فنی')],
+      ['return_to_branch_date', date(rawGet('تاریخ برگشت به شعبه'))],
+      ['return_to_branch_status', rawGet('وضعیت برگشت به شعبه')],
+      ['case_complete_date', date(rawGet('تاریخ تکمیل پرونده'))],
+      ['case_complete_status', rawGet('وضعیت تکمیل پرونده')],
+      ['payment_order', rawGet('حواله پرداخت')],
+      ['payment_order_date', date(rawGet('تاریخ حواله پرداخت'))],
+      ['payment_order_status', rawGet('وضعیت حواله پرداخت')],
     ];
     return pairs
       .filter(([, v]) => v != null && String(v).trim().length > 0)

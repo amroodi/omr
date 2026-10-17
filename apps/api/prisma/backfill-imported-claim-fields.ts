@@ -41,6 +41,11 @@ const dateStr = (v: unknown): string | null => {
   const s = toAsciiDigits(String(v)).trim();
   return s.length ? s : null;
 };
+const textOf = (v: unknown): string | null => {
+  if (v == null) return null;
+  const s = String(v).trim();
+  return s.length ? s : null;
+};
 
 async function main(): Promise<void> {
   const keys = cryptoKeys();
@@ -74,6 +79,26 @@ async function main(): Promise<void> {
       ['death_capital', amount(fromLegacy('سرمایه فوت'))],
       ['accident_capital', amount(fromLegacy('سرمایه حادثه'))],
       ['payable_amount', amount(fromLegacy('مبلغ قابل پرداخت'))],
+      // ── workflow stages (date/status pairs) ──
+      ['death_notice_date', dateStr(fromLegacy('تاریخ اعلام فوت'))],
+      ['death_notice_status', textOf(fromLegacy('وضعیت اعلام فوت'))],
+      ['broker_to_insurer_date', dateStr(fromLegacy('تاریخ اعلام کارگزاری به بیمه‌گر', 'تاریخ اعلام کارگزاری به بیمه گر'))],
+      ['broker_to_insurer_status', textOf(fromLegacy('وضعیت اعلام کارگزاری به بیمه‌گر', 'وضعیت اعلام کارگزاری به بیمه گر'))],
+      ['docs_request_date', dateStr(fromLegacy('تاریخ درخواست مدارک'))],
+      ['docs_request_status', textOf(fromLegacy('وضعیت درخواست مدارک'))],
+      ['missing_docs_request_date', dateStr(fromLegacy('تاریخ درخواست کسری مدارک'))],
+      ['missing_docs_request_status', textOf(fromLegacy('وضعیت درخواست کسری مدارک'))],
+      ['send_to_hq_date', dateStr(fromLegacy('تاریخ ارسال به ستاد'))],
+      ['send_to_hq_status', textOf(fromLegacy('وضعیت ارسال به ستاد'))],
+      ['council_approve_date', dateStr(fromLegacy('تاریخ تایید شورای فنی و سایر', 'تاریخ تایید شورای فنی'))],
+      ['council_approve_status', textOf(fromLegacy('وضعیت تایید شورای فنی و سایر', 'وضعیت تایید شورای فنی'))],
+      ['return_to_branch_date', dateStr(fromLegacy('تاریخ برگشت به شعبه'))],
+      ['return_to_branch_status', textOf(fromLegacy('وضعیت برگشت به شعبه'))],
+      ['case_complete_date', dateStr(fromLegacy('تاریخ تکمیل پرونده'))],
+      ['case_complete_status', textOf(fromLegacy('وضعیت تکمیل پرونده'))],
+      ['payment_order', textOf(fromLegacy('حواله پرداخت'))],
+      ['payment_order_date', dateStr(fromLegacy('تاریخ حواله پرداخت'))],
+      ['payment_order_status', textOf(fromLegacy('وضعیت حواله پرداخت'))],
     ];
 
     const toWrite = pairs.filter(([, v]) => v != null && String(v).trim().length > 0) as [string, string][];

@@ -42,11 +42,25 @@ export class ClaimsController {
     return this.claims.listMine();
   }
 
-  /** Permanently delete a claim (admin only; audit-logged). Cleans up erroneous/duplicate imports. */
+  /** Soft-delete a claim (admin only; audit-logged, restorable within the retention window). */
   @Permissions(PERMISSIONS.CLAIM_DELETE)
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.claims.remove(id);
+  }
+
+  /** Recycle bin: soft-deleted claims still restorable (with days left before permanent purge). */
+  @Permissions(PERMISSIONS.CLAIM_DELETE)
+  @Get('trash')
+  trash() {
+    return this.claims.listTrash();
+  }
+
+  /** Undo a soft-delete (restore the claim). */
+  @Permissions(PERMISSIONS.CLAIM_DELETE)
+  @Post(':id/restore')
+  restore(@Param('id') id: string) {
+    return this.claims.restore(id);
   }
 
   /** The caller's action queue (claims awaiting their step). */

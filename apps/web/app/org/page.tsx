@@ -52,9 +52,14 @@ export default function OrgDashboard() {
 
       <div className="flex justify-between items-center gap-2 mb-3">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="جستجوی شماره پرونده یا نام…" className="input" style={{ maxWidth: 280 }} />
-        {hasPerm('org', 'claim:file') && (
-          <Link href="/org/claims/new" className="btn btn-primary btn-sm"><Icon path="M12 5v14M5 12h14" /> پرونده جدید</Link>
-        )}
+        <div className="flex items-center gap-2">
+          {hasPerm('org', 'claim:delete') && (
+            <Link href="/org/claims/trash" className="btn btn-ghost btn-sm" title="سطل بازیافت"><Icon path="M3 6h18M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" /> سطل بازیافت</Link>
+          )}
+          {hasPerm('org', 'claim:file') && (
+            <Link href="/org/claims/new" className="btn btn-primary btn-sm"><Icon path="M12 5v14M5 12h14" /> پرونده جدید</Link>
+          )}
+        </div>
       </div>
 
       <div className="card overflow-x-auto">

@@ -49,9 +49,9 @@ export default function ClaimDetail() {
 
   const removeClaim = async () => {
     if (!claim) return;
-    if (!window.confirm(`حذف پرونده ${claim.claimNumber}؟ این عمل بازگشت‌ناپذیر است و همهٔ اطلاعات و مدارک پرونده حذف می‌شود.`)) return;
+    if (!window.confirm(`حذف پرونده ${claim.claimNumber}؟ پرونده به سطل بازیافت منتقل می‌شود و تا ۱۴ روز قابل بازیابی است؛ پس از آن برای همیشه حذف خواهد شد.`)) return;
     setError(''); setBusy(true);
-    try { await client.del(`/claims/${id}`, 'org'); router.push('/org'); }
+    try { await client.del(`/claims/${id}`, 'org'); router.push('/org/claims/trash'); }
     catch (e: any) { setError(e.message); setBusy(false); }
   };
 
@@ -308,7 +308,7 @@ export default function ClaimDetail() {
             {canDelete && (
               <div className="card p-5" style={{ borderColor: 'var(--danger)' }}>
                 <h3 className="font-bold mb-1" style={{ color: 'var(--danger)' }}>حذف پرونده</h3>
-                <p className="text-xs mb-2" style={{ color: 'var(--muted)' }}>حذف دائمی پرونده و همهٔ اطلاعات و مدارک آن. برای پاک‌سازی پرونده‌های اشتباه یا تکراری. (ثبت در گزارش ممیزی)</p>
+                <p className="text-xs mb-2" style={{ color: 'var(--muted)' }}>انتقال به سطل بازیافت؛ تا ۱۴ روز قابل بازیابی است و سپس برای همیشه حذف می‌شود. (همهٔ اقدام‌ها در گزارش ممیزی ثبت و برای همیشه نگهداری می‌شود.)</p>
                 <button onClick={removeClaim} disabled={busy} className="btn w-full btn-sm" style={{ background: 'var(--danger)', color: '#fff' }}>حذف پرونده</button>
               </div>
             )}

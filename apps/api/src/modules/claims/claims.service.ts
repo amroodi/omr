@@ -12,6 +12,9 @@ import { NotificationsService } from '../notifications/notifications.service';
 
 const CLAIM_DOC_MIME = new Set(['application/pdf', 'image/jpeg', 'image/png']);
 
+// How long a soft-deleted claim stays restorable before the daily purge removes it for good.
+export const CLAIM_RETENTION_DAYS = 14;
+
 const DOC_STATUS_LABELS: Record<string, string> = {
   PENDING: 'در انتظار بررسی',
   VERIFIED: 'تاییدشده',
@@ -253,22 +256,84 @@ export class ClaimsService {
   }
 
   /**
-   * Permanently delete a claim and ALL its children (field values, steps, participants,
-   * deficiencies, documents + their stored files). Admin-only (claim:delete) and audit-logged —
-   * used to clean up erroneous or duplicate imports. Child relations have no DB cascade, so they
-   * are removed explicitly in a transaction.
+   * Soft-delete a claim: hide it everywhere and mark it for purge after the retention window, but
+   * keep the row (and the audit trail) so an admin can UNDO within CLAIM_RETENTION_DAYS. Admin-only
+   * (claim:delete) and audit-logged. The permanent removal happens later in purgeExpired().
    */
   async remove(claimId: string) {
     const u = this.prisma.unscoped();
     const claim = await u.claim.findUnique({
       where: { id: claimId },
-      select: { id: true, claimNumber: true, insurerTenantId: true, brokerTenantId: true, policyHolderId: true, imported: true },
+      select: { id: true, claimNumber: true, insurerTenantId: true, brokerTenantId: true, policyHolderId: true, deletedAt: true },
     });
     if (!claim) throw new NotFoundException('پرونده یافت نشد');
     this.assertParticipant(claim);
+    if (!claim.deletedAt) {
+      await u.claim.update({ where: { id: claimId }, data: { deletedAt: new Date() } });
+      await this.audit.record({
+        action: AuditAction.DELETE,
+        tenantId: claim.insurerTenantId,
+        targetType: 'Claim',
+        targetId: claimId,
+        metadata: { claimNumber: claim.claimNumber, soft: true, retentionDays: CLAIM_RETENTION_DAYS },
+      });
+    }
+    return { deleted: true, retentionDays: CLAIM_RETENTION_DAYS };
+  }
 
+  /** Undo a soft-delete while still within the retention window. Audit-logged. */
+  async restore(claimId: string) {
+    const u = this.prisma.unscoped();
+    const claim = await u.claim.findUnique({
+      where: { id: claimId },
+      select: { id: true, claimNumber: true, insurerTenantId: true, brokerTenantId: true, policyHolderId: true, deletedAt: true },
+    });
+    if (!claim) throw new NotFoundException('پرونده یافت نشد');
+    this.assertParticipant(claim);
+    if (claim.deletedAt) {
+      await u.claim.update({ where: { id: claimId }, data: { deletedAt: null } });
+      await this.audit.record({
+        action: AuditAction.EDIT,
+        tenantId: claim.insurerTenantId,
+        targetType: 'Claim',
+        targetId: claimId,
+        metadata: { claimNumber: claim.claimNumber, restored: true },
+      });
+    }
+    return { restored: true };
+  }
+
+  /** Recycle bin: soft-deleted claims the caller may restore, with days left before permanent purge. */
+  async listTrash() {
+    const ctx = getContext();
+    const where =
+      ctx?.actorType === 'CUSTOMER'
+        ? { policyHolderId: ctx.actorId, deletedAt: { not: null } }
+        : { OR: [{ insurerTenantId: ctx?.tenantId }, { brokerTenantId: ctx?.tenantId }], deletedAt: { not: null } };
+    const claims = await this.db().claim.findMany({ where, orderBy: { deletedAt: 'desc' } });
+    const now = Date.now();
+    return claims.map((c) => {
+      const base: any = this.present(c);
+      const purgeAt = (c.deletedAt ? new Date(c.deletedAt).getTime() : now) + CLAIM_RETENTION_DAYS * 86400000;
+      base.deletedAt = c.deletedAt ? toJalali(c.deletedAt) : null;
+      base.daysLeft = Math.max(0, Math.ceil((purgeAt - now) / 86400000));
+      return base;
+    });
+  }
+
+  /** Permanently delete claims whose retention window has elapsed (called by the daily purge job). */
+  async purgeExpired(): Promise<number> {
+    const u = this.prisma.unscoped();
+    const cutoff = new Date(Date.now() - CLAIM_RETENTION_DAYS * 86400000);
+    const expired = await u.claim.findMany({ where: { deletedAt: { lt: cutoff } }, select: { id: true } });
+    for (const c of expired) await this.hardDelete(c.id);
+    return expired.length;
+  }
+
+  /** Irreversibly delete a claim and ALL its children (+ document files). No DB cascade exists. */
+  private async hardDelete(claimId: string) {
+    const u = this.prisma.unscoped();
     const docs = await u.document.findMany({ where: { claimId }, select: { storageKey: true } });
-
     await u.$transaction([
       u.claimFieldValue.deleteMany({ where: { claimId } }),
       u.claimDeficiency.deleteMany({ where: { claimId } }),
@@ -277,26 +342,15 @@ export class ClaimsService {
       u.document.deleteMany({ where: { claimId } }),
       u.claim.delete({ where: { id: claimId } }),
     ]);
-
-    // Best-effort removal of encrypted files on disk (after the rows are gone).
     for (const d of docs) {
       try { await this.storage.remove(d.storageKey); } catch { /* orphan file is harmless */ }
     }
-
-    await this.audit.record({
-      action: AuditAction.DELETE,
-      tenantId: claim.insurerTenantId,
-      targetType: 'Claim',
-      targetId: claimId,
-      metadata: { claimNumber: claim.claimNumber, imported: claim.imported },
-    });
-    return { deleted: true };
   }
 
   // ─────────────────────────── Reads ───────────────────────────
   async get(claimId: string) {
     const claim = await this.db().claim.findUnique({ where: { id: claimId }, include: { steps: { orderBy: { order: 'asc' } }, deficiencies: true } });
-    if (!claim) throw new NotFoundException('پرونده یافت نشد');
+    if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
     this.assertParticipant(claim);
     const result: any = this.present(claim, true);
     await this.enrichParties(claim, result);
@@ -508,8 +562,8 @@ export class ClaimsService {
     const db = this.db();
     const where =
       ctx?.actorType === 'CUSTOMER'
-        ? { policyHolderId: ctx.actorId }
-        : { OR: [{ insurerTenantId: ctx?.tenantId }, { brokerTenantId: ctx?.tenantId }, { participants: { some: { tenantId: ctx?.tenantId } } }] };
+        ? { policyHolderId: ctx.actorId, deletedAt: null }
+        : { deletedAt: null, OR: [{ insurerTenantId: ctx?.tenantId }, { brokerTenantId: ctx?.tenantId }, { participants: { some: { tenantId: ctx?.tenantId } } }] };
     const claims = await db.claim.findMany({ where, orderBy: { updatedAt: 'desc' }, include: { steps: { where: { state: 'PENDING' } } } });
     return claims.map((c) => ({ ...(this.present(c) as object), needsAction: this.needsAction(c) }));
   }
@@ -537,11 +591,11 @@ export class ClaimsService {
     const ctx = getContext();
     const db = this.db();
     if (ctx?.actorType === 'CUSTOMER') {
-      const claims = await db.claim.findMany({ where: { policyHolderId: ctx.actorId, steps: { some: { state: 'PENDING', partyType: 'POLICYHOLDER' } } }, include: { steps: true } });
+      const claims = await db.claim.findMany({ where: { policyHolderId: ctx.actorId, deletedAt: null, steps: { some: { state: 'PENDING', partyType: 'POLICYHOLDER' } } }, include: { steps: true } });
       return claims.map((c) => this.present(c));
     }
     const claims = await db.claim.findMany({
-      where: { steps: { some: { state: 'PENDING', holderTenantId: ctx?.tenantId } } },
+      where: { deletedAt: null, steps: { some: { state: 'PENDING', holderTenantId: ctx?.tenantId } } },
       include: { steps: true },
     });
     return claims.map((c) => this.present(c));
