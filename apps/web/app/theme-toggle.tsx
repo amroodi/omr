@@ -27,14 +27,23 @@ export function ThemeToggle() {
     >
       <svg className="theme-switch" viewBox="0 0 1033.33 389.77" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
         <defs>
-          <linearGradient id="ts-grad" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0" stopColor="#FF9500" />
-            <stop offset="1" stopColor="#FF7100" />
+          <linearGradient id="ts-grad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#FFB03A" />
+            <stop offset="0.5" stopColor="#FF9500" />
+            <stop offset="1" stopColor="#FF6A00" />
           </linearGradient>
+          <radialGradient id="ts-knob-grad" cx="0.42" cy="0.36" r="0.72">
+            <stop offset="0" stopColor="#ffffff" />
+            <stop offset="1" stopColor="#E7ECF3" />
+          </radialGradient>
+          <filter id="ts-knob-shadow" x="-40%" y="-40%" width="180%" height="180%">
+            <feDropShadow dx="0" dy="10" stdDeviation="20" floodColor="#001637" floodOpacity="0.35" />
+          </filter>
         </defs>
         <rect className="ts-pill" width="1033.33" height="389.77" rx="188.65" ry="194.89" />
-        <g className="ts-knob">
-          <circle cx="202.35" cy="194.89" r="179.33" fill="#fff" />
+        <rect className="ts-pill-edge" x="6" y="6" width="1021.33" height="377.77" rx="185" ry="191" fill="none" />
+        <g className="ts-knob" filter="url(#ts-knob-shadow)">
+          <circle cx="202.35" cy="194.89" r="179.33" fill="url(#ts-knob-grad)" />
           {/* moon — dark state (sun2.svg) */}
           <path
             className="ts-moon"

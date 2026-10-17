@@ -375,17 +375,24 @@ h1, h2, h3 {
 
 /* Sun/Moon pill theme switch (theme-toggle.tsx). Default markup = dark state (knob left, moon).
    Light state is driven by :root:not(.dark): pill turns orange, knob slides right, sun fades in. */
-.theme-switch-btn { background: none; border: 0; padding: 4px; line-height: 0; cursor: pointer; border-radius: 999px; }
-.theme-switch-btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
-.theme-switch { width: 46px; height: auto; display: block; }
-.ts-pill { fill: #0B3678; transition: fill .35s ease; }
-.ts-knob { transition: transform .4s cubic-bezier(.34, 1.4, .5, 1); }
+.theme-switch-btn {
+  background: none; border: 0; padding: 3px; line-height: 0; cursor: pointer; border-radius: 999px;
+  transition: transform .18s ease, filter .18s ease;
+}
+.theme-switch-btn:hover { transform: translateY(-1px); filter: brightness(1.05); }
+.theme-switch-btn:active { transform: translateY(0) scale(.95); }
+.theme-switch-btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; }
+.theme-switch { width: 62px; height: auto; display: block; filter: drop-shadow(0 2px 6px rgba(0,0,0,.22)); }
+.ts-pill { fill: #0B3678; transition: fill .4s ease; }
+.ts-pill-edge { stroke: rgba(255,255,255,.18); stroke-width: 4; }
+.ts-knob { transition: transform .45s cubic-bezier(.34, 1.56, .5, 1); }
 .ts-moon { opacity: 1; transition: opacity .3s ease; }
 .ts-sun { opacity: 0; transition: opacity .3s ease; }
 :root:not(.dark) .ts-pill { fill: url(#ts-grad); }
+:root:not(.dark) .ts-pill-edge { stroke: rgba(255,255,255,.35); }
 :root:not(.dark) .ts-knob { transform: translateX(628.63px); }
 :root:not(.dark) .ts-moon { opacity: 0; }
 :root:not(.dark) .ts-sun { opacity: 1; }
 @media (prefers-reduced-motion: reduce) {
-  .ts-pill, .ts-knob, .ts-moon, .ts-sun { transition: none; }
+  .theme-switch-btn, .ts-pill, .ts-pill-edge, .ts-knob, .ts-moon, .ts-sun { transition: none; }
 }

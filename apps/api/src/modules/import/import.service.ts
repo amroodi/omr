@@ -260,7 +260,14 @@ export class ImportService {
     const { data, raw } = rec;
     const { kind, claimStatus } = this.classify(data);
     const errors: string[] = [];
-    const nid = data.nationalCode ? toAsciiDigits(data.nationalCode).trim() : '';
+    // Iranian National IDs are always 10 digits. Spreadsheets routinely store them as NUMBERS, which
+    // silently drops leading zeros (0041051025 → 41051025) — and a custom display format like
+    // «0000000000» only changes the look, not the stored value. So re-pad any short all-digit value
+    // back to 10 here; these then import correctly with no per-cell hand-fixing. >10 digits or any
+    // non-digit still fails. The padded value is written back so the writers persist the full code.
+    let nid = data.nationalCode ? toAsciiDigits(data.nationalCode).replace(/\D/g, '') : '';
+    if (nid.length > 0 && nid.length < 10) nid = nid.padStart(10, '0');
+    data.nationalCode = nid;
     if (!/^\d{10}$/.test(nid)) errors.push('کد ملی باید ۱۰ رقم باشد');
     if (!data.fullName || data.fullName.trim().length < 2) errors.push('نام الزامی است');
     if (kind === 'PERSON' && data.phone && !/^0?9\d{9}$/.test(toAsciiDigits(data.phone))) errors.push('شماره موبایل نامعتبر است');
