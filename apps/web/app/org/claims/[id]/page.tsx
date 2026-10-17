@@ -37,6 +37,7 @@ export default function ClaimDetail() {
   const [busy, setBusy] = useState(false);
   const [defText, setDefText] = useState('');
   const [showDef, setShowDef] = useState(false);
+  const [tab, setTab] = useState<'info' | 'docs'>('info'); // اطلاعات پرونده ↔ مدارک مورد نیاز
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const camRefs = useRef<Record<string, HTMLInputElement | null>>({}); // mobile camera capture
   // UI-gating by permission (the API enforces these independently).
@@ -115,9 +116,18 @@ export default function ClaimDetail() {
               )}
             </div>
 
-            {/* claim data / workflow fields (OCR-assisted) */}
-            <FieldsSection claimId={id} realm="org" basePath="/claims" />
+            {/* Tabbed: claim/policy fields  ↔  required documents (avoids one long scroll) */}
+            <div className="card p-1.5 flex gap-1.5">
+              <button type="button" onClick={() => setTab('info')} className={`flex-1 btn btn-sm ${tab === 'info' ? 'btn-primary' : 'btn-ghost'}`}>اطلاعات پرونده و بیمه‌نامه</button>
+              <button type="button" onClick={() => setTab('docs')} className={`flex-1 btn btn-sm ${tab === 'docs' ? 'btn-primary' : 'btn-ghost'}`}>
+                مدارک مورد نیاز{checklist && !checklist.complete ? <span style={{ color: 'var(--warning)' }}> ●</span> : null}
+              </button>
+            </div>
 
+            {/* claim data / workflow fields (OCR-assisted) */}
+            {tab === 'info' && <FieldsSection claimId={id} realm="org" basePath="/claims" />}
+
+            {tab === 'docs' && (<>
             {/* checklist */}
             <div className="card p-5">
               <div className="flex justify-between items-center mb-3">
@@ -179,6 +189,7 @@ export default function ClaimDetail() {
                 ))}
               </div>
             )}
+            </>)}
           </div>
 
           {/* sidebar: parties + workflow + actions */}

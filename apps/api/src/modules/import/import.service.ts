@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { AuditAction, ClaimStatus, ClaimType, Prisma } from '@prisma/client';
+import { AuditAction, ClaimStatus, ClaimType, FieldSource, Prisma } from '@prisma/client';
 import * as ExcelJS from 'exceljs';
 import { AuditService } from '../../common/audit/audit.service';
 import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
@@ -188,7 +188,7 @@ export class ImportService {
     const legacyData = Object.fromEntries(Object.entries(r.raw).filter(([k]) => !PII_HEADERS.has(k.trim())));
     const claimNumber = await this.nextClaimNumber(db);
 
-    await db.claim.create({
+    const claim = await db.claim.create({
       data: {
         claimNumber,
         insurerTenantId: parties.insurerId,
@@ -216,6 +216,39 @@ export class ImportService {
         },
       },
     });
+
+    // Populate the structured claim-field values so «اطلاعات پرونده و بیمه‌نامه» is filled, each in
+    // its own field, for imported claims (not just the canonical columns + legacyData blob).
+    const fvs = this.importedFieldValues(r);
+    if (fvs.length) {
+      await db.claimFieldValue.createMany({
+        data: fvs.map((f) => ({ claimId: claim.id, key: f.key, value: f.value, source: FieldSource.MANUAL, confirmedAt: new Date() })),
+        skipDuplicates: true,
+      });
+    }
+  }
+
+  /** Map a parsed import row to claim-field (key → value) pairs, skipping blanks. */
+  private importedFieldValues(r: ParsedRow): { key: string; value: string }[] {
+    const d = r.data;
+    const date = (v?: string) => (v ? toAsciiDigits(v).trim() : '');
+    const pairs: [string, string | null | undefined][] = [
+      ['full_name', d.fullName],
+      ['national_code', d.nationalCode],
+      ['birth_date', date(d.birthDate)],
+      ['company_name', d.employerName],
+      ['death_date', date(d.deathDate)],
+      ['cause_of_death', d.causeOfDeath],
+      ['policy_number', d.policyNumber],
+      ['policy_start_date', date(d.policyStart)],
+      ['death_capital', this.parseAmount(d.deathCapital)],
+      ['accident_capital', this.parseAmount(d.accidentCapital)],
+      ['payable_amount', this.parseAmount(d.payableAmount)],
+      ['beneficiary_type', d.beneficiaryType],
+    ];
+    return pairs
+      .filter(([, v]) => v != null && String(v).trim().length > 0)
+      .map(([key, v]) => ({ key, value: String(v).trim() }));
   }
 
   private async nextClaimNumber(db: { claim: { count: () => Promise<number>; findUnique: (a: any) => Promise<any> } }): Promise<string> {
