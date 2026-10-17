@@ -8,8 +8,12 @@
  * field) — it only creates values for keys that have none yet.
  *
  *   # On the server, as the omr user, with the API env sourced (for the crypto key + DB URL):
- *   set -a; source /etc/omr/api.env; set +a
- *   cd /opt/omr/apps/api && npx ts-node prisma/backfill-imported-claim-fields.ts
+ *   sudo -u omr bash -c 'set -a; source /etc/omr/api.env; set +a; \
+ *     cd /opt/omr/apps/api && npx ts-node --transpile-only prisma/backfill-imported-claim-fields.ts'
+ *
+ * (--transpile-only: this script imports jalali.util, which pulls in the untyped `jalaali-js`
+ *  module; ts-node's type-checker would otherwise reject it with TS7016. The code is type-checked
+ *  by the normal build, so skipping the check here is safe.)
  */
 import { FieldSource, PrismaClient } from '@prisma/client';
 import { decryptValue } from '../src/common/crypto/field-crypto.core';
