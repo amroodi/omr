@@ -283,9 +283,8 @@ export class ImportService {
       if (rowNumber === 1) return;
       const data: Record<string, string> = {};
       const raw: Record<string, string> = {};
-      (row.values as unknown[]).slice(1).forEach((v, i) => {
-        const cell = this.cellText(v);
-        const header = headerCells[i];
+      headerCells.forEach((header, i) => {
+        const cell = this.cellValue(row.getCell(i + 1)); // getCell is 1-based; i aligns with the header
         if (header) raw[header.trim()] = cell;
         const key = keys[i];
         if (key) data[key] = cell;
@@ -316,6 +315,21 @@ export class ImportService {
   }
 
   // ─────────────────────────── cell helpers ───────────────────────────
+
+  /**
+   * Best string for a cell. For NUMERIC cells we use ExcelJS's FORMATTED text (`cell.text`) instead
+   * of the raw number, so a custom display format is honored — e.g. a National-ID column formatted
+   * as `0000000000` keeps its leading zeros ("0012345678"), which the raw numeric value silently
+   * drops. This reads exactly what Excel shows; it never invents zeros for an unformatted number.
+   */
+  private cellValue(cell: ExcelJS.Cell): string {
+    const v = cell?.value;
+    if (typeof v === 'number' && Number.isFinite(v)) {
+      const formatted = String(cell.text ?? '').trim();
+      if (formatted) return formatted;
+    }
+    return this.cellText(v);
+  }
 
   /** ExcelJS cells may be rich-text / hyperlink / formula objects; normalize to a trimmed string. */
   private cellText(v: unknown): string {
