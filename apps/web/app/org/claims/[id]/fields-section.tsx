@@ -4,6 +4,16 @@ import { client, Realm } from '../../../../lib/client';
 import { JalaliDatePicker } from '../../../components/JalaliDatePicker';
 
 const faD = (s: string) => s.replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[+d]);
+// Keep only digits, mapping Persian/Arabic → ASCII (what we store/send to the API).
+const toAsciiNum = (s: string) =>
+  s.replace(/[۰-۹]/g, (d) => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d).toString())
+    .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+    .replace(/[^\d]/g, '');
+// Price display: group every 3 digits with the Persian thousands separator, Persian digits.
+const groupFa = (raw: string) => {
+  const a = toAsciiNum(raw);
+  return a ? faD(a.replace(/\B(?=(\d{3})+(?!\d))/g, '٬')) : '';
+};
 
 interface FieldRow {
   key: string; label: string; type: string; options: string[];
@@ -18,7 +28,7 @@ const GROUP_LABELS: Record<string, string> = {
   WORKFLOW_STAGE: 'مراحل و وضعیت گردش کار',
 };
 
-export function FieldsSection({ claimId, realm, basePath }: { claimId: string; realm: Realm; basePath: string }) {
+export function FieldsSection({ claimId, realm, basePath, groups }: { claimId: string; realm: Realm; basePath: string; groups?: string[] }) {
   const [data, setData] = useState<FieldsData | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [msg, setMsg] = useState<Record<string, { t: 'ok' | 'err'; m: string }>>({});
@@ -51,10 +61,10 @@ export function FieldsSection({ claimId, realm, basePath }: { claimId: string; r
   if (!data) return null;
   return (
     <div className="space-y-4">
-      {Object.entries(data.groups).map(([group, fields]) => fields.length === 0 ? null : (
+      {Object.entries(data.groups).filter(([g]) => !groups || groups.includes(g)).map(([group, fields]) => fields.length === 0 ? null : (
         <div key={group} className="card p-5">
           <h3 className="font-bold mb-3">{GROUP_LABELS[group] || group}</h3>
-          <div className="grid md:grid-cols-2 gap-x-5 gap-y-3">
+          <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-x-5 gap-y-3">
             {fields.map((f) => {
               const isOcrDraft = f.source === 'OCR' && !f.confirmed;
               const borderColor = isOcrDraft ? 'var(--warning)' : f.confirmed ? 'var(--success)' : 'var(--border-strong)';
@@ -78,6 +88,16 @@ export function FieldsSection({ claimId, realm, basePath }: { claimId: string; r
                     ) : (
                       <input className="input" readOnly value={drafts[f.key] ? faD(drafts[f.key]) : ''} placeholder="—" style={{ borderColor, direction: 'ltr', textAlign: 'right' }} />
                     )
+                  ) : f.type === 'AMOUNT' ? (
+                    // Prices: Persian digits + thousands separators on screen; raw digits stored/sent.
+                    <input className="input" inputMode="numeric" value={groupFa(drafts[f.key] ?? '')} disabled={!f.canEdit || busy === f.key}
+                      onChange={(e) => setDrafts({ ...drafts, [f.key]: toAsciiNum(e.target.value) })} onBlur={() => save(f)}
+                      placeholder="۰" style={{ borderColor, direction: 'ltr', textAlign: 'right' }} />
+                  ) : f.type === 'NATIONAL_CODE' || f.type === 'NUMBER' ? (
+                    // Numeric fields: show Persian digits; store raw ASCII digits.
+                    <input className="input" inputMode="numeric" value={faD(toAsciiNum(drafts[f.key] ?? ''))} disabled={!f.canEdit || busy === f.key}
+                      onChange={(e) => setDrafts({ ...drafts, [f.key]: toAsciiNum(e.target.value) })} onBlur={() => save(f)}
+                      style={{ borderColor, direction: 'ltr', textAlign: 'right' }} />
                   ) : (
                     <input className="input" value={drafts[f.key] ?? ''} disabled={!f.canEdit || busy === f.key}
                       onChange={(e) => setDrafts({ ...drafts, [f.key]: e.target.value })} onBlur={() => save(f)}

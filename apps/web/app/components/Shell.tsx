@@ -49,6 +49,7 @@ export function Shell({
 
   return (
     <div className="grid gap-5" style={{ gridTemplateColumns: 'minmax(0,1fr)' }}>
+      <div className="app-bg" aria-hidden />
       <div className="lg:grid lg:gap-6" style={{ gridTemplateColumns: '230px minmax(0,1fr)' }}>
         {/* Sidebar — desktop only */}
         <aside className="hidden lg:block">

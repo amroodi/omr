@@ -19,6 +19,7 @@ export const PERMISSIONS = {
   CLAIM_READ: 'claim:read', // view claims, checklist, documents (read-only)
   CLAIM_FILE: 'claim:file', // file a claim / do رفع نقص (بیمه‌گزار side)
   CLAIM_PROCESS: 'claim:process', // معرف control + insurer-level decisions
+  CLAIM_DELETE: 'claim:delete', // permanently delete a claim (admin only; audit-logged)
   LEVEL_MANAGE: 'level:manage', // configure the insurer's approval ladder & ceilings
 
   // Exports

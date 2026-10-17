@@ -252,6 +252,47 @@ export class ClaimsService {
     return this.reload(claimId);
   }
 
+  /**
+   * Permanently delete a claim and ALL its children (field values, steps, participants,
+   * deficiencies, documents + their stored files). Admin-only (claim:delete) and audit-logged —
+   * used to clean up erroneous or duplicate imports. Child relations have no DB cascade, so they
+   * are removed explicitly in a transaction.
+   */
+  async remove(claimId: string) {
+    const u = this.prisma.unscoped();
+    const claim = await u.claim.findUnique({
+      where: { id: claimId },
+      select: { id: true, claimNumber: true, insurerTenantId: true, brokerTenantId: true, policyHolderId: true, imported: true },
+    });
+    if (!claim) throw new NotFoundException('پرونده یافت نشد');
+    this.assertParticipant(claim);
+
+    const docs = await u.document.findMany({ where: { claimId }, select: { storageKey: true } });
+
+    await u.$transaction([
+      u.claimFieldValue.deleteMany({ where: { claimId } }),
+      u.claimDeficiency.deleteMany({ where: { claimId } }),
+      u.claimStep.deleteMany({ where: { claimId } }),
+      u.claimParticipant.deleteMany({ where: { claimId } }),
+      u.document.deleteMany({ where: { claimId } }),
+      u.claim.delete({ where: { id: claimId } }),
+    ]);
+
+    // Best-effort removal of encrypted files on disk (after the rows are gone).
+    for (const d of docs) {
+      try { await this.storage.remove(d.storageKey); } catch { /* orphan file is harmless */ }
+    }
+
+    await this.audit.record({
+      action: AuditAction.DELETE,
+      tenantId: claim.insurerTenantId,
+      targetType: 'Claim',
+      targetId: claimId,
+      metadata: { claimNumber: claim.claimNumber, imported: claim.imported },
+    });
+    return { deleted: true };
+  }
+
   // ─────────────────────────── Reads ───────────────────────────
   async get(claimId: string) {
     const claim = await this.db().claim.findUnique({ where: { id: claimId }, include: { steps: { orderBy: { order: 'asc' } }, deficiencies: true } });

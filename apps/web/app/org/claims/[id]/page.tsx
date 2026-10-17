@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { client, hasPerm } from '../../../../lib/client';
 import { Shell, Icon } from '../../../components/Shell';
 import { CLAIM_TYPE_LABELS, ErrorBox, StatusBadge } from '../../../components/ui';
@@ -31,19 +31,29 @@ const STEP_STATE: Record<string, string> = { PENDING: 'در انتظار', FORWA
 
 export default function ClaimDetail() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const [claim, setClaim] = useState<Claim | null>(null);
   const [checklist, setChecklist] = useState<Checklist | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [defText, setDefText] = useState('');
   const [showDef, setShowDef] = useState(false);
-  const [tab, setTab] = useState<'info' | 'docs'>('info'); // اطلاعات پرونده ↔ مدارک مورد نیاز
+  const [tab, setTab] = useState<'info' | 'workflow' | 'docs'>('info'); // اطلاعات ↔ گردش کار ↔ مدارک
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const camRefs = useRef<Record<string, HTMLInputElement | null>>({}); // mobile camera capture
   // UI-gating by permission (the API enforces these independently).
   const canProcess = hasPerm('org', 'claim:process'); // تایید/رد/پرداخت/اعلام نقص
   const canFile = hasPerm('org', 'claim:file'); // بارگذاری مدرک / رفع نقص
   const canVerify = hasPerm('org', 'doc:verify'); // تایید/رد اصالت مدرک
+  const canDelete = hasPerm('org', 'claim:delete'); // حذف پرونده (مدیر سازمان)
+
+  const removeClaim = async () => {
+    if (!claim) return;
+    if (!window.confirm(`حذف پرونده ${claim.claimNumber}؟ این عمل بازگشت‌ناپذیر است و همهٔ اطلاعات و مدارک پرونده حذف می‌شود.`)) return;
+    setError(''); setBusy(true);
+    try { await client.del(`/claims/${id}`, 'org'); router.push('/org'); }
+    catch (e: any) { setError(e.message); setBusy(false); }
+  };
 
   const [lateWarn, setLateWarn] = useState(true); // org's "show late-notice warning" setting
   const load = async () => {
@@ -116,16 +126,20 @@ export default function ClaimDetail() {
               )}
             </div>
 
-            {/* Tabbed: claim/policy fields  ↔  required documents (avoids one long scroll) */}
-            <div className="card p-1.5 flex gap-1.5">
-              <button type="button" onClick={() => setTab('info')} className={`flex-1 btn btn-sm ${tab === 'info' ? 'btn-primary' : 'btn-ghost'}`}>اطلاعات پرونده و بیمه‌نامه</button>
+            {/* Tabs: claim/policy data · workflow stages · required documents (avoids one long scroll) */}
+            <div className="card p-1.5 flex gap-1.5 text-xs sm:text-sm">
+              <button type="button" onClick={() => setTab('info')} className={`flex-1 btn btn-sm ${tab === 'info' ? 'btn-primary' : 'btn-ghost'}`}>اطلاعات پرونده</button>
+              <button type="button" onClick={() => setTab('workflow')} className={`flex-1 btn btn-sm ${tab === 'workflow' ? 'btn-primary' : 'btn-ghost'}`}>مراحل و گردش کار</button>
               <button type="button" onClick={() => setTab('docs')} className={`flex-1 btn btn-sm ${tab === 'docs' ? 'btn-primary' : 'btn-ghost'}`}>
-                مدارک مورد نیاز{checklist && !checklist.complete ? <span style={{ color: 'var(--warning)' }}> ●</span> : null}
+                مدارک{checklist && !checklist.complete ? <span style={{ color: 'var(--warning)' }}> ●</span> : null}
               </button>
             </div>
 
-            {/* claim data / workflow fields (OCR-assisted) */}
-            {tab === 'info' && <FieldsSection claimId={id} realm="org" basePath="/claims" />}
+            {/* claim / policy / beneficiary data */}
+            {tab === 'info' && <FieldsSection claimId={id} realm="org" basePath="/claims" groups={['CLAIM_DATA', 'BENEFICIARY']} />}
+
+            {/* workflow-stage fields */}
+            {tab === 'workflow' && <FieldsSection claimId={id} realm="org" basePath="/claims" groups={['WORKFLOW_STAGE']} />}
 
             {tab === 'docs' && (<>
             {/* checklist */}
@@ -289,6 +303,14 @@ export default function ClaimDetail() {
                 <p className="text-sm" style={{ color: 'var(--muted)' }}>اقدامی برای نقش شما در دسترس نیست.</p>
               )}
             </div>
+            )}
+
+            {canDelete && (
+              <div className="card p-5" style={{ borderColor: 'var(--danger)' }}>
+                <h3 className="font-bold mb-1" style={{ color: 'var(--danger)' }}>حذف پرونده</h3>
+                <p className="text-xs mb-2" style={{ color: 'var(--muted)' }}>حذف دائمی پرونده و همهٔ اطلاعات و مدارک آن. برای پاک‌سازی پرونده‌های اشتباه یا تکراری. (ثبت در گزارش ممیزی)</p>
+                <button onClick={removeClaim} disabled={busy} className="btn w-full btn-sm" style={{ background: 'var(--danger)', color: '#fff' }}>حذف پرونده</button>
+              </div>
             )}
           </div>
         </div>

@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Post,
@@ -39,6 +40,13 @@ export class ClaimsController {
   @Get()
   list() {
     return this.claims.listMine();
+  }
+
+  /** Permanently delete a claim (admin only; audit-logged). Cleans up erroneous/duplicate imports. */
+  @Permissions(PERMISSIONS.CLAIM_DELETE)
+  @Delete(':id')
+  remove(@Param('id') id: string) {
+    return this.claims.remove(id);
   }
 
   /** The caller's action queue (claims awaiting their step). */

@@ -396,3 +396,14 @@ h1, h2, h3 {
 @media (prefers-reduced-motion: reduce) {
   .theme-switch-btn, .ts-pill, .ts-pill-edge, .ts-knob, .ts-moon, .ts-sun { transition: none; }
 }
+
+/* Subtle page backdrop for the panel pages (via Shell) so inner pages don't feel empty.
+   The landing page does NOT use Shell, so it is unaffected. Sits behind all content. */
+.app-bg {
+  position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(55vw 55vw at 88% -12%, color-mix(in srgb, var(--brand) 20%, transparent), transparent 62%),
+    radial-gradient(48vw 48vw at -12% 112%, color-mix(in srgb, var(--brand) 14%, transparent), transparent 60%);
+  opacity: 0.55;
+}
+:root:not(.dark) .app-bg { opacity: 0.32; }

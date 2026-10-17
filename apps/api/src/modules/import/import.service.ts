@@ -127,8 +127,8 @@ export class ImportService {
       }
       try {
         if (r.kind === 'CLAIM') {
-          await this.createHistoricalClaim(db, r, { channel, insurerId, brokerTenantId });
-          claimsCreated++;
+          const created = await this.createHistoricalClaim(db, r, { channel, insurerId, brokerTenantId });
+          created ? claimsCreated++ : skipped++; // skipped = duplicate of an already-imported claim
         } else {
           const did = await this.createInsured(r);
           did ? peopleCreated++ : skipped++;
@@ -182,8 +182,20 @@ export class ImportService {
     db: Prisma.TransactionClient | ReturnType<PrismaService['unscoped']>,
     r: ParsedRow,
     parties: { channel: 'BROKER' | 'DIRECT'; insurerId: string; brokerTenantId: string | null },
-  ) {
+  ): Promise<boolean> {
     const nid = toAsciiDigits(r.data.nationalCode);
+    const nidHash = this.crypto.blindIndex(nid)!;
+    const claimType = this.mapClaimType(r.data.causeOfDeath);
+    const eventDate = this.parseDate(r.data.deathDate);
+
+    // De-duplicate: the same deceased (blind index) + insurer + claim type + event date is the same
+    // death event — skip re-imports (e.g. uploading the same file twice) instead of creating copies.
+    const dup = await db.claim.findFirst({
+      where: { insurerTenantId: parties.insurerId, deceasedNationalCodeHash: nidHash, claimType, eventDate },
+      select: { id: true },
+    });
+    if (dup) return false;
+
     const amount = this.parseAmount(r.data.deathCapital) ?? this.parseAmount(r.data.payableAmount) ?? '0';
     const legacyData = Object.fromEntries(Object.entries(r.raw).filter(([k]) => !PII_HEADERS.has(k.trim())));
     const claimNumber = await this.nextClaimNumber(db);
@@ -196,9 +208,9 @@ export class ImportService {
         brokerTenantId: parties.brokerTenantId,
         deceasedFullName: this.crypto.encrypt(r.data.fullName)!,
         deceasedNationalCode: this.crypto.encrypt(nid)!,
-        deceasedNationalCodeHash: this.crypto.blindIndex(nid)!,
-        claimType: this.mapClaimType(r.data.causeOfDeath),
-        eventDate: this.parseDate(r.data.deathDate),
+        deceasedNationalCodeHash: nidHash,
+        claimType,
+        eventDate,
         policyNumber: r.data.policyNumber || null,
         claimedAmount: amount,
         status: r.claimStatus!,
@@ -226,6 +238,7 @@ export class ImportService {
         skipDuplicates: true,
       });
     }
+    return true;
   }
 
   /** Map a parsed import row to claim-field (key → value) pairs, skipping blanks. */
