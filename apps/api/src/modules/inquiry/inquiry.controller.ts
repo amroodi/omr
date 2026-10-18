@@ -17,6 +17,22 @@ export class InquiryController {
     return this.inquiry.requestOtp(dto);
   }
 
+  /** استعلام سریع — look up a death-claim by the DECEASED's National ID; OTP goes to the checker's own phone. */
+  @Public()
+  @UseGuards(TenantResolverGuard)
+  @Post('request-claim')
+  requestClaim(@Body() dto: RequestOtpDto) {
+    return this.inquiry.requestClaimStatus(dto);
+  }
+
+  /** Deceased-NID claim view with no code — only when OTP is disabled platform-wide. */
+  @Public()
+  @UseGuards(TenantResolverGuard)
+  @Post('claim-direct')
+  claimDirect(@Body() dto: RequestOtpDto) {
+    return this.inquiry.directClaimStatus(dto);
+  }
+
   /** Step 2 — public: verify OTP, receive a short-lived record-scoped token. */
   @Public()
   @UseGuards(TenantResolverGuard)

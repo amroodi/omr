@@ -165,6 +165,87 @@ export class InquiryService {
     return { token, expiresIn: this.config.get<string>('RECORD_TOKEN_TTL', '10m') };
   }
 
+  /** Pad a National ID to the canonical 10 digits (claims store the deceased NID zero-padded). */
+  private nid10(nid: string): string {
+    const d = nid.replace(/\D/g, '');
+    return d.length > 0 && d.length < 10 ? d.padStart(10, '0') : d;
+  }
+
+  private findClaimByDeceased(tenantId: string, nidHash: string) {
+    return this.prisma.unscoped().claim.findFirst({
+      where: { deceasedNationalCodeHash: nidHash, deletedAt: null, OR: [{ insurerTenantId: tenantId }, { brokerTenantId: tenantId }] },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+  }
+
+  /** Trace record: WHO checked (checker phone) and WHAT (queried NID), whether or not a claim matched. */
+  private async recordInquiry(tenantId: string, claim: { id: string } | null, checkerPhone: string, nid: string, ip: string) {
+    await this.audit.record({
+      action: AuditAction.VIEW,
+      actorType: 'INSURED',
+      tenantId,
+      targetType: 'ClaimInquiry',
+      targetId: claim?.id,
+      metadata: { checkerPhone, deceasedNidLast4: this.nid10(nid).slice(-4), found: !!claim, ip },
+    });
+  }
+
+  /**
+   * استعلام سریع پرونده — look up a death-claim by the DECEASED's National ID and send the OTP to the
+   * CHECKER's OWN phone (a beneficiary/stakeholder, not necessarily on file). The checker's phone and
+   * the queried National ID are recorded for traceability. Generic response (never reveals existence).
+   */
+  async requestClaimStatus(dto: RequestOtpDto): Promise<{ ok: true; message: string; otpRequired: boolean }> {
+    const tenantId = getTenantIdOrThrow();
+    const ctx = getContext();
+    const ip = ctx?.ip ?? 'unknown';
+    const nidHash = this.crypto.blindIndex(this.nid10(dto.nationalCode))!;
+    const phone = this.normalizePhone(dto.phone);
+    const phoneHash = this.crypto.blindIndex(phone)!;
+
+    const perIp = Number(this.config.get('RL_OTP_ISSUE_PER_IP_PER_HOUR', 10));
+    const perNid = Number(this.config.get('RL_OTP_ISSUE_PER_NID_PER_HOUR', 5));
+    if (!this.rateLimit.hit(`cst:ip:${ip}`, perIp, 3600)) throw new TooManyRequestsException('تعداد درخواست‌ها زیاد است. بعداً تلاش کنید.');
+    if (!this.rateLimit.hit(`cst:nid:${nidHash}`, perNid, 3600)) throw new TooManyRequestsException('تعداد درخواست‌ها زیاد است. بعداً تلاش کنید.');
+    if (!this.rateLimit.hit(`cst:phone:${phoneHash}`, perIp, 3600)) throw new TooManyRequestsException('تعداد درخواست‌ها زیاد است. بعداً تلاش کنید.');
+
+    const claim = await this.findClaimByDeceased(tenantId, nidHash);
+    await this.recordInquiry(tenantId, claim, phone, dto.nationalCode, ip);
+
+    if (!(await this.otpEnabled())) return { ok: true, otpRequired: false, message: 'مشاهده پرونده بدون کد تایید فعال است.' };
+
+    if (claim) {
+      const code = this.hash.generateOtp(Number(this.config.get('OTP_LENGTH', 6)));
+      const ttl = Number(this.config.get('OTP_TTL_SECONDS', 180));
+      await this.prisma.scoped.otpChallenge.create({
+        data: { tenantId, purpose: 'inquiry', phoneHash, claimId: claim.id, codeHash: this.hash.hashOtp(code), maxAttempts: Number(this.config.get('OTP_MAX_ATTEMPTS', 5)), expiresAt: new Date(Date.now() + ttl * 1000) },
+      });
+      try {
+        const pc = await this.prisma.unscoped().platformConfig.findUnique({ where: { id: 'platform' }, select: { inquiryUsePlatform: true } });
+        if (pc?.inquiryUsePlatform ?? true) await this.sms.sendOtpViaPlatform(dto.phone, code);
+        else await this.sms.sendOtp(dto.phone, code, tenantId);
+      } catch (e) {
+        this.logger.error(`Claim-status OTP send failed (tenant ${tenantId}): ${String(e)}`);
+      }
+    }
+    return { ok: true, otpRequired: true, message: 'در صورت وجود پرونده، کد تایید به شمارهٔ شما ارسال شد.' };
+  }
+
+  /** Deceased-NID inquiry when OTP is disabled platform-wide — mints the record token directly. */
+  async directClaimStatus(dto: RequestOtpDto): Promise<{ token: string; expiresIn: string }> {
+    if (await this.otpEnabled()) throw new ForbiddenException('کد تایید لازم است.');
+    const tenantId = getTenantIdOrThrow();
+    const ctx = getContext();
+    const nidHash = this.crypto.blindIndex(this.nid10(dto.nationalCode))!;
+    const claim = await this.findClaimByDeceased(tenantId, nidHash);
+    if (!claim) throw new ForbiddenException('پرونده‌ای برای این مشخصات یافت نشد.');
+    await this.recordInquiry(tenantId, claim, this.normalizePhone(dto.phone), dto.nationalCode, ctx?.ip ?? 'unknown');
+    const ttl = this.config.get<string>('RECORD_TOKEN_TTL', '10m');
+    const token = await this.jwt.signAsync({ kind: 'record', tenantId, caseId: null, claimId: claim.id, sub: null }, { expiresIn: ttl });
+    return { token, expiresIn: ttl };
+  }
+
   async verifyOtp(dto: VerifyOtpDto): Promise<{ token: string; expiresIn: string }> {
     const tenantId = getTenantIdOrThrow();
     const ctx = getContext();
@@ -256,9 +337,15 @@ export class InquiryService {
       .unscoped()
       .tenant.findUnique({ where: { id: c.insurerTenantId }, select: { name: true } });
 
+    // Pull the structured policy/claim field values (نام شرکت، شماره/شروع بیمه‌نامه، سرمایه‌ها، ...).
+    const fvals = await this.prisma.unscoped().claimFieldValue.findMany({ where: { claimId }, select: { key: true, value: true } });
+    const fv: Record<string, string | null> = {};
+    for (const v of fvals) fv[v.key] = v.value;
+
     await this.audit.record({ action: AuditAction.VIEW, targetType: 'Claim', targetId: claimId, actorType: 'INSURED' });
 
     const dec = (v: string | null) => (v ? this.crypto.decrypt(v) : null);
+    const nid = dec(c.deceasedNationalCode);
     return {
       kind: 'claim',
       claimNumber: c.claimNumber,
@@ -266,9 +353,18 @@ export class InquiryService {
       claimType: c.claimType,
       insurerName: insurer?.name ?? null,
       deceasedName: dec(c.deceasedFullName),
+      nationalCodeMasked: nid ? `••••••${nid.slice(-4)}` : null,
+      birthDate: fv.birth_date ?? null,
+      companyName: fv.company_name ?? c.employerName ?? null,
+      policyNumber: fv.policy_number ?? c.policyNumber ?? null,
+      policyStartDate: fv.policy_start_date ?? null,
+      deathCapital: fv.death_capital ?? null,
+      accidentCapital: fv.accident_capital ?? null,
+      payableAmount: fv.payable_amount ?? (c.claimedAmount != null ? c.claimedAmount.toString() : null),
+      causeOfDeath: fv.cause_of_death ?? c.causeOfDeath ?? null,
       eventDate: c.eventDate ? toJalali(c.eventDate, false) : null,
-      description: c.description ?? null,
       createdAt: c.createdAt ? toJalali(c.createdAt, false) : null,
+      description: c.description ?? null,
       steps: (c.steps ?? []).map((s: any) => ({ order: s.order, partyType: s.partyType, state: s.state })),
       deficiencies: (c.deficiencies ?? []).map((d: any) => ({ items: this.safeParse(d.items), resolvedAt: d.resolvedAt ? toJalali(d.resolvedAt, false) : null })),
     };

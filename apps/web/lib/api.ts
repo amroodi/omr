@@ -26,16 +26,17 @@ async function get<T>(path: string, token: string): Promise<T> {
 }
 
 export const inquiryApi = {
-  requestOtp: (nationalCode: string, phone: string) =>
-    post<{ ok: boolean; message: string; otpRequired?: boolean }>('/inquiry/request-otp', { nationalCode, phone }),
+  // استعلام سریع: nationalCode = DECEASED's کد ملی; phone = the CHECKER's own mobile (OTP target).
+  requestClaim: (nationalCode: string, phone: string) =>
+    post<{ ok: boolean; message: string; otpRequired?: boolean }>('/inquiry/request-claim', { nationalCode, phone }),
   verifyOtp: (nationalCode: string, phone: string, code: string) =>
     post<{ token: string; expiresIn: string }>('/inquiry/verify-otp', {
       nationalCode,
       phone,
       code,
     }),
-  // Direct record view when OTP is disabled platform-wide (no code).
-  direct: (nationalCode: string, phone: string) =>
-    post<{ token: string; expiresIn: string }>('/inquiry/direct', { nationalCode, phone }),
+  // Direct claim view when OTP is disabled platform-wide (no code).
+  directClaim: (nationalCode: string, phone: string) =>
+    post<{ token: string; expiresIn: string }>('/inquiry/claim-direct', { nationalCode, phone }),
   getCase: (token: string) => get<any>('/inquiry/case', token),
 };

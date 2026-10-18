@@ -170,11 +170,12 @@ function InquiryForm() {
   const [loading, setLoading] = useState(false);
   const { left, start } = useCountdown();
 
+  const fmtAmt = (v: any) => v != null && String(v).trim() !== '' ? `${Number(String(v).replace(/[^\d]/g, '') || 0).toLocaleString('fa-IR')} ریال` : null;
   const run = async (fn: () => Promise<void>) => { setError(''); setLoading(true); try { await fn(); } catch (e: any) { setError(e.message || 'خطا'); } finally { setLoading(false); } };
   const request = () => run(async () => {
-    const r = await inquiryApi.requestOtp(nid, phone);
+    const r = await inquiryApi.requestClaim(nid, phone);
     if (r.otpRequired === false) { // OTP disabled platform-wide → view directly
-      const t = await inquiryApi.direct(nid, phone);
+      const t = await inquiryApi.directClaim(nid, phone);
       setResult(await inquiryApi.getCase(t.token)); setStep('result'); return;
     }
     setMsg(r.message); setStep('otp'); start(120);
@@ -183,13 +184,13 @@ function InquiryForm() {
 
   return (
     <div>
-      <FormHeader title="استعلام سریع پرونده" subtitle="برای مشاهده اطلاعات پرونده، کد ملی و موبایل خود را وارد کنید." />
+      <FormHeader title="استعلام سریع پرونده" subtitle="کد ملی متوفی و شمارهٔ موبایل خودتان را وارد کنید؛ کد تایید به موبایل شما ارسال می‌شود." />
       <div className="space-y-3.5">
         <ErrorBox message={error} />
         {step === 'id' && (
           <>
-            <IconField label="کد ملی"><input className="input" style={{ paddingRight: 40, direction: 'ltr', textAlign: 'right' }} value={nid} onChange={(e) => setNid(e.target.value)} inputMode="numeric" placeholder="کد ملی ۱۰ رقمی خود را وارد کنید" /></IconField>
-            <Field label="شماره موبایل"><input className="input" style={{ direction: 'ltr', textAlign: 'right' }} value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="numeric" placeholder="۰۹۱۲۳۴۵۶۷۸۹" onKeyDown={(e) => e.key === 'Enter' && nid && phone && request()} /></Field>
+            <IconField label="کد ملی متوفی"><input className="input" style={{ paddingRight: 40, direction: 'ltr', textAlign: 'right' }} value={nid} onChange={(e) => setNid(e.target.value)} inputMode="numeric" placeholder="کد ملی ۱۰ رقمی متوفی" /></IconField>
+            <Field label="شماره موبایل شما"><input className="input" style={{ direction: 'ltr', textAlign: 'right' }} value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="numeric" placeholder="۰۹۱۲۳۴۵۶۷۸۹" onKeyDown={(e) => e.key === 'Enter' && nid && phone && request()} /></Field>
             <button onClick={request} disabled={loading || !nid || !phone} className="btn btn-primary w-full" style={{ padding: '0.8rem' }}>{loading ? 'در حال ارسال…' : 'دریافت کد تایید'}</button>
           </>
         )}
@@ -208,7 +209,21 @@ function InquiryForm() {
               <StatusBadge status={result.status} />
             </div>
             {(result.kind === 'claim'
-              ? [['بیمه‌گر', result.insurerName], ['بیمه‌شده (متوفی)', result.deceasedName], ['تاریخ وقوع', result.eventDate], ['تاریخ ثبت', result.createdAt], ['توضیحات', result.description]]
+              ? [
+                  ['بیمه‌گر', result.insurerName],
+                  ['بیمه‌شده (متوفی)', result.deceasedName],
+                  ['کد ملی', result.nationalCodeMasked],
+                  ['تاریخ تولد', result.birthDate],
+                  ['نام شرکت / محل فعالیت', result.companyName],
+                  ['شماره بیمه‌نامه', result.policyNumber],
+                  ['تاریخ شروع بیمه‌نامه', result.policyStartDate],
+                  ['سرمایه فوت', fmtAmt(result.deathCapital)],
+                  ['سرمایه حادثه', fmtAmt(result.accidentCapital)],
+                  ['مبلغ قابل پرداخت', fmtAmt(result.payableAmount)],
+                  ['علت فوت', result.causeOfDeath],
+                  ['تاریخ وقوع', result.eventDate],
+                  ['تاریخ ثبت', result.createdAt],
+                ]
               : [['نام', result.insured?.fullName], ['کد ملی', result.insured?.nationalCodeMasked], ['بیمه‌نامه', result.policy ? `${result.policy.policyNumber} — ${result.policy.carrier}` : null], ['تاریخ پرداخت', result.workflow?.paidAt]]
             ).map(([l, v]) => v ? (
               <div key={l as string} className="flex justify-between py-2 border-b text-sm" style={{ borderColor: 'var(--border)' }}>
