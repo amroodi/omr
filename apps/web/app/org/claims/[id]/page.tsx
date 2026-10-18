@@ -7,7 +7,8 @@ import { CLAIM_TYPE_LABELS, ErrorBox, StatusBadge } from '../../../components/ui
 import { ORG_NAV } from '../../nav';
 import { FieldsSection } from './fields-section';
 
-interface ClaimDoc { id: string; fileName: string; status: string; statusLabel: string; note: string | null; uploadedAt: string | null; version: number; isLatest: boolean }
+interface DocReview { stage: string; state: string; canEdit: boolean }
+interface ClaimDoc { id: string; fileName: string; status: string; statusLabel: string; note: string | null; uploadedAt: string | null; version: number; isLatest: boolean; reviews?: DocReview[] }
 interface ChecklistItem { code: string; label: string; uploaded: boolean; latestStatus: string | null; documents: ClaimDoc[] }
 interface Checklist { claimType: string; complete: boolean; items: ChecklistItem[] }
 
@@ -34,6 +35,9 @@ const ICON_CHECK = 'M20 6L9 17l-5-5';
 const ICON_X = 'M6 18L18 6M6 6l12 12';
 const ICON_CAM = 'M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2zM12 17a4 4 0 100-8 4 4 0 000 8z';
 
+// The three claim approval checkpoints shown beside each document.
+const STAGE_LABEL: Record<string, string> = { BROKER: 'کارگزاری', BRANCH: 'شعبه', COUNCIL: 'ستاد' };
+
 export default function ClaimDetail() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -49,7 +53,6 @@ export default function ClaimDetail() {
   // UI-gating by permission (the API enforces these independently).
   const canProcess = hasPerm('org', 'claim:process'); // تایید/رد/پرداخت/اعلام نقص
   const canFile = hasPerm('org', 'claim:file'); // بارگذاری مدرک / رفع نقص
-  const canVerify = hasPerm('org', 'doc:verify'); // تایید/رد اصالت مدرک
   const canDelete = hasPerm('org', 'claim:delete'); // حذف پرونده (مدیر سازمان)
 
   const removeClaim = async () => {
@@ -84,10 +87,11 @@ export default function ClaimDetail() {
     try { await client.view(`/claims/${id}/documents/${docId}/file`, 'org'); } catch (e: any) { setError(e.message); }
   };
 
-  const verifyDoc = (docId: string, action: 'approve' | 'reject' | 'needs_info') => act(async () => {
+  // Set one checkpoint's approval on a document (toggling the same icon clears it back to under-review).
+  const reviewDoc = (docId: string, stage: string, state: 'APPROVED' | 'REJECTED' | 'PENDING') => act(async () => {
     let note: string | undefined;
-    if (action !== 'approve') { note = window.prompt(action === 'reject' ? 'دلیل رد مدرک:' : 'توضیح/اصلاح موردنیاز:') || undefined; }
-    await client.post(`/claims/${id}/documents/${docId}/verify`, { action, note }, 'org');
+    if (state === 'REJECTED') { note = window.prompt('دلیل رد (اختیاری):') || undefined; }
+    await client.post(`/claims/${id}/documents/${docId}/review`, { stage, state, note }, 'org');
   });
 
   const endorse = () => act(() => client.post(`/claims/${id}/endorse`, {}, 'org'));
@@ -234,24 +238,40 @@ export default function ClaimDetail() {
                       {it.documents.length > 0 && (
                         <div className="mt-2 space-y-1.5 mr-6">
                           {it.documents.map((d) => (
-                            <div key={d.id} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5" style={{ background: d.isLatest ? 'var(--brand-soft)' : 'var(--surface-2)', opacity: d.isLatest ? 1 : 0.7 }}>
-                              <span className="text-xs flex items-center gap-2 min-w-0">
-                                <span className="badge badge-neutral shrink-0">نسخه {d.version}</span>
-                                {d.isLatest && <span className="badge badge-success shrink-0">جدیدترین</span>}
-                                <span className={`badge ${DOC_BADGE[d.status] || 'badge-neutral'} shrink-0`}>{d.statusLabel}</span>
-                                <span className="truncate" style={{ color: 'var(--muted)' }}>{d.uploadedAt}</span>
-                              </span>
-                              <span className="flex items-center gap-1 shrink-0">
-                                <button onClick={() => viewDoc(d.id)} className="btn btn-ghost btn-sm">مشاهده</button>
-                                {canVerify && d.isLatest && (
-                                  <>
-                                    <button onClick={() => verifyDoc(d.id, 'approve')} disabled={busy} title="تایید مدرک" aria-label="تایید مدرک"
-                                      className="btn btn-ghost btn-sm" style={{ color: d.status === 'VERIFIED' ? 'var(--success)' : 'var(--muted)' }}><Icon path={ICON_CHECK} /></button>
-                                    <button onClick={() => verifyDoc(d.id, 'reject')} disabled={busy} title="رد مدرک" aria-label="رد مدرک"
-                                      className="btn btn-ghost btn-sm" style={{ color: d.status === 'REJECTED' ? 'var(--danger)' : 'var(--muted)' }}><Icon path={ICON_X} /></button>
-                                  </>
-                                )}
-                              </span>
+                            <div key={d.id} className="rounded-lg px-2 py-2" style={{ background: d.isLatest ? 'var(--brand-soft)' : 'var(--surface-2)', opacity: d.isLatest ? 1 : 0.75 }}>
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-xs flex items-center gap-2 min-w-0 flex-wrap">
+                                  <span className="badge badge-neutral shrink-0">نسخه {d.version}</span>
+                                  {d.isLatest && <span className="badge badge-success shrink-0">جدیدترین</span>}
+                                  <span className={`badge ${DOC_BADGE[d.status] || 'badge-neutral'} shrink-0`}>{d.statusLabel}</span>
+                                  <span className="truncate" style={{ color: 'var(--muted)' }}>{d.uploadedAt}</span>
+                                </span>
+                                <button onClick={() => viewDoc(d.id)} className="btn btn-ghost btn-sm shrink-0">مشاهده</button>
+                              </div>
+                              {d.reviews && d.reviews.length > 0 && (
+                                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 pt-2 border-t text-xs" style={{ borderColor: 'var(--border)' }}>
+                                  {d.reviews.map((rv) => {
+                                    const editable = rv.canEdit && d.isLatest && !['PAID', 'REJECTED'].includes(claim.status);
+                                    return (
+                                      <span key={rv.stage} className="flex items-center gap-1">
+                                        <span style={{ color: 'var(--muted)' }}>{STAGE_LABEL[rv.stage] || rv.stage}:</span>
+                                        {editable ? (
+                                          <>
+                                            <button onClick={() => reviewDoc(d.id, rv.stage, rv.state === 'APPROVED' ? 'PENDING' : 'APPROVED')} disabled={busy} title="تایید" aria-label="تایید"
+                                              className="inline-flex p-0.5 rounded" style={{ color: rv.state === 'APPROVED' ? 'var(--success)' : 'var(--muted)' }}><Icon path={ICON_CHECK} /></button>
+                                            <button onClick={() => reviewDoc(d.id, rv.stage, rv.state === 'REJECTED' ? 'PENDING' : 'REJECTED')} disabled={busy} title="رد" aria-label="رد"
+                                              className="inline-flex p-0.5 rounded" style={{ color: rv.state === 'REJECTED' ? 'var(--danger)' : 'var(--muted)' }}><Icon path={ICON_X} /></button>
+                                          </>
+                                        ) : (
+                                          <span title={rv.state === 'APPROVED' ? 'تایید' : rv.state === 'REJECTED' ? 'رد' : 'در حال بررسی'} style={{ color: rv.state === 'APPROVED' ? 'var(--success)' : rv.state === 'REJECTED' ? 'var(--danger)' : 'var(--warning)', fontWeight: 700 }}>
+                                            {rv.state === 'APPROVED' ? '✓' : rv.state === 'REJECTED' ? '✕' : '●'}
+                                          </span>
+                                        )}
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>

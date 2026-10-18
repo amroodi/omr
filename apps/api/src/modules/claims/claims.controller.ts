@@ -144,6 +144,17 @@ export class ClaimsController {
     return this.claims.verifyDocument(id, docId, body?.action, body?.note);
   }
 
+  /** Set a per-document approval at one checkpoint (کارگزاری/شعبه/ستاد). */
+  @Permissions(PERMISSIONS.DOC_VERIFY)
+  @Post(':id/documents/:docId/review')
+  reviewDocument(
+    @Param('id') id: string,
+    @Param('docId') docId: string,
+    @Body() body: { stage: 'BROKER' | 'BRANCH' | 'COUNCIL'; state: 'PENDING' | 'APPROVED' | 'REJECTED'; note?: string },
+  ) {
+    return this.claims.reviewDocument(id, docId, body?.stage, body?.state, body?.note);
+  }
+
   /** معرف forwards / insurer level endorses (engine routes by authority ceiling). */
   @Permissions(PERMISSIONS.CLAIM_PROCESS)
   @Post(':id/endorse')

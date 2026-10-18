@@ -38,6 +38,7 @@ async function main(): Promise<void> {
   let deleted = 0;
   for (const id of toDelete) {
     await prisma.$transaction([
+      prisma.documentReview.deleteMany({ where: { document: { claimId: id } } }), // FK RESTRICT → before documents
       prisma.claimFieldValue.deleteMany({ where: { claimId: id } }),
       prisma.claimDeficiency.deleteMany({ where: { claimId: id } }),
       prisma.claimStep.deleteMany({ where: { claimId: id } }),

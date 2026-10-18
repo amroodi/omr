@@ -26,6 +26,7 @@ async function main(): Promise<void> {
   for (const c of expired) {
     const docs = await prisma.document.findMany({ where: { claimId: c.id }, select: { storageKey: true } });
     await prisma.$transaction([
+      prisma.documentReview.deleteMany({ where: { document: { claimId: c.id } } }), // FK RESTRICT → before documents
       prisma.claimFieldValue.deleteMany({ where: { claimId: c.id } }),
       prisma.claimDeficiency.deleteMany({ where: { claimId: c.id } }),
       prisma.claimStep.deleteMany({ where: { claimId: c.id } }),

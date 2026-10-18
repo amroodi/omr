@@ -15,6 +15,10 @@ const CLAIM_DOC_MIME = new Set(['application/pdf', 'image/jpeg', 'image/png']);
 // How long a soft-deleted claim stays restorable before the daily purge removes it for good.
 export const CLAIM_RETENTION_DAYS = 14;
 
+// The three claim approval checkpoints (کارگزاری / شعبه / ستاد).
+type ReviewStageName = 'BROKER' | 'BRANCH' | 'COUNCIL';
+type ReviewStateName = 'PENDING' | 'APPROVED' | 'REJECTED';
+
 const DOC_STATUS_LABELS: Record<string, string> = {
   PENDING: 'در انتظار بررسی',
   VERIFIED: 'تاییدشده',
@@ -335,6 +339,7 @@ export class ClaimsService {
     const u = this.prisma.unscoped();
     const docs = await u.document.findMany({ where: { claimId }, select: { storageKey: true } });
     await u.$transaction([
+      u.documentReview.deleteMany({ where: { document: { claimId } } }), // FK RESTRICT → before documents
       u.claimFieldValue.deleteMany({ where: { claimId } }),
       u.claimDeficiency.deleteMany({ where: { claimId } }),
       u.claimStep.deleteMany({ where: { claimId } }),
@@ -441,6 +446,21 @@ export class ClaimsService {
       if (!byCode.has(k)) byCode.set(k, []);
       byCode.get(k)!.push(d);
     }
+    // Per-document approvals at the three checkpoints (کارگزاری/شعبه/ستاد).
+    const docReviews = docs.length
+      ? await db.documentReview.findMany({ where: { documentId: { in: docs.map((d) => d.id) } } })
+      : [];
+    const reviewsByDoc = new Map<string, Map<string, string>>();
+    for (const r of docReviews) {
+      if (!reviewsByDoc.has(r.documentId)) reviewsByDoc.set(r.documentId, new Map());
+      reviewsByDoc.get(r.documentId)!.set(r.stage, r.state);
+    }
+    const applicableStages = (claim.brokerTenantId ? ['BROKER', 'BRANCH', 'COUNCIL'] : ['BRANCH', 'COUNCIL']) as ReviewStageName[];
+    const canEditStage: Record<string, boolean> = {
+      BROKER: this.canReviewStage(claim, 'BROKER'),
+      BRANCH: this.canReviewStage(claim, 'BRANCH'),
+      COUNCIL: this.canReviewStage(claim, 'COUNCIL'),
+    };
     // Present each docCode's uploads newest-first, with an explicit version number so admins can
     // tell new re-uploads from older ones at a glance. The newest is the "current" version.
     const present = (group: typeof docs) =>
@@ -453,6 +473,11 @@ export class ClaimsService {
         uploadedAt: d.createdAt ? toJalali(d.createdAt) : null,
         version: group.length - i, // newest has the highest version number
         isLatest: i === 0,
+        reviews: applicableStages.map((st) => ({
+          stage: st,
+          state: reviewsByDoc.get(d.id)?.get(st) ?? 'PENDING',
+          canEdit: canEditStage[st],
+        })),
       }));
     const items = reqs.map((r) => {
       const group = byCode.get(r.code) ?? [];
@@ -492,6 +517,49 @@ export class ClaimsService {
     });
     await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'ClaimDocument', targetId: docId, metadata: { verify: status, note } });
     return { ok: true };
+  }
+
+  /** Who may set a given checkpoint's review: broker-tenant users for کارگزاری, insurer-tenant users
+   *  for شعبه/ستاد — all requiring the doc:verify permission. (Exact branch/ستاد split comes later.) */
+  private canReviewStage(claim: any, stage: ReviewStageName): boolean {
+    const ctx = getContext();
+    if (ctx?.actorType !== 'ORG_USER') return false;
+    if (!(ctx.permissions ?? []).includes('doc:verify')) return false;
+    if (stage === 'BROKER') return !!claim.brokerTenantId && ctx.tenantId === claim.brokerTenantId;
+    return ctx.tenantId === claim.insurerTenantId; // BRANCH, COUNCIL (insurer side)
+  }
+
+  /** Set a per-document approval at one checkpoint (کارگزاری/شعبه/ستاد) and roll it up to the doc status. */
+  async reviewDocument(claimId: string, docId: string, stage: ReviewStageName, state: ReviewStateName, note?: string) {
+    const db = this.db();
+    const claim = await db.claim.findUnique({ where: { id: claimId } });
+    if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
+    this.assertParticipant(claim);
+    if (!this.canReviewStage(claim, stage)) throw new ForbiddenException('اجازهٔ بررسی این مرحله را ندارید');
+    const doc = await db.document.findFirst({ where: { id: docId, claimId }, select: { id: true } });
+    if (!doc) throw new NotFoundException('سند یافت نشد');
+    const ctx = getContext();
+    const decidedAt = state === 'PENDING' ? null : new Date();
+    await db.documentReview.upsert({
+      where: { documentId_stage: { documentId: docId, stage: stage as any } },
+      update: { state: state as any, reviewerId: ctx?.actorId ?? null, note: note ?? null, decidedAt },
+      create: { documentId: docId, stage: stage as any, state: state as any, reviewerId: ctx?.actorId ?? null, note: note ?? null, decidedAt },
+    });
+    await this.recomputeDocStatus(docId, claim);
+    await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'ClaimDocumentReview', targetId: docId, metadata: { stage, state, note } });
+    return { ok: true };
+  }
+
+  /** Roll the applicable checkpoint reviews up into the document's overall verificationStatus. */
+  private async recomputeDocStatus(docId: string, claim: any) {
+    const db = this.db();
+    const reviews = await db.documentReview.findMany({ where: { documentId: docId } });
+    const applicable: ReviewStageName[] = claim.brokerTenantId ? ['BROKER', 'BRANCH', 'COUNCIL'] : ['BRANCH', 'COUNCIL'];
+    const stateOf = (s: ReviewStageName) => reviews.find((r) => r.stage === s)?.state ?? 'PENDING';
+    let status: 'PENDING' | 'VERIFIED' | 'REJECTED' = 'PENDING';
+    if (applicable.some((s) => stateOf(s) === 'REJECTED')) status = 'REJECTED';
+    else if (applicable.every((s) => stateOf(s) === 'APPROVED')) status = 'VERIFIED';
+    await db.document.update({ where: { id: docId }, data: { verificationStatus: status as any } });
   }
 
   /** Upload a document to a claim, tagged with the required-document code it satisfies. */
