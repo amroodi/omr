@@ -519,14 +519,21 @@ export class ClaimsService {
     return { ok: true };
   }
 
-  /** Who may set a given checkpoint's review: broker-tenant users for کارگزاری, insurer-tenant users
-   *  for شعبه/ستاد — all requiring the doc:verify permission. (Exact branch/ستاد split comes later.) */
+  /**
+   * Who may set a given checkpoint's review (all require the doc:verify permission):
+   *  - کارگزاری (BROKER): a user of the معرف/broker org on this claim.
+   *  - شعبه (BRANCH): an insurer-org user assigned to a branch (OrgUser.branchId set).
+   *  - ستاد (COUNCIL): a central insurer-org user (no branch — مدیریت مرکزی / شورای فنی).
+   */
   private canReviewStage(claim: any, stage: ReviewStageName): boolean {
     const ctx = getContext();
     if (ctx?.actorType !== 'ORG_USER') return false;
     if (!(ctx.permissions ?? []).includes('doc:verify')) return false;
     if (stage === 'BROKER') return !!claim.brokerTenantId && ctx.tenantId === claim.brokerTenantId;
-    return ctx.tenantId === claim.insurerTenantId; // BRANCH, COUNCIL (insurer side)
+    if (ctx.tenantId !== claim.insurerTenantId) return false;
+    if (stage === 'BRANCH') return !!ctx.branchId; // branch operators (شعبه)
+    if (stage === 'COUNCIL') return !ctx.branchId; // central management / شورای فنی (ستاد)
+    return false;
   }
 
   /** Set a per-document approval at one checkpoint (کارگزاری/شعبه/ستاد) and roll it up to the doc status. */
