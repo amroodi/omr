@@ -29,6 +29,11 @@ interface Claim {
 const STEP_PARTY: Record<string, string> = { POLICYHOLDER: 'بیمه‌گزار', MOAREF: 'معرف', INSURER_LEVEL: 'سطح بیمه‌گر' };
 const STEP_STATE: Record<string, string> = { PENDING: 'در انتظار', FORWARDED: 'ارسال‌شده', ESCALATED: 'ارجاع به بالاتر', APPROVED: 'تایید', RETURNED_INCOMPLETE: 'نقص مدارک', REJECTED: 'رد', ACKED: 'ثبت' };
 
+// Icon paths
+const ICON_CHECK = 'M20 6L9 17l-5-5';
+const ICON_X = 'M6 18L18 6M6 6l12 12';
+const ICON_CAM = 'M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2zM12 17a4 4 0 100-8 4 4 0 000 8z';
+
 export default function ClaimDetail() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -38,7 +43,7 @@ export default function ClaimDetail() {
   const [busy, setBusy] = useState(false);
   const [defText, setDefText] = useState('');
   const [showDef, setShowDef] = useState(false);
-  const [tab, setTab] = useState<'info' | 'workflow' | 'docs'>('info'); // اطلاعات ↔ گردش کار ↔ مدارک
+  const [tab, setTab] = useState<'info' | 'workflow' | 'docs' | 'route'>('info'); // اطلاعات ↔ گردش کار ↔ مدارک ↔ مسیر
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const camRefs = useRef<Record<string, HTMLInputElement | null>>({}); // mobile camera capture
   // UI-gating by permission (the API enforces these independently).
@@ -106,139 +111,176 @@ export default function ClaimDetail() {
     <Shell title={claim ? `پرونده ${claim.claimNumber}` : 'پرونده خسارت'} nav={ORG_NAV} realm="org">
       <ErrorBox message={error} />
       {!claim ? <div className="card p-8 text-center text-sm" style={{ color: 'var(--muted)' }}>در حال بارگذاری…</div> : (
-        <div className="grid lg:grid-cols-[1fr_320px] gap-5">
-          {/* main */}
-          <div className="space-y-5">
-            {claim.lateNotice && lateWarn && (
-              <div className="alert-error">⚠ اعلام خسارت خارج از مهلت مقرر انجام شده است (مهلت: {claim.noticeDeadline}).</div>
-            )}
-            <div className="card p-5">
-              <div className="flex justify-between items-center mb-3">
-                <span className="font-bold">{CLAIM_TYPE_LABELS[claim.claimType] || claim.claimType}</span>
-                <StatusBadge status={claim.status} />
-              </div>
+        <div className="space-y-5">
+          {claim.lateNotice && lateWarn && (
+            <div className="alert-error">⚠ اعلام خسارت خارج از مهلت مقرر انجام شده است (مهلت: {claim.noticeDeadline}).</div>
+          )}
+
+          {/* Header: key facts + parties (full width) */}
+          <div className="card p-5">
+            <div className="flex justify-between items-center mb-3">
+              <span className="font-bold text-lg">{CLAIM_TYPE_LABELS[claim.claimType] || claim.claimType}</span>
+              <StatusBadge status={claim.status} />
+            </div>
+            <div className="grid sm:grid-cols-2 gap-x-6">
               <Row label="بیمه‌شده (متوفی)" value={claim.deceasedName} />
               <Row label="مبلغ خسارت" value={`${Number(claim.claimedAmount).toLocaleString('fa-IR')} ریال`} />
               <Row label="تاریخ وقوع" value={claim.eventDate} />
               <Row label="مهلت اعلام" value={claim.noticeDeadline} />
-              {claim.description && (
-                <div className="mt-2 text-sm whitespace-pre-wrap" style={{ color: 'var(--muted)' }}>توضیحات بیمه‌گزار: {claim.description}</div>
+            </div>
+            <div className="grid sm:grid-cols-3 gap-3 mt-3 pt-3 border-t text-sm" style={{ borderColor: 'var(--border)' }}>
+              {claim.policyHolder && (
+                <div>
+                  <div className="text-xs mb-0.5" style={{ color: 'var(--muted)' }}>بیمه‌گزار</div>
+                  <div className="font-semibold">{claim.policyHolder.name || '—'}</div>
+                  {claim.policyHolder.nationalCode && <div className="text-xs" style={{ color: 'var(--muted)', direction: 'ltr', textAlign: 'right' }}>کد ملی: {claim.policyHolder.nationalCode}</div>}
+                </div>
+              )}
+              {claim.broker && (
+                <div>
+                  <div className="text-xs mb-0.5" style={{ color: 'var(--muted)' }}>معرف (کارگزاری/نمایندگی)</div>
+                  <div className="font-semibold">{claim.broker.name}</div>
+                </div>
+              )}
+              {claim.insurer && (
+                <div>
+                  <div className="text-xs mb-0.5" style={{ color: 'var(--muted)' }}>بیمه‌گر</div>
+                  <div className="font-semibold">{claim.insurer.name}</div>
+                  {claim.sellingBranchName && <div className="text-xs" style={{ color: 'var(--muted)' }}>شعبه فروشنده: {claim.sellingBranchName}</div>}
+                </div>
               )}
             </div>
+            {claim.description && (
+              <div className="mt-3 text-sm whitespace-pre-wrap" style={{ color: 'var(--muted)' }}>توضیحات بیمه‌گزار: {claim.description}</div>
+            )}
+          </div>
 
-            {/* Tabs: claim/policy data · workflow stages · required documents (avoids one long scroll) */}
-            <div className="card p-1.5 flex gap-1.5 text-xs sm:text-sm">
-              <button type="button" onClick={() => setTab('info')} className={`flex-1 btn btn-sm ${tab === 'info' ? 'btn-primary' : 'btn-ghost'}`}>اطلاعات پرونده</button>
-              <button type="button" onClick={() => setTab('workflow')} className={`flex-1 btn btn-sm ${tab === 'workflow' ? 'btn-primary' : 'btn-ghost'}`}>مراحل و گردش کار</button>
-              <button type="button" onClick={() => setTab('docs')} className={`flex-1 btn btn-sm ${tab === 'docs' ? 'btn-primary' : 'btn-ghost'}`}>
-                مدارک{checklist && !checklist.complete ? <span style={{ color: 'var(--warning)' }}> ●</span> : null}
-              </button>
-            </div>
-
-            {/* claim / policy / beneficiary data */}
-            {tab === 'info' && <FieldsSection claimId={id} realm="org" basePath="/claims" groups={['CLAIM_DATA', 'BENEFICIARY']} />}
-
-            {/* workflow-stage fields */}
-            {tab === 'workflow' && <FieldsSection claimId={id} realm="org" basePath="/claims" groups={['WORKFLOW_STAGE']} />}
-
-            {tab === 'docs' && (<>
-            {/* checklist */}
-            <div className="card p-5">
-              <div className="flex justify-between items-center mb-3">
-                <h3 className="font-bold">مدارک مورد نیاز</h3>
-                {checklist && <span className={`badge ${checklist.complete ? 'badge-success' : 'badge-warning'}`}>{checklist.complete ? 'کامل' : 'ناقص'}</span>}
+          {/* Action bar (full width) */}
+          {(canProcess || canFile || canDelete) && (
+            <div className="card p-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-bold ml-1">اقدامات:</span>
+                {['PAID', 'REJECTED'].includes(claim.status) ? (
+                  <span className="text-sm" style={{ color: 'var(--muted)' }}>پرونده بسته شده است.</span>
+                ) : claim.status === 'RETURNED_INCOMPLETE' ? (
+                  canFile
+                    ? <button onClick={rectify} disabled={busy} className="btn btn-primary btn-sm">رفع نقص و ارسال مجدد</button>
+                    : <span className="text-sm" style={{ color: 'var(--muted)' }}>در انتظار رفع نقص توسط بیمه‌گزار.</span>
+                ) : claim.status === 'APPROVED' ? (
+                  canProcess
+                    ? <button onClick={pay} disabled={busy} className="btn btn-primary btn-sm">ثبت پرداخت</button>
+                    : <span className="text-sm" style={{ color: 'var(--muted)' }}>در انتظار ثبت پرداخت.</span>
+                ) : canProcess ? (
+                  <>
+                    <button onClick={endorse} disabled={busy} className="btn btn-primary btn-sm">تایید و ارسال</button>
+                    <button onClick={() => setShowDef(!showDef)} disabled={busy} className="btn btn-ghost btn-sm" style={{ color: 'var(--warning)' }}>اعلام نقص مدارک</button>
+                    <button onClick={reject} disabled={busy} className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }}>رد پرونده</button>
+                  </>
+                ) : canFile ? (
+                  <span className="text-sm" style={{ color: 'var(--muted)' }}>مدارک را در بخش «مدارک» بارگذاری کنید.</span>
+                ) : (
+                  <span className="text-sm" style={{ color: 'var(--muted)' }}>اقدامی برای نقش شما در دسترس نیست.</span>
+                )}
+                {canDelete && <button onClick={removeClaim} disabled={busy} className="btn btn-ghost btn-sm mr-auto" style={{ color: 'var(--danger)' }} title="انتقال به سطل بازیافت (۱۴ روز قابل بازیابی)">حذف پرونده</button>}
               </div>
-              <div className="space-y-3">
-                {checklist?.items.map((it) => (
-                  <div key={it.code} className="py-2 border-b" style={{ borderColor: 'var(--border)' }}>
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-sm flex items-center gap-2">
-                        <span style={{ color: it.uploaded ? 'var(--success)' : 'var(--muted)' }}>{it.uploaded ? '✔' : '○'}</span>
-                        {it.label}
-                      </span>
-                      {canFile && (
-                        <div className="flex items-center gap-1.5">
-                          <input ref={(el) => { fileRefs.current[it.code] = el; }} type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }}
-                            onChange={(e) => { const file = e.target.files?.[0]; if (file) upload(it.code, file); e.currentTarget.value = ''; }} />
-                          <input ref={(el) => { camRefs.current[it.code] = el; }} type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
-                            onChange={(e) => { const file = e.target.files?.[0]; if (file) upload(it.code, file); e.currentTarget.value = ''; }} />
-                          <button onClick={() => camRefs.current[it.code]?.click()} disabled={busy} className="btn btn-ghost btn-sm sm:hidden" title="گرفتن عکس با دوربین" aria-label="دوربین"><Icon path="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2zM12 17a4 4 0 100-8 4 4 0 000 8z" /></button>
-                          <button onClick={() => fileRefs.current[it.code]?.click()} disabled={busy} className="btn btn-ghost btn-sm">بارگذاری جایگزین</button>
+              {showDef && canProcess && (
+                <div className="space-y-2 mt-3">
+                  <textarea value={defText} onChange={(e) => setDefText(e.target.value)} placeholder="هر مورد نقص در یک خط" className="input" rows={3} />
+                  <button onClick={returnIncomplete} disabled={busy} className="btn btn-sm" style={{ background: 'var(--warning)', color: '#fff' }}>ارسال نقص مدارک</button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Tabs (full width) */}
+          <div className="card p-1.5 flex gap-1.5 text-xs sm:text-sm overflow-x-auto">
+            <button type="button" onClick={() => setTab('info')} className={`flex-1 btn btn-sm whitespace-nowrap ${tab === 'info' ? 'btn-primary' : 'btn-ghost'}`}>اطلاعات پرونده</button>
+            <button type="button" onClick={() => setTab('workflow')} className={`flex-1 btn btn-sm whitespace-nowrap ${tab === 'workflow' ? 'btn-primary' : 'btn-ghost'}`}>مراحل و گردش کار</button>
+            <button type="button" onClick={() => setTab('docs')} className={`flex-1 btn btn-sm whitespace-nowrap ${tab === 'docs' ? 'btn-primary' : 'btn-ghost'}`}>
+              مدارک{checklist && !checklist.complete ? <span style={{ color: 'var(--warning)' }}> ●</span> : null}
+            </button>
+            <button type="button" onClick={() => setTab('route')} className={`flex-1 btn btn-sm whitespace-nowrap ${tab === 'route' ? 'btn-primary' : 'btn-ghost'}`}>مسیر گردش کار</button>
+          </div>
+
+          {tab === 'info' && <FieldsSection claimId={id} realm="org" basePath="/claims" groups={['CLAIM_DATA', 'BENEFICIARY']} />}
+          {tab === 'workflow' && <FieldsSection claimId={id} realm="org" basePath="/claims" groups={['WORKFLOW_STAGE']} />}
+
+          {tab === 'docs' && (
+            <>
+              <div className="card p-5">
+                <div className="flex justify-between items-center mb-3">
+                  <h3 className="font-bold">مدارک مورد نیاز</h3>
+                  {checklist && <span className={`badge ${checklist.complete ? 'badge-success' : 'badge-warning'}`}>{checklist.complete ? 'کامل' : 'ناقص'}</span>}
+                </div>
+                <div className="space-y-3">
+                  {checklist?.items.map((it) => (
+                    <div key={it.code} className="py-2 border-b" style={{ borderColor: 'var(--border)' }}>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-sm flex items-center gap-2">
+                          <span style={{ color: it.uploaded ? 'var(--success)' : 'var(--muted)' }}>{it.uploaded ? '✔' : '○'}</span>
+                          {it.label}
+                        </span>
+                        {canFile && (
+                          <div className="flex items-center gap-1.5">
+                            <input ref={(el) => { fileRefs.current[it.code] = el; }} type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }}
+                              onChange={(e) => { const file = e.target.files?.[0]; if (file) upload(it.code, file); e.currentTarget.value = ''; }} />
+                            <input ref={(el) => { camRefs.current[it.code] = el; }} type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
+                              onChange={(e) => { const file = e.target.files?.[0]; if (file) upload(it.code, file); e.currentTarget.value = ''; }} />
+                            <button onClick={() => camRefs.current[it.code]?.click()} disabled={busy} className="btn btn-ghost btn-sm sm:hidden" title="گرفتن عکس با دوربین" aria-label="دوربین"><Icon path={ICON_CAM} /></button>
+                            <button onClick={() => fileRefs.current[it.code]?.click()} disabled={busy} className="btn btn-ghost btn-sm">بارگذاری جایگزین</button>
+                          </div>
+                        )}
+                      </div>
+                      {it.documents.length > 0 && (
+                        <div className="mt-2 space-y-1.5 mr-6">
+                          {it.documents.map((d) => (
+                            <div key={d.id} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5" style={{ background: d.isLatest ? 'var(--brand-soft)' : 'var(--surface-2)', opacity: d.isLatest ? 1 : 0.7 }}>
+                              <span className="text-xs flex items-center gap-2 min-w-0">
+                                <span className="badge badge-neutral shrink-0">نسخه {d.version}</span>
+                                {d.isLatest && <span className="badge badge-success shrink-0">جدیدترین</span>}
+                                <span className={`badge ${DOC_BADGE[d.status] || 'badge-neutral'} shrink-0`}>{d.statusLabel}</span>
+                                <span className="truncate" style={{ color: 'var(--muted)' }}>{d.uploadedAt}</span>
+                              </span>
+                              <span className="flex items-center gap-1 shrink-0">
+                                <button onClick={() => viewDoc(d.id)} className="btn btn-ghost btn-sm">مشاهده</button>
+                                {canVerify && d.isLatest && (
+                                  <>
+                                    <button onClick={() => verifyDoc(d.id, 'approve')} disabled={busy} title="تایید مدرک" aria-label="تایید مدرک"
+                                      className="btn btn-ghost btn-sm" style={{ color: d.status === 'VERIFIED' ? 'var(--success)' : 'var(--muted)' }}><Icon path={ICON_CHECK} /></button>
+                                    <button onClick={() => verifyDoc(d.id, 'reject')} disabled={busy} title="رد مدرک" aria-label="رد مدرک"
+                                      className="btn btn-ghost btn-sm" style={{ color: d.status === 'REJECTED' ? 'var(--danger)' : 'var(--muted)' }}><Icon path={ICON_X} /></button>
+                                  </>
+                                )}
+                              </span>
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>
-                    {it.documents.length > 0 && (
-                      <div className="mt-2 space-y-1.5 mr-6">
-                        {it.documents.map((d) => (
-                          <div key={d.id} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5" style={{ background: d.isLatest ? 'var(--brand-soft)' : 'var(--surface-2)', opacity: d.isLatest ? 1 : 0.7 }}>
-                            <span className="text-xs flex items-center gap-2 min-w-0">
-                              <span className="badge badge-neutral shrink-0">نسخه {d.version}</span>
-                              {d.isLatest && <span className="badge badge-success shrink-0">جدیدترین</span>}
-                              <span className={`badge ${DOC_BADGE[d.status] || 'badge-neutral'} shrink-0`}>{d.statusLabel}</span>
-                              <span className="truncate" style={{ color: 'var(--muted)' }}>{d.uploadedAt}</span>
-                            </span>
-                            <span className="flex items-center gap-1 shrink-0">
-                              <button onClick={() => viewDoc(d.id)} className="btn btn-ghost btn-sm">مشاهده</button>
-                              {canVerify && d.isLatest && d.status !== 'VERIFIED' && <button onClick={() => verifyDoc(d.id, 'approve')} disabled={busy} className="text-xs" style={{ color: 'var(--success)' }}>تایید</button>}
-                              {canVerify && d.isLatest && d.status !== 'REJECTED' && <button onClick={() => verifyDoc(d.id, 'reject')} disabled={busy} className="text-xs" style={{ color: 'var(--danger)' }}>رد</button>}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
 
-            {/* deficiencies list */}
-            {claim.deficiencies && claim.deficiencies.length > 0 && (
-              <div className="card p-5">
-                <h3 className="font-bold mb-2">سوابق نقص مدارک</h3>
-                {claim.deficiencies.map((d, i) => (
-                  <div key={i} className="text-sm mb-2">
-                    <span className={`badge ${d.resolvedAt ? 'badge-success' : 'badge-danger'}`}>{d.resolvedAt ? 'رفع شد' : 'باز'}</span>
-                    <ul className="mt-1 mr-4 list-disc" style={{ color: 'var(--muted)' }}>{(d.items || []).map((x, j) => <li key={j}>{x}</li>)}</ul>
-                  </div>
-                ))}
-              </div>
-            )}
-            </>)}
-          </div>
+              {claim.deficiencies && claim.deficiencies.length > 0 && (
+                <div className="card p-5">
+                  <h3 className="font-bold mb-2">سوابق نقص مدارک</h3>
+                  {claim.deficiencies.map((d, i) => (
+                    <div key={i} className="text-sm mb-2">
+                      <span className={`badge ${d.resolvedAt ? 'badge-success' : 'badge-danger'}`}>{d.resolvedAt ? 'رفع شد' : 'باز'}</span>
+                      <ul className="mt-1 mr-4 list-disc" style={{ color: 'var(--muted)' }}>{(d.items || []).map((x, j) => <li key={j}>{x}</li>)}</ul>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
 
-          {/* sidebar: parties + workflow + actions */}
-          <div className="space-y-5">
-            {/* Parties — who is who on this claim */}
-            <div className="card p-5">
-              <h3 className="font-bold mb-3">طرف‌های پرونده</h3>
-              <div className="space-y-2 text-sm">
-                {claim.policyHolder && (
-                  <div className="flex justify-between gap-2 py-1.5 border-b" style={{ borderColor: 'var(--border)' }}>
-                    <span style={{ color: 'var(--muted)' }}>بیمه‌گزار</span>
-                    <span className="font-semibold text-left">{claim.policyHolder.name || '—'}{claim.policyHolder.nationalCode ? <span className="block text-xs font-normal" style={{ color: 'var(--muted)', direction: 'ltr' }}>کد ملی: {claim.policyHolder.nationalCode}</span> : null}</span>
-                  </div>
-                )}
-                {claim.broker && (
-                  <div className="flex justify-between gap-2 py-1.5 border-b" style={{ borderColor: 'var(--border)' }}>
-                    <span style={{ color: 'var(--muted)' }}>معرف (کارگزاری/نمایندگی)</span>
-                    <span className="font-semibold">{claim.broker.name}</span>
-                  </div>
-                )}
-                {claim.insurer && (
-                  <div className="flex justify-between gap-2 py-1.5 border-b" style={{ borderColor: 'var(--border)' }}>
-                    <span style={{ color: 'var(--muted)' }}>بیمه‌گر</span>
-                    <span className="font-semibold">{claim.insurer.name}{claim.sellingBranchName ? <span className="block text-xs font-normal" style={{ color: 'var(--muted)' }}>شعبه فروشنده: {claim.sellingBranchName}</span> : null}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-
+          {tab === 'route' && (
             <div className="card p-5">
               <h3 className="font-bold mb-3">مسیر گردش کار</h3>
               <div className="space-y-3">
                 {(claim.steps || []).map((s, i) => {
                   const active = s.state === 'PENDING';
-                  // Who must act / acted at this stage
                   const role = s.partyType === 'INSURER_LEVEL' ? (s.levelName || 'سطح بیمه‌گر') : (STEP_PARTY[s.partyType] || s.partyType);
                   const isPerson = s.holderKind === 'POLICYHOLDER';
                   const org = !isPerson && s.holderName ? `${s.holderKind === 'INSURER' ? 'بیمه‌گر' : s.holderKind === 'BROKER' ? 'کارگزاری' : ''} ${s.holderName}`.trim() : '';
@@ -273,46 +315,7 @@ export default function ClaimDetail() {
                 })}
               </div>
             </div>
-
-            {(canProcess || canFile) && (
-            <div className="card p-5 space-y-2">
-              <h3 className="font-bold mb-1">اقدامات</h3>
-              {['PAID', 'REJECTED'].includes(claim.status) ? (
-                <p className="text-sm" style={{ color: 'var(--muted)' }}>پرونده بسته شده است.</p>
-              ) : claim.status === 'RETURNED_INCOMPLETE' ? (
-                canFile
-                  ? <button onClick={rectify} disabled={busy} className="btn btn-primary w-full btn-sm">رفع نقص و ارسال مجدد</button>
-                  : <p className="text-sm" style={{ color: 'var(--muted)' }}>در انتظار رفع نقص توسط بیمه‌گزار.</p>
-              ) : claim.status === 'APPROVED' ? (
-                canProcess
-                  ? <button onClick={pay} disabled={busy} className="btn btn-primary w-full btn-sm">ثبت پرداخت</button>
-                  : <p className="text-sm" style={{ color: 'var(--muted)' }}>در انتظار ثبت پرداخت.</p>
-              ) : canProcess ? (
-                <>
-                  <button onClick={endorse} disabled={busy} className="btn btn-primary w-full btn-sm">تایید و ارسال</button>
-                  <button onClick={() => setShowDef(!showDef)} disabled={busy} className="btn btn-ghost w-full btn-sm" style={{ color: 'var(--warning)' }}>اعلام نقص مدارک</button>
-                  {showDef && (
-                    <div className="space-y-2">
-                      <textarea value={defText} onChange={(e) => setDefText(e.target.value)} placeholder="هر مورد نقص در یک خط" className="input" rows={3} />
-                      <button onClick={returnIncomplete} disabled={busy} className="btn btn-sm w-full" style={{ background: 'var(--warning)', color: '#fff' }}>ارسال نقص مدارک</button>
-                    </div>
-                  )}
-                  <button onClick={reject} disabled={busy} className="btn btn-ghost w-full btn-sm" style={{ color: 'var(--danger)' }}>رد پرونده</button>
-                </>
-              ) : (
-                <p className="text-sm" style={{ color: 'var(--muted)' }}>اقدامی برای نقش شما در دسترس نیست.</p>
-              )}
-            </div>
-            )}
-
-            {canDelete && (
-              <div className="card p-5" style={{ borderColor: 'var(--danger)' }}>
-                <h3 className="font-bold mb-1" style={{ color: 'var(--danger)' }}>حذف پرونده</h3>
-                <p className="text-xs mb-2" style={{ color: 'var(--muted)' }}>انتقال به سطل بازیافت؛ تا ۱۴ روز قابل بازیابی است و سپس برای همیشه حذف می‌شود. (همهٔ اقدام‌ها در گزارش ممیزی ثبت و برای همیشه نگهداری می‌شود.)</p>
-                <button onClick={removeClaim} disabled={busy} className="btn w-full btn-sm" style={{ background: 'var(--danger)', color: '#fff' }}>حذف پرونده</button>
-              </div>
-            )}
-          </div>
+          )}
         </div>
       )}
     </Shell>

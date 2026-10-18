@@ -69,7 +69,7 @@ export function FieldsSection({ claimId, realm, basePath, groups }: { claimId: s
       {Object.entries(data.groups).filter(([g]) => !groups || groups.includes(g)).map(([group, fields]) => fields.length === 0 ? null : (
         <div key={group} className="card p-5">
           <h3 className="font-bold mb-3">{GROUP_LABELS[group] || group}</h3>
-          <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-x-5 gap-y-3">
+          <div className="grid grid-cols-1 gap-y-3">
             {fields.map((f) => {
               const isOcrDraft = f.source === 'OCR' && !f.confirmed;
               const borderColor = isOcrDraft ? 'var(--warning)' : f.confirmed ? 'var(--success)' : 'var(--border-strong)';
@@ -77,9 +77,8 @@ export function FieldsSection({ claimId, realm, basePath, groups }: { claimId: s
               const longText = LONG_TEXT_KEYS.has(f.key);
               // A stored SELECT value that isn't one of the presets → show the free-text box.
               const isCustom = customMode[f.key] || (f.type === 'SELECT' && curVal !== '' && !f.options.includes(curVal));
-              const wide = longText || f.type === 'SELECT';
               return (
-                <div key={f.key} className={wide ? 'md:col-span-2 xl:col-span-3' : ''}>
+                <div key={f.key}>
                   <label className="label flex items-center justify-between">
                     <span>{f.label}{f.required && <span style={{ color: 'var(--danger)' }}> *</span>}</span>
                     {isOcrDraft && <span className="badge badge-warning">OCR {f.confidence != null ? `${Math.round(f.confidence * 100)}٪` : ''}</span>}

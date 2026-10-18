@@ -34,8 +34,13 @@ export function Shell({
   // Permissions live in localStorage (empty during SSR), so only gate after mount to avoid a
   // hydration mismatch. Before mount we show just the unrestricted items.
   const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const [navCollapsed, setNavCollapsed] = useState(false); // desktop: hide the side menu for more width
+  useEffect(() => {
+    setMounted(true);
+    try { setNavCollapsed(localStorage.getItem('navCollapsed') === '1'); } catch {}
+  }, []);
   useEffect(() => { setMoreOpen(false); }, [pathname]);
+  const toggleNav = () => setNavCollapsed((c) => { const n = !c; try { localStorage.setItem('navCollapsed', n ? '1' : '0'); } catch {} return n; });
 
   const visibleNav = nav.filter((n) => !n.perm || (mounted && hasPerm(realm, n.perm)));
   const logout = () => { clearToken(realm); router.push(`/${realm === 'super' ? 'admin' : realm}/login`); };
@@ -50,9 +55,9 @@ export function Shell({
   return (
     <div className="grid gap-5" style={{ gridTemplateColumns: 'minmax(0,1fr)' }}>
       <div className="app-bg" aria-hidden />
-      <div className="lg:grid lg:gap-6" style={{ gridTemplateColumns: '230px minmax(0,1fr)' }}>
-        {/* Sidebar — desktop only */}
-        <aside className="hidden lg:block">
+      <div className="lg:grid lg:gap-6" style={{ gridTemplateColumns: navCollapsed ? 'minmax(0,1fr)' : '230px minmax(0,1fr)' }}>
+        {/* Sidebar — desktop only (collapsible) */}
+        <aside className={navCollapsed ? 'hidden' : 'hidden lg:block'}>
           <div className="card p-2 lg:sticky lg:top-20">
             <div className="flex flex-col gap-1">
               {visibleNav.map((n) => {
@@ -82,9 +87,14 @@ export function Shell({
         {/* Content */}
         <section className="min-w-0 pb-24 lg:pb-0">
           <div className="mb-5 flex items-start justify-between gap-3">
-            <div>
-              <h1 className="text-2xl font-extrabold">{title}</h1>
-              {subtitle && <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>{subtitle}</p>}
+            <div className="flex items-start gap-2 min-w-0">
+              <button onClick={toggleNav} className="btn btn-ghost btn-sm hidden lg:inline-flex shrink-0 mt-1" title={navCollapsed ? 'نمایش منو' : 'بستن منو'} aria-label="نمایش/بستن منو">
+                <Icon path="M4 6h16M4 12h16M4 18h16" />
+              </button>
+              <div className="min-w-0">
+                <h1 className="text-2xl font-extrabold">{title}</h1>
+                {subtitle && <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>{subtitle}</p>}
+              </div>
             </div>
             <NotificationBell realm={realm} />
           </div>
