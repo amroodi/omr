@@ -50,31 +50,35 @@ function EntryGroup({ title, children }: { title: string; children: React.ReactN
 
 function AuthHub() {
   return (
-    <section className="w-full px-4 py-5">
+    <section className="w-full px-4 py-2">
       <Reveal delay={80}>
-        <div className="glass max-w-5xl mx-auto overflow-hidden" style={{ borderRadius: 24, boxShadow: 'var(--shadow-lg)' }}>
-          <div className="grid md:grid-cols-2">
-            {/* RIGHT (RTL first): استعلام سریع form */}
-            <div className="login-pills p-6 md:p-9 md:flex md:flex-col md:justify-center" style={{ borderLeft: '1px solid var(--border)' }}>
-              <div className="flex justify-center mb-4">
-                <a href="https://damuon.com" target="_blank" rel="noopener noreferrer" className="plogo plogo-damuon" aria-label="آتیه اندیشان دامون" style={{ height: 44, width: 156 }} />
+        <div className="glass mx-auto overflow-hidden" style={{ borderRadius: 22, boxShadow: 'var(--shadow-lg)', maxWidth: 800 }}>
+          <div className="grid md:grid-cols-2" style={{ minHeight: 560 }}>
+            {/* RIGHT (RTL first): brand + استعلام سریع form */}
+            <div className="login-pills p-6 md:p-8 md:flex md:flex-col md:justify-center text-center" style={{ borderLeft: '1px solid var(--border)' }}>
+              <div className="flex justify-center mb-3">
+                <a href="https://damuon.com" target="_blank" rel="noopener noreferrer" className="plogo plogo-damuon" aria-label="آتیه اندیشان دامون" style={{ height: 48, width: 140 }} />
               </div>
+              <h2 className="font-extrabold text-lg" style={{ color: 'var(--brand)' }}>کارگزاری بیمه مستقیم برخط دامون</h2>
+              <p className="font-bold text-sm mt-1 mb-5">سامانه کنترل و ارزیابی عمر و حادثه</p>
               <InquiryForm />
             </div>
 
             {/* LEFT: grouped entry buttons (each primary opens its own login panel) */}
-            <div className="p-6 md:p-9 flex flex-col gap-5">
-              <div className="flex justify-center">
-                <a href="https://bimmes.ir" target="_blank" rel="noopener noreferrer" className="plogo plogo-bimmes" aria-label="بیمس" style={{ height: 44, width: 156 }} />
+            <div className="p-6 md:p-8 flex flex-col gap-5 md:justify-center">
+              <div className="flex justify-center mb-1">
+                <a href="https://bimmes.ir" target="_blank" rel="noopener noreferrer" className="plogo plogo-bimmes" aria-label="بیمس" style={{ height: 48, width: 140 }} />
               </div>
-              <EntryGroup title="پورتال بیمه‌گزار">
-                <EntryBtn label="ورود برای بارگزاری مدارک" href="/customer/login" icon={IC_UPLOAD} />
-                <EntryBtn label="نرم‌افزار گوشی هوشمند به‌زودی" icon={IC_PHONE} soon />
-              </EntryGroup>
-              <EntryGroup title="ورود سازمان‌">
-                <EntryBtn label="ورود برای ارزیابی پرونده‌ها" href="/org/login" icon={IC_EVAL} />
-                <EntryBtn label="نرم‌افزار گوشی‌های هوشمند به‌زودی" icon={IC_PHONE} soon />
-              </EntryGroup>
+              <div className="flex flex-col gap-4" style={{ maxWidth: 300, width: '100%', margin: '0 auto' }}>
+                <EntryGroup title="پورتال بیمه‌گزار">
+                  <EntryBtn label="ورود برای بارگزاری مدارک" href="/customer/login" icon={IC_UPLOAD} />
+                  <EntryBtn label="نرم‌افزار گوشی هوشمند به‌زودی" icon={IC_PHONE} soon />
+                </EntryGroup>
+                <EntryGroup title="ورود سازمان‌">
+                  <EntryBtn label="ورود برای ارزیابی پرونده‌ها" href="/org/login" icon={IC_EVAL} />
+                  <EntryBtn label="نرم‌افزار گوشی‌های هوشمند به‌زودی" icon={IC_PHONE} soon />
+                </EntryGroup>
+              </div>
             </div>
           </div>
         </div>
@@ -104,27 +108,6 @@ function useCountdown() {
   return { left, start };
 }
 
-function FormHeader({ title, subtitle }: { title: string; subtitle: string }) {
-  return (
-    <div className="mb-5">
-      <h2 className="text-2xl font-extrabold">{title}</h2>
-      <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>{subtitle}</p>
-    </div>
-  );
-}
-
-/** Input with the shared vector icon inside (used for کد ملی / نام کاربری). */
-function IconField({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <Field label={label}>
-      <div className="relative">
-        {children}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/field-icon.webp" alt="" aria-hidden="true" width={18} style={{ position: 'absolute', top: '50%', right: 12, transform: 'translateY(-50%)', opacity: 0.5, pointerEvents: 'none' }} />
-      </div>
-    </Field>
-  );
-}
 
 function ResendRow({ left, onResend, loading, onBack }: { left: number; onResend: () => void; loading: boolean; onBack: () => void }) {
   return (
@@ -163,15 +146,14 @@ function InquiryForm() {
   const verify = () => run(async () => { const r = await inquiryApi.verifyOtp(nid, phone, code); setResult(await inquiryApi.getCase(r.token)); setStep('result'); });
 
   return (
-    <div>
-      <FormHeader title="استعلام سریع پرونده" subtitle="کد ملی متوفی و شمارهٔ موبایل خودتان را وارد کنید؛ کد تایید به موبایل شما ارسال می‌شود." />
-      <div className="space-y-3.5">
+    <div className="space-y-3.5" style={{ maxWidth: 300, width: '100%', margin: '0 auto' }}>
         <ErrorBox message={error} />
         {step === 'id' && (
           <>
-            <IconField label="کد ملی متوفی"><input className="input" style={{ paddingRight: 40, direction: 'ltr', textAlign: 'right' }} value={nid} onChange={(e) => setNid(e.target.value)} inputMode="numeric" placeholder="کد ملی ۱۰ رقمی متوفی" /></IconField>
-            <Field label="شماره موبایل شما"><input className="input" style={{ direction: 'ltr', textAlign: 'right' }} value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="numeric" placeholder="۰۹۱۲۳۴۵۶۷۸۹" onKeyDown={(e) => e.key === 'Enter' && nid && phone && request()} /></Field>
+            <input className="input" style={{ textAlign: 'center' }} value={nid} onChange={(e) => setNid(e.target.value)} inputMode="numeric" placeholder="کد ملی ۱۰ رقمی متوفی" />
+            <input className="input" style={{ textAlign: 'center' }} value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="numeric" placeholder="شماره موبایل شما" onKeyDown={(e) => e.key === 'Enter' && nid && phone && request()} />
             <button onClick={request} disabled={loading || !nid || !phone} className="btn btn-primary w-full" style={{ padding: '0.8rem' }}>{loading ? 'در حال ارسال…' : 'دریافت کد تایید'}</button>
+            <p className="text-sm font-bold text-center pt-1">امور مشتریان کارگزاری دامون: ۰۲۱-۵۷۳۸۹۰۰۰</p>
           </>
         )}
         {step === 'otp' && (
@@ -213,7 +195,6 @@ function InquiryForm() {
             <button onClick={() => { setStep('id'); setResult(null); setCode(''); }} className="btn btn-glass btn-sm w-full mt-4">استعلام جدید</button>
           </div>
         )}
-      </div>
     </div>
   );
 }
