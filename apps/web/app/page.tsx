@@ -19,39 +19,62 @@ export default function Landing() {
 }
 
 /* ───────────────────── Auth hub — two-panel login card ───────────────────── */
+const IC_UPLOAD = 'M12 15V3m0 0L8 7m4-4l4 4M4 15v4a2 2 0 002 2h12a2 2 0 002-2v-4';
+const IC_PHONE = 'M7 3h10a1 1 0 011 1v16a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1zM11 18h2';
+const IC_EVAL = 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 104 0 2 2 0 00-4 0zM9 14l2 2 4-4';
+
+/** A soft entry button inside a group (link when enabled, muted «به زودی» when coming soon). */
+function EntryBtn({ label, href, icon, soon }: { label: string; href?: string; icon: string; soon?: boolean }) {
+  const inner = (
+    <>
+      <Icon path={icon} />
+      <span>{label}</span>
+    </>
+  );
+  const cls = 'flex items-center justify-center gap-2 w-full px-4 py-3 rounded-xl text-sm font-bold transition';
+  if (soon || !href) {
+    return <button disabled className={cls} style={{ background: 'var(--surface-2)', color: 'var(--muted)', cursor: 'default' }}>{inner}</button>;
+  }
+  return <Link href={href} className={cls} style={{ background: 'var(--brand-soft)', color: 'var(--brand)' }}>{inner}</Link>;
+}
+
+/** A titled group of entry buttons (mirrors the reference's grouped boxes). */
+function EntryGroup({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl p-4" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+      <h3 className="font-bold text-center mb-3">{title}</h3>
+      <div className="flex flex-col gap-3">{children}</div>
+    </div>
+  );
+}
+
 function AuthHub() {
   return (
     <section className="w-full px-4 py-5">
       <Reveal delay={80}>
-        <div className="glass max-w-4xl mx-auto overflow-hidden" style={{ borderRadius: 24, boxShadow: 'var(--shadow-lg)' }}>
+        <div className="glass max-w-5xl mx-auto overflow-hidden" style={{ borderRadius: 24, boxShadow: 'var(--shadow-lg)' }}>
           <div className="grid md:grid-cols-2">
             {/* RIGHT (RTL first): استعلام سریع form */}
-            <div className="login-pills p-6 md:p-8" style={{ borderLeft: '1px solid var(--border)' }}>
+            <div className="login-pills p-6 md:p-9 md:flex md:flex-col md:justify-center" style={{ borderLeft: '1px solid var(--border)' }}>
               <div className="flex justify-center mb-4">
-                <a href="https://damuon.com" target="_blank" rel="noopener noreferrer" className="plogo plogo-damuon" aria-label="آتیه اندیشان دامون" style={{ height: 42, width: 150 }} />
+                <a href="https://damuon.com" target="_blank" rel="noopener noreferrer" className="plogo plogo-damuon" aria-label="آتیه اندیشان دامون" style={{ height: 44, width: 156 }} />
               </div>
               <InquiryForm />
             </div>
 
-            {/* LEFT: separate login entries (each opens its own panel) */}
-            <div className="p-6 md:p-8 flex flex-col">
-              <div className="flex justify-center mb-4">
-                <a href="https://bimmes.ir" target="_blank" rel="noopener noreferrer" className="plogo plogo-bimmes" aria-label="بیمس" style={{ height: 42, width: 150 }} />
+            {/* LEFT: grouped entry buttons (each primary opens its own login panel) */}
+            <div className="p-6 md:p-9 flex flex-col gap-5">
+              <div className="flex justify-center">
+                <a href="https://bimmes.ir" target="_blank" rel="noopener noreferrer" className="plogo plogo-bimmes" aria-label="بیمس" style={{ height: 44, width: 156 }} />
               </div>
-              <h3 className="font-bold text-center mb-5">ورود به سامانه</h3>
-              <div className="flex flex-col gap-4 md:flex-1 md:justify-center">
-                {([['پورتال بیمه‌گزار', '/customer/login'], ['ورود سازمان‌ها', '/org/login']] as const).map(([label, href]) => (
-                  <Link
-                    key={href}
-                    href={href}
-                    className="flex items-center justify-between gap-2 px-6 py-4 rounded-2xl text-base font-bold transition"
-                    style={{ background: 'var(--brand-soft)', color: 'var(--brand)' }}
-                  >
-                    <span>{label}</span>
-                    <Icon path="M5 12h14M13 6l6 6-6 6" />
-                  </Link>
-                ))}
-              </div>
+              <EntryGroup title="پورتال بیمه‌گزار">
+                <EntryBtn label="ورود برای بارگزاری مدارک" href="/customer/login" icon={IC_UPLOAD} />
+                <EntryBtn label="نرم‌افزار گوشی هوشمند به‌زودی" icon={IC_PHONE} soon />
+              </EntryGroup>
+              <EntryGroup title="ورود سازمان‌">
+                <EntryBtn label="ورود برای ارزیابی پرونده‌ها" href="/org/login" icon={IC_EVAL} />
+                <EntryBtn label="نرم‌افزار گوشی‌های هوشمند به‌زودی" icon={IC_PHONE} soon />
+              </EntryGroup>
             </div>
           </div>
         </div>
