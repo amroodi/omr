@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { client, hasPerm } from '../../../../lib/client';
 import { Shell, Icon } from '../../../components/Shell';
-import { CLAIM_TYPE_LABELS, ErrorBox, StatusBadge } from '../../../components/ui';
+import { ClaimTypeBadge, CLAIM_TYPE_LABELS, ErrorBox, StatusBadge } from '../../../components/ui';
 import { ORG_NAV } from '../../nav';
 import { FieldsSection } from './fields-section';
 
@@ -38,6 +38,48 @@ const ICON_CAM = 'M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4
 // The three claim approval checkpoints shown beside each document.
 const STAGE_LABEL: Record<string, string> = { BROKER: 'کارگزاری', BRANCH: 'شعبه', COUNCIL: 'ستاد' };
 
+/** The claim's step timeline (مسیر گردش کار) — used in both the edit tab and the preview. */
+function StepsTimeline({ steps }: { steps?: Step[] }) {
+  return (
+    <div className="space-y-3">
+      {(steps || []).map((s, i) => {
+        const active = s.state === 'PENDING';
+        const role = s.partyType === 'INSURER_LEVEL' ? (s.levelName || 'سطح بیمه‌گر') : (STEP_PARTY[s.partyType] || s.partyType);
+        const isPerson = s.holderKind === 'POLICYHOLDER';
+        const org = !isPerson && s.holderName ? `${s.holderKind === 'INSURER' ? 'بیمه‌گر' : s.holderKind === 'BROKER' ? 'کارگزاری' : ''} ${s.holderName}`.trim() : '';
+        const where = !isPerson && (s.branchName ? s.branchName : (s.holderKind ? 'دفتر مرکزی' : ''));
+        return (
+          <div key={i} className="flex gap-2.5 text-sm">
+            <span className="flex items-center justify-center rounded-full shrink-0 mt-0.5" style={{ width: 24, height: 24, background: active ? 'var(--brand)' : s.state === 'APPROVED' ? 'var(--success)' : 'var(--surface-2)', color: active || s.state === 'APPROVED' ? '#fff' : 'var(--muted)', fontSize: 11 }}>{s.order}</span>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-semibold">{role}</span>
+                <span className={`badge ${active ? 'badge-warning' : s.state === 'APPROVED' ? 'badge-success' : s.state === 'REJECTED' ? 'badge-danger' : 'badge-neutral'}`}>{STEP_STATE[s.state] || s.state}</span>
+              </div>
+              {org && <div className="text-xs" style={{ color: 'var(--muted)' }}>{org}{where ? ` — ${where}` : ''}</div>}
+              {isPerson && (
+                <details className="mt-0.5 text-xs">
+                  <summary className="cursor-pointer select-none" style={{ color: 'var(--muted)' }}>
+                    <span style={{ color: 'var(--text)' }}>{s.person?.name || 'بیمه‌گزار'}</span>
+                    <span className="mr-1" style={{ color: 'var(--brand)' }}>— مشاهده اطلاعات</span>
+                  </summary>
+                  <div className="mt-1 rounded-lg p-2 space-y-0.5" style={{ background: 'var(--surface-2)' }}>
+                    <div><span style={{ color: 'var(--muted)' }}>نام: </span>{s.person?.name || '—'}</div>
+                    <div style={{ direction: 'ltr', textAlign: 'right' }}><span style={{ color: 'var(--muted)' }}>تلفن: </span>{s.person?.phone || '—'}</div>
+                    <div style={{ direction: 'ltr', textAlign: 'right' }}><span style={{ color: 'var(--muted)' }}>کد ملی: </span>{s.person?.nationalCode || '—'}</div>
+                  </div>
+                </details>
+              )}
+              {active && <div className="text-xs" style={{ color: 'var(--brand)' }}>در انتظار اقدام این مرحله</div>}
+              {s.decidedByName && <div className="text-[11px]" style={{ color: 'var(--muted)' }}>اقدام‌کننده: {s.decidedByName}{s.decidedAt ? ` — ${s.decidedAt}` : ''}</div>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function ClaimDetail() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -48,6 +90,7 @@ export default function ClaimDetail() {
   const [defText, setDefText] = useState('');
   const [showDef, setShowDef] = useState(false);
   const [tab, setTab] = useState<'info' | 'workflow' | 'docs' | 'route'>('info'); // اطلاعات ↔ گردش کار ↔ مدارک ↔ مسیر
+  const [mode, setMode] = useState<'preview' | 'edit'>('preview'); // open as read-only preview; «ویرایش» switches to tabs
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const camRefs = useRef<Record<string, HTMLInputElement | null>>({}); // mobile camera capture
   // UI-gating by permission (the API enforces these independently).
@@ -120,10 +163,21 @@ export default function ClaimDetail() {
             <div className="alert-error">⚠ اعلام خسارت خارج از مهلت مقرر انجام شده است (مهلت: {claim.noticeDeadline}).</div>
           )}
 
+          {/* Mode switch: open as a quick read-only preview; «ویرایش» reveals the editable tabs. */}
+          <div className="flex items-center justify-between gap-2 flex-wrap no-print">
+            <div className="inline-flex rounded-xl p-1 text-sm" style={{ background: 'var(--surface-2)' }}>
+              <button onClick={() => setMode('preview')} className={`btn btn-sm ${mode === 'preview' ? 'btn-primary' : 'btn-ghost'}`}>پیش‌نمایش</button>
+              <button onClick={() => setMode('edit')} className={`btn btn-sm ${mode === 'edit' ? 'btn-primary' : 'btn-ghost'}`}>ویرایش</button>
+            </div>
+            {mode === 'preview' && (
+              <button onClick={() => window.print()} className="btn btn-ghost btn-sm" title="چاپ / ذخیره PDF"><Icon path="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6z" /> چاپ / PDF</button>
+            )}
+          </div>
+
           {/* Header: key facts + parties (full width) */}
           <div className="card p-5">
-            <div className="flex justify-between items-center mb-3">
-              <span className="font-bold text-lg">{CLAIM_TYPE_LABELS[claim.claimType] || claim.claimType}</span>
+            <div className="flex justify-between items-center mb-3 gap-2">
+              <ClaimTypeBadge type={claim.claimType} />
               <StatusBadge status={claim.status} />
             </div>
             <div className="grid sm:grid-cols-2 gap-x-6">
@@ -161,7 +215,7 @@ export default function ClaimDetail() {
 
           {/* Action bar (full width) */}
           {(canProcess || canFile || canDelete) && (
-            <div className="card p-4">
+            <div className="card p-4 no-print">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-bold ml-1">اقدامات:</span>
                 {['PAID', 'REJECTED'].includes(claim.status) ? (
@@ -196,6 +250,35 @@ export default function ClaimDetail() {
             </div>
           )}
 
+          {/* Preview: everything read-only, at a glance */}
+          {mode === 'preview' && (
+            <>
+              <FieldsSection claimId={id} realm="org" basePath="/claims" readOnly />
+              {checklist && (
+                <div className="card p-5">
+                  <div className="flex justify-between items-center mb-3">
+                    <h3 className="font-bold">مدارک مورد نیاز</h3>
+                    <span className={`badge ${checklist.complete ? 'badge-success' : 'badge-warning'}`}>{checklist.complete ? 'کامل' : 'ناقص'}</span>
+                  </div>
+                  <div className="grid md:grid-cols-2 gap-x-6 gap-y-1">
+                    {checklist.items.map((it) => (
+                      <div key={it.code} className="flex justify-between gap-2 py-1.5 border-b text-sm" style={{ borderColor: 'var(--border)' }}>
+                        <span className="flex items-center gap-2"><span style={{ color: it.uploaded ? 'var(--success)' : 'var(--muted)' }}>{it.uploaded ? '✔' : '○'}</span>{it.label}</span>
+                        {it.latestStatus && <span className={`badge ${DOC_BADGE[it.latestStatus] || 'badge-neutral'}`}>{it.latestStatus === 'VERIFIED' ? 'تایید' : it.latestStatus === 'REJECTED' ? 'رد' : 'در حال بررسی'}</span>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="card p-5">
+                <h3 className="font-bold mb-3">مسیر گردش کار</h3>
+                <StepsTimeline steps={claim.steps} />
+              </div>
+            </>
+          )}
+
+          {mode === 'edit' && (
+          <>
           {/* Tabs (full width) */}
           <div className="card p-1.5 flex gap-1.5 text-xs sm:text-sm overflow-x-auto">
             <button type="button" onClick={() => setTab('info')} className={`flex-1 btn btn-sm whitespace-nowrap ${tab === 'info' ? 'btn-primary' : 'btn-ghost'}`}>اطلاعات پرونده</button>
@@ -298,43 +381,10 @@ export default function ClaimDetail() {
           {tab === 'route' && (
             <div className="card p-5">
               <h3 className="font-bold mb-3">مسیر گردش کار</h3>
-              <div className="space-y-3">
-                {(claim.steps || []).map((s, i) => {
-                  const active = s.state === 'PENDING';
-                  const role = s.partyType === 'INSURER_LEVEL' ? (s.levelName || 'سطح بیمه‌گر') : (STEP_PARTY[s.partyType] || s.partyType);
-                  const isPerson = s.holderKind === 'POLICYHOLDER';
-                  const org = !isPerson && s.holderName ? `${s.holderKind === 'INSURER' ? 'بیمه‌گر' : s.holderKind === 'BROKER' ? 'کارگزاری' : ''} ${s.holderName}`.trim() : '';
-                  const where = !isPerson && (s.branchName ? s.branchName : (s.holderKind ? 'دفتر مرکزی' : ''));
-                  return (
-                    <div key={i} className="flex gap-2.5 text-sm">
-                      <span className="flex items-center justify-center rounded-full shrink-0 mt-0.5" style={{ width: 24, height: 24, background: active ? 'var(--brand)' : s.state === 'APPROVED' ? 'var(--success)' : 'var(--surface-2)', color: active || s.state === 'APPROVED' ? '#fff' : 'var(--muted)', fontSize: 11 }}>{s.order}</span>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="font-semibold">{role}</span>
-                          <span className={`badge ${active ? 'badge-warning' : s.state === 'APPROVED' ? 'badge-success' : s.state === 'REJECTED' ? 'badge-danger' : 'badge-neutral'}`}>{STEP_STATE[s.state] || s.state}</span>
-                        </div>
-                        {org && <div className="text-xs" style={{ color: 'var(--muted)' }}>{org}{where ? ` — ${where}` : ''}</div>}
-                        {isPerson && (
-                          <details className="mt-0.5 text-xs">
-                            <summary className="cursor-pointer select-none" style={{ color: 'var(--muted)' }}>
-                              <span style={{ color: 'var(--text)' }}>{s.person?.name || 'بیمه‌گزار'}</span>
-                              <span className="mr-1" style={{ color: 'var(--brand)' }}>— مشاهده اطلاعات</span>
-                            </summary>
-                            <div className="mt-1 rounded-lg p-2 space-y-0.5" style={{ background: 'var(--surface-2)' }}>
-                              <div><span style={{ color: 'var(--muted)' }}>نام: </span>{s.person?.name || '—'}</div>
-                              <div style={{ direction: 'ltr', textAlign: 'right' }}><span style={{ color: 'var(--muted)' }}>تلفن: </span>{s.person?.phone || '—'}</div>
-                              <div style={{ direction: 'ltr', textAlign: 'right' }}><span style={{ color: 'var(--muted)' }}>کد ملی: </span>{s.person?.nationalCode || '—'}</div>
-                            </div>
-                          </details>
-                        )}
-                        {active && <div className="text-xs" style={{ color: 'var(--brand)' }}>در انتظار اقدام این مرحله</div>}
-                        {s.decidedByName && <div className="text-[11px]" style={{ color: 'var(--muted)' }}>اقدام‌کننده: {s.decidedByName}{s.decidedAt ? ` — ${s.decidedAt}` : ''}</div>}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              <StepsTimeline steps={claim.steps} />
             </div>
+          )}
+          </>
           )}
         </div>
       )}

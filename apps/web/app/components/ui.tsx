@@ -61,3 +61,21 @@ export const CLAIM_TYPE_LABELS: Record<string, string> = {
   DEATH_ACCIDENT: 'فوت ناشی از حادثه',
   DISABILITY_ACCIDENT: 'نقص عضو / ازکارافتادگی ناشی از حادثه',
 };
+
+// A distinct color per claim type, for at-a-glance recognition in lists and headers.
+const CLAIM_TYPE_STYLE: Record<string, { fg: string; bg: string; dot: string }> = {
+  DEATH_ILLNESS: { fg: '#1d4ed8', bg: 'rgba(37,99,235,0.12)', dot: '#2563eb' }, // blue — بیماری
+  DEATH_ACCIDENT: { fg: '#b91c1c', bg: 'rgba(220,38,38,0.12)', dot: '#dc2626' }, // red — حادثه
+  DISABILITY_ACCIDENT: { fg: '#b45309', bg: 'rgba(217,119,6,0.14)', dot: '#d97706' }, // amber — نقص عضو
+};
+
+/** Colored, dotted chip for a claim (death) type. */
+export function ClaimTypeBadge({ type }: { type: string }) {
+  const s = CLAIM_TYPE_STYLE[type] || { fg: 'var(--muted)', bg: 'var(--surface-2)', dot: 'var(--muted)' };
+  return (
+    <span className="badge" style={{ color: s.fg, background: s.bg, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+      <span style={{ width: 7, height: 7, borderRadius: 999, background: s.dot, flexShrink: 0 }} />
+      {CLAIM_TYPE_LABELS[type] || type}
+    </span>
+  );
+}

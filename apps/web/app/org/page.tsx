@@ -4,13 +4,15 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { client, getToken, hasPerm } from '../../lib/client';
 import { Shell, Icon } from '../components/Shell';
-import { CLAIM_TYPE_LABELS, ErrorBox, StatCard, StatusBadge } from '../components/ui';
+import { ClaimTypeBadge, ErrorBox, StatCard, StatusBadge } from '../components/ui';
 import { ORG_NAV } from './nav';
 
 interface Claim {
   id: string; claimNumber: string; status: string; claimType: string; insurerTenantId?: string;
   deceasedName: string | null; claimedAmount: string; lateNotice: boolean; needsAction: boolean;
 }
+
+const PAGE_SIZES = [10, 30, 50, 100];
 
 export default function OrgDashboard() {
   const router = useRouter();
@@ -19,6 +21,8 @@ export default function OrgDashboard() {
   const [q, setQ] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const load = async () => {
     setLoading(true); setError('');
@@ -37,7 +41,17 @@ export default function OrgDashboard() {
     action: rows.filter((r) => r.needsAction).length,
   }), [rows]);
 
-  const shown = q ? rows.filter((r) => `${r.claimNumber} ${r.deceasedName || ''}`.toLowerCase().includes(q.toLowerCase())) : rows;
+  const shown = useMemo(
+    () => (q ? rows.filter((r) => `${r.claimNumber} ${r.deceasedName || ''}`.toLowerCase().includes(q.toLowerCase())) : rows),
+    [rows, q],
+  );
+  useEffect(() => { setPage(1); }, [q, pageSize]);
+
+  const total = shown.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const curPage = Math.min(page, totalPages);
+  const paged = shown.slice((curPage - 1) * pageSize, curPage * pageSize);
+  const fa = (n: number) => n.toLocaleString('fa-IR');
 
   return (
     <Shell title="مدیریت پرونده‌ها" subtitle="پرونده‌های خسارت فوت و حوادث و پیگیری مراحل" nav={ORG_NAV} realm="org">
@@ -50,7 +64,7 @@ export default function OrgDashboard() {
 
       <ErrorBox message={error} />
 
-      <div className="flex justify-between items-center gap-2 mb-3">
+      <div className="flex justify-between items-center gap-2 mb-3 flex-wrap">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="جستجوی شماره پرونده یا نام…" className="input" style={{ maxWidth: 280 }} />
         <div className="flex items-center gap-2">
           {hasPerm('org', 'claim:delete') && (
@@ -68,12 +82,12 @@ export default function OrgDashboard() {
           <tbody>
             {loading ? (
               <tr><td colSpan={7} className="text-center py-8" style={{ color: 'var(--muted)' }}>در حال بارگذاری…</td></tr>
-            ) : shown.length === 0 ? (
+            ) : paged.length === 0 ? (
               <tr><td colSpan={7} className="text-center py-8" style={{ color: 'var(--muted)' }}>پرونده‌ای یافت نشد</td></tr>
-            ) : shown.map((c) => (
+            ) : paged.map((c) => (
               <tr key={c.id} style={{ cursor: 'pointer' }} onClick={() => router.push(`/org/claims/${c.id}`)}>
                 <td className="font-semibold">{c.claimNumber}</td>
-                <td>{CLAIM_TYPE_LABELS[c.claimType] || c.claimType}</td>
+                <td><ClaimTypeBadge type={c.claimType} /></td>
                 <td>{(c.insurerTenantId && insurers[c.insurerTenantId]) || '—'}</td>
                 <td>{c.deceasedName}</td>
                 <td style={{ direction: 'ltr', textAlign: 'right' }}>{Number(c.claimedAmount).toLocaleString('fa-IR')}</td>
@@ -84,6 +98,24 @@ export default function OrgDashboard() {
           </tbody>
         </table>
       </div>
+
+      {/* Pagination */}
+      {total > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 mt-3 text-sm">
+          <div className="flex items-center gap-2" style={{ color: 'var(--muted)' }}>
+            <span>نمایش در هر صفحه:</span>
+            <select className="input" style={{ width: 'auto', padding: '4px 8px' }} value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}>
+              {PAGE_SIZES.map((n) => <option key={n} value={n}>{fa(n)}</option>)}
+            </select>
+            <span>مجموع: {fa(total)}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={curPage <= 1} className="btn btn-ghost btn-sm">قبلی</button>
+            <span style={{ color: 'var(--muted)' }}>صفحه {fa(curPage)} از {fa(totalPages)}</span>
+            <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={curPage >= totalPages} className="btn btn-ghost btn-sm">بعدی</button>
+          </div>
+        </div>
+      )}
     </Shell>
   );
 }

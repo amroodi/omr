@@ -32,7 +32,15 @@ const GROUP_LABELS: Record<string, string> = {
 const LONG_TEXT_KEYS = new Set(['full_name', 'company_name', 'payment_order', 'case_notes', 'execution_stages']);
 const CUSTOM = '__custom__'; // sentinel option: "type my own value" for SELECT fields
 
-export function FieldsSection({ claimId, realm, basePath, groups }: { claimId: string; realm: Realm; basePath: string; groups?: string[] }) {
+// Read-only display value for a field (Persian digits; amounts grouped with separators).
+const displayValue = (type: string, raw: string): string => {
+  if (!raw) return '';
+  if (type === 'AMOUNT') return `${groupFa(raw)} ریال`;
+  if (type === 'NATIONAL_CODE' || type === 'NUMBER' || type === 'DATE') return faD(raw);
+  return raw;
+};
+
+export function FieldsSection({ claimId, realm, basePath, groups, readOnly }: { claimId: string; realm: Realm; basePath: string; groups?: string[]; readOnly?: boolean }) {
   const [data, setData] = useState<FieldsData | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [msg, setMsg] = useState<Record<string, { t: 'ok' | 'err'; m: string }>>({});
@@ -64,6 +72,32 @@ export function FieldsSection({ claimId, realm, basePath, groups }: { claimId: s
   };
 
   if (!data) return null;
+
+  // Compact read-only view (for the case preview): only filled fields, dense multi-column.
+  if (readOnly) {
+    return (
+      <div className="space-y-4">
+        {Object.entries(data.groups).filter(([g]) => !groups || groups.includes(g)).map(([group, fields]) => {
+          const filled = fields.filter((f) => (f.value ?? '').trim() !== '');
+          if (filled.length === 0) return null;
+          return (
+            <div key={group} className="card p-5">
+              <h3 className="font-bold mb-3">{GROUP_LABELS[group] || group}</h3>
+              <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-x-6 gap-y-1">
+                {filled.map((f) => (
+                  <div key={f.key} className="flex justify-between gap-2 py-1.5 border-b text-sm" style={{ borderColor: 'var(--border)' }}>
+                    <span style={{ color: 'var(--muted)' }}>{f.label}</span>
+                    <span className="font-semibold text-left" style={{ direction: ['AMOUNT', 'NATIONAL_CODE', 'NUMBER', 'DATE', 'IBAN'].includes(f.type) ? 'ltr' : 'rtl' }}>{displayValue(f.type, f.value ?? '')}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       {Object.entries(data.groups).filter(([g]) => !groups || groups.includes(g)).map(([group, fields]) => fields.length === 0 ? null : (

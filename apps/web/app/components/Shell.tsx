@@ -57,7 +57,7 @@ export function Shell({
       <div className="app-bg" aria-hidden />
       <div className="lg:grid lg:gap-6" style={{ gridTemplateColumns: navCollapsed ? 'minmax(0,1fr)' : '230px minmax(0,1fr)' }}>
         {/* Sidebar — desktop only (collapsible) */}
-        <aside className={navCollapsed ? 'hidden' : 'hidden lg:block'}>
+        <aside className={`${navCollapsed ? 'hidden' : 'hidden lg:block'} no-print`}>
           <div className="card p-2 lg:sticky lg:top-20">
             <div className="flex flex-col gap-1">
               {visibleNav.map((n) => {
@@ -88,7 +88,7 @@ export function Shell({
         <section className="min-w-0 pb-24 lg:pb-0">
           <div className="mb-5 flex items-start justify-between gap-3">
             <div className="flex items-start gap-2 min-w-0">
-              <button onClick={toggleNav} className="btn btn-ghost btn-sm hidden lg:inline-flex shrink-0 mt-1" title={navCollapsed ? 'نمایش منو' : 'بستن منو'} aria-label="نمایش/بستن منو">
+              <button onClick={toggleNav} className="btn btn-ghost btn-sm hidden lg:inline-flex shrink-0 mt-1 no-print" title={navCollapsed ? 'نمایش منو' : 'بستن منو'} aria-label="نمایش/بستن منو">
                 <Icon path="M4 6h16M4 12h16M4 18h16" />
               </button>
               <div className="min-w-0">
@@ -96,14 +96,14 @@ export function Shell({
                 {subtitle && <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>{subtitle}</p>}
               </div>
             </div>
-            <NotificationBell realm={realm} />
+            <span className="no-print"><NotificationBell realm={realm} /></span>
           </div>
           <div className="fade-up">{children}</div>
         </section>
       </div>
 
       {/* Mobile bottom navigation */}
-      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40" style={{ background: 'color-mix(in srgb, var(--surface) 92%, transparent)', borderTop: '1px solid var(--border)', backdropFilter: 'blur(10px)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
+      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-40 no-print" style={{ background: 'color-mix(in srgb, var(--surface) 92%, transparent)', borderTop: '1px solid var(--border)', backdropFilter: 'blur(10px)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
         <div className="flex items-stretch">
           {barItems.map((n) => {
             const active = pathname === n.href;

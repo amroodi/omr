@@ -221,6 +221,10 @@ h1, h2, h3 {
   .table tbody tr {
     transition: background 0.12s ease;
   }
+  /* Zebra striping: mix a little text color in — darker rows in light theme, lighter in dark theme. */
+  .table tbody tr:nth-child(even) {
+    background: color-mix(in srgb, var(--surface) 96%, var(--text));
+  }
   .table tbody tr:hover {
     background: var(--surface-2);
   }
@@ -395,6 +399,14 @@ h1, h2, h3 {
 :root:not(.dark) .ts-sun { opacity: 1; }
 @media (prefers-reduced-motion: reduce) {
   .theme-switch-btn, .ts-pill, .ts-pill-edge, .ts-knob, .ts-moon, .ts-sun { transition: none; }
+}
+
+/* Print (چاپ / ذخیره PDF): drop the app chrome and show only the content, on white. */
+@media print {
+  .no-print { display: none !important; }
+  body { background: #fff !important; }
+  .app-bg { display: none !important; }
+  .card { break-inside: avoid; box-shadow: none !important; }
 }
 
 /* Subtle page backdrop for the panel pages (via Shell) so inner pages don't feel empty.
