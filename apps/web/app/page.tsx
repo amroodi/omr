@@ -1,15 +1,11 @@
 'use client';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { inquiryApi } from '../lib/api';
-import { client, setToken, setTenantSlug } from '../lib/client';
 import { ErrorBox, Field, StatusBadge } from './components/ui';
 import { Icon } from './components/Shell';
 import { Reveal } from './components/reveal';
 import { DotGrid } from './components/DotGrid';
-
-type Tab = 'inquiry' | 'customer' | 'org';
 
 export default function Landing() {
   return (
@@ -22,56 +18,40 @@ export default function Landing() {
   );
 }
 
-/* ───────────────────── Auth hub — centered login card, three entries ───────────────────── */
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'inquiry', label: 'استعلام سریع پرونده' },
-  { id: 'customer', label: 'پورتال بیمه‌گزار' },
-  { id: 'org', label: 'ورود سازمان‌ها' },
-];
-
+/* ───────────────────── Auth hub — two-panel login card ───────────────────── */
 function AuthHub() {
-  const [tab, setTab] = useState<Tab>('inquiry');
   return (
-    <section className="w-full px-4 py-4">
+    <section className="w-full px-4 py-5">
       <Reveal delay={80}>
-        <div className="glass max-w-5xl mx-auto overflow-hidden" style={{ borderRadius: 24, boxShadow: 'var(--shadow-lg)' }}>
-          {/* Logo bar — Damuon (right) · Bimmes (left), like the reference */}
-          <div className="flex items-center justify-between px-5 md:px-8 pt-4 pb-3" style={{ borderBottom: '1px solid var(--border)' }}>
-            <a href="https://damuon.com" target="_blank" rel="noopener noreferrer" className="plogo plogo-damuon" aria-label="آتیه اندیشان دامون" />
-            <a href="https://bimmes.ir" target="_blank" rel="noopener noreferrer" className="plogo plogo-bimmes" aria-label="بیمس" />
-          </div>
-
-          <div className="grid md:grid-cols-[1fr_36%]">
-            {/* Login side (right in RTL) — active form */}
-            <div className="relative p-5 md:p-8">
-              <div className="text-center mb-4">
-                <h1 className="text-base md:text-lg font-extrabold">سامانه هوشمند مدیریت بیمه عمر و حوادث</h1>
-                <p className="text-xs mt-1" style={{ color: 'var(--muted)' }}>کارگزاری رسمی بیمه آتیه اندیشان دامون</p>
+        <div className="glass max-w-4xl mx-auto overflow-hidden" style={{ borderRadius: 24, boxShadow: 'var(--shadow-lg)' }}>
+          <div className="grid md:grid-cols-2">
+            {/* RIGHT (RTL first): استعلام سریع form */}
+            <div className="login-pills p-6 md:p-8" style={{ borderLeft: '1px solid var(--border)' }}>
+              <div className="flex justify-center mb-4">
+                <a href="https://damuon.com" target="_blank" rel="noopener noreferrer" className="plogo plogo-damuon" aria-label="آتیه اندیشان دامون" style={{ height: 42, width: 150 }} />
               </div>
-              {tab === 'inquiry' && <InquiryForm />}
-              {tab === 'customer' && <CustomerForm />}
-              {tab === 'org' && <OrgForm />}
+              <InquiryForm />
             </div>
 
-            {/* Entry selector (left in RTL) — bigger buttons */}
-            <div className="p-5 md:p-7 flex flex-col gap-3.5 md:justify-center" style={{ background: 'var(--surface-2)', borderRight: '1px solid var(--border)' }}>
-              <h3 className="font-bold text-center mb-1">ورود به سامانه</h3>
-              {TABS.map((t) => {
-                const active = tab === t.id;
-                return (
-                  <button
-                    key={t.id}
-                    onClick={() => setTab(t.id)}
-                    className="flex items-center justify-between gap-2 px-5 py-4 rounded-2xl text-base font-bold transition"
-                    style={active
-                      ? { background: 'linear-gradient(135deg, var(--brand), var(--brand-600))', color: '#fff', boxShadow: '0 12px 26px -10px rgba(255,120,0,.65)' }
-                      : { background: 'var(--brand-soft)', color: 'var(--brand)' }}
+            {/* LEFT: separate login entries (each opens its own panel) */}
+            <div className="p-6 md:p-8 flex flex-col">
+              <div className="flex justify-center mb-4">
+                <a href="https://bimmes.ir" target="_blank" rel="noopener noreferrer" className="plogo plogo-bimmes" aria-label="بیمس" style={{ height: 42, width: 150 }} />
+              </div>
+              <h3 className="font-bold text-center mb-5">ورود به سامانه</h3>
+              <div className="flex flex-col gap-4 md:flex-1 md:justify-center">
+                {([['پورتال بیمه‌گزار', '/customer/login'], ['ورود سازمان‌ها', '/org/login']] as const).map(([label, href]) => (
+                  <Link
+                    key={href}
+                    href={href}
+                    className="flex items-center justify-between gap-2 px-6 py-4 rounded-2xl text-base font-bold transition"
+                    style={{ background: 'var(--brand-soft)', color: 'var(--brand)' }}
                   >
-                    <span>{t.label}</span>
+                    <span>{label}</span>
                     <Icon path="M5 12h14M13 6l6 6-6 6" />
-                  </button>
-                );
-              })}
+                  </Link>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -215,85 +195,4 @@ function InquiryForm() {
   );
 }
 
-/* ─────────────────────── پورتال بیمه‌گزار (customer) ─────────────────────── */
-function CustomerForm() {
-  const router = useRouter();
-  const [tenant, setTenant] = useState('damuon');
-  const [nid, setNid] = useState('');
-  const [phone, setPhone] = useState('');
-  const [code, setCode] = useState('');
-  const [step, setStep] = useState<'id' | 'otp'>('id');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const { left, start } = useCountdown();
-
-  const run = async (fn: () => Promise<void>) => { setError(''); setLoading(true); try { await fn(); } catch (e: any) { setError(e.message); } finally { setLoading(false); } };
-  const request = () => run(async () => {
-    setTenantSlug(tenant);
-    const r = await client.post<{ otpRequired?: boolean }>('/customer/login/request-otp', { nationalCode: nid, phone });
-    if (r.otpRequired === false) { // OTP disabled platform-wide → log in directly
-      const t = await client.post<{ token: string }>('/customer/login/direct', { nationalCode: nid, phone });
-      setToken('customer', t.token); router.push('/customer'); return;
-    }
-    setStep('otp'); start(120);
-  });
-  const verify = () => run(async () => { const r = await client.post<{ token: string }>('/customer/login/verify-otp', { nationalCode: nid, phone, code }); setToken('customer', r.token); router.push('/customer'); });
-
-  return (
-    <div>
-      <FormHeader title="پورتال بیمه‌گزار" subtitle="پیگیری پرونده‌های خسارت و بارگذاری مدارک" />
-      <div className="space-y-3.5">
-        <ErrorBox message={error} />
-        {step === 'id' ? (
-          <>
-            <Field label="شناسه سازمان"><input className="input" style={{ direction: 'ltr', textAlign: 'left' }} value={tenant} onChange={(e) => setTenant(e.target.value)} /></Field>
-            <IconField label="کد ملی"><input className="input" style={{ paddingRight: 40, direction: 'ltr', textAlign: 'right' }} value={nid} onChange={(e) => setNid(e.target.value)} inputMode="numeric" placeholder="کد ملی خود را وارد کنید" /></IconField>
-            <Field label="موبایل ثبت‌شده"><input className="input" style={{ direction: 'ltr', textAlign: 'right' }} value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="numeric" placeholder="۰۹۱۲…" onKeyDown={(e) => e.key === 'Enter' && nid && phone && request()} /></Field>
-            <button onClick={request} disabled={loading || !nid || !phone} className="btn btn-primary w-full" style={{ padding: '0.8rem' }}>{loading ? '…' : 'ارسال کد'}</button>
-            <Link href="/customer/login" className="btn btn-ghost btn-sm w-full">حساب ندارید؟ ثبت‌نام بیمه‌گزار</Link>
-          </>
-        ) : (
-          <>
-            <p className="text-sm" style={{ color: 'var(--muted)' }}>کد تایید به شماره {faDigits(phone)} ارسال شد.</p>
-            <Field label="کد تایید"><input className="input text-center tracking-[0.5em] text-lg" value={code} onChange={(e) => setCode(e.target.value)} inputMode="numeric" placeholder="––––––" onKeyDown={(e) => e.key === 'Enter' && code.length >= 4 && verify()} /></Field>
-            <button onClick={verify} disabled={loading || code.length < 4} className="btn btn-primary w-full" style={{ padding: '0.8rem' }}>{loading ? '…' : 'ورود'}</button>
-            <ResendRow left={left} onResend={request} loading={loading} onBack={() => setStep('id')} />
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/* ─────────────────────── ورود سازمان‌ها (org) ─────────────────────── */
-function OrgForm() {
-  const router = useRouter();
-  const [slug, setSlug] = useState('damuon');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  const submit = async () => {
-    setError(''); setLoading(true);
-    try {
-      setTenantSlug(slug);
-      const r = await client.post<{ token: string }>('/auth/org/login', { tenantSlug: slug, username, password });
-      setToken('org', r.token); router.push('/org');
-    } catch (e: any) { setError(e.message); } finally { setLoading(false); }
-  };
-
-  return (
-    <div>
-      <FormHeader title="ورود سازمان‌ها" subtitle="پنل مدیریت پرونده‌های سازمان" />
-      <div className="space-y-3.5">
-        <ErrorBox message={error} />
-        <Field label="شناسه سازمان"><input className="input" style={{ direction: 'ltr', textAlign: 'left' }} value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="damuon" /></Field>
-        <IconField label="نام کاربری"><input className="input" style={{ paddingRight: 40 }} value={username} onChange={(e) => setUsername(e.target.value)} /></IconField>
-        <Field label="رمز عبور"><input type="password" className="input" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && username && password && submit()} /></Field>
-        <button onClick={submit} disabled={loading || !username || !password} className="btn btn-primary w-full" style={{ padding: '0.8rem' }}>{loading ? '…' : 'ورود به سامانه'}</button>
-      </div>
-    </div>
-  );
-}
 

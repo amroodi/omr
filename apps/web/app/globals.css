@@ -383,6 +383,10 @@ h1, h2, h3 {
 .plogo-damuon { background-position: right center; }
 :root.dark .plogo { background-image: url('/partners-dark.webp'); }
 
+/* Pill-shaped fields for the landing login card. */
+.login-pills .input { border-radius: 999px; padding-top: 0.8rem; padding-bottom: 0.8rem; }
+.login-pills textarea.input { border-radius: 16px; }
+
 /* Sun/Moon pill theme switch (theme-toggle.tsx). Default markup = dark state (knob left, moon).
    Light state is driven by :root:not(.dark): pill turns orange, knob slides right, sun fades in. */
 .theme-switch-btn {
