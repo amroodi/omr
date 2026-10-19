@@ -6,7 +6,6 @@ import { inquiryApi } from '../lib/api';
 import { client, setToken, setTenantSlug } from '../lib/client';
 import { ErrorBox, Field, StatusBadge } from './components/ui';
 import { Icon } from './components/Shell';
-import { BrandMark } from './components/brand';
 import { Reveal } from './components/reveal';
 import { DotGrid } from './components/DotGrid';
 
@@ -14,7 +13,7 @@ type Tab = 'inquiry' | 'customer' | 'org';
 
 export default function Landing() {
   return (
-    <div className="relative min-h-[82vh] flex items-center justify-center">
+    <div className="relative min-h-[68vh] flex items-center justify-center">
       {/* full-bleed animated background */}
       <div className="aurora" style={{ position: 'fixed' }}><span /></div>
       <DotGrid />
@@ -33,25 +32,29 @@ const TABS: { id: Tab; label: string }[] = [
 function AuthHub() {
   const [tab, setTab] = useState<Tab>('inquiry');
   return (
-    <section className="w-full px-4 py-10">
+    <section className="w-full px-4 py-4">
       <Reveal delay={80}>
-        <div className="glass max-w-5xl mx-auto overflow-hidden" style={{ borderRadius: 26, boxShadow: 'var(--shadow-lg)' }}>
-          <div className="grid md:grid-cols-[1fr_34%]">
-            {/* Login side (right in RTL) — logo + active form */}
-            <div className="relative p-6 md:p-9">
-              <div className="text-center mb-6">
-                <span className="inline-flex"><BrandMark size={56} /></span>
-                <h1 className="text-lg md:text-xl font-extrabold mt-3">سامانه هوشمند مدیریت بیمه عمر و حوادث</h1>
-                <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>کارگزاری رسمی بیمه آتیه اندیشان دامون</p>
+        <div className="glass max-w-5xl mx-auto overflow-hidden" style={{ borderRadius: 24, boxShadow: 'var(--shadow-lg)' }}>
+          {/* Logo bar — Damuon (right) · Bimmes (left), like the reference */}
+          <div className="flex items-center justify-between px-5 md:px-8 pt-4 pb-3" style={{ borderBottom: '1px solid var(--border)' }}>
+            <a href="https://damuon.com" target="_blank" rel="noopener noreferrer" className="plogo plogo-damuon" aria-label="آتیه اندیشان دامون" />
+            <a href="https://bimmes.ir" target="_blank" rel="noopener noreferrer" className="plogo plogo-bimmes" aria-label="بیمس" />
+          </div>
+
+          <div className="grid md:grid-cols-[1fr_36%]">
+            {/* Login side (right in RTL) — active form */}
+            <div className="relative p-5 md:p-8">
+              <div className="text-center mb-4">
+                <h1 className="text-base md:text-lg font-extrabold">سامانه هوشمند مدیریت بیمه عمر و حوادث</h1>
+                <p className="text-xs mt-1" style={{ color: 'var(--muted)' }}>کارگزاری رسمی بیمه آتیه اندیشان دامون</p>
               </div>
               {tab === 'inquiry' && <InquiryForm />}
               {tab === 'customer' && <CustomerForm />}
               {tab === 'org' && <OrgForm />}
-              <PartnerLogos />
             </div>
 
-            {/* Entry selector (left in RTL) */}
-            <div className="p-6 md:p-7 flex flex-col gap-3 md:justify-center" style={{ background: 'var(--surface-2)', borderRight: '1px solid var(--border)' }}>
+            {/* Entry selector (left in RTL) — bigger buttons */}
+            <div className="p-5 md:p-7 flex flex-col gap-3.5 md:justify-center" style={{ background: 'var(--surface-2)', borderRight: '1px solid var(--border)' }}>
               <h3 className="font-bold text-center mb-1">ورود به سامانه</h3>
               {TABS.map((t) => {
                 const active = tab === t.id;
@@ -59,9 +62,9 @@ function AuthHub() {
                   <button
                     key={t.id}
                     onClick={() => setTab(t.id)}
-                    className="flex items-center justify-between gap-2 px-4 py-3.5 rounded-xl text-sm font-bold transition"
+                    className="flex items-center justify-between gap-2 px-5 py-4 rounded-2xl text-base font-bold transition"
                     style={active
-                      ? { background: 'linear-gradient(135deg, var(--brand), var(--brand-600))', color: '#fff', boxShadow: '0 10px 22px -10px rgba(255,120,0,.65)' }
+                      ? { background: 'linear-gradient(135deg, var(--brand), var(--brand-600))', color: '#fff', boxShadow: '0 12px 26px -10px rgba(255,120,0,.65)' }
                       : { background: 'var(--brand-soft)', color: 'var(--brand)' }}
                   >
                     <span>{t.label}</span>
@@ -131,21 +134,6 @@ function ResendRow({ left, onResend, loading, onBack }: { left: number; onResend
   );
 }
 
-function PartnerLogos() {
-  return (
-    <div className="mt-6 pt-5" style={{ borderTop: '1px solid var(--border)' }}>
-      <div className="partner-logos relative mx-auto" style={{ maxWidth: 360 }}>
-        {/* Theme-specific variants (navy on light, white on dark) — swapped by CSS, no background. */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img className="logo-light" src="/partners-light.webp" alt="بیمس و آتیه اندیشان دامون" style={{ width: '100%', height: 'auto' }} />
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img className="logo-dark" src="/partners-dark.webp" alt="بیمس و آتیه اندیشان دامون" style={{ width: '100%', height: 'auto' }} />
-        <a href="https://bimmes.ir" target="_blank" rel="noopener noreferrer" aria-label="بیمس" style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: '52%' }} />
-        <a href="https://damuon.com" target="_blank" rel="noopener noreferrer" aria-label="آتیه اندیشان دامون" style={{ position: 'absolute', top: 0, bottom: 0, left: '52%', right: 0 }} />
-      </div>
-    </div>
-  );
-}
 
 /* ─────────────────────── استعلام سریع (inquiry) ─────────────────────── */
 function InquiryForm() {

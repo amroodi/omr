@@ -377,6 +377,12 @@ h1, h2, h3 {
 .dark .partner-logos .logo-light { display: none; }
 .dark .partner-logos .logo-dark { display: block; }
 
+/* Single-logo crops from the combined partners image (Bimmes = left half, Damuon = right half). */
+.plogo { height: 34px; width: 108px; background-repeat: no-repeat; background-size: auto 100%; display: inline-block; background-image: url('/partners-light.webp'); }
+.plogo-bimmes { background-position: left center; }
+.plogo-damuon { background-position: right center; }
+:root.dark .plogo { background-image: url('/partners-dark.webp'); }
+
 /* Sun/Moon pill theme switch (theme-toggle.tsx). Default markup = dark state (knob left, moon).
    Light state is driven by :root:not(.dark): pill turns orange, knob slides right, sun fades in. */
 .theme-switch-btn {
