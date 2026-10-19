@@ -153,7 +153,7 @@ function InquiryForm() {
             <input className="input" style={{ textAlign: 'center' }} value={nid} onChange={(e) => setNid(e.target.value)} inputMode="numeric" placeholder="کد ملی ۱۰ رقمی متوفی" />
             <input className="input" style={{ textAlign: 'center' }} value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="numeric" placeholder="شماره موبایل شما" onKeyDown={(e) => e.key === 'Enter' && nid && phone && request()} />
             <button onClick={request} disabled={loading || !nid || !phone} className="btn btn-primary w-full" style={{ padding: '0.8rem' }}>{loading ? 'در حال ارسال…' : 'دریافت کد تایید'}</button>
-            <p className="text-sm font-bold text-center pt-1">امور مشتریان کارگزاری دامون: ۰۲۱-۵۷۳۸۹۰۰۰</p>
+            <p className="text-sm font-bold text-center pt-1">امور مشتریان کارگزاری دامون: <span dir="ltr" style={{ unicodeBidi: 'isolate' }}>۰۲۱-۵۷۳۸۹۰۰۰</span></p>
           </>
         )}
         {step === 'otp' && (
