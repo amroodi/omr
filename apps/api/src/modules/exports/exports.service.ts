@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { AuditAction, CaseStatus, Prisma } from '@prisma/client';
 import * as ExcelJS from 'exceljs';
 import { Response } from 'express';
@@ -15,6 +15,14 @@ const STATUS_FA: Record<CaseStatus, string> = {
   REVIEWING: 'در حال بررسی',
   UNPAYABLE: 'غیرقابل پرداخت',
   OTHER: 'سایر',
+};
+
+const CLAIM_STATUS_FA: Record<string, string> = {
+  DRAFT: 'پیش‌نویس', SUBMITTED: 'ثبت‌شده', UNDER_REVIEW: 'در حال بررسی', RETURNED_INCOMPLETE: 'نقص مدارک',
+  APPROVED: 'تاییدشده', REJECTED: 'ردشده', PAID: 'پرداخت‌شده',
+};
+const CLAIM_TYPE_FA: Record<string, string> = {
+  DEATH_ILLNESS: 'فوت ناشی از بیماری', DEATH_ACCIDENT: 'فوت ناشی از حادثه', DISABILITY_ACCIDENT: 'نقص عضو / ازکارافتادگی ناشی از حادثه',
 };
 
 @Injectable()
@@ -160,6 +168,114 @@ export class ExportsService {
     <th>وضعیت پرونده</th><th>مبلغ پرداختی</th><th>تاریخ پرداخت</th>
   </tr></thead><tbody>${body}</tbody></table>
 </body></html>`;
+  }
+
+  // ─────────────────────────── Death-claim exports ───────────────────────────
+
+  /** Claims the caller's tenant participates in (not soft-deleted). */
+  private claimTenantWhere(): Prisma.ClaimWhereInput {
+    const tenantId = getTenantIdOrThrow();
+    return { deletedAt: null, OR: [{ insurerTenantId: tenantId }, { brokerTenantId: tenantId }, { participants: { some: { tenantId } } }] };
+  }
+
+  private async fetchClaims(status?: string, q?: string) {
+    const where: Prisma.ClaimWhereInput = { ...this.claimTenantWhere(), ...(status ? { status: status as any } : {}) };
+    const claims = await this.prisma.unscoped().claim.findMany({
+      where,
+      orderBy: { updatedAt: 'desc' },
+      take: 10000,
+      select: { id: true, claimNumber: true, claimType: true, status: true, deceasedFullName: true, deceasedNationalCode: true, claimedAmount: true, eventDate: true, insurerTenantId: true },
+    });
+    if (!q) return claims;
+    const ql = q.toLowerCase();
+    return claims.filter((c) => {
+      const name = c.deceasedFullName ? (this.crypto.decrypt(c.deceasedFullName) ?? '') : '';
+      return `${c.claimNumber} ${name}`.toLowerCase().includes(ql);
+    });
+  }
+
+  /** Bulk XLSX of the (optionally filtered) death-claim list. Audit-logged (tamper-evident chain). */
+  async claimsXlsx(res: Response, status?: string, q?: string): Promise<void> {
+    const [rows, header] = await Promise.all([this.fetchClaims(status, q), this.tenantHeader()]);
+    const insurerIds = [...new Set(rows.map((r) => r.insurerTenantId))];
+    const tenants = insurerIds.length ? await this.prisma.unscoped().tenant.findMany({ where: { id: { in: insurerIds } }, select: { id: true, name: true } }) : [];
+    const tMap = new Map(tenants.map((t) => [t.id, t.name]));
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'OMR Damuon';
+    const ws = wb.addWorksheet('پرونده‌های خسارت', { views: [{ rightToLeft: true }] });
+    ws.mergeCells('A1', 'H1');
+    ws.getCell('A1').value = header.name;
+    ws.getCell('A1').font = { bold: true, size: 14 };
+    ws.getCell('A1').alignment = { horizontal: 'center' };
+
+    const headerRow = ws.addRow(['ردیف', 'شماره پرونده', 'نوع', 'بیمه‌شده (متوفی)', 'کد ملی', 'بیمه‌گر', 'وضعیت', 'مبلغ خسارت']);
+    headerRow.font = { bold: true };
+    headerRow.eachCell((c) => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } }; });
+    rows.forEach((c, i) => {
+      ws.addRow([
+        i + 1,
+        c.claimNumber,
+        CLAIM_TYPE_FA[c.claimType] ?? c.claimType,
+        c.deceasedFullName ? this.crypto.decrypt(c.deceasedFullName) : '',
+        this.nid(c.deceasedNationalCode ?? null),
+        tMap.get(c.insurerTenantId) ?? '',
+        CLAIM_STATUS_FA[c.status] ?? c.status,
+        c.claimedAmount != null ? c.claimedAmount.toString() : '',
+      ]);
+    });
+    ws.columns.forEach((col) => { col.width = 20; });
+
+    await this.audit.record({ action: AuditAction.EXPORT, targetType: 'ClaimList', metadata: { format: 'xlsx', count: rows.length, status: status ?? null, pii: this.canSeePii() } });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="claims.xlsx"');
+    await wb.xlsx.write(res);
+    res.end();
+  }
+
+  /** Single-claim XLSX: header facts + every structured field value. Audit-logged. */
+  async claimXlsx(res: Response, claimId: string): Promise<void> {
+    const claim = await this.prisma.unscoped().claim.findFirst({ where: { id: claimId, ...this.claimTenantWhere() } });
+    if (!claim) throw new NotFoundException('پرونده یافت نشد');
+    const [defs, vals, insurer, header] = await Promise.all([
+      this.prisma.unscoped().claimFieldDef.findMany({ where: { tenantId: claim.insurerTenantId, isActive: true }, orderBy: { order: 'asc' } }),
+      this.prisma.unscoped().claimFieldValue.findMany({ where: { claimId } }),
+      this.prisma.unscoped().tenant.findUnique({ where: { id: claim.insurerTenantId }, select: { name: true } }),
+      this.tenantHeader(),
+    ]);
+    const vmap = new Map(vals.map((v) => [v.key, v.value ?? '']));
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'OMR Damuon';
+    const ws = wb.addWorksheet(`پرونده ${claim.claimNumber}`, { views: [{ rightToLeft: true }] });
+    ws.mergeCells('A1', 'B1');
+    ws.getCell('A1').value = `${header.name} — پرونده ${claim.claimNumber}`;
+    ws.getCell('A1').font = { bold: true, size: 13 };
+    ws.getCell('A1').alignment = { horizontal: 'center' };
+
+    const pair = (k: string, v: string) => ws.addRow([k, v]);
+    pair('نوع', CLAIM_TYPE_FA[claim.claimType] ?? claim.claimType);
+    pair('وضعیت', CLAIM_STATUS_FA[claim.status] ?? claim.status);
+    pair('بیمه‌گر', insurer?.name ?? '');
+    pair('بیمه‌شده (متوفی)', claim.deceasedFullName ? (this.crypto.decrypt(claim.deceasedFullName) ?? '') : '');
+    pair('کد ملی', this.nid(claim.deceasedNationalCode ?? null));
+    pair('مبلغ خسارت', claim.claimedAmount != null ? claim.claimedAmount.toString() : '');
+    pair('تاریخ وقوع', claim.eventDate ? toJalali(claim.eventDate, false) : '');
+    const sep = ws.addRow(['— اطلاعات تفصیلی —', '']);
+    sep.font = { bold: true };
+    for (const d of defs) {
+      const val = vmap.get(d.key);
+      if (val && val.trim() !== '') pair(d.label, val);
+    }
+    ws.getColumn(1).width = 32;
+    ws.getColumn(2).width = 48;
+    ws.getColumn(1).font = { bold: true };
+
+    await this.audit.record({ action: AuditAction.EXPORT, targetType: 'Claim', targetId: claimId, metadata: { format: 'xlsx', single: true, pii: this.canSeePii() } });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="claim-${claim.claimNumber}.xlsx"`);
+    await wb.xlsx.write(res);
+    res.end();
   }
 }
 

@@ -170,7 +170,12 @@ export default function ClaimDetail() {
               <button onClick={() => setMode('edit')} className={`btn btn-sm ${mode === 'edit' ? 'btn-primary' : 'btn-ghost'}`}>ویرایش</button>
             </div>
             {mode === 'preview' && (
-              <button onClick={() => window.print()} className="btn btn-ghost btn-sm" title="چاپ / ذخیره PDF"><Icon path="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6z" /> چاپ / PDF</button>
+              <div className="flex items-center gap-2">
+                {hasPerm('org', 'export:list') && (
+                  <button onClick={() => client.download(`/exports/claim/${id}.xlsx`, 'org', `claim-${claim.claimNumber}.xlsx`)} className="btn btn-ghost btn-sm" title="خروجی اکسل این پرونده"><Icon path="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" /> خروجی اکسل</button>
+                )}
+                <button onClick={() => window.print()} className="btn btn-ghost btn-sm" title="چاپ / ذخیره PDF"><Icon path="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6z" /> چاپ / PDF</button>
+              </div>
             )}
           </div>
 
