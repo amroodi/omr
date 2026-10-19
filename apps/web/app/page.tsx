@@ -57,7 +57,7 @@ function AuthHub() {
             {/* RIGHT (RTL first): brand + استعلام سریع form */}
             <div className="login-pills p-6 md:p-8 md:flex md:flex-col md:justify-center text-center" style={{ borderLeft: '1px solid var(--border)' }}>
               <div className="flex justify-center mb-3">
-                <a href="https://damuon.com" target="_blank" rel="noopener noreferrer" className="plogo plogo-damuon" aria-label="آتیه اندیشان دامون" style={{ height: 48, width: 140 }} />
+                <a href="https://damuon.com" target="_blank" rel="noopener noreferrer" className="plogo plogo-damuon" aria-label="آتیه اندیشان دامون" style={{ height: 66, width: 190 }} />
               </div>
               <h2 className="font-extrabold text-lg" style={{ color: 'var(--brand)' }}>کارگزاری بیمه مستقیم برخط دامون</h2>
               <p className="font-bold text-sm mt-1 mb-5">سامانه کنترل و ارزیابی عمر و حادثه</p>
@@ -70,9 +70,9 @@ function AuthHub() {
                 <a href="https://bimmes.ir" target="_blank" rel="noopener noreferrer" className="plogo plogo-bimmes" aria-label="بیمس" style={{ height: 48, width: 140 }} />
               </div>
               <div className="flex flex-col gap-4" style={{ maxWidth: 300, width: '100%', margin: '0 auto' }}>
-                <EntryGroup title="پورتال بیمه‌گزار">
+                <EntryGroup title="ورود بیمه گزار">
                   <EntryBtn label="ورود برای بارگزاری مدارک" href="/customer/login" icon={IC_UPLOAD} />
-                  <EntryBtn label="نرم‌افزار گوشی هوشمند به‌زودی" icon={IC_PHONE} soon />
+                  <EntryBtn label="نرم‌افزار گوشی های هوشمند به‌زودی" icon={IC_PHONE} soon />
                 </EntryGroup>
                 <EntryGroup title="ورود سازمان‌">
                   <EntryBtn label="ورود برای ارزیابی پرونده‌ها" href="/org/login" icon={IC_EVAL} />
@@ -153,6 +153,7 @@ function InquiryForm() {
             <input className="input" style={{ textAlign: 'center' }} value={nid} onChange={(e) => setNid(e.target.value)} inputMode="numeric" placeholder="کد ملی ۱۰ رقمی متوفی" />
             <input className="input" style={{ textAlign: 'center' }} value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="numeric" placeholder="شماره موبایل شما" onKeyDown={(e) => e.key === 'Enter' && nid && phone && request()} />
             <button onClick={request} disabled={loading || !nid || !phone} className="btn btn-primary w-full" style={{ padding: '0.8rem' }}>{loading ? 'در حال ارسال…' : 'دریافت کد تایید'}</button>
+            <button type="button" disabled className="w-full text-sm font-semibold" style={{ background: 'var(--surface-2)', color: 'var(--muted)', cursor: 'default', borderRadius: 999, padding: '0.5rem', border: '1px solid var(--border)' }}>آموزش نحوه ورود به سامانه</button>
             <p className="text-sm font-bold text-center pt-1">امور مشتریان کارگزاری دامون: <span dir="ltr" style={{ unicodeBidi: 'isolate' }}>۰۲۱-۵۷۳۸۹۰۰۰</span></p>
           </>
         )}
