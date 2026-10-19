@@ -6,6 +6,7 @@ import { inquiryApi } from '../lib/api';
 import { client, setToken, setTenantSlug } from '../lib/client';
 import { ErrorBox, Field, StatusBadge } from './components/ui';
 import { Icon } from './components/Shell';
+import { BrandMark } from './components/brand';
 import { Reveal } from './components/reveal';
 import { DotGrid } from './components/DotGrid';
 
@@ -13,33 +14,16 @@ type Tab = 'inquiry' | 'customer' | 'org';
 
 export default function Landing() {
   return (
-    <div className="relative">
+    <div className="relative min-h-[82vh] flex items-center justify-center">
       {/* full-bleed animated background */}
       <div className="aurora" style={{ position: 'fixed' }}><span /></div>
       <DotGrid />
-
-      <Hero />
       <AuthHub />
-      <Preview />
-      <CTA />
     </div>
   );
 }
 
-/* ─────────────────────────────── Hero ─────────────────────────────── */
-function Hero() {
-  return (
-    <section className="pt-10 lg:pt-16 pb-8 text-center">
-      <Reveal>
-        <h1 className="display text-4xl md:text-5xl lg:text-6xl">
-          مدیریت هوشمند بیمه <span className="gradient-text">عمر و حوادث</span>
-        </h1>
-      </Reveal>
-    </section>
-  );
-}
-
-/* ───────────────────── Auth hub — one panel, three tabs ───────────────────── */
+/* ───────────────────── Auth hub — centered login card, three entries ───────────────────── */
 const TABS: { id: Tab; label: string }[] = [
   { id: 'inquiry', label: 'استعلام سریع پرونده' },
   { id: 'customer', label: 'پورتال بیمه‌گزار' },
@@ -49,12 +33,26 @@ const TABS: { id: Tab; label: string }[] = [
 function AuthHub() {
   const [tab, setTab] = useState<Tab>('inquiry');
   return (
-    <section className="pb-16">
-      <Reveal delay={120}>
-        <div className="floaty glass max-w-4xl mx-auto overflow-hidden" style={{ borderRadius: 24, boxShadow: 'var(--shadow-lg)' }}>
-          <div className="flex flex-col md:flex-row-reverse">
-            {/* tab buttons (left on desktop, top on mobile) */}
-            <div className="p-5 md:p-6 md:w-[38%] flex flex-col gap-3 justify-center" style={{ background: 'var(--surface-2)', borderLeft: '1px solid var(--border)' }}>
+    <section className="w-full px-4 py-10">
+      <Reveal delay={80}>
+        <div className="glass max-w-5xl mx-auto overflow-hidden" style={{ borderRadius: 26, boxShadow: 'var(--shadow-lg)' }}>
+          <div className="grid md:grid-cols-[1fr_34%]">
+            {/* Login side (right in RTL) — logo + active form */}
+            <div className="relative p-6 md:p-9">
+              <div className="text-center mb-6">
+                <span className="inline-flex"><BrandMark size={56} /></span>
+                <h1 className="text-lg md:text-xl font-extrabold mt-3">سامانه هوشمند مدیریت بیمه عمر و حوادث</h1>
+                <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>کارگزاری رسمی بیمه آتیه اندیشان دامون</p>
+              </div>
+              {tab === 'inquiry' && <InquiryForm />}
+              {tab === 'customer' && <CustomerForm />}
+              {tab === 'org' && <OrgForm />}
+              <PartnerLogos />
+            </div>
+
+            {/* Entry selector (left in RTL) */}
+            <div className="p-6 md:p-7 flex flex-col gap-3 md:justify-center" style={{ background: 'var(--surface-2)', borderRight: '1px solid var(--border)' }}>
+              <h3 className="font-bold text-center mb-1">ورود به سامانه</h3>
               {TABS.map((t) => {
                 const active = tab === t.id;
                 return (
@@ -64,22 +62,13 @@ function AuthHub() {
                     className="flex items-center justify-between gap-2 px-4 py-3.5 rounded-xl text-sm font-bold transition"
                     style={active
                       ? { background: 'linear-gradient(135deg, var(--brand), var(--brand-600))', color: '#fff', boxShadow: '0 10px 22px -10px rgba(255,120,0,.65)' }
-                      : { background: 'var(--surface)', color: 'var(--muted)', border: '1px solid var(--border)' }}
+                      : { background: 'var(--brand-soft)', color: 'var(--brand)' }}
                   >
                     <span>{t.label}</span>
                     <Icon path="M5 12h14M13 6l6 6-6 6" />
                   </button>
                 );
               })}
-            </div>
-
-            {/* active form (right on desktop) */}
-            <div className="relative p-6 md:p-8 md:flex-1">
-              <span style={{ position: 'absolute', top: 0, right: 0, width: '55%', height: 4, background: 'linear-gradient(90deg, transparent, var(--brand))' }} />
-              {tab === 'inquiry' && <InquiryForm />}
-              {tab === 'customer' && <CustomerForm />}
-              {tab === 'org' && <OrgForm />}
-              <PartnerLogos />
             </div>
           </div>
         </div>
@@ -320,71 +309,3 @@ function OrgForm() {
   );
 }
 
-/* ─────────────────────────────── Product preview ─────────────────────────────── */
-function Preview() {
-  return (
-    <section className="py-16">
-      <Reveal>
-        <div className="text-center max-w-2xl mx-auto mb-8">
-          <span className="badge badge-neutral mb-3">پنل سازمان</span>
-          <h2 className="display text-3xl md:text-4xl">داشبورد حرفه‌ای، ساخته‌شده برای کارشناسان</h2>
-        </div>
-      </Reveal>
-      <Reveal delay={120}>
-        <div className="glass p-3 md:p-4" style={{ borderRadius: 22, boxShadow: 'var(--shadow-lg)' }}>
-          <div className="flex items-center gap-1.5 px-2 py-2">
-            <span style={{ width: 11, height: 11, borderRadius: 99, background: '#ff5f57' }} />
-            <span style={{ width: 11, height: 11, borderRadius: 99, background: '#febc2e' }} />
-            <span style={{ width: 11, height: 11, borderRadius: 99, background: '#28c840' }} />
-            <span className="text-xs mr-3" style={{ color: 'var(--muted)' }}>دامون — پنل سازمان</span>
-          </div>
-          <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
-            <div className="grid" style={{ gridTemplateColumns: '180px 1fr' }}>
-              <div className="p-3 space-y-2 hidden sm:block" style={{ background: 'var(--surface-2)', borderLeft: '1px solid var(--border)' }}>
-                {['پرونده‌ها', 'ارزیابی مدارک', 'ورود دسته‌ای', 'کاربران و نقش‌ها', 'اشتراک‌گذاری'].map((t, i) => (
-                  <div key={t} className="text-xs px-2 py-2 rounded-lg" style={i === 0 ? { background: 'var(--brand-soft)', color: 'var(--brand)', fontWeight: 700 } : { color: 'var(--muted)' }}>{t}</div>
-                ))}
-              </div>
-              <div className="p-4" style={{ background: 'var(--surface)' }}>
-                <div className="grid grid-cols-3 gap-2 mb-3">
-                  {[['۲۴', 'کل پرونده‌ها'], ['۹', 'در حال بررسی'], ['۱۵', 'پرداخت‌شده']].map(([n, l]) => (
-                    <div key={l} className="p-3 rounded-lg" style={{ background: 'var(--surface-2)' }}>
-                      <div className="text-xl font-extrabold">{n}</div>
-                      <div className="text-[10px]" style={{ color: 'var(--muted)' }}>{l}</div>
-                    </div>
-                  ))}
-                </div>
-                <div className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--border)' }}>
-                  {[['CASE-0148', 'رضا محمدی', 'پرداخت شده', 'badge-success'], ['CASE-0147', 'مریم احمدی', 'در حال بررسی', 'badge-warning'], ['CASE-0146', 'علی کریمی', 'در حال بررسی', 'badge-warning']].map((r, i) => (
-                    <div key={i} className="flex items-center justify-between px-3 py-2.5 text-xs" style={{ borderTop: i ? '1px solid var(--border)' : 'none' }}>
-                      <span className="font-semibold">{r[0]}</span>
-                      <span style={{ color: 'var(--muted)' }}>{r[1]}</span>
-                      <span className={`badge ${r[3]}`}>{r[2]}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </Reveal>
-    </section>
-  );
-}
-
-/* ─────────────────────────────── CTA ─────────────────────────────── */
-function CTA() {
-  return (
-    <section className="py-16">
-      <Reveal>
-        <div className="relative overflow-hidden text-center p-10 md:p-14" style={{ borderRadius: 26, background: 'linear-gradient(135deg, #ff9500, #ff6a00)', boxShadow: '0 30px 60px -20px rgba(255,120,0,0.5)' }}>
-          <h2 className="display text-3xl md:text-4xl text-white">آماده‌اید سازمان‌تان را دیجیتال کنید؟</h2>
-          <p className="mt-3 text-white/90 max-w-xl mx-auto">پلتفرمی که می‌توانید با برند خودتان به شرکت‌های بیمه و کارگزاری‌های دیگر ارائه دهید.</p>
-          <div className="flex flex-wrap gap-3 justify-center mt-7">
-            <Link href="/org/login" className="btn" style={{ background: '#fff', color: '#c96e00', padding: '0.8rem 1.6rem', fontWeight: 700 }}>شروع کنید</Link>
-          </div>
-        </div>
-      </Reveal>
-    </section>
-  );
-}
