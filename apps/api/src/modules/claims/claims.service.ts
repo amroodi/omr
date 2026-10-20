@@ -264,11 +264,16 @@ export class ClaimsService {
     return this.reload(claimId);
   }
 
-  /** Insurer records the payout after final approval (ties to the maker-checker payment). */
+  /** Insurer's شعبه records the payout after final approval. The معرف (broker) never pays. */
   async markPaid(claimId: string) {
     const claim = await this.db().claim.findUnique({ where: { id: claimId } });
     if (!claim) throw new NotFoundException('پرونده یافت نشد');
     this.assertParticipant(claim);
+    const ctx = getContext();
+    // Payment is the insurer's (شعبه) responsibility — a brokerage/معرف may review but not pay.
+    if (ctx?.actorType === 'ORG_USER' && ctx.tenantId !== claim.insurerTenantId) {
+      throw new ForbiddenException('پرداخت توسط کارگزاری (معرف) انجام نمی‌شود؛ پرداخت بر عهدهٔ شعبهٔ بیمه‌گر است');
+    }
     if (claim.status !== ClaimStatus.APPROVED) throw new BadRequestException('پرونده تایید نشده است');
     await this.db().claim.update({ where: { id: claimId }, data: { status: ClaimStatus.PAID } });
     await this.audit.record({ action: AuditAction.CLAIM_PAY, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId });
@@ -584,6 +589,17 @@ export class ClaimsService {
     if (applicable.some((s) => stateOf(s) === 'REJECTED')) status = 'REJECTED';
     else if (applicable.every((s) => stateOf(s) === 'APPROVED')) status = 'VERIFIED';
     await db.document.update({ where: { id: docId }, data: { verificationStatus: status as any } });
+
+    // When every uploaded document has cleared all applicable checkpoints (معرف→شعبه→ستاد), the
+    // claim is fully approved and ready for payment by شعبه → advance its status (forward-only).
+    if (status === 'VERIFIED' && claim.status === ClaimStatus.UNDER_REVIEW) {
+      const docs = await db.document.findMany({ where: { claimId: claim.id }, select: { verificationStatus: true } });
+      if (docs.length > 0 && docs.every((d) => d.verificationStatus === 'VERIFIED')) {
+        await db.claim.update({ where: { id: claim.id }, data: { status: ClaimStatus.APPROVED } });
+        await this.audit.record({ action: AuditAction.CLAIM_APPROVE, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claim.id, metadata: { via: 'document-review' } });
+        await this.notifyOrg(claim.insurerTenantId, 'پرونده آمادهٔ پرداخت', `همهٔ مراحل ارزیابی پروندهٔ ${claim.claimNumber} تایید شد؛ آمادهٔ پرداخت توسط شعبه است.`);
+      }
+    }
   }
 
   /** Upload a document to a claim, tagged with the required-document code it satisfies. */
@@ -713,15 +729,20 @@ export class ClaimsService {
   }
 
   /**
-   * IDs of in-scope claims awaiting THIS operator's authenticity review at `stage`, respecting the
-   * sequential pipeline معرف → شعبه → ستاد: a claim only surfaces once every PRIOR applicable stage
-   * has approved all its documents and this stage is still undecided (and none rejected). Claims
-   * with no broker skip the معرف filter (applicable = شعبه → ستاد).
+   * Classify every in-scope ACTIVE claim into its current pipeline bucket, following the sequential
+   * approval filters معرف → شعبه → ستاد → (آماده پرداخت). A claim sits in the first applicable stage
+   * that has NOT yet approved all its documents; once every applicable stage has approved, it is READY
+   * for payment. Claims with no broker skip the معرف filter (شعبه → ستاد). Rejected-at-a-stage and
+   * doc-less claims are left out (they belong to the نقص / filing flows, not a review queue).
    */
-  private async reviewPendingIds(scope: Prisma.ClaimWhereInput, stage: ReviewStageName): Promise<string[]> {
+  private async pipelineClassify(scope: Prisma.ClaimWhereInput): Promise<Record<'BROKER' | 'BRANCH' | 'COUNCIL' | 'READY', string[]>> {
     const db = this.db();
-    const claims = await db.claim.findMany({ where: { AND: [scope, { status: ClaimStatus.UNDER_REVIEW }] }, select: { id: true, brokerTenantId: true } });
-    if (!claims.length) return [];
+    const res = { BROKER: [] as string[], BRANCH: [] as string[], COUNCIL: [] as string[], READY: [] as string[] };
+    const claims = await db.claim.findMany({
+      where: { AND: [scope, { status: { in: [ClaimStatus.SUBMITTED, ClaimStatus.UNDER_REVIEW, ClaimStatus.APPROVED] } }] },
+      select: { id: true, brokerTenantId: true },
+    });
+    if (!claims.length) return res;
     const ids = claims.map((c) => c.id);
     const docs = await db.document.findMany({ where: { claimId: { in: ids } }, select: { id: true, claimId: true } });
     const reviews = docs.length ? await db.documentReview.findMany({ where: { documentId: { in: docs.map((d) => d.id) } }, select: { documentId: true, stage: true, state: true } }) : [];
@@ -736,41 +757,25 @@ export class ClaimsService {
       if (!revByDoc.has(r.documentId)) revByDoc.set(r.documentId, new Map());
       revByDoc.get(r.documentId)!.set(r.stage, r.state);
     }
-    const out: string[] = [];
     for (const c of claims) {
       const cd = docsByClaim.get(c.id) ?? [];
-      if (!cd.length) continue; // nothing uploaded yet → not a review item
+      if (!cd.length) continue; // nothing uploaded yet → not in a review queue
       const applicable: ReviewStageName[] = c.brokerTenantId ? ['BROKER', 'BRANCH', 'COUNCIL'] : ['BRANCH', 'COUNCIL'];
-      const idx = applicable.indexOf(stage);
-      if (idx < 0) continue; // this stage doesn't apply to this claim
-      const stageApproved = (s: ReviewStageName) => cd.every((d) => revByDoc.get(d)?.get(s) === 'APPROVED');
-      const stageRejected = (s: ReviewStageName) => cd.some((d) => revByDoc.get(d)?.get(s) === 'REJECTED');
-      const priorOk = applicable.slice(0, idx).every((s) => stageApproved(s));
-      if (priorOk && !stageApproved(stage) && !stageRejected(stage)) out.push(c.id);
+      const approved = (s: ReviewStageName) => cd.every((d) => revByDoc.get(d)?.get(s) === 'APPROVED');
+      const rejected = (s: ReviewStageName) => cd.some((d) => revByDoc.get(d)?.get(s) === 'REJECTED');
+      if (applicable.some((s) => rejected(s))) continue; // a rejection pulls it out of the forward pipeline
+      const pending = applicable.find((s) => !approved(s));
+      if (!pending) res.READY.push(c.id);
+      else res[pending].push(c.id);
     }
-    return out;
-  }
-
-  /** The Prisma filter for a simple claim-based queue, or null for the special `authenticity` queue. */
-  private wdQueueWhere(key: string, scope: Prisma.ClaimWhereInput, tenantId: string | undefined): Prisma.ClaimWhereInput | null {
-    const and = (extra: Prisma.ClaimWhereInput): Prisma.ClaimWhereInput => ({ AND: [scope, extra] });
-    const myPendingStep: Prisma.ClaimWhereInput = { steps: { some: { state: 'PENDING', holderTenantId: tenantId ?? undefined } } };
-    switch (key) {
-      case 'all': return scope;
-      case 'my-review': return and(myPendingStep);
-      case 'returned': return and({ status: ClaimStatus.RETURNED_INCOMPLETE });
-      case 'under-review': return and({ AND: [{ status: ClaimStatus.UNDER_REVIEW }, myPendingStep] });
-      case 'to-pay': return and({ status: ClaimStatus.APPROVED });
-      case 'paid': return and({ status: ClaimStatus.PAID });
-      default: return null; // 'authenticity' handled via reviewPendingIds
-    }
+    return res;
   }
 
   /**
-   * میز کار (Work Desk): the operator's permission-gated work queues with live counts + a summary.
-   * The set genuinely differs by role — معرف does only the 1st review, شعبه does the 2nd review AND
-   * the payment, ستاد does only the final review — and each review queue is sequential (shows a claim
-   * only after the previous stage cleared it). Scoped to what the caller may see.
+   * میز کار (Work Desk): the full case pipeline as work-queue tiles with live counts + a summary.
+   * Every role sees the whole pipeline (معرف → شعبه → ستاد → در انتظار پرداخت → پرداخت‌شده, plus نقص and
+   * همه) scoped to their own claims, so they can track a case end-to-end; `actionable` marks the
+   * stage(s) THIS operator may actually act on (معرف→معرف, شعبه→شعبه+پرداخت, ستاد→ستاد).
    */
   async workDesk() {
     const ctx = getContext();
@@ -778,61 +783,55 @@ export class ClaimsService {
     const tenantId = ctx?.tenantId;
     const perms = new Set(ctx?.permissions ?? []);
     const has = (p: string) => perms.has(p);
-
     const scope = this.wdScope(tenantId);
     const stage = await this.operatorStage();
     const roleLabel = { BROKER: 'معرف (کارگزاری)', BRANCH: 'شعبه', COUNCIL: 'ستاد (شورای فنی)' }[stage];
-    const isBranch = stage === 'BRANCH'; // only شعبه pays
 
-    type Tile = { key: string; label: string; count: number; perm: string; href?: string };
+    type Tile = { key: string; label: string; count: number; actionable: boolean; href?: string };
     const tiles: Tile[] = [];
-    const add = async (key: string, label: string, perm: string, href?: string) => {
-      if (perm && !has(perm)) return;
-      const where = this.wdQueueWhere(key, scope, tenantId)!;
-      tiles.push({ key, label, count: await db.claim.count({ where }), perm, href });
-    };
-
-    await add('all', 'همه پرونده‌ها', 'claim:read', '/org/claims');
-    await add('my-review', 'در انتظار اقدام من', 'claim:read');
-    if (has('doc:verify')) {
-      const ids = await this.reviewPendingIds(scope, stage);
-      tiles.push({ key: 'authenticity', label: `در انتظار ارزیابی ${roleLabel}`, perm: 'doc:verify', count: ids.length });
+    if (has('claim:read')) {
+      const buckets = await this.pipelineClassify(scope);
+      const [allCount, paidCount, returnedCount] = await Promise.all([
+        db.claim.count({ where: scope }),
+        db.claim.count({ where: { AND: [scope, { status: ClaimStatus.PAID }] } }),
+        db.claim.count({ where: { AND: [scope, { status: ClaimStatus.RETURNED_INCOMPLETE }] } }),
+      ]);
+      tiles.push({ key: 'all', label: 'همه پرونده‌ها', count: allCount, actionable: false, href: '/org/claims' });
+      tiles.push({ key: 'stage-broker', label: 'در انتظار ارزیابی معرف (کارگزاری)', count: buckets.BROKER.length, actionable: stage === 'BROKER' });
+      tiles.push({ key: 'stage-branch', label: 'در انتظار ارزیابی شعبه (کارشناس شعبه)', count: buckets.BRANCH.length, actionable: stage === 'BRANCH' });
+      tiles.push({ key: 'stage-council', label: 'در انتظار ارزیابی ستاد (شورای فنی)', count: buckets.COUNCIL.length, actionable: stage === 'COUNCIL' });
+      tiles.push({ key: 'to-pay', label: 'در انتظار پرداخت', count: buckets.READY.length, actionable: stage === 'BRANCH' });
+      tiles.push({ key: 'paid', label: 'پرداخت‌شده', count: paidCount, actionable: false, href: '/org/claims' });
+      tiles.push({ key: 'returned', label: 'نقص مدارک (عودت‌شده)', count: returnedCount, actionable: false });
     }
-    await add('returned', 'نقص مدارک (عودت‌شده)', 'claim:read');
-    await add('under-review', 'در انتظار بررسی کارشناس', 'claim:process');
-    if (isBranch && (has('payment:propose') || has('claim:process'))) {
-      await add('to-pay', 'در انتظار پرداخت خسارت (شعبه)', '');
-    }
-    await add('paid', 'پرداخت‌شده', 'claim:read', '/org/claims');
 
-    const actionKeys = new Set(['my-review', 'authenticity', 'under-review', 'to-pay']);
-    const pendingActions = tiles.filter((t) => actionKeys.has(t.key)).reduce((s, t) => s + t.count, 0);
+    const pendingActions = tiles.filter((t) => t.actionable).reduce((s, t) => s + t.count, 0);
     const user = ctx?.actorId ? await db.orgUser.findUnique({ where: { id: ctx.actorId }, select: { displayName: true, username: true } }) : null;
-
     return {
       userName: user?.displayName || user?.username || null,
       role: stage,
       roleLabel,
       tiles,
-      summary: { pendingActions, queues: tiles.filter((t) => actionKeys.has(t.key) && t.count > 0).length },
+      summary: { pendingActions, queues: tiles.filter((t) => t.actionable && t.count > 0).length },
     };
   }
 
   /** The claim list for one Work Desk queue (for the tile → list view). */
   async workDeskQueue(key: string) {
-    const ctx = getContext();
     const db = this.db();
-    const tenantId = ctx?.tenantId;
-    const scope = this.wdScope(tenantId);
+    const scope = this.wdScope(getContext()?.tenantId);
+    const pipelineKey: Record<string, 'BROKER' | 'BRANCH' | 'COUNCIL' | 'READY'> = {
+      'stage-broker': 'BROKER', 'stage-branch': 'BRANCH', 'stage-council': 'COUNCIL', 'to-pay': 'READY',
+    };
     let where: Prisma.ClaimWhereInput;
-    if (key === 'authenticity') {
-      const ids = await this.reviewPendingIds(scope, await this.operatorStage());
+    if (pipelineKey[key]) {
+      const buckets = await this.pipelineClassify(scope);
+      const ids = buckets[pipelineKey[key]];
       where = { id: { in: ids.length ? ids : ['__none__'] } };
-    } else {
-      const w = this.wdQueueWhere(key, scope, tenantId);
-      if (!w) throw new BadRequestException('صف نامعتبر است');
-      where = w;
-    }
+    } else if (key === 'all') where = scope;
+    else if (key === 'returned') where = { AND: [scope, { status: ClaimStatus.RETURNED_INCOMPLETE }] };
+    else if (key === 'paid') where = { AND: [scope, { status: ClaimStatus.PAID }] };
+    else throw new BadRequestException('صف نامعتبر است');
     const claims = await db.claim.findMany({ where, orderBy: { updatedAt: 'desc' }, take: 200 });
     return claims.map((c) => ({ ...(this.present(c) as object), needsAction: false }));
   }

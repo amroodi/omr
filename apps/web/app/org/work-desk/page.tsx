@@ -7,7 +7,7 @@ import { ORG_NAV } from '../nav';
 import { ClaimTypeBadge, CLAIM_TYPE_LABELS, ErrorBox, FancyLoader, NoticeModal, StatusBadge } from '../../components/ui';
 import { JalaliDatePicker } from '../../components/JalaliDatePicker';
 
-interface Tile { key: string; label: string; count: number; perm: string; href?: string }
+interface Tile { key: string; label: string; count: number; actionable: boolean; href?: string }
 interface WorkDesk { userName: string | null; role: string; roleLabel: string; tiles: Tile[]; summary: { pendingActions: number; queues: number } }
 interface QueueRow { id: string; claimNumber: string; status: string; claimType: string; deceasedName: string | null; claimedAmount: string; payableAmount?: string; finalizedAmount?: string | null; insurerTenantId?: string }
 
@@ -120,12 +120,13 @@ export default function WorkDeskPage() {
               <div
                 key={t.key}
                 className={`wd-tile ${t.count === 0 ? 'is-zero' : ''}`}
-                style={active?.key === t.key ? { background: 'var(--brand-soft)' } : undefined}
-                title={t.label}
+                style={active?.key === t.key ? { background: 'var(--brand-soft)' } : t.actionable ? { boxShadow: 'inset 0 -3px 0 var(--brand)' } : undefined}
+                title={t.actionable ? `${t.label} — قابل اقدام شما` : t.label}
                 onClick={() => openQueue(t)}
               >
                 <div className="wd-tile-label">{t.label}</div>
-                <div className="wd-tile-count">{t.count === 0 ? '—' : fa(t.count)}</div>
+                <div className="wd-tile-count" style={t.actionable && t.count > 0 ? { color: 'var(--brand)' } : undefined}>{t.count === 0 ? '—' : fa(t.count)}</div>
+                {t.actionable && <div style={{ fontSize: '0.62rem', color: 'var(--brand)', fontWeight: 700, marginTop: 2 }}>قابل اقدام شما</div>}
               </div>
             ))}
           </div>
