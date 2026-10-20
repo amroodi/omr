@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { client, getToken } from '../../../../lib/client';
 import { CLAIM_TYPE_LABELS, ErrorBox, StatusBadge } from '../../../components/ui';
-import { Icon } from '../../../components/Shell';
+import { Icon, Shell } from '../../../components/Shell';
+import { CUSTOMER_NAV } from '../../nav';
 
 interface ClaimDoc { id: string; fileName: string; status: string; statusLabel: string; note: string | null; uploadedAt: string | null; version: number; isLatest: boolean }
 interface ChecklistItem { code: string; label: string; uploaded: boolean; latestStatus: string | null; documents: ClaimDoc[] }
@@ -50,12 +51,12 @@ export default function CustomerClaim() {
   const rectify = () => act(() => client.post(`/customer/claims/${id}/rectify`, { note: 'مدارک تکمیل شد' }, 'customer'));
 
   return (
-    <div className="space-y-5 max-w-2xl mx-auto">
-      <button onClick={() => router.push('/customer')} className="btn btn-ghost btn-sm">→ بازگشت</button>
+    <Shell title="جزئیات پرونده" breadcrumb="جزئیات پرونده" sectionLabel="خسارت عمر و حادثه" nav={CUSTOMER_NAV} realm="customer">
+     <div className="space-y-5 max-w-3xl mx-auto">
       <ErrorBox message={error} />
-      {!claim ? <div className="card p-8 text-center text-sm" style={{ color: 'var(--muted)' }}>در حال بارگذاری…</div> : (
+      {!claim ? <div className="pcard p-10 text-center"><span className="pspinner inline-block" /></div> : (
         <>
-          <div className="card p-5">
+          <div className="pcard p-6">
             <div className="flex justify-between items-center mb-2">
               <span className="font-bold">پرونده {claim.claimNumber}</span>
               <StatusBadge status={claim.status} />
@@ -73,19 +74,19 @@ export default function CustomerClaim() {
           </div>
 
           {claim.status === 'RETURNED_INCOMPLETE' && (
-            <div className="card p-5" style={{ borderColor: 'var(--danger)' }}>
+            <div className="pcard p-6" style={{ borderColor: 'var(--danger)' }}>
               <h3 className="font-bold mb-2">نقص مدارک — نیازمند اقدام شما</h3>
               {(claim.deficiencies || []).filter((d) => !d.resolvedAt).map((d, i) => (
                 <ul key={i} className="mr-4 list-disc text-sm" style={{ color: 'var(--danger)' }}>{(d.items || []).map((x, j) => <li key={j}>{x}</li>)}</ul>
               ))}
               <p className="text-sm mt-2" style={{ color: 'var(--muted)' }}>مدارک خواسته‌شده را بارگذاری و سپس ارسال مجدد کنید.</p>
-              <button onClick={rectify} disabled={busy} className="btn btn-primary btn-sm mt-3">رفع نقص و ارسال مجدد</button>
+              <button onClick={rectify} disabled={busy} className="btn btn-solid btn-pill btn-sm mt-3">رفع نقص و ارسال مجدد</button>
             </div>
           )}
 
-          <div className="card p-5">
+          <div className="pcard p-6">
             <div className="flex justify-between items-center mb-3">
-              <h3 className="font-bold">مدارک مورد نیاز</h3>
+              <h3 className="font-extrabold">مدارک مورد نیاز</h3>
               {checklist && <span className={`badge ${checklist.complete ? 'badge-success' : 'badge-warning'}`}>{checklist.complete ? 'کامل' : 'ناقص'}</span>}
             </div>
             <div className="space-y-2">
@@ -126,6 +127,7 @@ export default function CustomerClaim() {
           </div>
         </>
       )}
-    </div>
+     </div>
+    </Shell>
   );
 }
