@@ -676,11 +676,84 @@ export class ClaimsService {
     return claims.map((c) => this.present(c));
   }
 
+  /** Claim scope visible to the caller (insurer/broker/participant), excluding soft-deleted. */
+  private wdScope(tenantId: string | undefined): Prisma.ClaimWhereInput {
+    return { deletedAt: null, OR: [{ insurerTenantId: tenantId }, { brokerTenantId: tenantId }, { participants: { some: { tenantId: tenantId ?? undefined } } }] };
+  }
+
   /**
-   * میز کار (Work Desk): the operator's permission-gated work queues, each with a live count,
-   * plus a short summary for the post-login tip. Only queues the caller's permissions (and, for
-   * the authenticity-review stage, their org identity) warrant are returned. Counts respect the
-   * caller's claim scope (insurer/broker/participant) and exclude soft-deleted claims.
+   * The authenticity-review checkpoint this operator owns (see canReviewStage):
+   *  - a brokerage (معرف) tenant → BROKER (کارگزاری, the 1st filter);
+   *  - an insurer BRANCH user (شعبه, 2nd filter + the one that pays) → BRANCH;
+   *  - a central insurer user (ستاد / شورای فنی, final filter) → COUNCIL.
+   */
+  private async operatorStage(): Promise<ReviewStageName> {
+    const ctx = getContext();
+    if (!ctx?.tenantId) return 'COUNCIL';
+    const tenant = await this.db().tenant.findUnique({ where: { id: ctx.tenantId }, select: { kind: true } });
+    if (tenant?.kind === 'BROKER') return 'BROKER';
+    return ctx.branchId ? 'BRANCH' : 'COUNCIL';
+  }
+
+  /**
+   * IDs of in-scope claims awaiting THIS operator's authenticity review at `stage`, respecting the
+   * sequential pipeline معرف → شعبه → ستاد: a claim only surfaces once every PRIOR applicable stage
+   * has approved all its documents and this stage is still undecided (and none rejected). Claims
+   * with no broker skip the معرف filter (applicable = شعبه → ستاد).
+   */
+  private async reviewPendingIds(scope: Prisma.ClaimWhereInput, stage: ReviewStageName): Promise<string[]> {
+    const db = this.db();
+    const claims = await db.claim.findMany({ where: { AND: [scope, { status: ClaimStatus.UNDER_REVIEW }] }, select: { id: true, brokerTenantId: true } });
+    if (!claims.length) return [];
+    const ids = claims.map((c) => c.id);
+    const docs = await db.document.findMany({ where: { claimId: { in: ids } }, select: { id: true, claimId: true } });
+    const reviews = docs.length ? await db.documentReview.findMany({ where: { documentId: { in: docs.map((d) => d.id) } }, select: { documentId: true, stage: true, state: true } }) : [];
+    const docsByClaim = new Map<string, string[]>();
+    for (const d of docs) {
+      if (!d.claimId) continue;
+      if (!docsByClaim.has(d.claimId)) docsByClaim.set(d.claimId, []);
+      docsByClaim.get(d.claimId)!.push(d.id);
+    }
+    const revByDoc = new Map<string, Map<string, string>>();
+    for (const r of reviews) {
+      if (!revByDoc.has(r.documentId)) revByDoc.set(r.documentId, new Map());
+      revByDoc.get(r.documentId)!.set(r.stage, r.state);
+    }
+    const out: string[] = [];
+    for (const c of claims) {
+      const cd = docsByClaim.get(c.id) ?? [];
+      if (!cd.length) continue; // nothing uploaded yet → not a review item
+      const applicable: ReviewStageName[] = c.brokerTenantId ? ['BROKER', 'BRANCH', 'COUNCIL'] : ['BRANCH', 'COUNCIL'];
+      const idx = applicable.indexOf(stage);
+      if (idx < 0) continue; // this stage doesn't apply to this claim
+      const stageApproved = (s: ReviewStageName) => cd.every((d) => revByDoc.get(d)?.get(s) === 'APPROVED');
+      const stageRejected = (s: ReviewStageName) => cd.some((d) => revByDoc.get(d)?.get(s) === 'REJECTED');
+      const priorOk = applicable.slice(0, idx).every((s) => stageApproved(s));
+      if (priorOk && !stageApproved(stage) && !stageRejected(stage)) out.push(c.id);
+    }
+    return out;
+  }
+
+  /** The Prisma filter for a simple claim-based queue, or null for the special `authenticity` queue. */
+  private wdQueueWhere(key: string, scope: Prisma.ClaimWhereInput, tenantId: string | undefined): Prisma.ClaimWhereInput | null {
+    const and = (extra: Prisma.ClaimWhereInput): Prisma.ClaimWhereInput => ({ AND: [scope, extra] });
+    const myPendingStep: Prisma.ClaimWhereInput = { steps: { some: { state: 'PENDING', holderTenantId: tenantId ?? undefined } } };
+    switch (key) {
+      case 'all': return scope;
+      case 'my-review': return and(myPendingStep);
+      case 'returned': return and({ status: ClaimStatus.RETURNED_INCOMPLETE });
+      case 'under-review': return and({ AND: [{ status: ClaimStatus.UNDER_REVIEW }, myPendingStep] });
+      case 'to-pay': return and({ status: ClaimStatus.APPROVED });
+      case 'paid': return and({ status: ClaimStatus.PAID });
+      default: return null; // 'authenticity' handled via reviewPendingIds
+    }
+  }
+
+  /**
+   * میز کار (Work Desk): the operator's permission-gated work queues with live counts + a summary.
+   * The set genuinely differs by role — معرف does only the 1st review, شعبه does the 2nd review AND
+   * the payment, ستاد does only the final review — and each review queue is sequential (shows a claim
+   * only after the previous stage cleared it). Scoped to what the caller may see.
    */
   async workDesk() {
     const ctx = getContext();
@@ -689,65 +762,62 @@ export class ClaimsService {
     const perms = new Set(ctx?.permissions ?? []);
     const has = (p: string) => perms.has(p);
 
-    const scope: Prisma.ClaimWhereInput = {
-      deletedAt: null,
-      OR: [{ insurerTenantId: tenantId }, { brokerTenantId: tenantId }, { participants: { some: { tenantId: tenantId ?? undefined } } }],
-    };
-    const and = (extra: Prisma.ClaimWhereInput): Prisma.ClaimWhereInput => ({ AND: [scope, extra] });
-    const myPendingStep: Prisma.ClaimWhereInput = { steps: { some: { state: 'PENDING', holderTenantId: tenantId ?? undefined } } };
-
-    // The authenticity-review checkpoint this operator owns, derived from identity (see canReviewStage):
-    // broker tenant → کارگزاری, insurer branch user → شعبه, central insurer user → ستاد.
-    const tenant = tenantId ? await db.tenant.findUnique({ where: { id: tenantId }, select: { kind: true } }) : null;
-    const stage: ReviewStageName = tenant?.kind === 'BROKER' ? 'BROKER' : ctx?.branchId ? 'BRANCH' : 'COUNCIL';
-    const stageLabel = { BROKER: 'کارگزاری', BRANCH: 'شعبه', COUNCIL: 'ستاد' }[stage];
+    const scope = this.wdScope(tenantId);
+    const stage = await this.operatorStage();
+    const roleLabel = { BROKER: 'معرف (کارگزاری)', BRANCH: 'شعبه', COUNCIL: 'ستاد (شورای فنی)' }[stage];
+    const isBranch = stage === 'BRANCH'; // only شعبه pays
 
     type Tile = { key: string; label: string; count: number; perm: string; href?: string };
     const tiles: Tile[] = [];
-    const add = async (key: string, label: string, perm: string, where: Prisma.ClaimWhereInput, href?: string) => {
+    const add = async (key: string, label: string, perm: string, href?: string) => {
       if (perm && !has(perm)) return;
+      const where = this.wdQueueWhere(key, scope, tenantId)!;
       tiles.push({ key, label, count: await db.claim.count({ where }), perm, href });
     };
 
-    await add('all', 'همه پرونده‌ها', 'claim:read', scope, '/org/claims');
-    await add('my-review', 'در انتظار بررسی‌های من', 'claim:read', and(myPendingStep));
+    await add('all', 'همه پرونده‌ها', 'claim:read', '/org/claims');
+    await add('my-review', 'در انتظار اقدام من', 'claim:read');
     if (has('doc:verify')) {
-      // Claims in scope that still have at least one document awaiting authenticity review.
-      // (Claim has no documents back-relation, so count distinct claimIds on the Document table.)
-      const scopeIds = (await db.claim.findMany({ where: scope, select: { id: true } })).map((c) => c.id);
-      const pendingDocClaims = scopeIds.length
-        ? await db.document.findMany({ where: { claimId: { in: scopeIds }, verificationStatus: 'PENDING' }, select: { claimId: true }, distinct: ['claimId'] })
-        : [];
-      tiles.push({
-        key: 'authenticity',
-        label: `در انتظار ارزیابی اصالت مدارک (${stageLabel})`,
-        perm: 'doc:verify',
-        count: pendingDocClaims.length,
-      });
+      const ids = await this.reviewPendingIds(scope, stage);
+      tiles.push({ key: 'authenticity', label: `در انتظار ارزیابی ${roleLabel}`, perm: 'doc:verify', count: ids.length });
     }
-    await add('returned', 'نقص مدارک (عودت‌شده)', 'claim:read', and({ status: ClaimStatus.RETURNED_INCOMPLETE }));
-    await add('under-review', 'در انتظار اقدام کارشناس', 'claim:process', and({ AND: [{ status: ClaimStatus.UNDER_REVIEW }, myPendingStep] }));
-    await add('to-pay', 'در انتظار پرداخت خسارت', 'payment:propose', and({ status: ClaimStatus.APPROVED }));
-    if (has('payment:approve')) {
-      tiles.push({
-        key: 'pay-approve',
-        label: 'در انتظار تایید پرداخت',
-        perm: 'payment:approve',
-        count: await db.payment.count({ where: { tenantId: tenantId ?? undefined, approval: 'PENDING_APPROVAL' } }),
-      });
+    await add('returned', 'نقص مدارک (عودت‌شده)', 'claim:read');
+    await add('under-review', 'در انتظار بررسی کارشناس', 'claim:process');
+    if (isBranch && (has('payment:propose') || has('claim:process'))) {
+      await add('to-pay', 'در انتظار پرداخت خسارت (شعبه)', '');
     }
-    await add('paid', 'پرداخت‌شده', 'claim:read', and({ status: ClaimStatus.PAID }), '/org/claims');
+    await add('paid', 'پرداخت‌شده', 'claim:read', '/org/claims');
 
-    // Summary for the post-login tip: how many items actually await THIS operator's action.
-    const actionKeys = new Set(['my-review', 'authenticity', 'under-review', 'to-pay', 'pay-approve']);
+    const actionKeys = new Set(['my-review', 'authenticity', 'under-review', 'to-pay']);
     const pendingActions = tiles.filter((t) => actionKeys.has(t.key)).reduce((s, t) => s + t.count, 0);
     const user = ctx?.actorId ? await db.orgUser.findUnique({ where: { id: ctx.actorId }, select: { displayName: true, username: true } }) : null;
 
     return {
       userName: user?.displayName || user?.username || null,
+      role: stage,
+      roleLabel,
       tiles,
       summary: { pendingActions, queues: tiles.filter((t) => actionKeys.has(t.key) && t.count > 0).length },
     };
+  }
+
+  /** The claim list for one Work Desk queue (for the tile → list view). */
+  async workDeskQueue(key: string) {
+    const ctx = getContext();
+    const db = this.db();
+    const tenantId = ctx?.tenantId;
+    const scope = this.wdScope(tenantId);
+    let where: Prisma.ClaimWhereInput;
+    if (key === 'authenticity') {
+      const ids = await this.reviewPendingIds(scope, await this.operatorStage());
+      where = { id: { in: ids.length ? ids : ['__none__'] } };
+    } else {
+      const w = this.wdQueueWhere(key, scope, tenantId);
+      if (!w) throw new BadRequestException('صف نامعتبر است');
+      where = w;
+    }
+    const claims = await db.claim.findMany({ where, orderBy: { updatedAt: 'desc' }, take: 200 });
+    return claims.map((c) => ({ ...(this.present(c) as object), needsAction: false }));
   }
 
   // ─────────────────────────── Helpers ───────────────────────────

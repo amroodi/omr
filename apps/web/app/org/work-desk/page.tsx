@@ -4,11 +4,12 @@ import { useRouter } from 'next/navigation';
 import { client, getToken } from '../../../lib/client';
 import { Shell, Icon } from '../../components/Shell';
 import { ORG_NAV } from '../nav';
-import { CLAIM_TYPE_LABELS, ErrorBox, FancyLoader, NoticeModal } from '../../components/ui';
+import { ClaimTypeBadge, CLAIM_TYPE_LABELS, ErrorBox, FancyLoader, NoticeModal, StatusBadge } from '../../components/ui';
 import { JalaliDatePicker } from '../../components/JalaliDatePicker';
 
 interface Tile { key: string; label: string; count: number; perm: string; href?: string }
-interface WorkDesk { userName: string | null; tiles: Tile[]; summary: { pendingActions: number; queues: number } }
+interface WorkDesk { userName: string | null; role: string; roleLabel: string; tiles: Tile[]; summary: { pendingActions: number; queues: number } }
+interface QueueRow { id: string; claimNumber: string; status: string; claimType: string; deceasedName: string | null; claimedAmount: string; insurerTenantId?: string }
 
 const fa = (n: number) => n.toLocaleString('fa-IR');
 const EMPTY = { claimNumber: '', deceasedNationalCode: '', deceasedName: '', claimType: '', insurerTenantId: '', from: '', to: '' };
@@ -22,6 +23,10 @@ export default function WorkDeskPage() {
   const [adv, setAdv] = useState(false);
   const [f, setF] = useState({ ...EMPTY });
   const [tip, setTip] = useState(false);
+  const [active, setActive] = useState<Tile | null>(null);
+  const [rows, setRows] = useState<QueueRow[]>([]);
+  const [qLoading, setQLoading] = useState(false);
+  const [notice, setNotice] = useState('');
 
   useEffect(() => {
     if (!getToken('org')) { router.push('/org/login'); return; }
@@ -37,9 +42,18 @@ export default function WorkDeskPage() {
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-    client.get<{ id: string; name: string }[]>('/claims/insurers', 'org').then(setInsurers).catch(() => {});
+    client.get<{ id: string; name: string }[]>('/claims/insurers', 'org').then((a) => setInsurers(a)).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const insurerMap = useMemo(() => Object.fromEntries(insurers.map((i) => [i.id, i.name])), [insurers]);
+
+  const openQueue = (t: Tile) => {
+    if (t.count === 0) { setNotice('موردی برای این صف وجود ندارد.'); return; }
+    setActive(t); setRows([]); setQLoading(true);
+    client.get<QueueRow[]>(`/claims/work-desk/queue?key=${encodeURIComponent(t.key)}`, 'org')
+      .then(setRows).catch((e) => setError(e.message)).finally(() => setQLoading(false));
+  };
 
   const search = () => {
     const q = f.claimNumber || f.deceasedName || f.deceasedNationalCode;
@@ -96,14 +110,65 @@ export default function WorkDeskPage() {
           برگه‌ای برای نمایش در میز کار شما تعریف نشده است.
         </div>
       ) : (
-        <div className="wd-tiles">
-          {data.tiles.map((t) => (
-            <div key={t.key} className={`wd-tile ${t.count === 0 ? 'is-zero' : ''}`} title={t.label}>
-              <div className="wd-tile-label">{t.label}</div>
-              <div className="wd-tile-count">{t.count === 0 ? '—' : fa(t.count)}</div>
+        <>
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="font-extrabold text-sm" style={{ color: 'var(--muted)' }}>برگه‌های کاری شما</h2>
+            {data.roleLabel && <span className="badge badge-neutral">نقش: {data.roleLabel}</span>}
+          </div>
+          <div className="wd-tiles">
+            {data.tiles.map((t) => (
+              <div
+                key={t.key}
+                className={`wd-tile ${t.count === 0 ? 'is-zero' : ''}`}
+                style={active?.key === t.key ? { background: 'var(--brand-soft)' } : undefined}
+                title={t.label}
+                onClick={() => openQueue(t)}
+              >
+                <div className="wd-tile-label">{t.label}</div>
+                <div className="wd-tile-count">{t.count === 0 ? '—' : fa(t.count)}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Queue list for the selected tile */}
+          {active && (
+            <div className="pcard mt-5 overflow-hidden">
+              <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: 'var(--border)' }}>
+                <h3 className="font-extrabold">{active.label} <span style={{ color: 'var(--muted)' }}>({fa(active.count)})</span></h3>
+                <button onClick={() => setActive(null)} className="btn btn-ghost btn-sm">بستن</button>
+              </div>
+              {qLoading ? (
+                <div className="p-12 flex justify-center"><FancyLoader label="در حال دریافت صف…" /></div>
+              ) : rows.length === 0 ? (
+                <div className="p-8 text-center text-sm" style={{ color: 'var(--muted)' }}>موردی یافت نشد.</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="table">
+                    <thead><tr>{['#', 'شماره پرونده', 'نوع', 'بیمه‌گر', 'بیمه‌شده (متوفی)', 'مبلغ (ریال)', 'وضعیت', 'عملیات'].map((h) => <th key={h}>{h}</th>)}</tr></thead>
+                    <tbody>
+                      {rows.map((r, i) => (
+                        <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => router.push(`/org/claims/${r.id}`)}>
+                          <td>{fa(i + 1)}</td>
+                          <td className="font-semibold">{r.claimNumber}</td>
+                          <td><ClaimTypeBadge type={r.claimType} /></td>
+                          <td>{(r.insurerTenantId && insurerMap[r.insurerTenantId]) || '—'}</td>
+                          <td>{r.deceasedName || '—'}</td>
+                          <td style={{ direction: 'ltr', textAlign: 'right' }}>{Number(r.claimedAmount || 0).toLocaleString('fa-IR')}</td>
+                          <td><StatusBadge status={r.status} /></td>
+                          <td><button onClick={(e) => { e.stopPropagation(); router.push(`/org/claims/${r.id}`); }} className="btn btn-solid btn-sm">ارزیابی / مشاهده</button></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
-          ))}
-        </div>
+          )}
+        </>
+      )}
+
+      {notice && (
+        <NoticeModal variant="info" title="توجه" onClose={() => setNotice('')}>{notice}</NoticeModal>
       )}
 
       {/* Post-login summary tip */}

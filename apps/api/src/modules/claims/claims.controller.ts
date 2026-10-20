@@ -77,6 +77,13 @@ export class ClaimsController {
     return this.claims.workDesk();
   }
 
+  /** The claim list behind one Work Desk queue tile (?key=all|my-review|authenticity|…). */
+  @Permissions(PERMISSIONS.CLAIM_READ)
+  @Get('work-desk/queue')
+  workDeskQueue(@Query('key') key: string) {
+    return this.claims.workDeskQueue(key);
+  }
+
   /** Active insurers to file a claim against (also used by the claims-list filter). */
   @Permissions(PERMISSIONS.CLAIM_READ)
   @Get('insurers')
