@@ -34,6 +34,32 @@ export function StatCard({ label, value, icon, tone = 'brand' }: { label: string
   );
 }
 
+/** Reference-style stat tile: label + big value on the right, a large outline icon on the left. */
+export function PanelStat({ label, value, unit, icon, tone = 'navy' }: { label: string; value: ReactNode; unit?: string; icon: ReactNode; tone?: 'navy' | 'brand' | 'success' | 'warning' | 'danger' }) {
+  const color = {
+    navy: 'var(--topbar-accent)', brand: 'var(--brand)', success: 'var(--success)', warning: 'var(--warning)', danger: 'var(--danger)',
+  }[tone];
+  return (
+    <div className="pcard p-5 flex items-center justify-between gap-3" style={{ minHeight: 118 }}>
+      <div className="min-w-0">
+        <div className="text-sm font-semibold" style={{ color: 'var(--muted)' }}>{label}</div>
+        <div className="text-2xl font-extrabold mt-2 leading-none">{value}</div>
+        {unit && <div className="text-xs mt-2" style={{ color: 'var(--muted)' }}>{unit}</div>}
+      </div>
+      <span style={{ color, flexShrink: 0 }} aria-hidden>{icon}</span>
+    </div>
+  );
+}
+
+/** A large (outline) icon for PanelStat / action diamonds. */
+export function BigIcon({ path, size = 44 }: { path: string; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d={path} />
+    </svg>
+  );
+}
+
 const STATUS_MAP: Record<string, { label: string; cls: string }> = {
   PAID: { label: 'پرداخت شده', cls: 'badge-success' },
   REVIEWING: { label: 'در حال بررسی', cls: 'badge-warning' },
