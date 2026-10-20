@@ -429,3 +429,186 @@ h1, h2, h3 {
   opacity: 0.55;
 }
 :root:not(.dark) .app-bg { opacity: 0.32; }
+
+/* ═══════════════════════════ Sinad-style panel skin ═══════════════════════════
+   A flat admin shell modelled 1:1 on the Alborz/Sinad portal: a white top bar with
+   a brand-colour title + breadcrumb, a dark-navy collapsible right sidebar carrying a
+   circular logo and the menu, and a light-grey content area of white rounded cards.
+   Their brand green is replaced everywhere by our brand orange; the structural navy
+   is kept as-is. Dark-mode variants keep the navy sidebar and darken the canvas.     */
+:root {
+  --panel-bg: #e9edf2;
+  --panel-card: #ffffff;
+  --sidebar-bg: #2b3a4f;
+  --sidebar-bg2: #243343;
+  --sidebar-active: #1d2938;
+  --sidebar-hover: #35485f;
+  --sidebar-text: #e7ecf3;
+  --sidebar-muted: #aab6c7;
+  --sidebar-border: rgba(255,255,255,0.08);
+  --topbar-accent: #2b3a4f;
+  --accordion: var(--brand);
+  --rail-w: 60px;
+  --side-w: 262px;
+  --topbar-h: 62px;
+}
+:root.dark {
+  --panel-bg: #0a1120;
+  --panel-card: #10182b;
+  --sidebar-bg: #0e1626;
+  --sidebar-bg2: #0b1322;
+  --sidebar-active: #060b15;
+  --sidebar-hover: #1a2639;
+  --sidebar-text: #e8ecf6;
+  --sidebar-muted: #8b98ae;
+  --sidebar-border: rgba(255,255,255,0.06);
+  --topbar-accent: #060b15;
+}
+
+/* Shell frame — fixed to the viewport; the content column scrolls internally. */
+/* row-reverse so the sidebar (2nd child) sits on the RIGHT in RTL, content on the left. */
+.pshell { position: fixed; inset: 0; display: flex; flex-direction: row-reverse; background: var(--panel-bg); overflow: hidden; z-index: 20; }
+.pshell-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.pshell-content { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 20px clamp(12px, 2.2vw, 30px) 60px; }
+.pshell-wrap { max-width: 1320px; margin: 0 auto; width: 100%; }
+
+/* Top bar */
+.ptopbar {
+  height: var(--topbar-h); flex-shrink: 0; background: var(--surface);
+  border-top: 3px solid var(--topbar-accent); border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 12px; padding: 0 clamp(12px, 2vw, 26px);
+}
+.ptopbar-title { font-weight: 800; font-size: 1.12rem; color: var(--brand); white-space: nowrap; }
+.pbreadcrumb { font-size: 0.82rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pbreadcrumb a { color: var(--brand); font-weight: 600; }
+.ptopbar-spacer { flex: 1; }
+
+/* Sidebar (navy, right side in RTL) */
+.psidebar {
+  flex-shrink: 0; width: var(--side-w); background: var(--sidebar-bg); color: var(--sidebar-text);
+  display: flex; flex-direction: column; transition: width 0.22s ease; overflow: hidden;
+}
+.psidebar.is-rail { width: var(--rail-w); }
+.psidebar-logo { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 16px 12px 14px; border-bottom: 1px solid var(--sidebar-border); }
+.psidebar-logo .circle {
+  width: 118px; height: 118px; border-radius: 50%; background: #fff; display: flex; align-items: center; justify-content: center;
+  overflow: hidden; box-shadow: 0 6px 16px rgba(0,0,0,0.25); transition: width 0.22s ease, height 0.22s ease;
+}
+.psidebar.is-rail .psidebar-logo { padding: 10px 6px; }
+.psidebar.is-rail .psidebar-logo .circle { width: 40px; height: 40px; box-shadow: none; }
+.psidebar-logo .circle img { max-width: 80%; max-height: 80%; object-fit: contain; }
+.psidebar-name { font-size: 0.8rem; font-weight: 700; text-align: center; line-height: 1.5; }
+.psidebar-sub { font-size: 0.72rem; color: var(--sidebar-muted); text-align: center; direction: ltr; }
+.psidebar.is-rail .psidebar-name, .psidebar.is-rail .psidebar-sub { display: none; }
+
+.psidebar-nav { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 6px 0; }
+.psidebar-toggle {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 13px 18px; cursor: pointer;
+  background: var(--sidebar-active); color: var(--sidebar-text); font-weight: 700; font-size: 0.86rem; border: 0;
+  justify-content: space-between;
+}
+.psidebar.is-rail .psidebar-toggle { justify-content: center; padding: 13px 0; }
+.psidebar.is-rail .psidebar-toggle .lbl { display: none; }
+.pnav-item {
+  display: flex; align-items: center; gap: 11px; padding: 12px 18px; color: var(--sidebar-text);
+  font-size: 0.86rem; cursor: pointer; border: 0; background: transparent; width: 100%; text-align: right;
+  border-bottom: 1px solid var(--sidebar-border); transition: background 0.14s ease; white-space: nowrap;
+}
+.pnav-item:hover { background: var(--sidebar-hover); }
+.pnav-item.is-active { background: var(--sidebar-active); font-weight: 700; }
+.pnav-item .ico { flex-shrink: 0; display: inline-flex; width: 22px; justify-content: center; color: var(--sidebar-muted); }
+.pnav-item.is-active .ico { color: var(--brand); }
+.pnav-section {
+  display: flex; align-items: center; gap: 10px; padding: 12px 18px; font-weight: 800; font-size: 0.9rem;
+  background: var(--sidebar-bg2); color: var(--sidebar-text); white-space: nowrap;
+}
+.psidebar.is-rail .pnav-item .lbl, .psidebar.is-rail .pnav-section .lbl, .psidebar.is-rail .psidebar-toggle .lbl { display: none; }
+.psidebar.is-rail .pnav-item, .psidebar.is-rail .pnav-section { justify-content: center; padding: 12px 0; gap: 0; }
+.psidebar-foot { border-top: 1px solid var(--sidebar-border); }
+
+/* Panel card — bigger radius + softer shadow than the default .card */
+.pcard { background: var(--panel-card); border: 1px solid var(--border); border-radius: 20px; box-shadow: 0 10px 28px -14px rgba(16,24,40,0.22); }
+:root.dark .pcard { box-shadow: 0 12px 30px -14px rgba(0,0,0,0.6); }
+
+/* Section heading with a short brand underline (مشخصات بیمه نامه …) */
+.psection-head { font-weight: 800; font-size: 1.02rem; padding-bottom: 10px; border-bottom: 2px solid var(--border); position: relative; }
+.psection-head::after { content: ''; position: absolute; bottom: -2px; right: 0; width: 120px; height: 2px; background: var(--topbar-accent); }
+
+/* Pill inputs inside panels + right-aligned labels above them */
+.pshell .input, .pform .input { border-radius: 999px; padding-top: 0.72rem; padding-bottom: 0.72rem; }
+.pshell textarea.input, .pform textarea.input { border-radius: 18px; }
+.pform .label { color: var(--text); font-weight: 700; margin-bottom: 0.45rem; }
+
+/* Flat solid pill button (their green CTA → our orange) */
+.btn-pill { border-radius: 999px; }
+.btn-solid { background: var(--brand); color: #fff; border-radius: 999px; box-shadow: 0 8px 18px -8px rgba(255,149,0,0.6); }
+.btn-solid:not(:disabled):hover { background: var(--brand-600); }
+.btn-solid-lg { padding: 0.85rem 2.2rem; font-size: 0.95rem; font-weight: 700; }
+
+/* Tinted info banner (their green tint → our orange tint) */
+.pinfobox { background: var(--brand-soft); color: var(--text); border-radius: 16px; padding: 18px 22px; font-size: 0.9rem; line-height: 1.9; }
+:root.dark .pinfobox { background: color-mix(in srgb, var(--brand) 16%, var(--surface)); }
+
+/* Orange help bubble (their help was already orange) */
+.phelp { width: 30px; height: 30px; border-radius: 50%; background: var(--brand-soft); color: var(--brand); border: 2px solid var(--brand); display: inline-flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.9rem; flex-shrink: 0; }
+
+/* Tab strip — navy active, grey inactive */
+.ptabs { display: flex; border-radius: 10px; overflow: hidden; }
+.ptab { flex: 1; padding: 13px 16px; text-align: center; font-weight: 700; font-size: 0.9rem; cursor: pointer; background: #d9dde2; color: #3a4252; border: 0; transition: background 0.14s ease; }
+:root.dark .ptab { background: var(--surface-2); color: var(--muted); }
+.ptab.is-active { background: var(--topbar-accent); color: #fff; }
+.ptab-pill { border-radius: 999px; padding: 10px 20px; background: #d9dde2; color: #3a4252; font-weight: 700; border: 0; cursor: pointer; }
+.ptab-pill.is-active { background: var(--brand); color: #fff; }
+
+/* Yellow summary bar (totals) */
+.psummary-bar { background: #fde68a; color: #4a3a00; font-weight: 800; padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; font-size: 0.92rem; }
+:root.dark .psummary-bar { background: #3a2f05; color: #fde68a; }
+
+/* Action diamond (rotated square badge with an icon) */
+.pdiamond-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; cursor: pointer; }
+.pdiamond { width: 72px; height: 72px; border-radius: 18px; transform: rotate(45deg); background: var(--surface-2); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; transition: background 0.16s ease, transform 0.16s ease; }
+.pdiamond > * { transform: rotate(-45deg); }
+.pdiamond-wrap:hover .pdiamond { background: var(--brand-soft); }
+.pdiamond-wrap.is-soon { cursor: default; opacity: 0.6; }
+.pdiamond-title { font-weight: 700; font-size: 0.92rem; color: var(--brand); }
+.pdiamond-sub { font-size: 0.76rem; color: var(--muted); }
+
+/* Accordion (their teal header → our orange) */
+.pacc { border: 1px solid var(--brand); border-radius: 14px; overflow: hidden; }
+.pacc-head { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: var(--brand); color: #fff; cursor: pointer; font-weight: 700; }
+.pacc-head .center { flex: 1; text-align: center; }
+.pacc-body { padding: 4px 0; }
+.pacc-row { display: flex; justify-content: space-between; padding: 10px 18px; font-size: 0.88rem; }
+.pacc-row:nth-child(even) { background: color-mix(in srgb, var(--surface) 94%, var(--text)); }
+.pacc-row .k { font-weight: 700; }
+
+/* Centred modal */
+.pmodal-backdrop { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.pmodal { background: var(--surface); border-radius: 18px; width: 100%; max-width: 640px; max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-lg); }
+.pmodal-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 22px; border-bottom: 1px solid var(--border); }
+.pmodal-title { font-weight: 800; }
+.pmodal-x { background: transparent; border: 0; color: var(--muted); cursor: pointer; font-size: 1.4rem; line-height: 1; }
+.pmodal-body { padding: 22px; }
+
+/* Dual-arc spinner (their green+yellow → our orange+amber) */
+.pspinner { width: 54px; height: 54px; border-radius: 50%; border: 4px solid transparent; border-top-color: var(--brand); border-right-color: #f5b301; animation: pspin 0.8s linear infinite; }
+@keyframes pspin { to { transform: rotate(360deg); } }
+
+/* Mobile: sidebar becomes an off-canvas drawer */
+.psidebar-scrim { display: none; }
+@media (max-width: 860px) {
+  .psidebar { position: fixed; inset-block: 0; inset-inline-end: 0; z-index: 55; transform: translateX(100%); width: var(--side-w) !important; box-shadow: var(--shadow-lg); }
+  [dir='rtl'] .psidebar { transform: translateX(-100%); }
+  .psidebar.is-open { transform: translateX(0); }
+  .psidebar.is-rail { width: var(--side-w) !important; }
+  .psidebar.is-rail .psidebar-name, .psidebar.is-rail .psidebar-sub,
+  .psidebar.is-rail .pnav-item .lbl, .psidebar.is-rail .pnav-section .lbl { display: block; }
+  .psidebar.is-rail .psidebar-logo .circle { width: 100px; height: 100px; }
+  .psidebar-scrim.is-open { display: block; position: fixed; inset: 0; z-index: 54; background: rgba(0,0,0,0.45); }
+  .pshell-content { padding: 14px 14px 72px; }
+}
+@media print {
+  .pshell { position: static; display: block; }
+  .psidebar, .ptopbar { display: none !important; }
+  .pshell-content { overflow: visible; padding: 0; }
+}

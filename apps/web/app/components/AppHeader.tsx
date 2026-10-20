@@ -14,7 +14,12 @@ export function AppHeader() {
   const path = usePathname() || '/';
   const inOrg = path.startsWith('/org') && path !== '/org/login';
   const inCustomer = path.startsWith('/customer') && path !== '/customer/login';
+  const inAdmin = path.startsWith('/admin') && path !== '/admin/login';
   const orgBranded = inOrg || inCustomer;
+  // Authenticated panels render their own top bar via <Shell> (the Sinad-style chrome),
+  // so the global header would double up — suppress it there. Keep it on the landing
+  // page and all login pages.
+  const inPanel = inOrg || inCustomer || inAdmin;
 
   const [brand, setBrand] = useState<{ name: string; hasLogo: boolean; slug: string } | null>(null);
 
@@ -26,6 +31,8 @@ export function AppHeader() {
       .catch(() => { if (active) setBrand(null); });
     return () => { active = false; };
   }, [orgBranded, path]);
+
+  if (inPanel) return null;
 
   const logoUrl = brand?.hasLogo ? `${client.base}/tenant/assets/logo?tenant=${brand.slug}` : null;
   const homeHref = inCustomer ? '/customer' : inOrg ? '/org' : '/';
