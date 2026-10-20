@@ -539,6 +539,15 @@ h1, h2, h3 {
 .pshell textarea.input, .pform textarea.input { border-radius: 18px; }
 .pform .label { color: var(--text); font-weight: 700; margin-bottom: 0.45rem; }
 
+/* Panel-scoped component skin — upgrade existing .card/.btn across every panel page
+   (org + customer) to the flat Sinad look, so pages that still use the base components
+   match without editing each file. Login/landing keep their own styling. */
+.pshell .card { border-radius: 20px; box-shadow: 0 10px 28px -14px rgba(16,24,40,0.22); }
+:root.dark .pshell .card { box-shadow: 0 12px 30px -14px rgba(0,0,0,0.6); }
+.pshell .btn { border-radius: 999px; }
+.pshell .btn-primary { background: var(--brand); box-shadow: 0 8px 18px -8px rgba(255,149,0,0.5); }
+.pshell .btn-primary:not(:disabled):hover { background: var(--brand-600); filter: none; box-shadow: 0 10px 22px -8px rgba(255,149,0,0.6); }
+
 /* Flat solid pill button (their green CTA → our orange) */
 .btn-pill { border-radius: 999px; }
 .btn-solid { background: var(--brand); color: #fff; border-radius: 999px; box-shadow: 0 8px 18px -8px rgba(255,149,0,0.6); }
