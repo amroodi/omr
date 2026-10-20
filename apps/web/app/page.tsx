@@ -60,7 +60,7 @@ function AuthHub() {
                 <a href="https://damuon.com" target="_blank" rel="noopener noreferrer" className="plogo plogo-damuon" aria-label="آتیه اندیشان دامون" style={{ height: 66, width: 190 }} />
               </div>
               <h2 className="font-extrabold text-lg" style={{ color: 'var(--brand)' }}>کارگزاری بیمه مستقیم برخط دامون</h2>
-              <p className="font-bold text-sm mt-1 mb-5">سامانه کنترل و ارزیابی عمر و حادثه</p>
+              <p className="font-bold text-sm mt-1 mb-5">مشاهده سریع و استعلام پرونده</p>
               <InquiryForm />
             </div>
 
@@ -74,7 +74,7 @@ function AuthHub() {
                   <EntryBtn label="ورود برای بارگزاری مدارک" href="/customer/login" icon={IC_UPLOAD} />
                   <EntryBtn label="نرم‌افزار گوشی های هوشمند به‌زودی" icon={IC_PHONE} soon />
                 </EntryGroup>
-                <EntryGroup title="ورود سازمان‌">
+                <EntryGroup title="سامانه کنترل و ارزیابی عمر و حادثه">
                   <EntryBtn label="ورود برای ارزیابی پرونده‌ها" href="/org/login" icon={IC_EVAL} />
                   <EntryBtn label="نرم‌افزار گوشی‌های هوشمند به‌زودی" icon={IC_PHONE} soon />
                 </EntryGroup>
