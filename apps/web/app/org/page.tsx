@@ -9,7 +9,7 @@ import { ORG_NAV } from './nav';
 
 interface Claim {
   id: string; claimNumber: string; status: string; claimType: string; insurerTenantId?: string;
-  deceasedName: string | null; claimedAmount: string; lateNotice: boolean; needsAction: boolean;
+  deceasedName: string | null; claimedAmount: string; payableAmount?: string; finalizedAmount?: string | null; lateNotice: boolean; needsAction: boolean;
 }
 
 const PAGE_SIZES = [10, 30, 50, 100];
@@ -93,7 +93,7 @@ export default function OrgDashboard() {
                 <td><ClaimTypeBadge type={c.claimType} /></td>
                 <td>{(c.insurerTenantId && insurers[c.insurerTenantId]) || '—'}</td>
                 <td>{c.deceasedName}</td>
-                <td style={{ direction: 'ltr', textAlign: 'right' }}>{Number(c.claimedAmount).toLocaleString('fa-IR')}</td>
+                <td style={{ direction: 'ltr', textAlign: 'right' }}>{Number(c.payableAmount || c.claimedAmount).toLocaleString('fa-IR')}{c.finalizedAmount ? <span className="badge badge-success mr-1" style={{ fontSize: '0.6rem' }}>قطعی</span> : null}</td>
                 <td><StatusBadge status={c.status} />{c.lateNotice && <span className="badge badge-danger mr-1">خارج از مهلت</span>}</td>
                 <td>{c.needsAction && <span className="badge badge-warning">نیازمند اقدام</span>}</td>
               </tr>

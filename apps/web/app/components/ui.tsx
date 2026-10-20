@@ -125,6 +125,8 @@ export const CLAIM_TYPE_LABELS: Record<string, string> = {
   DEATH_ILLNESS: 'فوت ناشی از بیماری',
   DEATH_ACCIDENT: 'فوت ناشی از حادثه',
   DISABILITY_ACCIDENT: 'نقص عضو / ازکارافتادگی ناشی از حادثه',
+  MEDICAL_ACCIDENT: 'جبران هزینه‌های پزشکی ناشی از حادثه',
+  DISABILITY_ILLNESS: 'از کار افتادگی ناشی از بیماری',
 };
 
 // A distinct color per claim type, for at-a-glance recognition in lists and headers.
@@ -132,6 +134,8 @@ const CLAIM_TYPE_STYLE: Record<string, { fg: string; bg: string; dot: string }> 
   DEATH_ILLNESS: { fg: '#1d4ed8', bg: 'rgba(37,99,235,0.12)', dot: '#2563eb' }, // blue — بیماری
   DEATH_ACCIDENT: { fg: '#b91c1c', bg: 'rgba(220,38,38,0.12)', dot: '#dc2626' }, // red — حادثه
   DISABILITY_ACCIDENT: { fg: '#b45309', bg: 'rgba(217,119,6,0.14)', dot: '#d97706' }, // amber — نقص عضو
+  MEDICAL_ACCIDENT: { fg: '#047857', bg: 'rgba(5,150,105,0.12)', dot: '#059669' }, // teal — هزینه پزشکی
+  DISABILITY_ILLNESS: { fg: '#6d28d9', bg: 'rgba(124,58,237,0.12)', dot: '#7c3aed' }, // purple — ازکارافتادگی بیماری
 };
 
 /** Colored, dotted chip for a claim (death) type. */

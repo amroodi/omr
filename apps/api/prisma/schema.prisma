@@ -599,6 +599,8 @@ enum ClaimType {
   DEATH_ILLNESS // ج-۱ فوت ناشی از بیماری (طبیعی)
   DEATH_ACCIDENT // ج-۲ فوت ناشی از حادثه
   DISABILITY_ACCIDENT // ج-۴ نقص عضو / ازکارافتادگی ناشی از حادثه
+  MEDICAL_ACCIDENT // جبران هزینه‌های پزشکی ناشی از حادثه (فرم اختصاصی بعداً اضافه می‌شود)
+  DISABILITY_ILLNESS // از کار افتادگی ناشی از بیماری (فرم اختصاصی بعداً اضافه می‌شود)
 }
 
 // Per-insurer configurable catalog of required claim documents. Each document applies to one or
@@ -672,7 +674,8 @@ model Claim {
   noticeDeadline           DateTime? // eventDate + insurer.noticeDays (snapshot)
   lateNotice               Boolean   @default(false) // filed after the deadline
   policyNumber             String?
-  claimedAmount            Decimal @db.Decimal(18, 2)
+  claimedAmount            Decimal  @db.Decimal(18, 2) // مبلغ خسارت برآوردی — estimated at filing, drives the approval ladder
+  finalizedAmount          Decimal? @db.Decimal(18, 2) // مبلغ خسارت قطعی — determined after assessment; the amount actually paid
   description              String? // free-text details from the filer (بیمه‌گزار adds context)
 
   // ── Historical import ── settled records migrated in bulk from a legacy system.

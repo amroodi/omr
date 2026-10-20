@@ -9,7 +9,7 @@ import { JalaliDatePicker } from '../../components/JalaliDatePicker';
 
 interface Tile { key: string; label: string; count: number; perm: string; href?: string }
 interface WorkDesk { userName: string | null; role: string; roleLabel: string; tiles: Tile[]; summary: { pendingActions: number; queues: number } }
-interface QueueRow { id: string; claimNumber: string; status: string; claimType: string; deceasedName: string | null; claimedAmount: string; insurerTenantId?: string }
+interface QueueRow { id: string; claimNumber: string; status: string; claimType: string; deceasedName: string | null; claimedAmount: string; payableAmount?: string; finalizedAmount?: string | null; insurerTenantId?: string }
 
 const fa = (n: number) => n.toLocaleString('fa-IR');
 const EMPTY = { claimNumber: '', deceasedNationalCode: '', deceasedName: '', claimType: '', insurerTenantId: '', from: '', to: '' };
@@ -153,7 +153,10 @@ export default function WorkDeskPage() {
                           <td><ClaimTypeBadge type={r.claimType} /></td>
                           <td>{(r.insurerTenantId && insurerMap[r.insurerTenantId]) || '—'}</td>
                           <td>{r.deceasedName || '—'}</td>
-                          <td style={{ direction: 'ltr', textAlign: 'right' }}>{Number(r.claimedAmount || 0).toLocaleString('fa-IR')}</td>
+                          <td style={{ direction: 'ltr', textAlign: 'right' }}>
+                            {Number(r.payableAmount || r.claimedAmount || 0).toLocaleString('fa-IR')}
+                            {r.finalizedAmount ? <span className="badge badge-success mr-1" style={{ fontSize: '0.6rem' }}>قطعی</span> : null}
+                          </td>
                           <td><StatusBadge status={r.status} /></td>
                           <td><button onClick={(e) => { e.stopPropagation(); router.push(`/org/claims/${r.id}`); }} className="btn btn-solid btn-sm">ارزیابی / مشاهده</button></td>
                         </tr>

@@ -17,7 +17,8 @@ interface StepPerson { name: string | null; phone: string | null; nationalCode: 
 interface Step { order: number; partyType: string; state: string; holderName?: string | null; holderKind?: string | null; branchName?: string | null; levelName?: string | null; decidedByName?: string | null; decidedAt?: string | null; person?: StepPerson | null }
 interface Claim {
   id: string; claimNumber: string; status: string; claimType: string; deceasedName: string | null;
-  claimedAmount: string; eventDate: string | null; noticeDeadline: string | null; lateNotice: boolean;
+  claimedAmount: string; estimatedAmount?: string; finalizedAmount?: string | null; payableAmount?: string;
+  eventDate: string | null; noticeDeadline: string | null; lateNotice: boolean;
   description?: string | null;
   policyHolder?: { name: string | null; nationalCode: string | null } | null;
   insurer?: { name: string } | null;
@@ -91,6 +92,7 @@ export default function ClaimDetail() {
   const [showDef, setShowDef] = useState(false);
   const [tab, setTab] = useState<'info' | 'workflow' | 'docs' | 'route'>('info'); // اطلاعات ↔ گردش کار ↔ مدارک ↔ مسیر
   const [mode, setMode] = useState<'preview' | 'edit'>('preview'); // open as read-only preview; «ویرایش» switches to tabs
+  const [finalAmt, setFinalAmt] = useState(''); // مبلغ خسارت قطعی (set after assessment)
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const camRefs = useRef<Record<string, HTMLInputElement | null>>({}); // mobile camera capture
   // UI-gating by permission (the API enforces these independently).
@@ -114,11 +116,15 @@ export default function ClaimDetail() {
     } catch (e: any) { setError(e.message); }
   };
   useEffect(() => { load(); client.get<{ lateNoticeWarning?: boolean }>('/tenant/branding', 'org').then((b) => setLateWarn(b.lateNoticeWarning !== false)).catch(() => {}); /* eslint-disable-next-line */ }, [id]);
+  // Keep the finalized-amount input in sync with the loaded value.
+  useEffect(() => { setFinalAmt(claim?.finalizedAmount ? String(claim.finalizedAmount) : ''); }, [claim?.finalizedAmount]);
 
   const act = async (fn: () => Promise<any>) => {
     setError(''); setBusy(true);
     try { await fn(); await load(); } catch (e: any) { setError(e.message); } finally { setBusy(false); }
   };
+
+  const saveFinalized = () => act(() => client.put(`/claims/${id}/finalized-amount`, { amount: finalAmt }, 'org'));
 
   const upload = (code: string, file: File) => act(async () => {
     const fd = new FormData(); fd.append('file', file);
@@ -187,7 +193,8 @@ export default function ClaimDetail() {
             </div>
             <div className="grid sm:grid-cols-2 gap-x-6">
               <Row label="بیمه‌شده (متوفی)" value={claim.deceasedName} />
-              <Row label="مبلغ خسارت" value={`${Number(claim.claimedAmount).toLocaleString('fa-IR')} ریال`} />
+              <Row label="مبلغ خسارت برآوردی" value={`${Number(claim.estimatedAmount ?? claim.claimedAmount).toLocaleString('fa-IR')} ریال`} />
+              <Row label="مبلغ خسارت قطعی" value={claim.finalizedAmount ? `${Number(claim.finalizedAmount).toLocaleString('fa-IR')} ریال` : '— (پس از ارزیابی)'} />
               <Row label="تاریخ وقوع" value={claim.eventDate} />
               <Row label="مهلت اعلام" value={claim.noticeDeadline} />
             </div>
@@ -246,6 +253,19 @@ export default function ClaimDetail() {
                 )}
                 {canDelete && <button onClick={removeClaim} disabled={busy} className="btn btn-ghost btn-sm mr-auto" style={{ color: 'var(--danger)' }} title="انتقال به سطل بازیافت (۱۴ روز قابل بازیابی)">حذف پرونده</button>}
               </div>
+              {/* Finalized damage amount (مبلغ خسارت قطعی) — set by the assessing operator after review. */}
+              {canProcess && !['REJECTED'].includes(claim.status) && (
+                <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t" style={{ borderColor: 'var(--border)' }}>
+                  <span className="text-sm font-semibold">مبلغ خسارت قطعی (پس از ارزیابی):</span>
+                  <input className="input" style={{ maxWidth: 220, direction: 'ltr', textAlign: 'right' }} inputMode="numeric"
+                    value={finalAmt ? Number(String(finalAmt).replace(/[^\d]/g, '') || 0).toLocaleString('fa-IR') : ''}
+                    onChange={(e) => setFinalAmt(e.target.value.replace(/[^\d۰-۹]/g, '').replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))))}
+                    placeholder="مبلغ به ریال" />
+                  <button onClick={saveFinalized} disabled={busy || !finalAmt} className="btn btn-primary btn-sm">ثبت مبلغ قطعی</button>
+                  {claim.finalizedAmount && <span className="badge badge-success">ثبت‌شده</span>}
+                </div>
+              )}
+
               {showDef && canProcess && (
                 <div className="space-y-2 mt-3">
                   <textarea value={defText} onChange={(e) => setDefText(e.target.value)} placeholder="هر مورد نقص در یک خط" className="input" rows={3} />

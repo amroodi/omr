@@ -247,6 +247,23 @@ export class ClaimsService {
     return this.reload(claim.id);
   }
 
+  /**
+   * Record the finalized damage amount (مبلغ خسارت قطعی) determined after assessment. Distinct from
+   * the estimated amount (مبلغ برآوردی = claimedAmount) captured at filing. The payout uses this value
+   * once set. Gated by claim:process (the assessing operator — شعبه/ستاد). Audit-logged.
+   */
+  async setFinalizedAmount(claimId: string, amount: string) {
+    const db = this.db();
+    const claim = await db.claim.findUnique({ where: { id: claimId } });
+    if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
+    this.assertParticipant(claim);
+    const normalized = String(amount ?? '').replace(/[^\d.]/g, '');
+    if (normalized === '' || isNaN(Number(normalized)) || Number(normalized) < 0) throw new BadRequestException('مبلغ قطعی نامعتبر است');
+    await db.claim.update({ where: { id: claimId }, data: { finalizedAmount: new Prisma.Decimal(normalized) } });
+    await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { finalizedAmount: normalized } });
+    return this.reload(claimId);
+  }
+
   /** Insurer records the payout after final approval (ties to the maker-checker payment). */
   async markPaid(claimId: string) {
     const claim = await this.db().claim.findUnique({ where: { id: claimId } });
@@ -889,7 +906,10 @@ export class ClaimsService {
       status: c.status,
       claimType: c.claimType,
       channel: c.channel,
-      claimedAmount: c.claimedAmount?.toString(),
+      claimedAmount: c.claimedAmount?.toString(), // = estimatedAmount (مبلغ برآوردی); kept for back-compat
+      estimatedAmount: c.claimedAmount?.toString(), // مبلغ خسارت برآوردی — set at filing
+      finalizedAmount: c.finalizedAmount != null ? c.finalizedAmount.toString() : null, // مبلغ خسارت قطعی — after assessment
+      payableAmount: (c.finalizedAmount ?? c.claimedAmount)?.toString(), // what will actually be paid
       policyNumber: c.policyNumber ?? null,
       description: c.description ?? null,
       deceasedName: c.deceasedFullName ? this.crypto.decrypt(c.deceasedFullName) : null,

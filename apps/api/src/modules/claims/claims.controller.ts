@@ -169,6 +169,13 @@ export class ClaimsController {
     return this.claims.reviewDocument(id, docId, body?.stage, body?.state, body?.note);
   }
 
+  /** Record the finalized damage amount (مبلغ خسارت قطعی) after assessment. */
+  @Permissions(PERMISSIONS.CLAIM_PROCESS)
+  @Put(':id/finalized-amount')
+  setFinalizedAmount(@Param('id') id: string, @Body() body: { amount: string }) {
+    return this.claims.setFinalizedAmount(id, body?.amount);
+  }
+
   /** معرف forwards / insurer level endorses (engine routes by authority ceiling). */
   @Permissions(PERMISSIONS.CLAIM_PROCESS)
   @Post(':id/endorse')

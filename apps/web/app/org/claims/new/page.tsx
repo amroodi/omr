@@ -100,7 +100,7 @@ export default function NewClaim() {
         <Field label="تاریخ وقوع (شمسی)"><JalaliDatePicker value={f.eventDate} onChange={(v) => setF({ ...f, eventDate: v })} /></Field>
         <Field label="نام بیمه‌شده (متوفی)"><input className="input" value={f.deceasedFullName} onChange={(e) => setF({ ...f, deceasedFullName: e.target.value })} /></Field>
         <Field label="کد ملی بیمه‌شده"><input className="input" value={f.deceasedNationalCode} onChange={(e) => setF({ ...f, deceasedNationalCode: e.target.value })} inputMode="numeric" /></Field>
-        <Field label="مبلغ خسارت (ریال)"><input className="input" value={f.claimedAmount} onChange={(e) => setF({ ...f, claimedAmount: e.target.value })} inputMode="numeric" /></Field>
+        <Field label="مبلغ خسارت برآوردی (ریال)"><input className="input" value={f.claimedAmount} onChange={(e) => setF({ ...f, claimedAmount: e.target.value })} inputMode="numeric" /></Field>
         <Field label="شماره بیمه‌نامه (اختیاری)"><input className="input" value={f.policyNumber} onChange={(e) => setF({ ...f, policyNumber: e.target.value })} /></Field>
         <button onClick={submit} disabled={busy || !f.deceasedFullName || !f.deceasedNationalCode || !f.claimedAmount} className="btn btn-primary w-full">{busy ? '…' : 'ثبت پرونده'}</button>
       </div>
