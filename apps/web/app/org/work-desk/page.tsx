@@ -1,0 +1,119 @@
+'use client';
+import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { client, getToken } from '../../../lib/client';
+import { Shell, Icon } from '../../components/Shell';
+import { ORG_NAV } from '../nav';
+import { CLAIM_TYPE_LABELS, ErrorBox, FancyLoader, NoticeModal } from '../../components/ui';
+import { JalaliDatePicker } from '../../components/JalaliDatePicker';
+
+interface Tile { key: string; label: string; count: number; perm: string; href?: string }
+interface WorkDesk { userName: string | null; tiles: Tile[]; summary: { pendingActions: number; queues: number } }
+
+const fa = (n: number) => n.toLocaleString('fa-IR');
+const EMPTY = { claimNumber: '', deceasedNationalCode: '', deceasedName: '', claimType: '', insurerTenantId: '', from: '', to: '' };
+
+export default function WorkDeskPage() {
+  const router = useRouter();
+  const [data, setData] = useState<WorkDesk | null>(null);
+  const [insurers, setInsurers] = useState<{ id: string; name: string }[]>([]);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [adv, setAdv] = useState(false);
+  const [f, setF] = useState({ ...EMPTY });
+  const [tip, setTip] = useState(false);
+
+  useEffect(() => {
+    if (!getToken('org')) { router.push('/org/login'); return; }
+    client.get<WorkDesk>('/claims/work-desk', 'org')
+      .then((d) => {
+        setData(d);
+        // Post-login summary tip — once per browser session, only if something awaits action.
+        try {
+          if (d.summary.pendingActions > 0 && !sessionStorage.getItem('wdTipSeen')) {
+            setTip(true); sessionStorage.setItem('wdTipSeen', '1');
+          }
+        } catch { /* private mode */ }
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+    client.get<{ id: string; name: string }[]>('/claims/insurers', 'org').then(setInsurers).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const search = () => {
+    const q = f.claimNumber || f.deceasedName || f.deceasedNationalCode;
+    router.push(q ? `/org/claims?q=${encodeURIComponent(q)}` : '/org/claims');
+  };
+  const clear = () => setF({ ...EMPTY });
+  const upd = (k: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement>) => setF((s) => ({ ...s, [k]: e.target.value }));
+
+  return (
+    <Shell title="میز کار" sectionLabel="میز کار" nav={ORG_NAV} realm="org">
+      {/* ── Search panel ── */}
+      <div className="pcard p-5 pform mb-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <input className="input" placeholder="شناسه / شماره پرونده" value={f.claimNumber} onChange={upd('claimNumber')} />
+          <input className="input" placeholder="کد ملی بیمه‌شده (متوفی)" value={f.deceasedNationalCode} onChange={upd('deceasedNationalCode')} inputMode="numeric" />
+          <input className="input" placeholder="نام بیمه‌شده (متوفی)" value={f.deceasedName} onChange={upd('deceasedName')} />
+          <select className="input" value={f.claimType} onChange={(e) => setF({ ...f, claimType: e.target.value })}>
+            <option value="">— نوع پرونده —</option>
+            {Object.entries(CLAIM_TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+          <select className="input" value={f.insurerTenantId} onChange={(e) => setF({ ...f, insurerTenantId: e.target.value })}>
+            <option value="">— بیمه‌گر —</option>
+            {insurers.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+          </select>
+          <div className="grid grid-cols-2 gap-2">
+            <JalaliDatePicker value={f.from} onChange={(v) => setF({ ...f, from: v })} placeholder="از تاریخ" />
+            <JalaliDatePicker value={f.to} onChange={(v) => setF({ ...f, to: v })} placeholder="تا تاریخ" />
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2 mt-4">
+          <button onClick={() => setAdv((a) => !a)} className="btn btn-ghost btn-sm">
+            <Icon path={adv ? 'M18 15l-6-6-6 6' : 'M6 9l6 6 6-6'} /> جستجوی پیشرفته
+          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={clear} className="btn btn-ghost btn-sm">پاک کردن</button>
+            <button onClick={search} className="btn btn-solid btn-sm px-6">جستجو</button>
+          </div>
+        </div>
+        {adv && (
+          <div className="mt-3 pt-3 border-t text-sm" style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}>
+            جستجوی پیشرفته (فیلدهای تکمیلی مدارک، مراحل گردش کار، کاربران و…) در مرحلهٔ بعد اضافه می‌شود.
+          </div>
+        )}
+      </div>
+
+      <ErrorBox message={error} />
+
+      {/* ── Work-queue tiles ── */}
+      {loading ? (
+        <div className="pcard p-12 flex justify-center"><FancyLoader label="در حال آماده‌سازی میز کار…" /></div>
+      ) : !data || data.tiles.length === 0 ? (
+        <div className="pcard p-10 text-center text-sm" style={{ color: 'var(--muted)' }}>
+          برگه‌ای برای نمایش در میز کار شما تعریف نشده است.
+        </div>
+      ) : (
+        <div className="wd-tiles">
+          {data.tiles.map((t) => (
+            <div key={t.key} className={`wd-tile ${t.count === 0 ? 'is-zero' : ''}`} title={t.label}>
+              <div className="wd-tile-label">{t.label}</div>
+              <div className="wd-tile-count">{t.count === 0 ? '—' : fa(t.count)}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Post-login summary tip */}
+      {tip && data && (
+        <NoticeModal variant="info" title="خوش آمدید" onClose={() => setTip(false)} confirmLabel="متوجه شدم">
+          <p className="font-bold mb-2">{data.userName ? `${data.userName} عزیز،` : 'کاربر گرامی،'}</p>
+          <p>در حال حاضر <b style={{ color: 'var(--brand)' }}>{fa(data.summary.pendingActions)}</b> مورد در میز کار شما در انتظار اقدام است (در <b>{fa(data.summary.queues)}</b> برگه).</p>
+          <p className="mt-2" style={{ color: 'var(--muted)' }}>برای مشاهدهٔ هر صف، روی برگهٔ مربوط به آن در میز کار کلیک کنید.</p>
+        </NoticeModal>
+      )}
+    </Shell>
+  );
+}

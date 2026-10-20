@@ -70,6 +70,13 @@ export class ClaimsController {
     return this.claims.queue();
   }
 
+  /** میز کار: the operator's permission-gated work queues with live counts + a summary. */
+  @Permissions(PERMISSIONS.CLAIM_READ)
+  @Get('work-desk')
+  workDesk() {
+    return this.claims.workDesk();
+  }
+
   /** Active insurers to file a claim against (also used by the claims-list filter). */
   @Permissions(PERMISSIONS.CLAIM_READ)
   @Get('insurers')

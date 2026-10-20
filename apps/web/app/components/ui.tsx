@@ -60,6 +60,45 @@ export function BigIcon({ path, size = 44 }: { path: string; size?: number }) {
   );
 }
 
+/** Fancy loading indicator — the operator's cue that the system is working, not stuck. */
+export function FancyLoader({ label = 'در حال بارگذاری…' }: { label?: string }) {
+  return (
+    <div className="fancy-loader">
+      <div className="fancy-spinner"><span className="fancy-spark" /></div>
+      {label && <div className="lbl">{label}</div>}
+    </div>
+  );
+}
+
+/** Centered notice modal (error / info / success), mirroring the reference's خطا / tip dialogs. */
+export function NoticeModal({ variant = 'info', title, children, confirmLabel = 'متوجه شدم', onClose, onConfirm, cancelLabel }:
+  { variant?: 'error' | 'info' | 'success'; title?: string; children: ReactNode; confirmLabel?: string; onClose: () => void; onConfirm?: () => void; cancelLabel?: string }) {
+  const accent = variant === 'error' ? 'var(--danger)' : variant === 'success' ? 'var(--success)' : 'var(--brand)';
+  const defaultTitle = variant === 'error' ? 'خطا' : variant === 'success' ? 'انجام شد' : 'توجه';
+  return (
+    <div className="pmodal-backdrop" onClick={onClose}>
+      <div className="pmodal" style={{ maxWidth: 520, borderTop: `4px solid ${accent}` }} onClick={(e) => e.stopPropagation()}>
+        <div className="pmodal-head">
+          <span className="pmodal-title" style={{ color: accent }}>{title ?? defaultTitle}</span>
+          <button className="pmodal-x" onClick={onClose} aria-label="بستن">×</button>
+        </div>
+        <div className="pmodal-body text-sm" style={{ lineHeight: 2 }}>{children}</div>
+        <div className="flex border-t" style={{ borderColor: 'var(--border)' }}>
+          {cancelLabel && (
+            <button onClick={onClose} className="flex-1 py-3 font-bold" style={{ color: 'var(--muted)', borderInlineEnd: '1px solid var(--border)' }}>{cancelLabel}</button>
+          )}
+          <button onClick={onConfirm ?? onClose} className="flex-1 py-3 font-bold" style={{ color: accent }}>{confirmLabel}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Amber non-error system message (like the reference's bottom validation tip). */
+export function InfoBar({ children }: { children: ReactNode }) {
+  return <div className="pinfo-bar">{children}</div>;
+}
+
 const STATUS_MAP: Record<string, { label: string; cls: string }> = {
   PAID: { label: 'پرداخت شده', cls: 'badge-success' },
   REVIEWING: { label: 'در حال بررسی', cls: 'badge-warning' },

@@ -676,6 +676,80 @@ export class ClaimsService {
     return claims.map((c) => this.present(c));
   }
 
+  /**
+   * میز کار (Work Desk): the operator's permission-gated work queues, each with a live count,
+   * plus a short summary for the post-login tip. Only queues the caller's permissions (and, for
+   * the authenticity-review stage, their org identity) warrant are returned. Counts respect the
+   * caller's claim scope (insurer/broker/participant) and exclude soft-deleted claims.
+   */
+  async workDesk() {
+    const ctx = getContext();
+    const db = this.db();
+    const tenantId = ctx?.tenantId;
+    const perms = new Set(ctx?.permissions ?? []);
+    const has = (p: string) => perms.has(p);
+
+    const scope: Prisma.ClaimWhereInput = {
+      deletedAt: null,
+      OR: [{ insurerTenantId: tenantId }, { brokerTenantId: tenantId }, { participants: { some: { tenantId: tenantId ?? undefined } } }],
+    };
+    const and = (extra: Prisma.ClaimWhereInput): Prisma.ClaimWhereInput => ({ AND: [scope, extra] });
+    const myPendingStep: Prisma.ClaimWhereInput = { steps: { some: { state: 'PENDING', holderTenantId: tenantId ?? undefined } } };
+
+    // The authenticity-review checkpoint this operator owns, derived from identity (see canReviewStage):
+    // broker tenant → کارگزاری, insurer branch user → شعبه, central insurer user → ستاد.
+    const tenant = tenantId ? await db.tenant.findUnique({ where: { id: tenantId }, select: { kind: true } }) : null;
+    const stage: ReviewStageName = tenant?.kind === 'BROKER' ? 'BROKER' : ctx?.branchId ? 'BRANCH' : 'COUNCIL';
+    const stageLabel = { BROKER: 'کارگزاری', BRANCH: 'شعبه', COUNCIL: 'ستاد' }[stage];
+
+    type Tile = { key: string; label: string; count: number; perm: string; href?: string };
+    const tiles: Tile[] = [];
+    const add = async (key: string, label: string, perm: string, where: Prisma.ClaimWhereInput, href?: string) => {
+      if (perm && !has(perm)) return;
+      tiles.push({ key, label, count: await db.claim.count({ where }), perm, href });
+    };
+
+    await add('all', 'همه پرونده‌ها', 'claim:read', scope, '/org/claims');
+    await add('my-review', 'در انتظار بررسی‌های من', 'claim:read', and(myPendingStep));
+    if (has('doc:verify')) {
+      // Claims in scope that still have at least one document awaiting authenticity review.
+      // (Claim has no documents back-relation, so count distinct claimIds on the Document table.)
+      const scopeIds = (await db.claim.findMany({ where: scope, select: { id: true } })).map((c) => c.id);
+      const pendingDocClaims = scopeIds.length
+        ? await db.document.findMany({ where: { claimId: { in: scopeIds }, verificationStatus: 'PENDING' }, select: { claimId: true }, distinct: ['claimId'] })
+        : [];
+      tiles.push({
+        key: 'authenticity',
+        label: `در انتظار ارزیابی اصالت مدارک (${stageLabel})`,
+        perm: 'doc:verify',
+        count: pendingDocClaims.length,
+      });
+    }
+    await add('returned', 'نقص مدارک (عودت‌شده)', 'claim:read', and({ status: ClaimStatus.RETURNED_INCOMPLETE }));
+    await add('under-review', 'در انتظار اقدام کارشناس', 'claim:process', and({ AND: [{ status: ClaimStatus.UNDER_REVIEW }, myPendingStep] }));
+    await add('to-pay', 'در انتظار پرداخت خسارت', 'payment:propose', and({ status: ClaimStatus.APPROVED }));
+    if (has('payment:approve')) {
+      tiles.push({
+        key: 'pay-approve',
+        label: 'در انتظار تایید پرداخت',
+        perm: 'payment:approve',
+        count: await db.payment.count({ where: { tenantId: tenantId ?? undefined, approval: 'PENDING_APPROVAL' } }),
+      });
+    }
+    await add('paid', 'پرداخت‌شده', 'claim:read', and({ status: ClaimStatus.PAID }), '/org/claims');
+
+    // Summary for the post-login tip: how many items actually await THIS operator's action.
+    const actionKeys = new Set(['my-review', 'authenticity', 'under-review', 'to-pay', 'pay-approve']);
+    const pendingActions = tiles.filter((t) => actionKeys.has(t.key)).reduce((s, t) => s + t.count, 0);
+    const user = ctx?.actorId ? await db.orgUser.findUnique({ where: { id: ctx.actorId }, select: { displayName: true, username: true } }) : null;
+
+    return {
+      userName: user?.displayName || user?.username || null,
+      tiles,
+      summary: { pendingActions, queues: tiles.filter((t) => actionKeys.has(t.key) && t.count > 0).length },
+    };
+  }
+
   // ─────────────────────────── Helpers ───────────────────────────
   private async loadActive(claimId: string) {
     const claim = await this.db().claim.findUnique({ where: { id: claimId } });

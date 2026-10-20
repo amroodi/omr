@@ -603,6 +603,44 @@ h1, h2, h3 {
 .pspinner { width: 54px; height: 54px; border-radius: 50%; border: 4px solid transparent; border-top-color: var(--brand); border-right-color: #f5b301; animation: pspin 0.8s linear infinite; }
 @keyframes pspin { to { transform: rotate(360deg); } }
 
+/* Fancy loader — a conic orange ring with a pulsing core glow + orbiting spark. "System is working." */
+.fancy-spinner { width: 76px; height: 76px; position: relative; display: inline-block; }
+.fancy-spinner::before {
+  content: ''; position: absolute; inset: 0; border-radius: 50%;
+  background: conic-gradient(from 90deg, transparent 0deg, color-mix(in srgb, var(--brand) 25%, transparent) 90deg, var(--brand) 320deg, var(--brand-700));
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 8px), #000 calc(100% - 8px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 8px), #000 calc(100% - 8px));
+  animation: pspin 0.95s cubic-bezier(.5,.15,.5,.85) infinite;
+}
+.fancy-spinner::after {
+  content: ''; position: absolute; inset: 32%; border-radius: 50%;
+  background: radial-gradient(circle, var(--brand), transparent 70%); filter: blur(4px);
+  animation: fancyPulse 1.3s ease-in-out infinite;
+}
+.fancy-spark { position: absolute; inset: 0; animation: pspin 0.95s cubic-bezier(.5,.15,.5,.85) infinite; }
+.fancy-spark::before { content: ''; position: absolute; top: -2px; left: 50%; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; background: #f5b301; box-shadow: 0 0 10px 2px #f5b301; }
+@keyframes fancyPulse { 0%,100% { transform: scale(0.75); opacity: .55; } 50% { transform: scale(1.1); opacity: .95; } }
+.fancy-loader { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.fancy-loader .lbl { font-size: 0.9rem; font-weight: 700; color: var(--muted); }
+
+/* Work Desk — horizontally scrollable strip of permission work-queue tiles */
+.wd-tiles { display: flex; gap: 0; overflow-x: auto; background: var(--surface-2); border: 1px solid var(--border); border-radius: 14px; }
+.wd-tile { flex: 0 0 auto; min-width: 132px; padding: 14px 12px 16px; text-align: center; border-inline-start: 1px solid var(--border); cursor: pointer; transition: background .14s ease; background: transparent; border-top: 0; border-bottom: 0; }
+.wd-tile:first-child { border-inline-start: 0; }
+.wd-tile:hover { background: var(--brand-soft); }
+.wd-tile-label { font-size: 0.76rem; color: var(--muted); line-height: 1.55; display: flex; align-items: center; justify-content: center; min-height: 3.1em; }
+.wd-tile-count { font-size: 1.5rem; font-weight: 800; margin-top: 8px; color: var(--brand); }
+.wd-tile.is-zero { cursor: default; }
+.wd-tile.is-zero:hover { background: transparent; }
+.wd-tile.is-zero .wd-tile-count { color: var(--muted); }
+
+/* Amber info bar (non-error system message, like their bottom tip) */
+.pinfo-bar { background: #fde68a; color: #4a3a00; border: 1px solid #f0c000; border-radius: 12px; padding: 12px 18px; font-weight: 700; font-size: 0.9rem; text-align: center; }
+:root.dark .pinfo-bar { background: #3a2f05; color: #fde68a; border-color: #5c4a06; }
+/* Notice modal accent colours */
+.pmodal-accent-error .pmodal-head { color: var(--danger); }
+.pmodal-accent-info .pmodal-head { color: var(--brand); }
+
 /* Mobile: sidebar becomes an off-canvas drawer */
 .psidebar-scrim { display: none; }
 @media (max-width: 860px) {
