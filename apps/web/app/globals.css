@@ -466,8 +466,16 @@ h1, h2, h3 {
 }
 
 /* Shell frame — fixed to the viewport; the content column scrolls internally. */
-/* row-reverse so the sidebar (2nd child) sits on the RIGHT in RTL, content on the left. */
-.pshell { position: fixed; inset: 0; display: flex; flex-direction: row-reverse; background: var(--panel-bg); overflow: hidden; z-index: 20; }
+/* row-reverse so the sidebar (2nd child) sits on the RIGHT in RTL, content on the left.
+   A faint paper grain blends over the grey canvas (not the opaque cards) for a hand-made texture. */
+.pshell {
+  position: fixed; inset: 0; display: flex; flex-direction: row-reverse; overflow: hidden; z-index: 20;
+  background-color: var(--panel-bg);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='150'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)' opacity='0.22'/%3E%3C/svg%3E");
+  background-size: 150px 150px;
+  background-blend-mode: multiply;
+}
+:root.dark .pshell { background-blend-mode: screen; }
 .pshell-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .pshell-content { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 20px clamp(12px, 2.2vw, 30px) 60px; }
 .pshell-wrap { max-width: 1320px; margin: 0 auto; width: 100%; }
@@ -526,9 +534,22 @@ h1, h2, h3 {
 .psidebar.is-rail .pnav-item, .psidebar.is-rail .pnav-section { justify-content: center; padding: 12px 0; gap: 0; }
 .psidebar-foot { border-top: 1px solid var(--sidebar-border); }
 
-/* Panel card — bigger radius + softer shadow than the default .card */
-.pcard { background: var(--panel-card); border: 1px solid var(--border); border-radius: 20px; box-shadow: 0 10px 28px -14px rgba(16,24,40,0.22); }
-:root.dark .pcard { box-shadow: 0 12px 30px -14px rgba(0,0,0,0.6); }
+/* Panel card — bigger radius + a soft, layered shadow and a faint top highlight so it reads like a
+   real, lit surface rather than a flat fill. A barely-there lift on hover adds life. */
+.pcard {
+  background: var(--panel-card); border: 1px solid var(--border); border-radius: 20px;
+  box-shadow: 0 1px 1px rgba(16,24,40,0.04), 0 10px 28px -14px rgba(16,24,40,0.22), inset 0 1px 0 rgba(255,255,255,0.55);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+:root.dark .pcard { box-shadow: 0 1px 1px rgba(0,0,0,0.3), 0 12px 30px -14px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05); }
+.pcard.card-hover:hover { transform: translateY(-2px); box-shadow: 0 2px 2px rgba(16,24,40,0.05), 0 18px 40px -16px rgba(16,24,40,0.28), inset 0 1px 0 rgba(255,255,255,0.6); }
+
+/* Tactile touches — a soft top sheen on solid buttons + a gentle press, so controls feel physical. */
+.btn-solid { background-image: linear-gradient(180deg, rgba(255,255,255,0.16), rgba(255,255,255,0) 52%); }
+.pshell .btn-primary { background-image: linear-gradient(180deg, rgba(255,255,255,0.16), rgba(255,255,255,0) 52%); }
+.btn:active:not(:disabled) { transform: translateY(1px); }
+.wd-tile, .pdiamond { transition: background 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease; }
+.pdiamond-wrap:hover .pdiamond { transform: rotate(45deg) translateY(-2px); box-shadow: 0 8px 18px -8px rgba(255,149,0,0.4); }
 
 /* Section heading with a short brand underline (مشخصات بیمه نامه …) */
 .psection-head { font-weight: 800; font-size: 1.02rem; padding-bottom: 10px; border-bottom: 2px solid var(--border); position: relative; }
