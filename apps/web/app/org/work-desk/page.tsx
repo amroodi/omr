@@ -159,7 +159,7 @@ export default function WorkDeskPage() {
                             {r.finalizedAmount ? <span className="badge badge-success mr-1" style={{ fontSize: '0.6rem' }}>قطعی</span> : null}
                           </td>
                           <td><StatusBadge status={r.status} /></td>
-                          <td><button onClick={(e) => { e.stopPropagation(); router.push(`/org/claims/${r.id}`); }} className="btn btn-solid btn-sm">ارزیابی / مشاهده</button></td>
+                          <td><button onClick={(e) => { e.stopPropagation(); router.push(`/org/claims/${r.id}/assess`); }} className="btn btn-solid btn-sm">ارزیابی</button></td>
                         </tr>
                       ))}
                     </tbody>

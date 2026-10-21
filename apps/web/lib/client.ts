@@ -145,5 +145,13 @@ export const client = {
     }
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
   },
+  // Fetch a protected file and return an object URL + mime type for INLINE rendering.
+  // The caller owns the URL and must URL.revokeObjectURL() it when done.
+  blobUrl: async (path: string, realm: Realm): Promise<{ url: string; mimeType: string }> => {
+    const res = await fetch(`${BASE}${path}`, { headers: headers(realm, false) });
+    if (!res.ok) { if (res.status === 401) onUnauthorized(realm); throw new Error(`خطا (${res.status})`); }
+    const blob = await res.blob();
+    return { url: URL.createObjectURL(blob), mimeType: blob.type };
+  },
   base: BASE,
 };

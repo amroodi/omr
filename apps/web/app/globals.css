@@ -641,6 +641,26 @@ h1, h2, h3 {
 .pmodal-accent-error .pmodal-head { color: var(--danger); }
 .pmodal-accent-info .pmodal-head { color: var(--brand); }
 
+/* ═══ Two-pane assessment screen (ارزیابی) — left docs viewer + right form, each scrolls alone ═══ */
+.assess-split { display: flex; gap: 14px; height: calc(100vh - 148px); }
+.assess-pane { flex: 1; min-width: 0; overflow: auto; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); }
+.assess-docs { background: var(--surface-2); }
+.assess-toolbar { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: 10px; padding: 9px 14px; background: var(--topbar-accent); color: #fff; font-size: 0.85rem; }
+.assess-toolbar .zbtn { width: 28px; height: 28px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.25); background: rgba(255,255,255,0.08); color: #fff; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.assess-toolbar .zbtn:hover { background: rgba(255,255,255,0.18); }
+.assess-doc { padding: 12px 12px 4px; }
+.assess-doc-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; font-size: 0.8rem; }
+.assess-doc-media { display: flex; justify-content: center; }
+.assess-doc-img { display: block; max-width: 100%; height: auto; border-radius: 8px; box-shadow: var(--shadow-sm); background: #fff; }
+.assess-doc-pdf { width: 100%; height: 75vh; border: 0; border-radius: 8px; background: #fff; }
+.assess-form-inner { padding: 18px; }
+.assess-form-inner .input { border-radius: 10px; } /* forms here read denser than pill style */
+@media (max-width: 860px) {
+  .assess-split { flex-direction: column; height: auto; }
+  .assess-pane { height: auto; max-height: none; }
+  .assess-docs { min-height: 60vh; }
+}
+
 /* Mobile: sidebar becomes an off-canvas drawer */
 .psidebar-scrim { display: none; }
 @media (max-width: 860px) {
