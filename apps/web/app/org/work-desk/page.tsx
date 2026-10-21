@@ -64,6 +64,35 @@ export default function WorkDeskPage() {
 
   const insurerMap = useMemo(() => Object.fromEntries(insurers.map((i) => [i.id, i.name])), [insurers]);
 
+  // ── Personalization: which tiles to show and in what order (per operator, stored locally) ──
+  const [prefs, setPrefs] = useState<{ hidden: string[]; order: string[] }>({ hidden: [], order: [] });
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  useEffect(() => { try { const p = localStorage.getItem('wdTilePrefs'); if (p) setPrefs(JSON.parse(p)); } catch { /* ignore */ } }, []);
+  const savePrefs = (p: { hidden: string[]; order: string[] }) => { setPrefs(p); try { localStorage.setItem('wdTilePrefs', JSON.stringify(p)); } catch { /* ignore */ } };
+
+  // Tiles in the operator's chosen order (unlisted keys keep their default order), hidden ones removed.
+  const orderedAll = useMemo(() => {
+    if (!data) return [] as Tile[];
+    const byKey = Object.fromEntries(data.tiles.map((t) => [t.key, t]));
+    const ordered = prefs.order.filter((k) => byKey[k]).map((k) => byKey[k]);
+    const rest = data.tiles.filter((t) => !prefs.order.includes(t.key));
+    return [...ordered, ...rest];
+  }, [data, prefs.order]);
+  const arrangedTiles = useMemo(() => orderedAll.filter((t) => !prefs.hidden.includes(t.key)), [orderedAll, prefs.hidden]);
+
+  const toggleHidden = (key: string) => {
+    const hidden = prefs.hidden.includes(key) ? prefs.hidden.filter((k) => k !== key) : [...prefs.hidden, key];
+    savePrefs({ ...prefs, hidden });
+  };
+  const moveTile = (key: string, dir: -1 | 1) => {
+    const order = orderedAll.map((t) => t.key);
+    const i = order.indexOf(key); const j = i + dir;
+    if (i < 0 || j < 0 || j >= order.length) return;
+    [order[i], order[j]] = [order[j], order[i]];
+    savePrefs({ ...prefs, order });
+  };
+  const hideNonActionable = () => savePrefs({ ...prefs, hidden: orderedAll.filter((t) => !t.actionable && !['all'].includes(t.key)).map((t) => t.key) });
+
   const openQueue = (t: Tile) => {
     if (t.count === 0) { setNotice('موردی برای این صف وجود ندارد.'); return; }
     setActive(t); setRows([]); setQLoading(true);
@@ -164,12 +193,20 @@ export default function WorkDeskPage() {
         </div>
       ) : (
         <>
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
             <h2 className="font-extrabold text-sm" style={{ color: 'var(--muted)' }}>برگه‌های کاری شما</h2>
-            {data.roleLabel && <span className="badge badge-neutral">نقش: {data.roleLabel}</span>}
+            <div className="flex items-center gap-2">
+              {data.roleLabel && <span className="badge badge-neutral">نقش: {data.roleLabel}</span>}
+              <button onClick={() => setSettingsOpen(true)} className="btn btn-ghost btn-sm" title="شخصی‌سازی برگه‌ها">
+                <Icon path="M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 008 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H2a2 2 0 110-4h.09A1.65 1.65 0 004.6 8a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V2a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H22a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z" /> شخصی‌سازی
+              </button>
+            </div>
           </div>
+          {arrangedTiles.length === 0 ? (
+            <div className="pcard p-6 text-center text-sm" style={{ color: 'var(--muted)' }}>همهٔ برگه‌ها پنهان شده‌اند. از «شخصی‌سازی» می‌توانید دوباره نمایش دهید.</div>
+          ) : (
           <div className="wd-tiles">
-            {data.tiles.map((t) => (
+            {arrangedTiles.map((t) => (
               <div
                 key={t.key}
                 className={`wd-tile ${t.count === 0 ? 'is-zero' : ''}`}
@@ -183,6 +220,7 @@ export default function WorkDeskPage() {
               </div>
             ))}
           </div>
+          )}
 
           {/* Queue list for the selected tile */}
           {active && (
@@ -226,6 +264,46 @@ export default function WorkDeskPage() {
 
       {notice && (
         <NoticeModal variant="info" title="توجه" onClose={() => setNotice('')}>{notice}</NoticeModal>
+      )}
+
+      {/* Personalization — show/hide/order the Work Desk tiles (saved per operator, on this device) */}
+      {settingsOpen && data && (
+        <div className="pmodal-backdrop" onClick={() => setSettingsOpen(false)}>
+          <div className="pmodal" onClick={(e) => e.stopPropagation()}>
+            <div className="pmodal-head">
+              <span className="pmodal-title">شخصی‌سازی برگه‌های میز کار</span>
+              <button className="pmodal-x" onClick={() => setSettingsOpen(false)} aria-label="بستن">×</button>
+            </div>
+            <div className="pmodal-body">
+              <p className="text-sm mb-3" style={{ color: 'var(--muted)' }}>برگه‌هایی که می‌خواهید در میز کار دیده شوند را انتخاب و ترتیبشان را تعیین کنید.</p>
+              <div className="flex flex-wrap gap-2 mb-3">
+                <button onClick={hideNonActionable} className="btn btn-ghost btn-sm">فقط برگه‌های قابل اقدام من</button>
+                <button onClick={() => savePrefs({ hidden: [], order: [] })} className="btn btn-ghost btn-sm">نمایش همه (پیش‌فرض)</button>
+              </div>
+              <div className="space-y-1.5">
+                {orderedAll.map((t, i) => {
+                  const hidden = prefs.hidden.includes(t.key);
+                  return (
+                    <div key={t.key} className="flex items-center justify-between gap-2 rounded-lg p-2" style={{ background: 'var(--surface-2)' }}>
+                      <label className="flex items-center gap-2 text-sm cursor-pointer min-w-0">
+                        <input type="checkbox" checked={!hidden} onChange={() => toggleHidden(t.key)} />
+                        <span className={hidden ? '' : 'font-semibold'} style={hidden ? { color: 'var(--muted)' } : undefined}>{t.label}</span>
+                        {t.actionable && <span className="badge badge-neutral" style={{ fontSize: '0.6rem' }}>قابل اقدام</span>}
+                      </label>
+                      <span className="flex items-center gap-1 shrink-0">
+                        <button onClick={() => moveTile(t.key, -1)} disabled={i === 0} className="btn btn-ghost btn-sm" title="بالا">▲</button>
+                        <button onClick={() => moveTile(t.key, 1)} disabled={i === orderedAll.length - 1} className="btn btn-ghost btn-sm" title="پایین">▼</button>
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="flex border-t" style={{ borderColor: 'var(--border)' }}>
+              <button onClick={() => setSettingsOpen(false)} className="flex-1 py-3 font-bold" style={{ color: 'var(--brand)' }}>تمام</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Post-login summary tip */}
