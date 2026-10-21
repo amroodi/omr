@@ -836,6 +836,54 @@ export class ClaimsService {
     return claims.map((c) => ({ ...(this.present(c) as object), needsAction: false }));
   }
 
+  /**
+   * Advanced search (جستجوی پیشرفته) over the caller's claims. Indexable fields filter in SQL;
+   * the deceased's national code matches via its blind index (exact), and name is matched by
+   * decrypting within the already-scoped result set. Dates/amounts accept from–to ranges.
+   */
+  async searchClaims(q: Record<string, string | undefined>) {
+    const db = this.db();
+    const and: Prisma.ClaimWhereInput[] = [this.wdScope(getContext()?.tenantId)];
+    const clean = (s?: string) => (s ?? '').trim();
+
+    if (clean(q.claimNumber)) and.push({ claimNumber: { contains: clean(q.claimNumber), mode: 'insensitive' } });
+    if (clean(q.deceasedNationalCode)) {
+      const h = this.crypto.blindIndex(clean(q.deceasedNationalCode).replace(/\D/g, ''));
+      if (h) and.push({ deceasedNationalCodeHash: h });
+    }
+    if (clean(q.insurerTenantId)) and.push({ insurerTenantId: clean(q.insurerTenantId) });
+    if (clean(q.brokerTenantId)) and.push({ brokerTenantId: clean(q.brokerTenantId) });
+    if (q.claimType && (ClaimType as any)[q.claimType]) and.push({ claimType: q.claimType as ClaimType });
+    if (q.status && (ClaimStatus as any)[q.status]) and.push({ status: q.status as ClaimStatus });
+    if (q.channel && (SalesChannel as any)[q.channel]) and.push({ channel: q.channel as SalesChannel });
+
+    const dateRange = (field: 'eventDate' | 'createdAt', from?: string, to?: string) => {
+      const r: Prisma.DateTimeFilter = {};
+      if (clean(from)) r.gte = new Date(clean(from));
+      if (clean(to)) r.lte = new Date(clean(to));
+      if (Object.keys(r).length) and.push({ [field]: r } as Prisma.ClaimWhereInput);
+    };
+    dateRange('eventDate', q.eventFrom, q.eventTo);
+    dateRange('createdAt', q.createdFrom, q.createdTo);
+
+    const dec = (s?: string) => { const v = clean(s).replace(/[^\d.]/g, ''); return v ? new Prisma.Decimal(v) : undefined; };
+    const amtRange = (field: 'claimedAmount' | 'finalizedAmount', min?: string, max?: string) => {
+      const r: Prisma.DecimalFilter = {};
+      const a = dec(min); const b = dec(max);
+      if (a) r.gte = a; if (b) r.lte = b;
+      if (Object.keys(r).length) and.push({ [field]: r } as Prisma.ClaimWhereInput);
+    };
+    amtRange('claimedAmount', q.estMin, q.estMax);
+    amtRange('finalizedAmount', q.finMin, q.finMax);
+
+    let claims = await db.claim.findMany({ where: { AND: and }, orderBy: { updatedAt: 'desc' }, take: 300 });
+    if (clean(q.deceasedName)) {
+      const term = clean(q.deceasedName);
+      claims = claims.filter((c) => { const n = c.deceasedFullName ? this.crypto.decrypt(c.deceasedFullName) : ''; return (n ?? '').includes(term); });
+    }
+    return claims.map((c) => ({ ...(this.present(c) as object), needsAction: false }));
+  }
+
   // ─────────────────────────── Helpers ───────────────────────────
   private async loadActive(claimId: string) {
     const claim = await this.db().claim.findUnique({ where: { id: claimId } });

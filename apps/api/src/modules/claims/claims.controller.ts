@@ -84,6 +84,13 @@ export class ClaimsController {
     return this.claims.workDeskQueue(key);
   }
 
+  /** Advanced search (جستجوی پیشرفته) over the caller's claims. */
+  @Permissions(PERMISSIONS.CLAIM_READ)
+  @Get('search')
+  search(@Query() q: Record<string, string>) {
+    return this.claims.searchClaims(q);
+  }
+
   /** Active insurers to file a claim against (also used by the claims-list filter). */
   @Permissions(PERMISSIONS.CLAIM_READ)
   @Get('insurers')

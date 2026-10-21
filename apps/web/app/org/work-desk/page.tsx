@@ -6,13 +6,29 @@ import { Shell, Icon } from '../../components/Shell';
 import { ORG_NAV } from '../nav';
 import { ClaimTypeBadge, CLAIM_TYPE_LABELS, ErrorBox, FancyLoader, NoticeModal, StatusBadge } from '../../components/ui';
 import { JalaliDatePicker } from '../../components/JalaliDatePicker';
+import { toGregorian } from 'jalaali-js';
 
 interface Tile { key: string; label: string; count: number; actionable: boolean; href?: string }
 interface WorkDesk { userName: string | null; role: string; roleLabel: string; tiles: Tile[]; summary: { pendingActions: number; queues: number } }
 interface QueueRow { id: string; claimNumber: string; status: string; claimType: string; deceasedName: string | null; claimedAmount: string; payableAmount?: string; finalizedAmount?: string | null; insurerTenantId?: string }
 
 const fa = (n: number) => n.toLocaleString('fa-IR');
-const EMPTY = { claimNumber: '', deceasedNationalCode: '', deceasedName: '', claimType: '', insurerTenantId: '', from: '', to: '' };
+const EMPTY = {
+  claimNumber: '', deceasedNationalCode: '', deceasedName: '', claimType: '', insurerTenantId: '',
+  eventFrom: '', eventTo: '', status: '', channel: '', createdFrom: '', createdTo: '', estMin: '', estMax: '', finMin: '', finMax: '',
+};
+const STATUS_OPTIONS: [string, string][] = [
+  ['SUBMITTED', 'ثبت‌شده'], ['UNDER_REVIEW', 'در حال بررسی'], ['RETURNED_INCOMPLETE', 'نقص مدارک'],
+  ['APPROVED', 'تاییدشده (آماده پرداخت)'], ['PAID', 'پرداخت‌شده'], ['REJECTED', 'ردشده'],
+];
+const toAscii = (s: string) => s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
+function jToIso(input: string): string {
+  const p = toAscii(input || '').split('/').map((x) => parseInt(x, 10));
+  if (p.length !== 3 || p.some((n) => Number.isNaN(n))) return '';
+  const { gy, gm, gd } = toGregorian(p[0], p[1], p[2]);
+  const d = new Date(Date.UTC(gy, gm - 1, gd));
+  return isNaN(d.getTime()) ? '' : d.toISOString();
+}
 
 export default function WorkDeskPage() {
   const router = useRouter();
@@ -55,11 +71,26 @@ export default function WorkDeskPage() {
       .then(setRows).catch((e) => setError(e.message)).finally(() => setQLoading(false));
   };
 
-  const search = () => {
-    const q = f.claimNumber || f.deceasedName || f.deceasedNationalCode;
-    router.push(q ? `/org/claims?q=${encodeURIComponent(q)}` : '/org/claims');
+  const runSearch = () => {
+    const p = new URLSearchParams();
+    const set = (k: string, v: string) => { if (v) p.set(k, v); };
+    set('claimNumber', f.claimNumber.trim());
+    set('deceasedNationalCode', toAscii(f.deceasedNationalCode).replace(/\D/g, ''));
+    set('deceasedName', f.deceasedName.trim());
+    set('claimType', f.claimType);
+    set('insurerTenantId', f.insurerTenantId);
+    set('status', f.status);
+    set('channel', f.channel);
+    set('eventFrom', jToIso(f.eventFrom)); set('eventTo', jToIso(f.eventTo));
+    set('createdFrom', jToIso(f.createdFrom)); set('createdTo', jToIso(f.createdTo));
+    set('estMin', toAscii(f.estMin).replace(/\D/g, '')); set('estMax', toAscii(f.estMax).replace(/\D/g, ''));
+    set('finMin', toAscii(f.finMin).replace(/\D/g, '')); set('finMax', toAscii(f.finMax).replace(/\D/g, ''));
+    setError(''); setActive({ key: 'search', label: 'نتایج جستجو', count: 0, actionable: false }); setRows([]); setQLoading(true);
+    client.get<QueueRow[]>(`/claims/search?${p.toString()}`, 'org')
+      .then((r) => { setRows(r); setActive((a) => (a ? { ...a, count: r.length } : a)); })
+      .catch((e) => setError(e.message)).finally(() => setQLoading(false));
   };
-  const clear = () => setF({ ...EMPTY });
+  const clear = () => { setF({ ...EMPTY }); setActive(null); };
   const upd = (k: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement>) => setF((s) => ({ ...s, [k]: e.target.value }));
 
   return (
@@ -79,10 +110,37 @@ export default function WorkDeskPage() {
             {insurers.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
           </select>
           <div className="grid grid-cols-2 gap-2">
-            <JalaliDatePicker value={f.from} onChange={(v) => setF({ ...f, from: v })} placeholder="از تاریخ" />
-            <JalaliDatePicker value={f.to} onChange={(v) => setF({ ...f, to: v })} placeholder="تا تاریخ" />
+            <JalaliDatePicker value={f.eventFrom} onChange={(v) => setF({ ...f, eventFrom: v })} placeholder="وقوع از تاریخ" />
+            <JalaliDatePicker value={f.eventTo} onChange={(v) => setF({ ...f, eventTo: v })} placeholder="وقوع تا تاریخ" />
           </div>
         </div>
+
+        {/* Advanced fields (جستجوی پیشرفته) */}
+        {adv && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-3 pt-3 border-t" style={{ borderColor: 'var(--border)' }}>
+            <select className="input" value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}>
+              <option value="">— وضعیت پرونده —</option>
+              {STATUS_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+            <select className="input" value={f.channel} onChange={(e) => setF({ ...f, channel: e.target.value })}>
+              <option value="">— کانال —</option>
+              <option value="BROKER">کارگزاری (معرف)</option>
+              <option value="DIRECT">مستقیم (شعبه)</option>
+            </select>
+            <div className="grid grid-cols-2 gap-2">
+              <JalaliDatePicker value={f.createdFrom} onChange={(v) => setF({ ...f, createdFrom: v })} placeholder="ثبت از تاریخ" />
+              <JalaliDatePicker value={f.createdTo} onChange={(v) => setF({ ...f, createdTo: v })} placeholder="ثبت تا تاریخ" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <input className="input" placeholder="برآوردی از (ریال)" value={f.estMin} onChange={upd('estMin')} inputMode="numeric" />
+              <input className="input" placeholder="برآوردی تا" value={f.estMax} onChange={upd('estMax')} inputMode="numeric" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <input className="input" placeholder="قطعی از (ریال)" value={f.finMin} onChange={upd('finMin')} inputMode="numeric" />
+              <input className="input" placeholder="قطعی تا" value={f.finMax} onChange={upd('finMax')} inputMode="numeric" />
+            </div>
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center justify-between gap-2 mt-4">
           <button onClick={() => setAdv((a) => !a)} className="btn btn-ghost btn-sm">
@@ -90,14 +148,9 @@ export default function WorkDeskPage() {
           </button>
           <div className="flex items-center gap-2">
             <button onClick={clear} className="btn btn-ghost btn-sm">پاک کردن</button>
-            <button onClick={search} className="btn btn-solid btn-sm px-6">جستجو</button>
+            <button onClick={runSearch} className="btn btn-solid btn-sm px-6">جستجو</button>
           </div>
         </div>
-        {adv && (
-          <div className="mt-3 pt-3 border-t text-sm" style={{ borderColor: 'var(--border)', color: 'var(--muted)' }}>
-            جستجوی پیشرفته (فیلدهای تکمیلی مدارک، مراحل گردش کار، کاربران و…) در مرحلهٔ بعد اضافه می‌شود.
-          </div>
-        )}
       </div>
 
       <ErrorBox message={error} />
