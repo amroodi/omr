@@ -19,7 +19,7 @@ export default function OrgLogin() {
       setTenantSlug(tenantSlug);
       const r = await client.post<{ token: string }>('/auth/org/login', { tenantSlug, username, password });
       setToken('org', r.token);
-      router.push('/org');
+      router.push('/org/welcome');
     } catch (e: any) { setError(e.message); } finally { setLoading(false); }
   };
 
