@@ -876,12 +876,43 @@ export class ClaimsService {
     amtRange('claimedAmount', q.estMin, q.estMax);
     amtRange('finalizedAmount', q.finMin, q.finMax);
 
+    // Document-type filter: claims that have an uploaded document of the given required-doc code
+    // (any claim kind). Claim has no documents relation, so resolve claimIds via the Document table.
+    if (clean(q.docCode)) {
+      const dc = await db.document.findMany({ where: { docCode: clean(q.docCode) }, select: { claimId: true }, distinct: ['claimId'] });
+      and.push({ id: { in: dc.map((d) => d.claimId).filter((x): x is string => !!x) } });
+    }
+
     let claims = await db.claim.findMany({ where: { AND: and }, orderBy: { updatedAt: 'desc' }, take: 300 });
     if (clean(q.deceasedName)) {
       const term = clean(q.deceasedName);
       claims = claims.filter((c) => { const n = c.deceasedFullName ? this.crypto.decrypt(c.deceasedFullName) : ''; return (n ?? '').includes(term); });
     }
     return claims.map((c) => ({ ...(this.present(c) as object), needsAction: false }));
+  }
+
+  /**
+   * Required-document catalog for the «نوع مدرک» search filter — the distinct document types across
+   * every claim kind, for the insurers the caller can see (their own, or a broker's partner insurers).
+   */
+  async docTypes() {
+    const ctx = getContext();
+    const db = this.db();
+    const tenantId = ctx?.tenantId;
+    if (!tenantId) return [];
+    const tenant = await db.tenant.findUnique({ where: { id: tenantId }, select: { kind: true } });
+    let insurerIds: string[] = [];
+    if (tenant?.kind === 'INSURER') insurerIds = [tenantId];
+    else if (tenant?.kind === 'BROKER') {
+      const parts = await db.brokerInsurerPartnership.findMany({ where: { brokerTenantId: tenantId, isActive: true }, select: { insurerTenantId: true } });
+      insurerIds = parts.map((p) => p.insurerTenantId);
+    }
+    if (!insurerIds.length) return [];
+    const docs = await db.requiredDocument.findMany({ where: { tenantId: { in: insurerIds }, isActive: true }, orderBy: { order: 'asc' }, select: { code: true, label: true, appliesToTypes: true } });
+    const seen = new Set<string>();
+    const out: { code: string; label: string; appliesToTypes: string[] }[] = [];
+    for (const d of docs) { if (!seen.has(d.code)) { seen.add(d.code); out.push({ code: d.code, label: d.label, appliesToTypes: d.appliesToTypes as string[] }); } }
+    return out;
   }
 
   // ─────────────────────────── Helpers ───────────────────────────

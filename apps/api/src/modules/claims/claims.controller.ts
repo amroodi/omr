@@ -91,6 +91,13 @@ export class ClaimsController {
     return this.claims.searchClaims(q);
   }
 
+  /** Document types (across all kinds) for the «نوع مدرک» search filter. */
+  @Permissions(PERMISSIONS.CLAIM_READ)
+  @Get('doc-types')
+  docTypes() {
+    return this.claims.docTypes();
+  }
+
   /** Active insurers to file a claim against (also used by the claims-list filter). */
   @Permissions(PERMISSIONS.CLAIM_READ)
   @Get('insurers')

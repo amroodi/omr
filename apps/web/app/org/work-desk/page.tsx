@@ -15,7 +15,7 @@ interface QueueRow { id: string; claimNumber: string; status: string; claimType:
 const fa = (n: number) => n.toLocaleString('fa-IR');
 const EMPTY = {
   claimNumber: '', deceasedNationalCode: '', deceasedName: '', claimType: '', insurerTenantId: '',
-  eventFrom: '', eventTo: '', status: '', channel: '', createdFrom: '', createdTo: '', estMin: '', estMax: '', finMin: '', finMax: '',
+  eventFrom: '', eventTo: '', status: '', channel: '', createdFrom: '', createdTo: '', estMin: '', estMax: '', finMin: '', finMax: '', docCode: '',
 };
 const STATUS_OPTIONS: [string, string][] = [
   ['SUBMITTED', 'ثبت‌شده'], ['UNDER_REVIEW', 'در حال بررسی'], ['RETURNED_INCOMPLETE', 'نقص مدارک'],
@@ -43,9 +43,11 @@ export default function WorkDeskPage() {
   const [rows, setRows] = useState<QueueRow[]>([]);
   const [qLoading, setQLoading] = useState(false);
   const [notice, setNotice] = useState('');
+  const [docTypes, setDocTypes] = useState<{ code: string; label: string }[]>([]);
 
   useEffect(() => {
     if (!getToken('org')) { router.push('/org/login'); return; }
+    client.get<{ code: string; label: string }[]>('/claims/doc-types', 'org').then(setDocTypes).catch(() => {});
     client.get<WorkDesk>('/claims/work-desk', 'org')
       .then((d) => {
         setData(d);
@@ -114,6 +116,7 @@ export default function WorkDeskPage() {
     set('createdFrom', jToIso(f.createdFrom)); set('createdTo', jToIso(f.createdTo));
     set('estMin', toAscii(f.estMin).replace(/\D/g, '')); set('estMax', toAscii(f.estMax).replace(/\D/g, ''));
     set('finMin', toAscii(f.finMin).replace(/\D/g, '')); set('finMax', toAscii(f.finMax).replace(/\D/g, ''));
+    set('docCode', f.docCode);
     setError(''); setActive({ key: 'search', label: 'نتایج جستجو', count: 0, actionable: false }); setRows([]); setQLoading(true);
     client.get<QueueRow[]>(`/claims/search?${p.toString()}`, 'org')
       .then((r) => { setRows(r); setActive((a) => (a ? { ...a, count: r.length } : a)); })
@@ -168,6 +171,10 @@ export default function WorkDeskPage() {
               <input className="input" placeholder="قطعی از (ریال)" value={f.finMin} onChange={upd('finMin')} inputMode="numeric" />
               <input className="input" placeholder="قطعی تا" value={f.finMax} onChange={upd('finMax')} inputMode="numeric" />
             </div>
+            <select className="input" value={f.docCode} onChange={(e) => setF({ ...f, docCode: e.target.value })} title="جستجو بر اساس نوع مدرک (همهٔ انواع پرونده)">
+              <option value="">— نوع مدرک —</option>
+              {docTypes.map((d) => <option key={d.code} value={d.code}>{d.label}</option>)}
+            </select>
           </div>
         )}
 
