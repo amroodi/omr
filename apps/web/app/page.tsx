@@ -1,8 +1,9 @@
 'use client';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { inquiryApi } from '../lib/api';
-import { ErrorBox, Field, StatusBadge } from './components/ui';
+import { ErrorBox, Field } from './components/ui';
 import { Icon } from './components/Shell';
 import { Reveal } from './components/reveal';
 import { DotGrid } from './components/DotGrid';
@@ -123,27 +124,31 @@ function ResendRow({ left, onResend, loading, onBack }: { left: number; onResend
 
 /* ─────────────────────── استعلام سریع (inquiry) ─────────────────────── */
 function InquiryForm() {
-  const [step, setStep] = useState<'id' | 'otp' | 'result'>('id');
+  const router = useRouter();
+  const [step, setStep] = useState<'id' | 'otp'>('id');
   const [nid, setNid] = useState('');
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
-  const [result, setResult] = useState<any>(null);
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { left, start } = useCountdown();
 
-  const fmtAmt = (v: any) => v != null && String(v).trim() !== '' ? `${Number(String(v).replace(/[^\d]/g, '') || 0).toLocaleString('fa-IR')} ریال` : null;
+  // Stash the fetched case and open the dedicated result page (مشاهده سریع و استعلام پرونده).
+  const goResult = (res: any) => {
+    try { sessionStorage.setItem('inquiryResult', JSON.stringify(res)); } catch { /* private mode */ }
+    router.push('/estelam');
+  };
   const run = async (fn: () => Promise<void>) => { setError(''); setLoading(true); try { await fn(); } catch (e: any) { setError(e.message || 'خطا'); } finally { setLoading(false); } };
   const request = () => run(async () => {
     const r = await inquiryApi.requestClaim(nid, phone);
     if (r.otpRequired === false) { // OTP disabled platform-wide → view directly
       const t = await inquiryApi.directClaim(nid, phone);
-      setResult(await inquiryApi.getCase(t.token)); setStep('result'); return;
+      goResult(await inquiryApi.getCase(t.token)); return;
     }
     setMsg(r.message); setStep('otp'); start(120);
   });
-  const verify = () => run(async () => { const r = await inquiryApi.verifyOtp(nid, phone, code); setResult(await inquiryApi.getCase(r.token)); setStep('result'); });
+  const verify = () => run(async () => { const r = await inquiryApi.verifyOtp(nid, phone, code); goResult(await inquiryApi.getCase(r.token)); });
 
   return (
     <div className="space-y-3.5" style={{ maxWidth: 300, width: '100%', margin: '0 auto' }}>
@@ -164,37 +169,6 @@ function InquiryForm() {
             <button onClick={verify} disabled={loading || code.length < 4} className="btn btn-primary w-full" style={{ padding: '0.8rem' }}>{loading ? 'در حال بررسی…' : 'مشاهده پرونده'}</button>
             <ResendRow left={left} onResend={request} loading={loading} onBack={() => setStep('id')} />
           </>
-        )}
-        {step === 'result' && result && (
-          <div className="fade-up">
-            <div className="flex items-center justify-between mb-3">
-              <span className="font-bold">پرونده {result.kind === 'claim' ? result.claimNumber : result.caseNumber}</span>
-              <StatusBadge status={result.status} />
-            </div>
-            {(result.kind === 'claim'
-              ? [
-                  ['بیمه‌گر', result.insurerName],
-                  ['بیمه‌شده (متوفی)', result.deceasedName],
-                  ['کد ملی', result.nationalCodeMasked],
-                  ['تاریخ تولد', result.birthDate],
-                  ['نام شرکت / محل فعالیت', result.companyName],
-                  ['شماره بیمه‌نامه', result.policyNumber],
-                  ['تاریخ شروع بیمه‌نامه', result.policyStartDate],
-                  ['سرمایه فوت', fmtAmt(result.deathCapital)],
-                  ['سرمایه حادثه', fmtAmt(result.accidentCapital)],
-                  ['مبلغ قابل پرداخت', fmtAmt(result.payableAmount)],
-                  ['علت فوت', result.causeOfDeath],
-                  ['تاریخ وقوع', result.eventDate],
-                  ['تاریخ ثبت', result.createdAt],
-                ]
-              : [['نام', result.insured?.fullName], ['کد ملی', result.insured?.nationalCodeMasked], ['بیمه‌نامه', result.policy ? `${result.policy.policyNumber} — ${result.policy.carrier}` : null], ['تاریخ پرداخت', result.workflow?.paidAt]]
-            ).map(([l, v]) => v ? (
-              <div key={l as string} className="flex justify-between py-2 border-b text-sm" style={{ borderColor: 'var(--border)' }}>
-                <span style={{ color: 'var(--muted)' }}>{l}</span><span className="font-semibold">{v}</span>
-              </div>
-            ) : null)}
-            <button onClick={() => { setStep('id'); setResult(null); setCode(''); }} className="btn btn-glass btn-sm w-full mt-4">استعلام جدید</button>
-          </div>
         )}
     </div>
   );

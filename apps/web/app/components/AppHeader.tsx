@@ -17,9 +17,9 @@ export function AppHeader() {
   const inAdmin = path.startsWith('/admin') && path !== '/admin/login';
   const orgBranded = inOrg || inCustomer;
   // Authenticated panels render their own top bar via <Shell> (the Sinad-style chrome),
-  // so the global header would double up — suppress it there. Keep it on the landing
-  // page and all login pages.
-  const inPanel = inOrg || inCustomer || inAdmin;
+  // so the global header would double up — suppress it there. The استعلام result page also
+  // has its own navy top bar. Keep the header on the landing page and all login pages.
+  const inPanel = inOrg || inCustomer || inAdmin || path.startsWith('/estelam');
 
   const [brand, setBrand] = useState<{ name: string; hasLogo: boolean; slug: string } | null>(null);
 
