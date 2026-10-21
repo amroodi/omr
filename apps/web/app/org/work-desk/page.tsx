@@ -1,7 +1,8 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { client, getToken } from '../../../lib/client';
+import { client, getToken, hasPerm } from '../../../lib/client';
 import { Shell, Icon } from '../../components/Shell';
 import { ORG_NAV } from '../nav';
 import { ClaimTypeBadge, CLAIM_TYPE_LABELS, ErrorBox, FancyLoader, NoticeModal, StatusBadge } from '../../components/ui';
@@ -44,6 +45,9 @@ export default function WorkDeskPage() {
   const [qLoading, setQLoading] = useState(false);
   const [notice, setNotice] = useState('');
   const [docTypes, setDocTypes] = useState<{ code: string; label: string }[]>([]);
+  // Admin-only «پیگیری» shortcut — resolved after mount to avoid an SSR/client hydration mismatch.
+  const [isAdmin, setIsAdmin] = useState(false);
+  useEffect(() => { setIsAdmin(hasPerm('org', 'tenant:settings')); }, []);
 
   useEffect(() => {
     if (!getToken('org')) { router.push('/org/login'); return; }
@@ -126,7 +130,13 @@ export default function WorkDeskPage() {
   const upd = (k: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement>) => setF((s) => ({ ...s, [k]: e.target.value }));
 
   return (
-    <Shell title="میز کار" sectionLabel="میز کار" nav={ORG_NAV} realm="org">
+    <Shell title="میز کار" sectionLabel="میز کار" nav={ORG_NAV} realm="org"
+      action={isAdmin ? (
+        <Link href="/org/track" className="btn btn-solid btn-sm" title="پیگیری آخرین وضعیت پرونده خسارت">
+          <Icon path="M11 19a8 8 0 100-16 8 8 0 000 16zM21 21l-4.3-4.3" />
+          <span className="hidden sm:inline">پیگیری آخرین وضعیت پرونده خسارت</span>
+        </Link>
+      ) : undefined}>
       {/* ── Search panel ── */}
       <div className="pcard p-5 pform mb-5">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
