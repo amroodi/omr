@@ -671,16 +671,18 @@ h1, h2, h3 {
 :root.dark .auth-bg-dark { display: block; }
 
 /* ═══ Org welcome page (post-login entry to میز کار) — warm, hand-crafted feel ═══ */
+/* Full-viewport fixed cover so it sits ABOVE the global <main> box + footer (no second
+   background, no outer scroll, no duplicate footer). The page lives entirely inside it. */
 .welcome-bg {
-  background: url('/welcome-bg.jpg') center center / cover no-repeat fixed, linear-gradient(180deg, #f8f5f0, #eef1f6);
-  position: relative;
+  position: fixed; inset: 0; z-index: 30; overflow: hidden;
+  display: flex; flex-direction: column;
+  background: url('/welcome-bg.jpg') center center / cover no-repeat, linear-gradient(180deg, #f8f5f0, #eef1f6);
 }
-/* Soft light wash so the glass card reads over the photo (light theme only). */
-.welcome-bg::before {
-  content: ''; position: fixed; inset: 0; z-index: 0; pointer-events: none;
-  background: radial-gradient(ellipse 46% 56% at 50% 50%, rgba(255,255,255,0.3), transparent 72%);
-}
-:root.dark .welcome-bg::before { display: none; }
+:root.dark .welcome-bg { background: radial-gradient(1100px 620px at 88% -12%, color-mix(in srgb, var(--brand) 20%, transparent), transparent 58%), radial-gradient(900px 520px at 6% 112%, color-mix(in srgb, #0ea5e9 14%, transparent), transparent 55%), linear-gradient(180deg, #0b1020, #070b16); }
+/* Compact top-right entry button — a rounded tab, not a wide pill. */
+.welcome-entry { position: absolute; top: 22px; right: clamp(16px, 4vw, 44px); display: inline-flex; align-items: center; gap: 8px; background: var(--brand); color: #fff; font-weight: 800; font-size: 0.95rem; padding: 12px 20px; border-radius: 14px; box-shadow: 0 12px 26px -10px rgba(255,149,0,0.6); background-image: linear-gradient(180deg, rgba(255,255,255,0.18), transparent 55%); transition: transform 0.16s ease, box-shadow 0.16s ease; }
+.welcome-entry:hover { transform: translateY(-2px); box-shadow: 0 16px 32px -10px rgba(255,149,0,0.7); }
+.welcome-entry:active { transform: translateY(0); }
 :root.dark .welcome-bg { background: radial-gradient(1100px 620px at 88% -12%, color-mix(in srgb, var(--brand) 20%, transparent), transparent 58%), radial-gradient(900px 520px at 6% 112%, color-mix(in srgb, #0ea5e9 14%, transparent), transparent 55%), linear-gradient(180deg, #0b1020, #070b16); }
 .welcome-top { background: #012141; color: #fff; height: 60px; display: flex; align-items: center; gap: 12px; padding: 0 clamp(16px, 4vw, 44px); }
 .welcome-card {
