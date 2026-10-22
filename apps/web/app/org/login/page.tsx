@@ -24,7 +24,7 @@ export default function OrgLogin() {
   };
 
   return (
-    <AuthCard title="ورود سازمان" subtitle="پنل مدیریت پرونده‌های سازمان">
+    <AuthCard title="ورود سازمان" subtitle="پنل مدیریت پرونده‌های سازمان" bg={{ light: '/auth-org-light.jpg', dark: '/auth-org-dark.jpg' }}>
       <div className="space-y-4">
         <ErrorBox message={error} />
         <Field label="شناسه سازمان"><input className="input" value={tenantSlug} onChange={(e) => setSlug(e.target.value)} placeholder="damuon" /></Field>

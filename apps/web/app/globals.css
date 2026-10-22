@@ -662,6 +662,14 @@ h1, h2, h3 {
 .pmodal-accent-error .pmodal-head { color: var(--danger); }
 .pmodal-accent-info .pmodal-head { color: var(--brand); }
 
+/* ═══ Auth page full-screen background image (org login) — light/dark variants ═══ */
+.auth-bg { position: fixed; inset: 0; z-index: -1; background-size: cover; background-position: center; background-repeat: no-repeat; }
+.auth-bg::after { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse 46% 56% at 50% 46%, rgba(255,255,255,0.4), transparent 72%); }
+.auth-bg-dark { display: none; }
+.auth-bg-dark::after { background: radial-gradient(ellipse 46% 56% at 50% 46%, rgba(0,0,0,0.35), transparent 72%); }
+:root.dark .auth-bg-light { display: none; }
+:root.dark .auth-bg-dark { display: block; }
+
 /* ═══ Org welcome page (post-login entry to میز کار) — warm, hand-crafted feel ═══ */
 .welcome-bg {
   background:
