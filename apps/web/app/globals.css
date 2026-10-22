@@ -672,6 +672,17 @@ h1, h2, h3 {
 .trk-btn-back:hover { background: rgba(255,255,255,.1); }
 .trk-btn-exit { background: #FF0004; color: #fff; border-radius: 12px; padding: 8px 18px; font-weight: 700; display: inline-flex; align-items: center; gap: 7px; border: 0; cursor: pointer; }
 .trk-btn-exit:hover { filter: brightness(1.08); }
+/* Grouped info panels (columns.png): grey container → navy header → white field cards. */
+.trk-grp { background: #464c54; border-radius: 18px; padding: 10px; }
+.trk-grp-head { background: #013264; color: #fff; border-radius: 12px; display: flex; align-items: center; justify-content: space-between; padding: 11px 15px; font-weight: 700; font-size: .92rem; }
+.trk-grp-head .ico { color: #FF9500; display: inline-flex; }
+.trk-field { background: #fff; border-radius: 11px; padding: 11px 15px; margin-top: 9px; text-align: right; }
+.trk-field .lbl { color: #888; font-size: .76rem; }
+.trk-field .val { color: #013264; font-weight: 800; margin-top: 3px; line-height: 1.6; }
+.trk-field .val.amt { color: #FF9500; }
+.trk-type-chip { background: #fff; color: #013264; border-radius: 999px; padding: 5px 12px; font-weight: 700; font-size: .78rem; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.trk-type-chip .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
 .trk-info { background: #fff; border: 1px solid #E5E5E5; border-radius: 16px; padding: 15px 18px; box-shadow: 0 10px 24px -14px rgba(1,50,100,.3); display: flex; align-items: center; gap: 12px; }
 .trk-info .ico { width: 38px; height: 38px; border-radius: 10px; background: #FFF1E8; color: #FF9500; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .trk-info .lbl { color: #888; font-size: .76rem; }

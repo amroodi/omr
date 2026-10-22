@@ -24,6 +24,10 @@ const DOC_BADGE: Record<string, string> = { PENDING: 'badge-warning', VERIFIED: 
 const STEP_PARTY: Record<string, string> = { POLICYHOLDER: 'بیمه‌گزار', MOAREF: 'معرف', INSURER_LEVEL: 'سطح بیمه‌گر' };
 const STAGE_FA: Record<string, string> = { BROKER: 'کارگزاری', BRANCH: 'شعبه', COUNCIL: 'ستاد' };
 const EYE = 'M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8zM12 15a3 3 0 100-6 3 3 0 000 6z';
+const PERSON_ICON = 'M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8z';
+const DOC_ICON = 'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM14 2v6h6';
+const MONEY_ICON = 'M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6';
+const TYPE_DOT: Record<string, string> = { DEATH_ILLNESS: '#2563eb', DEATH_ACCIDENT: '#dc2626', DISABILITY_ACCIDENT: '#d97706', MEDICAL_ACCIDENT: '#059669', DISABILITY_ILLNESS: '#7c3aed' };
 const amt = (v?: string | null) => (v ? `${Number(v).toLocaleString('fa-IR')} ریال` : null);
 
 export default function TrackClaim() {
@@ -60,17 +64,23 @@ export default function TrackClaim() {
   };
   const viewDoc = (docId: string) => { if (sel) client.view(`/claims/${sel.id}/documents/${docId}/file`, 'org').catch((e) => setError(e.message)); };
 
-  const info: [string, any][] = sel ? [
-    ['بیمه‌شده (متوفی)', sel.deceasedName],
-    ['بیمه‌گزار', sel.policyHolder?.name],
-    ['معرف (کارگزاری)', sel.broker?.name],
-    ['بیمه‌گر', sel.insurer ? `${sel.insurer.name}${sel.sellingBranchName ? ` — ${sel.sellingBranchName}` : ''}` : null],
-    ['مبلغ برآوردی', amt(sel.estimatedAmount ?? sel.claimedAmount)],
-    ['مبلغ قطعی', amt(sel.finalizedAmount)],
-    ['مبلغ قابل پرداخت', amt(sel.payableAmount)],
-    ['تاریخ وقوع', sel.eventDate],
-    ['مهلت اعلام', sel.noticeDeadline],
-    ['تاریخ ثبت', sel.createdAt],
+  const groups: { title: string; icon: string; amt?: boolean; fields: [string, any][] }[] = sel ? [
+    { title: 'اطلاعات بیمه‌شده', icon: PERSON_ICON, fields: [
+      ['بیمه‌شده (متوفی)', sel.deceasedName],
+      ['بیمه‌گزار', sel.policyHolder?.name],
+    ] },
+    { title: 'اطلاعات پرونده', icon: DOC_ICON, fields: [
+      ['معرف (کارگزاری)', sel.broker?.name],
+      ['بیمه‌گر', sel.insurer ? `${sel.insurer.name}${sel.sellingBranchName ? ` — ${sel.sellingBranchName}` : ''}` : null],
+      ['تاریخ وقوع', sel.eventDate],
+      ['مهلت اعلام', sel.noticeDeadline],
+      ['تاریخ ثبت', sel.createdAt],
+    ] },
+    { title: 'اطلاعات مبالغ', icon: MONEY_ICON, amt: true, fields: [
+      ['مبلغ برآوردی', amt(sel.estimatedAmount ?? sel.claimedAmount)],
+      ['مبلغ قطعی', amt(sel.finalizedAmount)],
+      ['مبلغ قابل پرداخت', amt(sel.payableAmount)],
+    ] },
   ] : [];
 
   return (
@@ -97,16 +107,18 @@ export default function TrackClaim() {
               <div className="min-w-0">
                 <div className="trk-title">پیگیری آخرین وضعیت پرونده خسارت</div>
                 {(sel.policyHolder?.name || sel.deceasedName) && <div className="trk-sub">{sel.policyHolder?.name || sel.deceasedName}</div>}
-                <div className="flex items-center gap-2 mt-3 flex-wrap">
-                  <span className="font-bold">پرونده {sel.claimNumber}</span>
-                  <StatusBadge status={sel.status} />
-                  <ClaimTypeBadge type={sel.claimType} />
-                </div>
               </div>
               <div className="flex items-center gap-2 no-print">
                 <button onClick={() => setSel(null)} className="trk-btn-back"><Icon path="M9 18l6-6-6-6" /> بازگشت</button>
                 <button onClick={() => router.push('/org/work-desk')} className="trk-btn-exit"><Icon path="M15 3H5a2 2 0 00-2 2v14a2 2 0 002 2h10M17 16l4-4-4-4M21 12H9" /> خروج</button>
               </div>
+            </div>
+            <div className="flex items-center justify-between gap-3 mt-3 flex-wrap">
+              <span className="font-bold">پرونده {sel.claimNumber}</span>
+              <span className="flex items-center gap-2 flex-wrap">
+                <StatusBadge status={sel.status} />
+                <span className="trk-type-chip"><span className="dot" style={{ background: TYPE_DOT[sel.claimType] || '#888' }} />{CLAIM_TYPE_LABELS[sel.claimType] || sel.claimType}</span>
+              </span>
             </div>
             <div className="flex flex-wrap gap-2 mt-4">
               {sel.createdAt && <span className="trk-chip"><span className="cap">تاریخ ثبت اولیه:</span> <b dir="ltr" style={{ unicodeBidi: 'isolate' }}>{sel.createdAt}</b></span>}
@@ -114,14 +126,26 @@ export default function TrackClaim() {
             </div>
           </div>
 
-          {/* Info cards */}
-          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
-            {info.filter(([, v]) => v).map(([l, v]) => (
-              <div key={l} className="trk-info">
-                <span className="ico"><Icon path="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM14 2v6h6" /></span>
-                <div className="min-w-0"><div className="lbl">{l}</div><div className="val" style={{ wordBreak: 'break-word' }}>{v}</div></div>
-              </div>
-            ))}
+          {/* Info — grouped designer containers */}
+          <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))' }}>
+            {groups.map((g) => {
+              const fields = g.fields.filter(([, v]) => v);
+              if (!fields.length) return null;
+              return (
+                <div key={g.title} className="trk-grp">
+                  <div className="trk-grp-head">
+                    <span className="flex items-center gap-2"><span className="ico"><Icon path={g.icon} /></span>{g.title}</span>
+                    <Icon path="M6 9l6 6 6-6" />
+                  </div>
+                  {fields.map(([l, v]) => (
+                    <div key={l} className="trk-field">
+                      <div className="lbl">{l}</div>
+                      <div className={g.amt ? 'val amt' : 'val'} style={{ wordBreak: 'break-word' }}>{v}</div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
           </div>
 
           {/* Documents panel (filtered by claim kind) */}
