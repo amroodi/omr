@@ -3,14 +3,15 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { StatusBadge } from '../components/ui';
 import { BrandMark } from '../components/brand';
+import { Icon } from '../components/Shell';
 
 const fmtAmt = (v: any) => (v != null && String(v).trim() !== '' ? `${Number(String(v).replace(/[^\d]/g, '') || 0).toLocaleString('fa-IR')} ریال` : null);
 
 function Chip({ label, value }: { label: string; value: string }) {
   return (
-    <span style={{ background: 'rgba(255,255,255,0.1)', borderRadius: 12, padding: '8px 14px', fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
-      <span style={{ color: 'rgba(255,255,255,0.65)' }}>{label}: </span>
-      <span className="font-bold" dir="ltr" style={{ unicodeBidi: 'isolate' }}>{value}</span>
+    <span className="trk-chip">
+      <span className="cap">{label}:</span>
+      <b dir="ltr" style={{ unicodeBidi: 'isolate' }}>{value}</b>
     </span>
   );
 }
@@ -67,18 +68,18 @@ export default function EstelamResult() {
           </div>
         ) : (
           <>
-            {/* Navy header card */}
-            <div style={{ background: '#012141', borderRadius: 22, color: '#fff', padding: 'clamp(18px,3vw,30px)', boxShadow: 'var(--shadow-lg)' }}>
+            {/* Navy rounded-top header card (designer skin) */}
+            <div className="trk-head">
               <div className="flex items-start justify-between gap-3 flex-wrap">
                 <div className="min-w-0">
-                  <div className="font-extrabold text-lg">مشاهده و استعلام پرونده</div>
-                  <div className="flex items-center gap-2 mt-2 flex-wrap">
-                    <span className="font-bold text-lg">پرونده {r.claimNumber}</span>
+                  <div className="trk-title">مشاهده سریع و استعلام پرونده</div>
+                  {r.companyName && <div className="trk-sub">{r.companyName}</div>}
+                  <div className="flex items-center gap-2 mt-3 flex-wrap">
+                    <span className="font-bold">پرونده {r.claimNumber}</span>
                     <StatusBadge status={r.status} />
                   </div>
-                  {r.companyName && <div className="text-sm mt-1" style={{ color: 'rgba(255,255,255,0.7)' }}>{r.companyName}</div>}
                 </div>
-                <Link href="/" className="btn btn-solid btn-sm shrink-0">استعلام جدید</Link>
+                <Link href="/" className="trk-btn-back shrink-0"><Icon path="M9 18l6-6-6-6" /> استعلام جدید</Link>
               </div>
               <div className="flex flex-wrap gap-2 mt-4">
                 {r.createdAt && <Chip label="تاریخ ثبت" value={r.createdAt} />}
@@ -87,12 +88,12 @@ export default function EstelamResult() {
               </div>
             </div>
 
-            {/* Info fields grid (replaces the documents/steps table of the mockup) */}
+            {/* Info fields (designer cards) */}
             <div className="grid gap-3 mt-5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
               {fields.filter(([, v]) => v).map(([l, v]) => (
-                <div key={l} className="pcard p-4">
-                  <div className="text-xs mb-1" style={{ color: 'var(--muted)' }}>{l}</div>
-                  <div className="font-bold" style={{ wordBreak: 'break-word' }}>{v}</div>
+                <div key={l} className="trk-info">
+                  <span className="ico"><Icon path="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM14 2v6h6" /></span>
+                  <div className="min-w-0"><div className="lbl">{l}</div><div className="val" style={{ wordBreak: 'break-word' }}>{v}</div></div>
                 </div>
               ))}
             </div>

@@ -22,6 +22,8 @@ interface Claim {
 
 const DOC_BADGE: Record<string, string> = { PENDING: 'badge-warning', VERIFIED: 'badge-success', REJECTED: 'badge-danger', NEEDS_INFO: 'badge-warning' };
 const STEP_PARTY: Record<string, string> = { POLICYHOLDER: 'بیمه‌گزار', MOAREF: 'معرف', INSURER_LEVEL: 'سطح بیمه‌گر' };
+const STAGE_FA: Record<string, string> = { BROKER: 'کارگزاری', BRANCH: 'شعبه', COUNCIL: 'ستاد' };
+const EYE = 'M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8zM12 15a3 3 0 100-6 3 3 0 000 6z';
 const amt = (v?: string | null) => (v ? `${Number(v).toLocaleString('fa-IR')} ریال` : null);
 
 export default function TrackClaim() {
@@ -89,84 +91,90 @@ export default function TrackClaim() {
       ) : sel ? (
         /* ── Selected claim: پیگیری view ── */
         <div className="space-y-5">
-          <button onClick={() => setSel(null)} className="btn btn-ghost btn-sm">→ بازگشت به نتایج</button>
-
-          {/* Navy header card */}
-          <div style={{ background: '#012141', borderRadius: 22, color: '#fff', padding: 'clamp(18px,3vw,28px)', boxShadow: 'var(--shadow-lg)' }}>
-            <div className="flex items-start justify-between gap-3 flex-wrap">
-              <div>
-                <div className="font-extrabold text-lg">پیگیری آخرین وضعیت پرونده خسارت</div>
-                <div className="flex items-center gap-2 mt-2 flex-wrap">
-                  <span className="font-bold text-lg">پرونده {sel.claimNumber}</span>
+          {/* Navy rounded-top header card (designer) */}
+          <div className="trk-head">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div className="min-w-0">
+                <div className="trk-title">پیگیری آخرین وضعیت پرونده خسارت</div>
+                {(sel.policyHolder?.name || sel.deceasedName) && <div className="trk-sub">{sel.policyHolder?.name || sel.deceasedName}</div>}
+                <div className="flex items-center gap-2 mt-3 flex-wrap">
+                  <span className="font-bold">پرونده {sel.claimNumber}</span>
                   <StatusBadge status={sel.status} />
                   <ClaimTypeBadge type={sel.claimType} />
                 </div>
-                {sel.policyHolder?.name && <div className="text-sm mt-1" style={{ color: 'rgba(255,255,255,0.7)' }}>{sel.policyHolder.name}</div>}
+              </div>
+              <div className="flex items-center gap-2 no-print">
+                <button onClick={() => setSel(null)} className="trk-btn-back"><Icon path="M9 18l6-6-6-6" /> بازگشت</button>
+                <button onClick={() => router.push('/org/work-desk')} className="trk-btn-exit"><Icon path="M15 3H5a2 2 0 00-2 2v14a2 2 0 002 2h10M17 16l4-4-4-4M21 12H9" /> خروج</button>
               </div>
             </div>
             <div className="flex flex-wrap gap-2 mt-4">
-              {sel.createdAt && <span style={{ background: 'rgba(255,255,255,0.1)', borderRadius: 12, padding: '8px 14px', fontSize: '0.82rem' }}><span style={{ color: 'rgba(255,255,255,0.65)' }}>تاریخ ثبت: </span><b dir="ltr" style={{ unicodeBidi: 'isolate' }}>{sel.createdAt}</b></span>}
-              {sel.eventDate && <span style={{ background: 'rgba(255,255,255,0.1)', borderRadius: 12, padding: '8px 14px', fontSize: '0.82rem' }}><span style={{ color: 'rgba(255,255,255,0.65)' }}>تاریخ وقوع: </span><b dir="ltr" style={{ unicodeBidi: 'isolate' }}>{sel.eventDate}</b></span>}
+              {sel.createdAt && <span className="trk-chip"><span className="cap">تاریخ ثبت اولیه:</span> <b dir="ltr" style={{ unicodeBidi: 'isolate' }}>{sel.createdAt}</b></span>}
+              {sel.eventDate && <span className="trk-chip"><span className="cap">تاریخ وقوع:</span> <b dir="ltr" style={{ unicodeBidi: 'isolate' }}>{sel.eventDate}</b></span>}
             </div>
           </div>
 
-          {/* Info fields */}
-          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
+          {/* Info cards */}
+          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
             {info.filter(([, v]) => v).map(([l, v]) => (
-              <div key={l} className="pcard p-4"><div className="text-xs mb-1" style={{ color: 'var(--muted)' }}>{l}</div><div className="font-bold" style={{ wordBreak: 'break-word' }}>{v}</div></div>
+              <div key={l} className="trk-info">
+                <span className="ico"><Icon path="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM14 2v6h6" /></span>
+                <div className="min-w-0"><div className="lbl">{l}</div><div className="val" style={{ wordBreak: 'break-word' }}>{v}</div></div>
+              </div>
             ))}
           </div>
 
-          {/* Documents for THIS claim kind (checklist filters by claim type) */}
-          <div className="pcard p-5">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-extrabold">مدارک مورد نیاز — {CLAIM_TYPE_LABELS[sel.claimType] || sel.claimType}</h3>
-              {checklist && <span className={`badge ${checklist.complete ? 'badge-success' : 'badge-warning'}`}>{checklist.complete ? 'کامل' : 'ناقص'}</span>}
+          {/* Documents panel (filtered by claim kind) */}
+          <div className="trk-panel">
+            <div className="trk-panel-head">
+              <span>مدارک مورد نیاز — {CLAIM_TYPE_LABELS[sel.claimType] || sel.claimType}</span>
+              {checklist && <span className="trk-chip">{checklist.complete ? 'تکمیل شده' : 'ناقص'}</span>}
             </div>
             {!checklist || (checklist.items.length === 0 && (checklist.otherDocuments?.length ?? 0) === 0) ? (
-              <div className="text-sm text-center py-4" style={{ color: 'var(--muted)' }}>برای این نوع پرونده مدرکی تعریف نشده است. (فرم‌های اختصاصی بعداً افزوده می‌شوند.)</div>
+              <div className="text-sm text-center py-5" style={{ color: 'var(--muted)' }}>برای این نوع پرونده مدرکی تعریف نشده است. (فرم‌های اختصاصی بعداً افزوده می‌شوند.)</div>
             ) : (
-              <div className="space-y-2">
+              <>
                 {checklist.items.map((it) => {
-                  const d = it.documents.find((x) => x.status !== undefined) || it.documents[0];
+                  const d = it.documents[0];
                   return (
-                    <div key={it.code} className="flex items-center justify-between gap-2 py-2 border-b text-sm" style={{ borderColor: 'var(--border)' }}>
-                      <span className="flex items-center gap-2 min-w-0"><span style={{ color: it.uploaded ? 'var(--success)' : 'var(--muted)' }}>{it.uploaded ? '✔' : '○'}</span><span className="truncate">{it.label}</span></span>
-                      <span className="flex items-center gap-2 shrink-0">
-                        {it.uploaded && d && <span className={`badge ${DOC_BADGE[d.status] || 'badge-neutral'}`}>{d.statusLabel}</span>}
-                        {it.uploaded && d && <button onClick={() => viewDoc(d.id)} className="btn btn-ghost btn-sm">مشاهده</button>}
-                      </span>
+                    <div key={it.code} className="trk-doc">
+                      <span className="lbl">{it.label}</span>
+                      {d?.reviews?.map((rv) => (
+                        <span key={rv.stage} className="trk-stage" title={STAGE_FA[rv.stage]}>
+                          <span className="dot" style={{ background: rv.state === 'APPROVED' ? '#00A859' : rv.state === 'REJECTED' ? '#FF0004' : '#E5E5E5' }} />
+                          {STAGE_FA[rv.stage] || rv.stage}
+                        </span>
+                      ))}
+                      {it.uploaded
+                        ? <span className={d && d.status === 'VERIFIED' ? 'trk-done' : d && d.status === 'REJECTED' ? 'trk-rej' : 'trk-wait'}>{d?.status === 'VERIFIED' ? 'تکمیل شده' : d?.status === 'REJECTED' ? 'رد' : 'در انتظار'}</span>
+                        : <span style={{ color: '#888' }}>بارگذاری‌نشده</span>}
+                      {it.uploaded && d && <button onClick={() => viewDoc(d.id)} className="trk-ico-btn" title="مشاهده"><Icon path={EYE} /></button>}
                     </div>
                   );
                 })}
                 {(checklist.otherDocuments ?? []).map((d) => (
-                  <div key={d.id} className="flex items-center justify-between gap-2 py-2 border-b text-sm" style={{ borderColor: 'var(--border)' }}>
-                    <span className="flex items-center gap-2 min-w-0"><span style={{ color: 'var(--success)' }}>✔</span><span className="truncate">{d.fileName}</span></span>
-                    <span className="flex items-center gap-2 shrink-0"><span className={`badge ${DOC_BADGE[d.status] || 'badge-neutral'}`}>{d.statusLabel}</span><button onClick={() => viewDoc(d.id)} className="btn btn-ghost btn-sm">مشاهده</button></span>
+                  <div key={d.id} className="trk-doc">
+                    <span className="lbl">{d.fileName}</span>
+                    <span className={d.status === 'VERIFIED' ? 'trk-done' : d.status === 'REJECTED' ? 'trk-rej' : 'trk-wait'}>{d.statusLabel}</span>
+                    <button onClick={() => viewDoc(d.id)} className="trk-ico-btn" title="مشاهده"><Icon path={EYE} /></button>
                   </div>
                 ))}
-              </div>
+              </>
             )}
           </div>
 
           {/* Status history */}
-          <div className="pcard p-5">
-            <h3 className="font-extrabold mb-3">تاریخچه وضعیت پرونده</h3>
-            <div className="space-y-3">
-              {(sel.steps || []).map((s, i) => {
-                const active = s.state === 'PENDING';
-                return (
-                  <div key={i} className="flex gap-2.5 text-sm">
-                    <span className="flex items-center justify-center rounded-full shrink-0 mt-0.5" style={{ width: 24, height: 24, background: active ? 'var(--brand)' : s.state === 'APPROVED' ? 'var(--success)' : 'var(--surface-2)', color: active || s.state === 'APPROVED' ? '#fff' : 'var(--muted)', fontSize: 11 }}>{s.order}</span>
-                    <div className="min-w-0 flex-1">
-                      <span className="font-semibold">{STEP_PARTY[s.partyType] || s.partyType}</span>
-                      {s.holderName && <span style={{ color: 'var(--muted)' }}> — {s.holderName}{s.branchName ? ` (${s.branchName})` : ''}</span>}
-                      {s.decidedByName && <div className="text-[11px]" style={{ color: 'var(--muted)' }}>اقدام‌کننده: {s.decidedByName}{s.decidedAt ? ` — ${s.decidedAt}` : ''}</div>}
-                    </div>
-                  </div>
-                );
-              })}
-              {(sel.steps || []).length === 0 && <div className="text-sm text-center py-2" style={{ color: 'var(--muted)' }}>سابقه‌ای ثبت نشده است.</div>}
+          <div className="trk-panel">
+            <div className="trk-panel-head">تاریخچه وضعیت پرونده</div>
+            <div>
+              {(sel.steps || []).map((s, i) => (
+                <div key={i} className="trk-doc">
+                  <span className="flex items-center justify-center rounded-full shrink-0" style={{ width: 26, height: 26, background: s.state === 'PENDING' ? '#FF9500' : s.state === 'APPROVED' ? '#00A859' : '#E5E5E5', color: '#fff', fontSize: 12, fontWeight: 700 }}>{s.order}</span>
+                  <span className="lbl">{STEP_PARTY[s.partyType] || s.partyType}{s.holderName ? ` — ${s.holderName}` : ''}{s.branchName ? ` (${s.branchName})` : ''}</span>
+                  {s.decidedAt && <span style={{ color: '#888', fontSize: '.78rem' }} dir="ltr">{s.decidedAt}</span>}
+                </div>
+              ))}
+              {(sel.steps || []).length === 0 && <div className="text-sm text-center py-3" style={{ color: 'var(--muted)' }}>سابقه‌ای ثبت نشده است.</div>}
             </div>
           </div>
         </div>

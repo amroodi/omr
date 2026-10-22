@@ -662,6 +662,41 @@ h1, h2, h3 {
 .pmodal-accent-error .pmodal-head { color: var(--danger); }
 .pmodal-accent-info .pmodal-head { color: var(--brand); }
 
+/* ═══ پیگیری آخرین وضعیت پرونده خسارت — exact designer skin (Frame 6) ═══ */
+.trk-head { background: #013264; color: #fff; border-radius: 30px 30px 0 0; padding: clamp(20px,2.8vw,32px) clamp(22px,3vw,36px); }
+.trk-title { font-weight: 800; font-size: clamp(1.1rem,2vw,1.45rem); }
+.trk-sub { color: rgba(255,255,255,.74); font-size: .92rem; margin-top: 6px; }
+.trk-chip { background: #fff; color: #013264; border-radius: 10px; padding: 8px 14px; font-weight: 700; font-size: .82rem; display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.trk-chip .cap { color: #FF9500; }
+.trk-btn-back { background: transparent; border: 1.5px solid rgba(255,255,255,.55); color: #fff; border-radius: 12px; padding: 8px 18px; font-weight: 700; display: inline-flex; align-items: center; gap: 7px; cursor: pointer; }
+.trk-btn-back:hover { background: rgba(255,255,255,.1); }
+.trk-btn-exit { background: #FF0004; color: #fff; border-radius: 12px; padding: 8px 18px; font-weight: 700; display: inline-flex; align-items: center; gap: 7px; border: 0; cursor: pointer; }
+.trk-btn-exit:hover { filter: brightness(1.08); }
+.trk-info { background: #fff; border: 1px solid #E5E5E5; border-radius: 16px; padding: 15px 18px; box-shadow: 0 10px 24px -14px rgba(1,50,100,.3); display: flex; align-items: center; gap: 12px; }
+.trk-info .ico { width: 38px; height: 38px; border-radius: 10px; background: #FFF1E8; color: #FF9500; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.trk-info .lbl { color: #888; font-size: .76rem; }
+.trk-info .val { color: #013264; font-weight: 800; }
+.trk-panel { background: #fff; border: 1px solid #E5E5E5; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 24px -14px rgba(1,50,100,.25); }
+.trk-panel-head { background: #013264; color: #fff; display: flex; align-items: center; justify-content: space-between; padding: 13px 18px; font-weight: 700; font-size: .92rem; }
+.trk-doc { display: flex; align-items: center; gap: 14px; padding: 13px 18px; border-bottom: 1px solid #EEE; font-size: .86rem; }
+.trk-doc:last-child { border-bottom: 0; }
+.trk-doc:nth-child(even) { background: #F6F6F6; }
+.trk-doc .lbl { flex: 1; min-width: 0; color: #013264; font-weight: 600; }
+.trk-stage { display: inline-flex; align-items: center; gap: 5px; font-size: .74rem; }
+.trk-stage .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.trk-done { color: #00A859; font-weight: 800; display: inline-flex; align-items: center; gap: 4px; }
+.trk-wait { color: #FF9500; font-weight: 800; }
+.trk-rej { color: #FF0004; font-weight: 800; }
+.trk-ico-btn { width: 34px; height: 34px; border-radius: 9px; border: 1px solid #E5E5E5; background: #fff; color: #013264; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+.trk-ico-btn:hover { background: #FFF1E8; color: #FF9500; border-color: #FF9500; }
+:root.dark .trk-info { background: var(--surface); border-color: var(--border); }
+:root.dark .trk-info .val { color: var(--text); }
+:root.dark .trk-panel { background: var(--surface); border-color: var(--border); }
+:root.dark .trk-doc { border-color: var(--border); }
+:root.dark .trk-doc:nth-child(even) { background: var(--surface-2); }
+:root.dark .trk-doc .lbl { color: var(--text); }
+:root.dark .trk-ico-btn { background: var(--surface-2); color: var(--text); border-color: var(--border); }
+
 /* ═══ Auth page full-screen background image (org login) — light/dark variants ═══ */
 .auth-bg { position: fixed; inset: 0; z-index: -1; background-size: cover; background-position: center; background-repeat: no-repeat; }
 .auth-bg::after { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse 46% 56% at 50% 46%, rgba(255,255,255,0.4), transparent 72%); }
