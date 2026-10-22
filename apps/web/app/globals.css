@@ -672,12 +672,15 @@ h1, h2, h3 {
 
 /* ═══ Org welcome page (post-login entry to میز کار) — warm, hand-crafted feel ═══ */
 .welcome-bg {
-  background:
-    radial-gradient(1100px 620px at 88% -12%, color-mix(in srgb, var(--brand) 18%, transparent), transparent 58%),
-    radial-gradient(900px 520px at 6% 112%, color-mix(in srgb, #0ea5e9 12%, transparent), transparent 55%),
-    linear-gradient(180deg, #f8f5f0, #eef1f6);
+  background: url('/welcome-bg.jpg') center center / cover no-repeat fixed, linear-gradient(180deg, #f8f5f0, #eef1f6);
   position: relative;
 }
+/* Soft light wash so the glass card reads over the photo (light theme only). */
+.welcome-bg::before {
+  content: ''; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+  background: radial-gradient(ellipse 46% 56% at 50% 50%, rgba(255,255,255,0.3), transparent 72%);
+}
+:root.dark .welcome-bg::before { display: none; }
 :root.dark .welcome-bg { background: radial-gradient(1100px 620px at 88% -12%, color-mix(in srgb, var(--brand) 20%, transparent), transparent 58%), radial-gradient(900px 520px at 6% 112%, color-mix(in srgb, #0ea5e9 14%, transparent), transparent 55%), linear-gradient(180deg, #0b1020, #070b16); }
 .welcome-top { background: #012141; color: #fff; height: 60px; display: flex; align-items: center; gap: 12px; padding: 0 clamp(16px, 4vw, 44px); }
 .welcome-card {
@@ -693,12 +696,12 @@ h1, h2, h3 {
 
 /* Subtle paper grain — the "hand-crafted", not-plastic texture. Fixed, non-interactive, very faint.
    Applied to the welcome page and (lightly) to the panel canvas; never changes layout or colours. */
-.grain::after, .welcome-bg::after {
+.grain::after {
   content: ''; position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 0.4; mix-blend-mode: multiply;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.35'/%3E%3C/svg%3E");
   background-size: 160px 160px;
 }
-:root.dark .grain::after, :root.dark .welcome-bg::after { mix-blend-mode: screen; opacity: 0.25; }
+:root.dark .grain::after { mix-blend-mode: screen; opacity: 0.25; }
 .welcome-bg > * { position: relative; z-index: 1; }
 
 /* ═══ Two-pane assessment screen (ارزیابی) — left docs viewer + right form, each scrolls alone ═══ */
