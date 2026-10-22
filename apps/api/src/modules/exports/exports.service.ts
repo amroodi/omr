@@ -9,6 +9,7 @@ import { PERMISSIONS } from '../../common/rbac/permissions';
 import { branchWhere } from '../../common/tenant/branch-scope';
 import { getContext, getTenantIdOrThrow } from '../../common/tenant/tenant-context';
 import { toJalali } from '../../common/jalali/jalali.util';
+import { NotificationsService } from '../notifications/notifications.service';
 
 const STATUS_FA: Record<CaseStatus, string> = {
   PAID: 'پرداخت شده',
@@ -31,10 +32,35 @@ export class ExportsService {
     private readonly prisma: PrismaService,
     private readonly crypto: FieldCryptoService,
     private readonly audit: AuditService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   private canSeePii(): boolean {
     return (getContext()?.permissions ?? []).includes(PERMISSIONS.EXPORT_PII);
+  }
+
+  /** Human label for the current actor, for export-activity messages. */
+  private async actorLabel(): Promise<string> {
+    const ctx = getContext();
+    if (ctx?.actorType === 'SUPER_ADMIN') return 'مدیر سامانه';
+    if (ctx?.actorId) {
+      const u = await this.prisma.unscoped().orgUser.findUnique({ where: { id: ctx.actorId }, select: { displayName: true, username: true } });
+      return u?.displayName || u?.username || 'کاربر سازمان';
+    }
+    return 'سیستم';
+  }
+
+  /** Oversight note to the acting operator's own-org admins after an export (in-panel only). */
+  private async notifyAdminsExport(what: string, count: number, pii: boolean) {
+    const ctx = getContext();
+    const piiNote = pii ? ' (با کد ملی کامل)' : '';
+    await this.notifications.notifyOrgAdmins(
+      ctx?.tenantId,
+      'خروجی گرفته شد',
+      `${await this.actorLabel()} ${what} (${count.toLocaleString('fa-IR')} ردیف) را خروجی گرفت${piiNote}.`,
+      '/org/claims',
+      { excludeActorId: ctx?.actorId ?? null },
+    );
   }
 
   private async fetchRows(status?: CaseStatus) {
@@ -123,6 +149,7 @@ export class ExportsService {
       targetType: 'CaseList',
       metadata: { format: 'xlsx', count: rows.length, pii: this.canSeePii() },
     });
+    await this.notifyAdminsExport('فهرست پرونده‌ها (اکسل)', rows.length, this.canSeePii());
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', 'attachment; filename="cases.xlsx"');
@@ -134,6 +161,7 @@ export class ExportsService {
   async casesPrintHtml(status?: CaseStatus): Promise<string> {
     const [rows, header] = await Promise.all([this.fetchRows(status), this.tenantHeader()]);
     await this.audit.record({ action: AuditAction.EXPORT, targetType: 'CaseList', metadata: { format: 'pdf-html', count: rows.length } });
+    await this.notifyAdminsExport('فهرست پرونده‌ها (PDF)', rows.length, this.canSeePii());
 
     const body = rows
       .map((c, i) => {
@@ -227,6 +255,7 @@ export class ExportsService {
     ws.columns.forEach((col) => { col.width = 20; });
 
     await this.audit.record({ action: AuditAction.EXPORT, targetType: 'ClaimList', metadata: { format: 'xlsx', count: rows.length, status: status ?? null, pii: this.canSeePii() } });
+    await this.notifyAdminsExport('فهرست پرونده‌های خسارت (اکسل)', rows.length, this.canSeePii());
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', 'attachment; filename="claims.xlsx"');
     await wb.xlsx.write(res);
@@ -272,6 +301,7 @@ export class ExportsService {
     ws.getColumn(1).font = { bold: true };
 
     await this.audit.record({ action: AuditAction.EXPORT, targetType: 'Claim', targetId: claimId, metadata: { format: 'xlsx', single: true, pii: this.canSeePii() } });
+    await this.notifyAdminsExport(`پروندهٔ ${claim.claimNumber} (اکسل)`, 1, this.canSeePii());
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="claim-${claim.claimNumber}.xlsx"`);
     await wb.xlsx.write(res);

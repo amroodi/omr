@@ -74,6 +74,24 @@ export class ClaimsService {
     await this.notifications.notify({ tenantId: acc.tenantId, audience: 'CUSTOMER', recipientId: policyHolderId, title, body, link: '/customer' });
   }
 
+  /** Oversight note for the acting operator's own-org admins (in-panel only; actor excluded). */
+  private async notifyAdminsActivity(title: string, body: string, link = '/org/claims') {
+    const ctx = getContext();
+    await this.notifications.notifyOrgAdmins(ctx?.tenantId, title, body, link, { excludeActorId: ctx?.actorId ?? null });
+  }
+
+  /** Human label for the current actor, for activity messages (e.g. «کارشناس احمدی»). */
+  private async actorLabel(): Promise<string> {
+    const ctx = getContext();
+    if (ctx?.actorType === 'CUSTOMER') return 'بیمه‌گزار';
+    if (ctx?.actorType === 'SUPER_ADMIN') return 'مدیر سامانه';
+    if (ctx?.actorId) {
+      const u = await this.db().orgUser.findUnique({ where: { id: ctx.actorId }, select: { displayName: true, username: true } });
+      return u?.displayName || u?.username || 'کاربر سازمان';
+    }
+    return 'سیستم';
+  }
+
   private db() {
     return this.prisma.unscoped();
   }
@@ -180,6 +198,7 @@ export class ClaimsService {
     await this.addStep(claim.id, step.order + 1, 'INSURER_LEVEL', claim.insurerTenantId, { levelId: first.id });
     await this.audit.record({ action: AuditAction.CLAIM_FORWARD, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claim.id });
     await this.notifyOrg(claim.insurerTenantId, 'پرونده برای تایید ارجاع شد', `پرونده ${claim.claimNumber} در سطح بیمه‌گر در انتظار بررسی است.`);
+    await this.notifyAdminsActivity('اقدام در گردش کار', `${await this.actorLabel()} پروندهٔ ${claim.claimNumber} را تایید و به بیمه‌گر ارجاع داد.`, `/org/claims/${claim.id}`);
     return this.reload(claim.id);
   }
 
@@ -197,6 +216,7 @@ export class ClaimsService {
       await this.audit.record({ action: AuditAction.CLAIM_APPROVE, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claim.id, metadata: { levelOrder: level.order } });
       await this.notifyPolicyHolder(claim.policyHolderId, 'تایید پرونده خسارت', `پرونده ${claim.claimNumber} تایید شد.`);
       await this.notifyOrg(claim.insurerTenantId, 'پرونده تایید شد', `پرونده ${claim.claimNumber} تایید نهایی شد و آماده پرداخت است.`);
+      await this.notifyAdminsActivity('تایید نهایی پرونده', `${await this.actorLabel()} پروندهٔ ${claim.claimNumber} را در سطح «${level.name}» تایید نهایی کرد.`, `/org/claims/${claim.id}`);
       return this.reload(claim.id);
     }
     // Beyond this level's authority → escalate strictly to the next level (no skipping).
@@ -206,6 +226,7 @@ export class ClaimsService {
     await this.addStep(claim.id, step.order + 1, 'INSURER_LEVEL', claim.insurerTenantId, { levelId: next.id });
     await this.audit.record({ action: AuditAction.CLAIM_ESCALATE, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claim.id, metadata: { from: level.order, to: next.order } });
     await this.notifyOrg(claim.insurerTenantId, 'ارجاع به سطح بالاتر', `پرونده ${claim.claimNumber} برای تایید به سطح بالاتر ارجاع شد.`);
+    await this.notifyAdminsActivity('ارجاع به سطح بالاتر', `${await this.actorLabel()} پروندهٔ ${claim.claimNumber} را از سطح «${level.name}» به «${next.name}» ارجاع داد.`, `/org/claims/${claim.id}`);
     return this.reload(claim.id);
   }
 
@@ -218,6 +239,7 @@ export class ClaimsService {
     await this.addStep(claim.id, step.order + 1, 'POLICYHOLDER', claim.insurerTenantId, { direction: 'DOWN' });
     await this.audit.record({ action: AuditAction.CLAIM_RETURN_INCOMPLETE, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claim.id, metadata: { items } });
     await this.notifyPolicyHolder(claim.policyHolderId, 'نقص مدارک پرونده', `برای پرونده ${claim.claimNumber} نقص مدارک اعلام شد؛ برای رفع نقص وارد پنل شوید.`);
+    await this.notifyAdminsActivity('اعلام نقص مدارک', `${await this.actorLabel()} برای پروندهٔ ${claim.claimNumber} نقص مدارک اعلام کرد.`, `/org/claims/${claim.id}`);
     return this.reload(claim.id);
   }
 
@@ -227,6 +249,7 @@ export class ClaimsService {
     await db.claim.update({ where: { id: claim.id }, data: { status: ClaimStatus.REJECTED } });
     await this.audit.record({ action: AuditAction.CLAIM_REJECT, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claim.id });
     await this.notifyPolicyHolder(claim.policyHolderId, 'رد پرونده خسارت', `پرونده ${claim.claimNumber} رد شد. برای اطلاعات بیشتر با سازمان تماس بگیرید.`);
+    await this.notifyAdminsActivity('رد پرونده', `${await this.actorLabel()} پروندهٔ ${claim.claimNumber} را رد کرد.`, `/org/claims/${claim.id}`);
     return this.reload(claim.id);
   }
 
@@ -244,6 +267,7 @@ export class ClaimsService {
     await db.claim.update({ where: { id: claim.id }, data: { status: ClaimStatus.UNDER_REVIEW } });
     await this.audit.record({ action: AuditAction.CLAIM_RECTIFY, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claim.id });
     await this.notifyOrg(moarefTenantId, 'رفع نقص انجام شد', `بیمه‌گزار نقص مدارک پرونده ${claim.claimNumber} را رفع کرد؛ پرونده دوباره در انتظار بررسی است.`);
+    await this.notifyAdminsActivity('رفع نقص مدارک', `${await this.actorLabel()} نقص مدارک پروندهٔ ${claim.claimNumber} را رفع و آن را دوباره ارسال کرد.`, `/org/claims/${claim.id}`);
     return this.reload(claim.id);
   }
 
@@ -261,6 +285,7 @@ export class ClaimsService {
     if (normalized === '' || isNaN(Number(normalized)) || Number(normalized) < 0) throw new BadRequestException('مبلغ قطعی نامعتبر است');
     await db.claim.update({ where: { id: claimId }, data: { finalizedAmount: new Prisma.Decimal(normalized) } });
     await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { finalizedAmount: normalized } });
+    await this.notifyAdminsActivity('ثبت مبلغ قطعی خسارت', `${await this.actorLabel()} مبلغ قطعی خسارت پروندهٔ ${claim.claimNumber} را ثبت کرد.`, `/org/claims/${claimId}`);
     return this.reload(claimId);
   }
 
@@ -278,6 +303,7 @@ export class ClaimsService {
     await this.db().claim.update({ where: { id: claimId }, data: { status: ClaimStatus.PAID } });
     await this.audit.record({ action: AuditAction.CLAIM_PAY, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId });
     await this.notifyPolicyHolder(claim.policyHolderId, 'پرداخت خسارت', `خسارت پرونده ${claim.claimNumber} پرداخت شد.`);
+    await this.notifyAdminsActivity('پرداخت خسارت', `${await this.actorLabel()} پرداخت خسارت پروندهٔ ${claim.claimNumber} را ثبت کرد.`, `/org/claims/${claimId}`);
     return this.reload(claimId);
   }
 
@@ -303,6 +329,7 @@ export class ClaimsService {
         targetId: claimId,
         metadata: { claimNumber: claim.claimNumber, soft: true, retentionDays: CLAIM_RETENTION_DAYS },
       });
+      await this.notifyAdminsActivity('حذف پرونده', `${await this.actorLabel()} پروندهٔ ${claim.claimNumber} را حذف کرد (تا ${CLAIM_RETENTION_DAYS} روز قابل بازیابی).`, '/org/claims/trash');
     }
     return { deleted: true, retentionDays: CLAIM_RETENTION_DAYS };
   }
@@ -325,6 +352,7 @@ export class ClaimsService {
         targetId: claimId,
         metadata: { claimNumber: claim.claimNumber, restored: true },
       });
+      await this.notifyAdminsActivity('بازیابی پرونده', `${await this.actorLabel()} پروندهٔ ${claim.claimNumber} را از سطل بازیافت بازیابی کرد.`, `/org/claims/${claimId}`);
     }
     return { restored: true };
   }
@@ -538,6 +566,7 @@ export class ClaimsService {
       data: { verificationStatus: status as any, verifiedById: ctx?.actorId ?? null, verifiedAt: new Date(), verificationNote: note ?? null },
     });
     await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'ClaimDocument', targetId: docId, metadata: { verify: status, note } });
+    await this.notifyAdminsActivity('بررسی مدرک', `${await this.actorLabel()} وضعیت یکی از مدارک پروندهٔ ${claim.claimNumber} را «${DOC_STATUS_LABELS[status] ?? status}» ثبت کرد.`, `/org/claims/${claimId}`);
     return { ok: true };
   }
 
@@ -576,6 +605,9 @@ export class ClaimsService {
     });
     await this.recomputeDocStatus(docId, claim);
     await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'ClaimDocumentReview', targetId: docId, metadata: { stage, state, note } });
+    const stageFa = { BROKER: 'کارگزاری', BRANCH: 'شعبه', COUNCIL: 'ستاد' }[stage] ?? stage;
+    const stateFa = { PENDING: 'در انتظار', APPROVED: 'تایید', REJECTED: 'رد' }[state] ?? state;
+    await this.notifyAdminsActivity('بررسی مدرک (مرحله‌ای)', `${await this.actorLabel()} در مرحلهٔ «${stageFa}» یکی از مدارک پروندهٔ ${claim.claimNumber} را «${stateFa}» کرد.`, `/org/claims/${claimId}`);
     return { ok: true };
   }
 

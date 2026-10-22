@@ -13,7 +13,12 @@ export interface NotifyInput {
   title: string;
   body: string;
   link?: string;
+  /** Send the companion SMS too (default true). Set false for internal, high-volume ORG oversight. */
+  sms?: boolean;
 }
+
+// Only staff holding this permission (the «مدیر سازمان» role) receive operator-activity oversight.
+const ADMIN_PERMISSION = 'user:manage';
 
 /**
  * Central notification bus. Every call records an in-panel notification AND sends the same message
@@ -46,7 +51,37 @@ export class NotificationsService {
       this.logger.error(`Notification create failed: ${String(e)}`);
     }
     // SMS is best-effort and must never throw into the caller.
-    this.sendSms(input).catch((e) => this.logger.error(`Notification SMS failed: ${String(e)}`));
+    if (input.sms !== false) {
+      this.sendSms(input).catch((e) => this.logger.error(`Notification SMS failed: ${String(e)}`));
+    }
+  }
+
+  /**
+   * Oversight feed for an organization's admins: one in-panel notification per active «مدیر سازمان»
+   * of the tenant, addressed to them personally (so regular operators don't see it). No SMS — these
+   * are frequent, internal activity notes, not action items. The acting user is skipped so an admin is
+   * never pinged about their own action. Best-effort: failure must never break the triggering action.
+   */
+  async notifyOrgAdmins(
+    tenantId: string | undefined,
+    title: string,
+    body: string,
+    link = '/org/claims',
+    opts: { excludeActorId?: string | null } = {},
+  ): Promise<void> {
+    if (!tenantId) return;
+    try {
+      const admins = await this.prisma.unscoped().orgUser.findMany({
+        where: { tenantId, isActive: true, role: { permissions: { has: ADMIN_PERMISSION } } },
+        select: { id: true },
+      });
+      for (const a of admins) {
+        if (opts.excludeActorId && a.id === opts.excludeActorId) continue;
+        await this.notify({ tenantId, audience: 'ORG', recipientId: a.id, title, body, link, sms: false });
+      }
+    } catch (e) {
+      this.logger.error(`Admin-activity notify failed: ${String(e)}`);
+    }
   }
 
   private async sendSms(input: NotifyInput): Promise<void> {
@@ -74,8 +109,9 @@ export class NotificationsService {
   private where() {
     const ctx = getContext();
     if (ctx?.actorType === 'CUSTOMER') return { tenantId: ctx.tenantId, audience: 'CUSTOMER' as const, recipientId: ctx.actorId };
-    // org user → the whole-org inbox
-    return { tenantId: ctx?.tenantId, audience: 'ORG' as const };
+    // org user → the whole-org inbox (recipientId null) PLUS anything addressed to them personally
+    // (admin-activity oversight is targeted per-admin via recipientId).
+    return { tenantId: ctx?.tenantId, audience: 'ORG' as const, OR: [{ recipientId: null }, { recipientId: ctx?.actorId }] };
   }
 
   async list() {
