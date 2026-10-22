@@ -41,6 +41,7 @@ export default function WorkDeskPage() {
   const [f, setF] = useState({ ...EMPTY });
   const [tip, setTip] = useState(false);
   const [active, setActive] = useState<Tile | null>(null);
+  const [revealed, setRevealed] = useState<string[]>([]); // tile counts stay hidden until the operator clicks the tile
   const [rows, setRows] = useState<QueueRow[]>([]);
   const [qLoading, setQLoading] = useState(false);
   const [notice, setNotice] = useState('');
@@ -100,6 +101,7 @@ export default function WorkDeskPage() {
   const hideNonActionable = () => savePrefs({ ...prefs, hidden: orderedAll.filter((t) => !t.actionable && !['all'].includes(t.key)).map((t) => t.key) });
 
   const openQueue = (t: Tile) => {
+    setRevealed((r) => (r.includes(t.key) ? r : [...r, t.key])); // reveal this tile's count
     if (t.count === 0) { setNotice('موردی برای این صف وجود ندارد.'); return; }
     setActive(t); setRows([]); setQLoading(true);
     client.get<QueueRow[]>(`/claims/work-desk/queue?key=${encodeURIComponent(t.key)}`, 'org')
@@ -131,12 +133,23 @@ export default function WorkDeskPage() {
 
   return (
     <Shell title="میز کار" sectionLabel="میز کار" nav={ORG_NAV} realm="org"
-      action={isAdmin ? (
-        <Link href="/org/track" className="btn btn-solid btn-sm" title="پیگیری آخرین وضعیت پرونده خسارت">
-          <Icon path="M11 19a8 8 0 100-16 8 8 0 000 16zM21 21l-4.3-4.3" />
-          <span className="hidden sm:inline">پیگیری آخرین وضعیت پرونده خسارت</span>
-        </Link>
-      ) : undefined}>
+      action={
+        <span className="flex items-center gap-2">
+          {data?.roleLabel && <span className="badge badge-neutral whitespace-nowrap">نقش: {data.roleLabel}</span>}
+          {data && (
+            <button onClick={() => setSettingsOpen(true)} className="btn btn-ghost btn-sm" title="شخصی‌سازی برگه‌ها">
+              <Icon path="M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 008 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H2a2 2 0 110-4h.09A1.65 1.65 0 004.6 8a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V2a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H22a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z" />
+              <span className="hidden sm:inline">شخصی‌سازی</span>
+            </button>
+          )}
+          {isAdmin && (
+            <Link href="/org/track" className="btn btn-solid btn-sm" title="پیگیری آخرین وضعیت پرونده خسارت">
+              <Icon path="M11 19a8 8 0 100-16 8 8 0 000 16zM21 21l-4.3-4.3" />
+              <span className="hidden lg:inline">پیگیری آخرین وضعیت پرونده خسارت</span>
+            </Link>
+          )}
+        </span>
+      }>
       {/* ── Search panel ── */}
       <div className="pcard p-5 pform mb-5">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -210,15 +223,6 @@ export default function WorkDeskPage() {
         </div>
       ) : (
         <>
-          <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-            <h2 className="font-extrabold text-sm" style={{ color: 'var(--muted)' }}>برگه‌های کاری شما</h2>
-            <div className="flex items-center gap-2">
-              {data.roleLabel && <span className="badge badge-neutral">نقش: {data.roleLabel}</span>}
-              <button onClick={() => setSettingsOpen(true)} className="btn btn-ghost btn-sm" title="شخصی‌سازی برگه‌ها">
-                <Icon path="M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 008 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H2a2 2 0 110-4h.09A1.65 1.65 0 004.6 8a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V2a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H22a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z" /> شخصی‌سازی
-              </button>
-            </div>
-          </div>
           {arrangedTiles.length === 0 ? (
             <div className="pcard p-6 text-center text-sm" style={{ color: 'var(--muted)' }}>همهٔ برگه‌ها پنهان شده‌اند. از «شخصی‌سازی» می‌توانید دوباره نمایش دهید.</div>
           ) : (
@@ -232,7 +236,11 @@ export default function WorkDeskPage() {
                 onClick={() => openQueue(t)}
               >
                 <div className="wd-tile-label">{t.label}</div>
-                <div className="wd-tile-count" style={t.actionable && t.count > 0 ? { color: 'var(--brand)' } : undefined}>{t.count === 0 ? '—' : fa(t.count)}</div>
+                {revealed.includes(t.key) ? (
+                  <div className="wd-tile-count" style={t.actionable && t.count > 0 ? { color: 'var(--brand)' } : undefined}>{t.count === 0 ? '—' : fa(t.count)}</div>
+                ) : (
+                  <div className="wd-tile-count" style={{ color: 'var(--muted)', opacity: 0.6 }} title="برای مشاهدهٔ تعداد کلیک کنید">···</div>
+                )}
                 {t.actionable && <div style={{ fontSize: '0.62rem', color: 'var(--brand)', fontWeight: 700, marginTop: 2 }}>قابل اقدام شما</div>}
               </div>
             ))}
