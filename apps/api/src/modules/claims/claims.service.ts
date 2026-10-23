@@ -9,6 +9,7 @@ import { toJalali } from '../../common/jalali/jalali.util';
 import { OcrService } from '../../integrations/ocr/ocr.service';
 import { ClaimFieldsService } from '../claim-fields/claim-fields.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { PolicyholdersService } from '../policyholders/policyholders.service';
 import { PERMISSIONS } from '../../common/rbac/permissions';
 import { above, actionsFor, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, physicalActionsFor, PhysicalActionKey, physicalBelow, PhysicalState, Purpose, ReviewDesk, Stage, STAGE_FA, WorkflowAction } from './workflow';
 
@@ -27,7 +28,7 @@ const DOC_STATUS_LABELS: Record<string, string> = {
 };
 
 interface FileClaimInput {
-  insurerTenantId: string;
+  insurerTenantId?: string; // omitted when the بیمه‌گزار files: resolved from its company's insurer contract
   channel: SalesChannel;
   brokerTenantId?: string; // BROKER channel
   sellingBranchId?: string; // DIRECT channel (insurer branch)
@@ -38,7 +39,9 @@ interface FileClaimInput {
   description?: string; // free-text details (used when بیمه‌گزار files, can't know amount/policy)
   deceasedFullName: string;
   deceasedNationalCode: string;
+  deceasedBirthDate?: string; // ISO
   policyHolderId?: string;
+  policyholderCompanyId?: string; // بیمه‌گزار company (set automatically when the بیمه‌گزار files)
 }
 
 /** The caller's seat in the claim chain (see myDesk). */
@@ -81,6 +84,7 @@ export class ClaimsService {
     private readonly ocr: OcrService,
     private readonly fields: ClaimFieldsService,
     private readonly notifications: NotificationsService,
+    private readonly policyholders: PolicyholdersService,
   ) {}
 
   // ── Notification helpers (in-panel + SMS via the relevant org's gateway) ──
@@ -120,11 +124,30 @@ export class ClaimsService {
   // ─────────────────────────── Filing ───────────────────────────
   async file(input: FileClaimInput) {
     const db = this.db();
+    const ctx = getContext();
+    const eventDate = input.eventDate ? new Date(input.eventDate) : null;
+
+    // A بیمه‌گزار doesn't choose the insurer: the brokerage's contract for their company that covered
+    // the date of death decides it (and supplies the policy number).
+    let companyId = input.policyholderCompanyId ?? null;
+    if (ctx?.actorType === 'CUSTOMER') {
+      const acc = await db.customerAccount.findUnique({ where: { id: ctx.actorId }, select: { companyId: true } });
+      if (!acc?.companyId) throw new BadRequestException('حساب شما هنوز به شرکت بیمه‌گزار متصل نشده است؛ لطفاً با کارگزاری تماس بگیرید.');
+      companyId = acc.companyId;
+      input.insurerTenantId = undefined;
+    }
+    if (companyId && !input.insurerTenantId) {
+      const contract = await this.policyholders.resolveContract(companyId, eventDate);
+      if (!contract) throw new BadRequestException('برای این تاریخ فوت، قرارداد فعالی میان کارگزاری و بیمه‌گر برای شرکت شما ثبت نشده است؛ لطفاً با کارگزاری تماس بگیرید.');
+      input.insurerTenantId = contract.insurerTenantId;
+      input.policyNumber = input.policyNumber ?? contract.policyNumber ?? undefined;
+    }
+    if (!input.insurerTenantId) throw new BadRequestException('بیمه‌گر نامعتبر است');
     const insurer = await db.tenant.findUnique({ where: { id: input.insurerTenantId }, select: { id: true, kind: true, noticeDays: true } });
     if (!insurer || insurer.kind !== 'INSURER') throw new BadRequestException('بیمه‌گر نامعتبر است');
+    const insurerTenantId = insurer.id;
 
     // 30-day (configurable) notice deadline: event date + insurer.noticeDays.
-    const eventDate = input.eventDate ? new Date(input.eventDate) : null;
     let noticeDeadline: Date | null = null;
     let lateNotice = false;
     if (eventDate) {
@@ -142,15 +165,15 @@ export class ClaimsService {
       const broker = await db.tenant.findUnique({ where: { id: input.brokerTenantId }, select: { kind: true } });
       if (!broker || broker.kind !== 'BROKER') throw new BadRequestException('کارگزار نامعتبر است');
       // A brokerage may only file against an insurer it is partnered with.
-      const partner = await db.brokerInsurerPartnership.findFirst({ where: { brokerTenantId: input.brokerTenantId, insurerTenantId: input.insurerTenantId, isActive: true }, select: { id: true } });
+      const partner = await db.brokerInsurerPartnership.findFirst({ where: { brokerTenantId: input.brokerTenantId, insurerTenantId, isActive: true }, select: { id: true } });
       if (!partner) throw new BadRequestException('این کارگزاری با این بیمه‌گر همکاری فعال ندارد');
       moarefTenantId = input.brokerTenantId;
       moarefRole = 'MOAREF_BROKER';
     } else {
       if (!input.sellingBranchId) throw new BadRequestException('شعبه فروشنده (معرف) الزامی است');
-      const branch = await db.branch.findFirst({ where: { id: input.sellingBranchId, tenantId: input.insurerTenantId }, select: { id: true } });
+      const branch = await db.branch.findFirst({ where: { id: input.sellingBranchId, tenantId: insurerTenantId }, select: { id: true } });
       if (!branch) throw new BadRequestException('شعبه فروشنده متعلق به بیمه‌گر نیست');
-      moarefTenantId = input.insurerTenantId;
+      moarefTenantId = insurerTenantId;
       moarefBranchId = input.sellingBranchId;
       moarefRole = 'MOAREF_BRANCH';
     }
@@ -165,11 +188,13 @@ export class ClaimsService {
     const claim = await db.claim.create({
       data: {
         claimNumber,
-        insurerTenantId: input.insurerTenantId,
+        insurerTenantId: insurerTenantId,
         channel: input.channel,
         brokerTenantId: input.channel === 'BROKER' ? input.brokerTenantId : null,
         sellingBranchId: moarefBranchId,
         policyHolderId: input.policyHolderId ?? getContext()?.actorId ?? null,
+        policyholderCompanyId: companyId,
+        deceasedBirthDate: input.deceasedBirthDate ? new Date(input.deceasedBirthDate) : null,
         deceasedFullName: this.crypto.encrypt(input.deceasedFullName)!,
         deceasedNationalCode: this.crypto.encrypt(nid)!,
         deceasedNationalCodeHash: this.crypto.blindIndex(nid)!,
@@ -187,7 +212,7 @@ export class ClaimsService {
         handlingBranchId: moarefBranchId,
         participants: {
           create: [
-            { tenantId: input.insurerTenantId, role: 'INSURER' },
+            { tenantId: insurerTenantId, role: 'INSURER' },
             ...(input.channel === 'BROKER' ? [{ tenantId: input.brokerTenantId!, role: 'MOAREF_BROKER' }] : []),
           ],
         },
@@ -197,7 +222,7 @@ export class ClaimsService {
             partyType: firstStage === 'POLICYHOLDER' ? 'POLICYHOLDER' : 'MOAREF',
             stage: firstStage,
             purpose: 'REVIEW',
-            holderTenantId: firstStage === 'POLICYHOLDER' ? input.insurerTenantId : moarefTenantId,
+            holderTenantId: firstStage === 'POLICYHOLDER' ? insurerTenantId : moarefTenantId,
             holderBranchId: firstStage === 'BRANCH' ? moarefBranchId : null,
             state: 'PENDING',
             direction: 'UP',
@@ -207,7 +232,7 @@ export class ClaimsService {
       include: { steps: true },
     });
 
-    await this.audit.record({ action: AuditAction.CLAIM_SUBMIT, tenantId: input.insurerTenantId, targetType: 'Claim', targetId: claim.id, metadata: { channel: input.channel, moaref: moarefRole } });
+    await this.audit.record({ action: AuditAction.CLAIM_SUBMIT, tenantId: insurerTenantId, targetType: 'Claim', targetId: claim.id, metadata: { channel: input.channel, moaref: moarefRole } });
     if (byPolicyHolder) {
       await this.notifyPolicyHolder(claim.policyHolderId, 'ثبت پرونده خسارت', `پرونده ${claim.claimNumber} ثبت شد؛ مدارک را بارگذاری و پرونده را ارسال کنید.`);
     } else {
@@ -761,6 +786,7 @@ export class ClaimsService {
     const result: any = this.present(claim, true);
     await this.enrichParties(claim, result);
     result.workflow = await this.workflowView(claim);
+    result.policyholderCompany = await this.policyholders.contact(claim.policyholderCompanyId);
     return result;
   }
 
@@ -1037,14 +1063,24 @@ export class ClaimsService {
   }
 
   /** All claims the caller participates in, newest first, flagged if their action is needed. */
-  async listMine() {
+  async listMine(q?: string) {
     const ctx = getContext();
     const db = this.db();
-    const where =
+    const where: Prisma.ClaimWhereInput =
       ctx?.actorType === 'CUSTOMER'
         ? { policyHolderId: ctx.actorId, deletedAt: null }
         : this.wdScope(ctx?.tenantId);
-    const [claims, desk] = await Promise.all([db.claim.findMany({ where, orderBy: { updatedAt: 'desc' } }), this.myDesk()]);
+    // Search (بیمه‌گزار panel «جستجو»): a 10-digit term matches the deceased's کد ملی exactly (blind
+    // index); anything else matches the claim number or the deceased's name.
+    const term = (q ?? '').trim().replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
+    const nidHash = /^\d{8,10}$/.test(term) ? this.crypto.blindIndex(term.padStart(10, '0')) : null;
+    const [rows, desk] = await Promise.all([
+      db.claim.findMany({ where: nidHash ? { AND: [where, { deceasedNationalCodeHash: nidHash }] } : where, orderBy: { updatedAt: 'desc' } }),
+      this.myDesk(),
+    ]);
+    const claims = term && !nidHash
+      ? rows.filter((c) => c.claimNumber.toLowerCase().includes(term.toLowerCase()) || (this.crypto.decrypt(c.deceasedFullName) ?? '').includes(term))
+      : rows;
     return claims.map((c) => ({ ...(this.present(c) as object), needsAction: this.holdsDesk(c, desk) }));
   }
 
@@ -1275,6 +1311,9 @@ export class ClaimsService {
       insurerTenantId: c.insurerTenantId,
       brokerTenantId: c.brokerTenantId,
       eventDate: c.eventDate ? toJalali(c.eventDate, false) : null,
+      deceasedBirthDate: c.deceasedBirthDate ? toJalali(c.deceasedBirthDate, false) : null,
+      deceasedAge: ageAt(c.deceasedBirthDate, c.eventDate),
+      policyholderCompanyId: c.policyholderCompanyId ?? null,
       noticeDeadline: c.noticeDeadline ? toJalali(c.noticeDeadline, false) : null,
       lateNotice: c.lateNotice,
       createdAt: c.createdAt ? toJalali(c.createdAt) : null,
@@ -1297,6 +1336,15 @@ export class ClaimsService {
       deficiencies: (c.deficiencies ?? []).map((d: any) => ({ items: safeParse(d.items), raisedByStepId: d.raisedByStepId, createdAt: d.createdAt ? toJalali(d.createdAt) : null, resolvedAt: d.resolvedAt ? toJalali(d.resolvedAt) : null })),
     };
   }
+}
+
+/** Whole years between birth and the date of death (or today when the event date is unknown). */
+export function ageAt(birth: Date | null | undefined, at: Date | null | undefined): number | null {
+  if (!birth) return null;
+  const end = at ?? new Date();
+  let age = end.getUTCFullYear() - birth.getUTCFullYear();
+  if (end.getUTCMonth() < birth.getUTCMonth() || (end.getUTCMonth() === birth.getUTCMonth() && end.getUTCDate() < birth.getUTCDate())) age--;
+  return age >= 0 && age < 130 ? age : null;
 }
 
 function safeParse(s: string): unknown {

@@ -598,11 +598,23 @@ h1, h2, h3 {
 :root.dark .psummary-bar { background: #3a2f05; color: #fde68a; }
 
 /* Action diamond (rotated square badge with an icon) */
-.pdiamond-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; cursor: pointer; }
+.pdiamond-wrap {
+  display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; cursor: pointer;
+  /* A soft button plate behind each diamond so it reads as a button. */
+  min-width: 150px; padding: 26px 18px 16px; border-radius: 18px; border: 1px solid var(--border);
+  background: linear-gradient(180deg, var(--surface), var(--brand-soft)); box-shadow: var(--shadow-sm);
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease; font: inherit; color: inherit;
+}
+.pdiamond-wrap:hover { transform: translateY(-2px); box-shadow: var(--shadow); border-color: var(--brand); }
+.pdiamond-wrap.is-active { border-color: var(--brand); box-shadow: 0 0 0 2px var(--brand) inset, var(--shadow); }
+.pstat-btn { display: block; width: 100%; text-align: inherit; border-radius: var(--radius); cursor: pointer; transition: transform 0.16s ease, box-shadow 0.16s ease; font: inherit; color: inherit; background: none; border: 0; padding: 0; }
+.pstat-btn:hover { transform: translateY(-2px); }
+.pstat-btn.is-active > .pcard { box-shadow: 0 0 0 2px var(--brand) inset, var(--shadow); }
 .pdiamond { width: 72px; height: 72px; border-radius: 18px; transform: rotate(45deg); background: var(--surface-2); border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; transition: background 0.16s ease, transform 0.16s ease; }
 .pdiamond > * { transform: rotate(-45deg); }
 .pdiamond-wrap:hover .pdiamond { background: var(--brand-soft); }
 .pdiamond-wrap.is-soon { cursor: default; opacity: 0.6; }
+.pdiamond-wrap.is-soon:hover { transform: none; box-shadow: var(--shadow-sm); border-color: var(--border); }
 .pdiamond-title { font-weight: 700; font-size: 0.92rem; color: var(--brand); }
 .pdiamond-sub { font-size: 0.76rem; color: var(--muted); }
 

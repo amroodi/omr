@@ -50,7 +50,7 @@ export function Shell({
   const [mounted, setMounted] = useState(false);
   const [rail, setRail] = useState(true); // desktop: collapsed icon rail by default
   const [open, setOpen] = useState(false); // mobile: off-canvas drawer
-  const [brand, setBrand] = useState<{ name: string; hasLogo: boolean; slug: string } | null>(null);
+  const [brand, setBrand] = useState<{ name: string; hasLogo: boolean; slug: string; logoSrc?: string | null } | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -59,9 +59,19 @@ export function Shell({
   useEffect(() => { setOpen(false); }, [pathname]);
   useEffect(() => {
     let active = true;
-    client.get<any>('/tenant/branding')
+    const tenantBrand = () => client.get<any>('/tenant/branding')
       .then((b) => { if (active) setBrand({ name: b.name, hasLogo: !!b.logoUrl, slug: getTenantSlug() }); })
       .catch(() => { if (active) setBrand(null); });
+    if (realm === 'customer') {
+      // The بیمه‌گزار panel shows the represented company's own name + logo (falls back to the brokerage's).
+      client.get<{ company: { id: string; name: string; hasLogo: boolean } | null }>('/customer/me', 'customer')
+        .then((m) => {
+          if (!active) return;
+          if (!m.company) return tenantBrand();
+          setBrand({ name: m.company.name, hasLogo: m.company.hasLogo, slug: getTenantSlug(), logoSrc: m.company.hasLogo ? `${client.base}/policyholder-companies/${m.company.id}/logo` : null });
+        })
+        .catch(() => tenantBrand());
+    } else tenantBrand();
     return () => { active = false; };
   }, [realm]);
 
@@ -69,7 +79,7 @@ export function Shell({
   const visibleNav = nav.filter((n) => !n.perm || (mounted && hasPerm(realm, n.perm)));
   const homeHref = realm === 'customer' ? '/customer' : realm === 'super' ? '/admin' : '/org';
   const logout = () => { clearToken(realm); router.push(`/${realm === 'super' ? 'admin' : realm}/login`); };
-  const logoUrl = brand?.hasLogo ? `${client.base}/tenant/assets/logo?tenant=${brand.slug}` : null;
+  const logoUrl = brand?.logoSrc !== undefined ? brand.logoSrc : brand?.hasLogo ? `${client.base}/tenant/assets/logo?tenant=${brand.slug}` : null;
 
   const PW_ICON = 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zM8 11V7a4 4 0 118 0v4';
   const OUT_ICON = 'M15 3H5a2 2 0 00-2 2v14a2 2 0 002 2h10M17 16l4-4-4-4M21 12H9';

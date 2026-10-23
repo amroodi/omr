@@ -36,6 +36,19 @@ one position per claim (`Claim.currentStage` + `flowDirection` + `flowPurpose`),
 - **Trace:** every hand-off is a `ClaimStep` (desk, action, note, actor, time) with optional
   `ClaimLetter` (number/date/subject/scan); shown in all panels (operator names only inside orgs).
 
+## بیمه‌گزار companies & routing (2026-10-24)
+
+- **بیمه‌گزار = a company** (`PolicyholderCompany`, owned by the brokerage; optional parent for
+  subsidiaries; name, logo, contact details). People who log into the بیمه‌گزار panel are its
+  representatives (`CustomerAccount.companyId`); the panel shows the company's name + logo.
+- **Insurer contracts with dates** (`PolicyholderContract`: insurer, policy no., start/end). The
+  بیمه‌گزار never picks the insurer: a claim routes to the contract that covered the **date of death**
+  (so a company that moves from one insurer to another keeps older deaths with the old insurer).
+  کارگزاری manages companies, contracts and representatives on «بیمه‌گزاران».
+- **استعلام** asks for the company first, then the deceased's کد ملی and the requester's own mobile; the
+  result adds tracking, ذینفع‌ها, پاسخگوی آنلاین (`InquiryMessage` → کارگزاری inbox + بیمه‌گزار),
+  سوالات متداول and the company's contact card.
+
 ## 0. Confirmed decisions
 
 1. **Cross-tenant.** Each insurer (INSURER) and each brokerage (BROKER) is its own organization,

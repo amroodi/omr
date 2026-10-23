@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -17,7 +18,10 @@ import { getContext, getTenantIdOrThrow } from '../../common/tenant/tenant-conte
 import { toJalali } from '../../common/jalali/jalali.util';
 import { SmsService } from '../auth/sms.service';
 import { RequestOtpDto, VerifyOtpDto } from './dto';
-import { Stage, STAGE_FA } from '../claims/workflow';
+import { chainOf, Stage, STAGE_FA } from '../claims/workflow';
+import { ageAt } from '../claims/claims.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { PolicyholdersService } from '../policyholders/policyholders.service';
 
 /**
  * The secure replacement for the legacy IDOR endpoints (`get_fields.php`,
@@ -43,6 +47,8 @@ export class InquiryService {
     private readonly audit: AuditService,
     private readonly rateLimit: RateLimitService,
     private readonly config: ConfigService,
+    private readonly policyholders: PolicyholdersService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /** Platform master switch: is OTP required at all? (false = view record directly, no code). */
@@ -172,9 +178,20 @@ export class InquiryService {
     return d.length > 0 && d.length < 10 ? d.padStart(10, '0') : d;
   }
 
-  private findClaimByDeceased(tenantId: string, nidHash: string) {
-    return this.prisma.unscoped().claim.findFirst({
-      where: { deceasedNationalCodeHash: nidHash, deletedAt: null, OR: [{ insurerTenantId: tenantId }, { brokerTenantId: tenantId }] },
+  /**
+   * The deceased's latest claim with this organization. With `companyId` (the requester first picks the
+   * بیمه‌گزار company) the match is limited to that company's claims — filed for it, or by one of its
+   * representatives.
+   */
+  private async findClaimByDeceased(tenantId: string, nidHash: string, companyId?: string) {
+    const db = this.prisma.unscoped();
+    let companyFilter = {};
+    if (companyId) {
+      const reps = await db.customerAccount.findMany({ where: { companyId }, select: { id: true } });
+      companyFilter = { OR: [{ policyholderCompanyId: companyId }, ...(reps.length ? [{ policyHolderId: { in: reps.map((r) => r.id) } }] : [])] };
+    }
+    return db.claim.findFirst({
+      where: { AND: [{ deceasedNationalCodeHash: nidHash, deletedAt: null, OR: [{ insurerTenantId: tenantId }, { brokerTenantId: tenantId }] }, companyFilter] },
       orderBy: { createdAt: 'desc' },
       select: { id: true },
     });
@@ -211,7 +228,7 @@ export class InquiryService {
     if (!this.rateLimit.hit(`cst:nid:${nidHash}`, perNid, 3600)) throw new TooManyRequestsException('تعداد درخواست‌ها زیاد است. بعداً تلاش کنید.');
     if (!this.rateLimit.hit(`cst:phone:${phoneHash}`, perIp, 3600)) throw new TooManyRequestsException('تعداد درخواست‌ها زیاد است. بعداً تلاش کنید.');
 
-    const claim = await this.findClaimByDeceased(tenantId, nidHash);
+    const claim = await this.findClaimByDeceased(tenantId, nidHash, dto.companyId);
     await this.recordInquiry(tenantId, claim, phone, dto.nationalCode, ip);
 
     if (!(await this.otpEnabled())) return { ok: true, otpRequired: false, message: 'مشاهده پرونده بدون کد تایید فعال است.' };
@@ -239,11 +256,13 @@ export class InquiryService {
     const tenantId = getTenantIdOrThrow();
     const ctx = getContext();
     const nidHash = this.crypto.blindIndex(this.nid10(dto.nationalCode))!;
-    const claim = await this.findClaimByDeceased(tenantId, nidHash);
+    const claim = await this.findClaimByDeceased(tenantId, nidHash, dto.companyId);
     if (!claim) throw new ForbiddenException('پرونده‌ای برای این مشخصات یافت نشد.');
-    await this.recordInquiry(tenantId, claim, this.normalizePhone(dto.phone), dto.nationalCode, ctx?.ip ?? 'unknown');
+    const phone = this.normalizePhone(dto.phone);
+    await this.recordInquiry(tenantId, claim, phone, dto.nationalCode, ctx?.ip ?? 'unknown');
     const ttl = this.config.get<string>('RECORD_TOKEN_TTL', '10m');
-    const token = await this.jwt.signAsync({ kind: 'record', tenantId, caseId: null, claimId: claim.id, sub: null }, { expiresIn: ttl });
+    // `ph` = the requester's phone (encrypted) so «پاسخگوی آنلاین» knows whom to answer.
+    const token = await this.jwt.signAsync({ kind: 'record', tenantId, caseId: null, claimId: claim.id, sub: null, ph: this.crypto.encrypt(phone) }, { expiresIn: ttl });
     return { token, expiresIn: ttl };
   }
 
@@ -282,7 +301,7 @@ export class InquiryService {
 
     // Mint a token scoped to exactly one record id (case or claim) — not the National ID.
     const token = await this.jwt.signAsync(
-      { kind: 'record', tenantId, caseId: challenge.caseId, claimId: challenge.claimId, sub: challenge.insuredId },
+      { kind: 'record', tenantId, caseId: challenge.caseId, claimId: challenge.claimId, sub: challenge.insuredId, ph: this.crypto.encrypt(this.normalizePhone(dto.phone)) },
       { expiresIn: this.config.get<string>('RECORD_TOKEN_TTL', '10m') },
     );
     await this.audit.record({
@@ -347,6 +366,8 @@ export class InquiryService {
 
     const dec = (v: string | null) => (v ? this.crypto.decrypt(v) : null);
     const nid = dec(c.deceasedNationalCode);
+    const broker = c.brokerTenantId ? await this.prisma.unscoped().tenant.findUnique({ where: { id: c.brokerTenantId }, select: { name: true, contactHeader: true } }) : null;
+    const iban = fv.beneficiary_iban?.replace(/\s/g, '') ?? null;
     return {
       kind: 'claim',
       claimNumber: c.claimNumber,
@@ -355,7 +376,8 @@ export class InquiryService {
       insurerName: insurer?.name ?? null,
       deceasedName: dec(c.deceasedFullName),
       nationalCodeMasked: nid ? `••••••${nid.slice(-4)}` : null,
-      birthDate: fv.birth_date ?? null,
+      birthDate: c.deceasedBirthDate ? toJalali(c.deceasedBirthDate, false) : (fv.birth_date ?? null),
+      deceasedAge: ageAt(c.deceasedBirthDate, c.eventDate),
       companyName: fv.company_name ?? c.employerName ?? null,
       policyNumber: fv.policy_number ?? c.policyNumber ?? null,
       policyStartDate: fv.policy_start_date ?? null,
@@ -374,7 +396,53 @@ export class InquiryService {
         direction: s.direction, purpose: s.purpose ?? null, state: s.state, action: s.action ?? null, decidedAt: s.decidedAt ? toJalali(s.decidedAt) : null,
       })),
       deficiencies: (c.deficiencies ?? []).map((d: any) => ({ items: this.safeParse(d.items), resolvedAt: d.resolvedAt ? toJalali(d.resolvedAt, false) : null })),
+      chain: chainOf(c).map((st) => ({ stage: st, label: STAGE_FA[st] })),
+      currentStage: c.currentStage ?? null,
+      flowDirection: c.flowDirection ?? null,
+      flowPurpose: c.flowPurpose ?? null,
+      // ذینفع‌ها — who receives the payment (IBAN masked; names as entered by the organization).
+      beneficiaries: {
+        type: fv.beneficiary_type ?? c.beneficiaryType ?? null,
+        names: fv.beneficiaries ?? null,
+        ibanMasked: iban && iban.length > 8 ? `${iban.slice(0, 4)}••••••••${iban.slice(-4)}` : null,
+      },
+      // تماس و ارتباط — the بیمه‌گزار company (and the brokerage) the requester can contact.
+      company: await this.policyholders.contact(c.policyholderCompanyId ?? (await this.companyOfFiler(c.policyHolderId))),
+      broker: broker ? { name: broker.name, contact: broker.contactHeader } : null,
+      canMessage: !!getContext()?.scopedPhone,
     };
+  }
+
+  private async companyOfFiler(policyHolderId: string | null): Promise<string | null> {
+    if (!policyHolderId) return null;
+    const a = await this.prisma.unscoped().customerAccount.findUnique({ where: { id: policyHolderId }, select: { companyId: true } });
+    return a?.companyId ?? null;
+  }
+
+  /**
+   * «پاسخگوی آنلاین» — the requester leaves a question about the claim they looked up. It reaches the
+   * brokerage's inbox and the بیمه‌گزار; they answer the requester on the (OTP-verified) phone.
+   */
+  async leaveMessage(message: string) {
+    const ctx = getContext();
+    const claimId = ctx?.scopedClaimId;
+    if (!claimId || !ctx?.scopedPhone) throw new ForbiddenException('برای ارسال پیام ابتدا استعلام کنید.');
+    const text = String(message ?? '').trim();
+    if (text.length < 3) throw new BadRequestException('متن پیام را بنویسید');
+    if (!this.rateLimit.hit(`inqmsg:${claimId}:${ctx.scopedPhone}`, 5, 3600)) throw new TooManyRequestsException('تعداد پیام‌ها زیاد است. بعداً تلاش کنید.');
+    const c = await this.prisma.unscoped().claim.findUnique({ where: { id: claimId }, select: { id: true, claimNumber: true, brokerTenantId: true, insurerTenantId: true, policyHolderId: true, policyholderCompanyId: true } });
+    if (!c) throw new NotFoundException('پرونده یافت نشد.');
+    const companyId = c.policyholderCompanyId ?? (await this.companyOfFiler(c.policyHolderId));
+    await this.prisma.unscoped().inquiryMessage.create({ data: { claimId, companyId, phone: ctx.scopedPhone, message: text.slice(0, 2000) } });
+    const body = `پیام جدید از استعلام‌کنندهٔ پروندهٔ ${c.claimNumber}: «${text.slice(0, 140)}»`;
+    const orgId = c.brokerTenantId ?? c.insurerTenantId;
+    await this.notifications.notify({ tenantId: orgId, audience: 'ORG', title: 'پاسخگوی آنلاین', body, link: '/org/policyholders?tab=messages' });
+    if (c.policyHolderId) {
+      const acc = await this.prisma.unscoped().customerAccount.findUnique({ where: { id: c.policyHolderId }, select: { tenantId: true } });
+      if (acc) await this.notifications.notify({ tenantId: acc.tenantId, audience: 'CUSTOMER', recipientId: c.policyHolderId, title: 'پاسخگوی آنلاین', body, link: '/customer' });
+    }
+    await this.audit.record({ action: AuditAction.CREATE, targetType: 'InquiryMessage', targetId: claimId, actorType: 'INSURED' });
+    return { ok: true, message: 'پیام شما ثبت شد؛ کارشناس با شمارهٔ موبایل شما تماس خواهد گرفت.' };
   }
 
   private safeParse(v: string | null): string[] {

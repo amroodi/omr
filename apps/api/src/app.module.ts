@@ -32,6 +32,7 @@ import { DocumentsModule } from './modules/documents/documents.module';
 import { ExportsModule } from './modules/exports/exports.module';
 import { ImportModule } from './modules/import/import.module';
 import { InquiryModule } from './modules/inquiry/inquiry.module';
+import { PolicyholdersModule } from './modules/policyholders/policyholders.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { SharingModule } from './modules/sharing/sharing.module';
@@ -57,6 +58,7 @@ import { UsersModule } from './modules/users/users.module';
     OcrModule,
     AuthModule,
     InquiryModule,
+    PolicyholdersModule,
     RolesModule,
     UsersModule,
     DocumentsModule,

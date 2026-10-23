@@ -2,7 +2,7 @@ import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { Public } from '../../common/rbac/decorators';
 import { TenantResolverGuard } from '../../common/tenant/tenant-resolver.guard';
-import { RequestOtpDto, VerifyOtpDto } from './dto';
+import { InquiryMessageDto, RequestOtpDto, VerifyOtpDto } from './dto';
 import { InquiryService } from './inquiry.service';
 
 @Controller('inquiry')
@@ -54,5 +54,12 @@ export class InquiryController {
   @Get('case')
   getCase() {
     return this.inquiry.getScopedCase();
+  }
+
+  /** «پاسخگوی آنلاین» — the requester (record token) leaves a question for the بیمه‌گزار / کارگزاری. */
+  @UseGuards(JwtAuthGuard)
+  @Post('message')
+  message(@Body() dto: InquiryMessageDto) {
+    return this.inquiry.leaveMessage(dto.message);
   }
 }

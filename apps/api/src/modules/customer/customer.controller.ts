@@ -12,7 +12,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
-import { IsOptional, IsString, Length, Matches } from 'class-validator';
+import { IsOptional, IsString, IsUUID, Length, Matches } from 'class-validator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { Permissions, Public } from '../../common/rbac/decorators';
 import { PERMISSIONS } from '../../common/rbac/permissions';
@@ -23,6 +23,10 @@ class CreateCustomerDto {
   @ToAsciiDigits() @IsString() @Length(8, 12) nationalCode!: string;
   @ToAsciiDigits() @IsString() @Matches(/^0?9\d{9}$/) phone!: string;
   @IsOptional() @IsString() @Length(2, 120) fullName?: string;
+
+  @IsOptional()
+  @IsUUID()
+  companyId?: string;
 }
 import { CustomerSignupStatus } from '@prisma/client';
 import { ClaimsService } from '../claims/claims.service';
@@ -138,8 +142,8 @@ export class CustomerController {
   @Post('claims')
   fileClaim(@Body() dto: CustomerFileClaimDto) {
     return this.claims.file({
-      insurerTenantId: dto.insurerTenantId,
       channel: 'BROKER' as any,
+      deceasedBirthDate: dto.deceasedBirthDate,
       claimType: dto.claimType,
       eventDate: dto.eventDate,
       description: dto.description,
@@ -149,9 +153,15 @@ export class CustomerController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('me')
+  me() {
+    return this.customer.me();
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get('claims')
-  myClaims() {
-    return this.claims.listMine();
+  myClaims(@Query('q') q?: string) {
+    return this.claims.listMine(q);
   }
 
   @UseGuards(JwtAuthGuard)

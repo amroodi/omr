@@ -20,6 +20,8 @@ interface Claim {
   id: string; claimNumber: string; status: string; claimType: string; deceasedName: string | null;
   claimedAmount: string; estimatedAmount?: string; finalizedAmount?: string | null; payableAmount?: string;
   eventDate: string | null; noticeDeadline: string | null; lateNotice: boolean;
+  deceasedBirthDate?: string | null; deceasedAge?: number | null;
+  policyholderCompany?: { name: string; phone: string | null } | null;
   description?: string | null;
   policyHolder?: { name: string | null; nationalCode: string | null } | null;
   insurer?: { name: string } | null;
@@ -140,14 +142,17 @@ export default function ClaimDetail() {
               <Row label="بیمه‌شده (متوفی)" value={claim.deceasedName} />
               <Row label="مبلغ خسارت برآوردی" value={`${Number(claim.estimatedAmount ?? claim.claimedAmount).toLocaleString('fa-IR')} ریال`} />
               <Row label="مبلغ خسارت قطعی" value={claim.finalizedAmount ? `${Number(claim.finalizedAmount).toLocaleString('fa-IR')} ریال` : '— (پس از ارزیابی)'} />
-              <Row label="تاریخ وقوع" value={claim.eventDate} />
+              <Row label={['DEATH_ILLNESS', 'DEATH_ACCIDENT'].includes(claim.claimType) ? 'تاریخ فوت' : 'تاریخ وقوع حادثه'} value={claim.eventDate} />
+              <Row label="تاریخ تولد" value={claim.deceasedBirthDate} />
+              <Row label="سن (هنگام فوت / حادثه)" value={claim.deceasedAge != null ? `${claim.deceasedAge.toLocaleString('fa-IR')} سال` : null} />
               <Row label="مهلت اعلام" value={claim.noticeDeadline} />
             </div>
             <div className="grid sm:grid-cols-3 gap-3 mt-3 pt-3 border-t text-sm" style={{ borderColor: 'var(--border)' }}>
               {claim.policyHolder && (
                 <div>
                   <div className="text-xs mb-0.5" style={{ color: 'var(--muted)' }}>بیمه‌گزار</div>
-                  <div className="font-semibold">{claim.policyHolder.name || '—'}</div>
+                  <div className="font-semibold">{claim.policyholderCompany?.name || claim.policyHolder.name || '—'}</div>
+                  {claim.policyholderCompany && claim.policyHolder.name && <div className="text-xs" style={{ color: 'var(--muted)' }}>نماینده: {claim.policyHolder.name}</div>}
                   {claim.policyHolder.nationalCode && <div className="text-xs" style={{ color: 'var(--muted)', direction: 'ltr', textAlign: 'right' }}>کد ملی: {claim.policyHolder.nationalCode}</div>}
                 </div>
               )}

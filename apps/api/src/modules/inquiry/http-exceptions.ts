@@ -1,6 +1,6 @@
-import { ForbiddenException, HttpException, HttpStatus, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, HttpException, HttpStatus, NotFoundException } from '@nestjs/common';
 
-export { ForbiddenException, NotFoundException };
+export { BadRequestException, ForbiddenException, NotFoundException };
 
 /** NestJS has no built-in 429 exception; this provides one. */
 export class TooManyRequestsException extends HttpException {

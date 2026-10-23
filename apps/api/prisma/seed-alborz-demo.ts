@@ -134,11 +134,18 @@ async function main() {
     const asAlborz = <T>(name: string, fn: () => Promise<T>) => as(users[name], alborz.id, fn);
 
     // بیمه‌گزار: the employer company's account under the brokerage
+    // The بیمه‌گزار company (the deceased's employer) with its Alborz contract, and its representative.
+    const company = (await prisma.policyholderCompany.findFirst({ where: { tenantId: damuon.id, name: 'شرکت فولاد نمونه' } }))
+      ?? await prisma.policyholderCompany.create({ data: { tenantId: damuon.id, name: 'شرکت فولاد نمونه', contactName: 'واحد رفاه کارکنان', phone: '021-88000000', email: 'refah@example.com', address: 'تهران، خیابان ولیعصر' } });
+    if (!(await prisma.policyholderContract.count({ where: { companyId: company.id } }))) {
+      await prisma.policyholderContract.create({ data: { companyId: company.id, insurerTenantId: alborz.id, policyNumber: '1403/105/979', startDate: new Date(Date.now() - 365 * 864e5) } });
+    }
     let ph = await prisma.customerAccount.findFirst({ where: { tenantId: damuon.id } });
     if (!ph) {
-      await asBroker(() => customers.createAccount({ nationalCode: nid('001035082'), phone: '09120000001', fullName: 'شرکت فولاد نمونه (بیمه‌گزار)' }));
+      await asBroker(() => customers.createAccount({ nationalCode: nid('001035082'), phone: '09120000001', fullName: 'نمایندهٔ شرکت فولاد نمونه', companyId: company.id }));
       ph = await prisma.customerAccount.findFirst({ where: { tenantId: damuon.id } });
     }
+    if (ph && !ph.companyId) await prisma.customerAccount.update({ where: { id: ph.id }, data: { companyId: company.id } });
     const docCodes = DEFAULT_REQUIRED_DOCS.filter((d) => d.appliesToTypes.includes('DEATH_ILLNESS')).map((d) => d.code);
     const labels = new Map(DEFAULT_REQUIRED_DOCS.map((d) => [d.code, d.label]));
 
@@ -146,7 +153,8 @@ async function main() {
       const c: any = await asBroker(() => claims.file({
         insurerTenantId: alborz.id, channel: 'BROKER', brokerTenantId: damuon.id, claimType: 'DEATH_ILLNESS',
         eventDate: new Date(Date.now() - daysAgo * 864e5).toISOString(), claimedAmount: amount,
-        deceasedFullName: name, deceasedNationalCode: nid(nine), policyHolderId: ph!.id, policyNumber: '1403/105/979',
+        deceasedFullName: name, deceasedNationalCode: nid(nine), policyHolderId: ph!.id, policyholderCompanyId: company.id, policyNumber: '1403/105/979',
+        deceasedBirthDate: new Date(Date.now() - (45 + daysAgo % 20) * 365.25 * 864e5).toISOString(),
       }));
       for (const code of docCodes) {
         const buf = samplePdf(code);

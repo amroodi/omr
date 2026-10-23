@@ -51,8 +51,10 @@ export class CustomerSignupVerifyDto extends CustomerSignupDto {
 
 /** A بیمه‌گزار files their own claim; channel/معرف/policyHolder are derived from their session. */
 export class CustomerFileClaimDto {
-  @IsUUID()
-  insurerTenantId!: string;
+  // The insurer is NOT chosen by the بیمه‌گزار — it comes from the brokerage's contract for their company.
+  @IsOptional()
+  @IsISO8601()
+  deceasedBirthDate?: string;
 
   @IsOptional()
   @IsEnum(ClaimType)
