@@ -57,6 +57,10 @@ export class UpdateTenantDto {
   @IsString()
   @Matches(/^[a-z0-9-]{2,40}$/, { message: 'slug must be lowercase letters, digits, hyphens' })
   slug?: string;
+
+  // Panel theme: tokens object, preset name ("alborz"), or null (default design). See branding/theme.ts.
+  @IsOptional()
+  theme?: Record<string, string> | string | null;
 }
 
 export class ResetAdminDto {

@@ -36,3 +36,17 @@ Login page: purple→magenta gradient + white card + green primary button.
 - `alborz-logo-circle.png` — emblem in the white sidebar circle (~250 px)
 
 Low-resolution crops — good enough for the demo; replace with Alborz's official vector files.
+
+## Built (Phase 3)
+
+- Theme lives on the tenant (`Tenant.theme`, preset `alborz` in `apps/api/src/modules/branding/theme.ts`);
+  editable in **تنظیمات سازمان → قالب رنگی پنل** (or super-admin `PATCH /tenants/:id { theme: "alborz" }`).
+  Tenants without a theme (Damuon) keep the default design.
+- Alborz operators' login link: **`/org/login?org=alborz`** — Sinad-style gradient login with their logo.
+- Demo data for the presentation (dev/demo DB only, `SMS_DRIVER=console`):
+
+      cd apps/api && npx prisma db seed && npx ts-node --files prisma/seed-alborz-demo.ts
+
+  Creates the tenant + theme + logo, 3 branches, one user per desk (passwords in
+  `prisma/seed-output-alborz.local.txt`, git-ignored) and 5 claims at different stages, driven
+  through the real workflow engine.

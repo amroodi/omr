@@ -40,6 +40,11 @@ export class UpdateBrandingDto {
   @IsArray()
   @Matches(/^https?:\/\/[a-zA-Z0-9.:-]+$/, { each: true, message: 'هر مبدأ باید مانند https://example.com باشد' })
   embedOrigins?: string[];
+
+  // Theme tokens object, a preset name (e.g. "alborz"), or null to restore the default design.
+  // Validated in branding/theme.ts (hex colours + one constrained gradient only).
+  @IsOptional()
+  theme?: Record<string, string> | string | null;
 }
 
 export class SmsConfigDto {

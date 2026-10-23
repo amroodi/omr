@@ -15,10 +15,12 @@
   --border: #e4e8f0;
   --border-strong: #d3d9e6;
 
-  --brand: #ff9500;
-  --brand-600: #e67e00;
-  --brand-700: #c96e00;
-  --brand-soft: #fff2e0;
+  /* --t-* are per-organization theme overrides (lib/theme.ts); fallbacks are the Damuon design. */
+  --brand: var(--t-brand, #ff9500);
+  --brand-600: var(--t-brand-600, #e67e00);
+  --brand-700: var(--t-brand-700, #c96e00);
+  --brand-soft: var(--t-brand-soft, #fff2e0);
+  --brand-rgb: var(--t-brand-rgb, 255, 149, 0); /* for translucent glows: rgba(var(--brand-rgb), a) */
   --accent: #0ea5e9;
 
   --success: #059669;
@@ -34,7 +36,7 @@
   --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.06);
   --shadow: 0 4px 12px rgba(16, 24, 40, 0.06), 0 2px 4px rgba(16, 24, 40, 0.04);
   --shadow-lg: 0 20px 40px -12px rgba(16, 24, 40, 0.18);
-  --ring: 0 0 0 3px rgba(255, 149, 0, 0.22);
+  --ring: 0 0 0 3px rgba(var(--brand-rgb), 0.22);
 }
 
 :root.dark {
@@ -48,10 +50,10 @@
   --border: #202a41;
   --border-strong: #2b3752;
 
-  --brand: #ff9f1a;
-  --brand-600: #ff9500;
-  --brand-700: #e67e00;
-  --brand-soft: #2a1c05;
+  --brand: var(--t-brand, #ff9f1a);
+  --brand-600: var(--t-brand, #ff9500);
+  --brand-700: var(--t-brand-600, #e67e00);
+  --brand-soft: var(--t-brand-soft-dark, #2a1c05);
   --accent: #38bdf8;
 
   --success: #34d399;
@@ -65,7 +67,7 @@
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
   --shadow-lg: 0 24px 48px -12px rgba(0, 0, 0, 0.6);
-  --ring: 0 0 0 3px rgba(255, 159, 26, 0.3);
+  --ring: 0 0 0 3px rgba(var(--brand-rgb), 0.3);
 }
 
 /* ────────────────────────────── Base ────────────────────────────── */
@@ -137,11 +139,11 @@ h1, h2, h3 {
   .btn-primary {
     color: #fff;
     background: linear-gradient(135deg, var(--brand), var(--brand-600));
-    box-shadow: 0 6px 16px -6px rgba(255, 149, 0, 0.55);
+    box-shadow: 0 6px 16px -6px rgba(var(--brand-rgb), 0.55);
   }
   .btn-primary:not(:disabled):hover {
     filter: brightness(1.05);
-    box-shadow: 0 10px 22px -8px rgba(255, 149, 0, 0.65);
+    box-shadow: 0 10px 22px -8px rgba(var(--brand-rgb), 0.65);
   }
   .btn-ghost {
     background: transparent;
@@ -437,16 +439,17 @@ h1, h2, h3 {
    Their brand green is replaced everywhere by our brand orange; the structural navy
    is kept as-is. Dark-mode variants keep the navy sidebar and darken the canvas.     */
 :root {
-  --panel-bg: #e9edf2;
+  --panel-bg: var(--t-canvas, #e9edf2);
   --panel-card: #ffffff;
-  --sidebar-bg: #2b3a4f;
-  --sidebar-bg2: #243343;
-  --sidebar-active: #1d2938;
-  --sidebar-hover: #35485f;
+  --sidebar-bg: var(--t-sidebar, #2b3a4f);
+  --sidebar-bg2: var(--t-sidebar-deep, #243343);
+  --sidebar-active: var(--t-sidebar-active, #1d2938);
+  --sidebar-hover: var(--t-sidebar-hover, #35485f);
   --sidebar-text: #e7ecf3;
   --sidebar-muted: #aab6c7;
   --sidebar-border: rgba(255,255,255,0.08);
-  --topbar-accent: #2b3a4f;
+  --topbar-accent: var(--t-sidebar, #2b3a4f);
+  --title: var(--t-title, var(--brand));
   --accordion: var(--brand);
   --rail-w: 60px;
   --side-w: 262px;
@@ -486,7 +489,7 @@ h1, h2, h3 {
   border-top: 3px solid var(--topbar-accent); border-bottom: 1px solid var(--border);
   display: flex; align-items: center; gap: 12px; padding: 0 clamp(12px, 2vw, 26px);
 }
-.ptopbar-title { font-weight: 800; font-size: 1.12rem; color: var(--brand); white-space: nowrap; }
+.ptopbar-title { font-weight: 800; font-size: 1.12rem; color: var(--title); white-space: nowrap; }
 .pbreadcrumb { font-size: 0.82rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pbreadcrumb a { color: var(--brand); font-weight: 600; }
 .ptopbar-spacer { flex: 1; }
@@ -549,7 +552,7 @@ h1, h2, h3 {
 .pshell .btn-primary { background-image: linear-gradient(180deg, rgba(255,255,255,0.16), rgba(255,255,255,0) 52%); }
 .btn:active:not(:disabled) { transform: translateY(1px); }
 .wd-tile, .pdiamond { transition: background 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease; }
-.pdiamond-wrap:hover .pdiamond { transform: rotate(45deg) translateY(-2px); box-shadow: 0 8px 18px -8px rgba(255,149,0,0.4); }
+.pdiamond-wrap:hover .pdiamond { transform: rotate(45deg) translateY(-2px); box-shadow: 0 8px 18px -8px rgba(var(--brand-rgb), 0.4); }
 
 /* Section heading with a short brand underline (مشخصات بیمه نامه …) */
 .psection-head { font-weight: 800; font-size: 1.02rem; padding-bottom: 10px; border-bottom: 2px solid var(--border); position: relative; }
@@ -566,12 +569,12 @@ h1, h2, h3 {
 .pshell .card { border-radius: 20px; box-shadow: 0 10px 28px -14px rgba(16,24,40,0.22); }
 :root.dark .pshell .card { box-shadow: 0 12px 30px -14px rgba(0,0,0,0.6); }
 .pshell .btn { border-radius: 999px; }
-.pshell .btn-primary { background: var(--brand); box-shadow: 0 8px 18px -8px rgba(255,149,0,0.5); }
-.pshell .btn-primary:not(:disabled):hover { background: var(--brand-600); filter: none; box-shadow: 0 10px 22px -8px rgba(255,149,0,0.6); }
+.pshell .btn-primary { background: var(--brand); box-shadow: 0 8px 18px -8px rgba(var(--brand-rgb), 0.5); }
+.pshell .btn-primary:not(:disabled):hover { background: var(--brand-600); filter: none; box-shadow: 0 10px 22px -8px rgba(var(--brand-rgb), 0.6); }
 
 /* Flat solid pill button (their green CTA → our orange) */
 .btn-pill { border-radius: 999px; }
-.btn-solid { background: var(--brand); color: #fff; border-radius: 999px; box-shadow: 0 8px 18px -8px rgba(255,149,0,0.6); }
+.btn-solid { background: var(--brand); color: #fff; border-radius: 999px; box-shadow: 0 8px 18px -8px rgba(var(--brand-rgb), 0.6); }
 .btn-solid:not(:disabled):hover { background: var(--brand-600); }
 .btn-solid-lg { padding: 0.85rem 2.2rem; font-size: 0.95rem; font-weight: 700; }
 
@@ -667,7 +670,7 @@ h1, h2, h3 {
 .trk-title { font-weight: 800; font-size: clamp(1.1rem,2vw,1.45rem); }
 .trk-sub { color: rgba(255,255,255,.74); font-size: .92rem; margin-top: 6px; }
 .trk-chip { background: #fff; color: #013264; border-radius: 10px; padding: 8px 14px; font-weight: 700; font-size: .82rem; display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
-.trk-chip .cap { color: #FF9500; }
+.trk-chip .cap { color: var(--brand); }
 .trk-btn-back { background: transparent; border: 1.5px solid rgba(255,255,255,.55); color: #fff; border-radius: 12px; padding: 8px 18px; font-weight: 700; display: inline-flex; align-items: center; gap: 7px; cursor: pointer; }
 .trk-btn-back:hover { background: rgba(255,255,255,.1); }
 .trk-btn-exit { background: #FF0004; color: #fff; border-radius: 12px; padding: 8px 18px; font-weight: 700; display: inline-flex; align-items: center; gap: 7px; border: 0; cursor: pointer; }
@@ -675,16 +678,16 @@ h1, h2, h3 {
 /* Grouped info panels (columns.png): grey container → navy header → white field cards. */
 .trk-grp { background: #464c54; border-radius: 18px; padding: 10px; }
 .trk-grp-head { background: #013264; color: #fff; border-radius: 12px; display: flex; align-items: center; justify-content: space-between; padding: 11px 15px; font-weight: 700; font-size: .92rem; }
-.trk-grp-head .ico { color: #FF9500; display: inline-flex; }
+.trk-grp-head .ico { color: var(--brand); display: inline-flex; }
 .trk-field { background: #fff; border-radius: 11px; padding: 11px 15px; margin-top: 9px; text-align: right; }
 .trk-field .lbl { color: #888; font-size: .76rem; }
 .trk-field .val { color: #013264; font-weight: 800; margin-top: 3px; line-height: 1.6; }
-.trk-field .val.amt { color: #FF9500; }
+.trk-field .val.amt { color: var(--brand); }
 .trk-type-chip { background: #fff; color: #013264; border-radius: 999px; padding: 5px 12px; font-weight: 700; font-size: .78rem; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .trk-type-chip .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 
 .trk-info { background: #fff; border: 1px solid #E5E5E5; border-radius: 16px; padding: 15px 18px; box-shadow: 0 10px 24px -14px rgba(1,50,100,.3); display: flex; align-items: center; gap: 12px; }
-.trk-info .ico { width: 38px; height: 38px; border-radius: 10px; background: #FFF1E8; color: #FF9500; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.trk-info .ico { width: 38px; height: 38px; border-radius: 10px; background: var(--brand-soft); color: var(--brand); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .trk-info .lbl { color: #888; font-size: .76rem; }
 .trk-info .val { color: #013264; font-weight: 800; }
 .trk-panel { background: #fff; border: 1px solid #E5E5E5; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 24px -14px rgba(1,50,100,.25); }
@@ -696,10 +699,10 @@ h1, h2, h3 {
 .trk-stage { display: inline-flex; align-items: center; gap: 5px; font-size: .74rem; }
 .trk-stage .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
 .trk-done { color: #00A859; font-weight: 800; display: inline-flex; align-items: center; gap: 4px; }
-.trk-wait { color: #FF9500; font-weight: 800; }
+.trk-wait { color: var(--brand); font-weight: 800; }
 .trk-rej { color: #FF0004; font-weight: 800; }
 .trk-ico-btn { width: 34px; height: 34px; border-radius: 9px; border: 1px solid #E5E5E5; background: #fff; color: #013264; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
-.trk-ico-btn:hover { background: #FFF1E8; color: #FF9500; border-color: #FF9500; }
+.trk-ico-btn:hover { background: var(--brand-soft); color: var(--brand); border-color: var(--brand); }
 :root.dark .trk-info { background: var(--surface); border-color: var(--border); }
 :root.dark .trk-info .val { color: var(--text); }
 :root.dark .trk-panel { background: var(--surface); border-color: var(--border); }
@@ -726,8 +729,8 @@ h1, h2, h3 {
 }
 :root.dark .welcome-bg { background: url('/welcome-bg.jpg') center center / cover no-repeat, linear-gradient(180deg, #0b1020, #070b16); }
 /* Compact top-right entry button — a rounded tab, not a wide pill. */
-.welcome-entry { position: absolute; top: 22px; right: clamp(16px, 4vw, 44px); display: inline-flex; align-items: center; gap: 8px; background: var(--brand); color: #fff; font-weight: 800; font-size: 0.95rem; padding: 12px 20px; border-radius: 14px; box-shadow: 0 12px 26px -10px rgba(255,149,0,0.6); background-image: linear-gradient(180deg, rgba(255,255,255,0.18), transparent 55%); transition: transform 0.16s ease, box-shadow 0.16s ease; }
-.welcome-entry:hover { transform: translateY(-2px); box-shadow: 0 16px 32px -10px rgba(255,149,0,0.7); }
+.welcome-entry { position: absolute; top: 22px; right: clamp(16px, 4vw, 44px); display: inline-flex; align-items: center; gap: 8px; background: var(--brand); color: #fff; font-weight: 800; font-size: 0.95rem; padding: 12px 20px; border-radius: 14px; box-shadow: 0 12px 26px -10px rgba(var(--brand-rgb), 0.6); background-image: linear-gradient(180deg, rgba(255,255,255,0.18), transparent 55%); transition: transform 0.16s ease, box-shadow 0.16s ease; }
+.welcome-entry:hover { transform: translateY(-2px); box-shadow: 0 16px 32px -10px rgba(var(--brand-rgb), 0.7); }
 .welcome-entry:active { transform: translateY(0); }
 .welcome-top { background: #012141; color: #fff; height: 60px; display: flex; align-items: center; gap: 12px; padding: 0 clamp(16px, 4vw, 44px); }
 .welcome-card {
@@ -811,3 +814,11 @@ h1, h2, h3 {
 .rslider-track input[type=range]:active::-webkit-slider-thumb { cursor: grabbing; transform: scale(1.1); }
 .rslider-track input[type=range]:focus-visible::-webkit-slider-thumb { outline: 3px solid var(--brand-soft); }
 .rslider-scale { display: flex; justify-content: space-between; font-size: .68rem; color: var(--muted); margin-top: 4px; }
+
+/* Organization-themed login (an insurer with theme.loginBg) — full-page backdrop + white card. */
+.tlogin-bg { position: fixed; inset: 0; z-index: -1; }
+.tlogin-card { background: #fff; color: #1f2937; border-radius: 18px; box-shadow: 0 30px 60px -20px rgba(15, 23, 42, 0.45); padding: 28px 26px; }
+.tlogin-card .input { background: #fff; color: #1f2937; border-color: #d1d5db; border-radius: 999px; }
+.tlogin-card .label, .tlogin-card label { color: #374151; }
+.tlogin-btn { width: 100%; border: 0; border-radius: 6px; padding: 12px; color: #fff; font-weight: 700; cursor: pointer; }
+.tlogin-btn:disabled { opacity: 0.6; cursor: not-allowed; }

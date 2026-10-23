@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { AppHeader } from './components/AppHeader';
+import { ThemeApplier } from './components/ThemeApplier';
+import { THEME_BOOT_SCRIPT } from '../lib/theme';
 
 export const metadata: Metadata = {
   title: 'دامون | سامانه هوشمند مدیریت بیمه',
@@ -18,8 +20,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             __html: `try{var t=localStorage.getItem('theme');if(t==='dark'||(!t&&matchMedia('(prefers-color-scheme:dark)').matches))document.documentElement.classList.add('dark')}catch(e){}`,
           }}
         />
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
       </head>
       <body>
+        <ThemeApplier />
         <AppHeader />
         <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
         <footer className="mx-auto max-w-6xl px-4 py-8 text-center text-xs" style={{ color: 'var(--muted)' }}>

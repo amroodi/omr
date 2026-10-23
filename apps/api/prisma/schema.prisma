@@ -45,6 +45,8 @@ model Tenant {
   // Payment authority of مدیریت ستاد (INSURER only). Above it ستاد cannot order payment and must refer
   // the claim to شورای فنی. null = unlimited.
   hqCeiling     Decimal? @db.Decimal(18, 2)
+  // Panel theme tokens (see branding/theme.ts). null = the default Damuon design.
+  theme         Json?
   // Origins allowed to embed the inquiry widget in an <iframe> (CSP frame-ancestors allowlist).
   embedOrigins  String[] @default([])
   isActive      Boolean  @default(true)

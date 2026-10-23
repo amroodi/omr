@@ -193,7 +193,7 @@ export default function TrackClaim() {
             <div>
               {(sel.steps || []).map((s, i) => (
                 <div key={i} className="trk-doc">
-                  <span className="flex items-center justify-center rounded-full shrink-0" style={{ width: 26, height: 26, background: s.state === 'PENDING' ? '#FF9500' : s.state === 'APPROVED' ? '#00A859' : '#E5E5E5', color: '#fff', fontSize: 12, fontWeight: 700 }}>{s.order}</span>
+                  <span className="flex items-center justify-center rounded-full shrink-0" style={{ width: 26, height: 26, background: s.state === 'PENDING' ? 'var(--brand)' : s.state === 'APPROVED' ? '#00A859' : '#E5E5E5', color: '#fff', fontSize: 12, fontWeight: 700 }}>{s.order}</span>
                   <span className="lbl">{s.stageLabel || STEP_PARTY[s.partyType] || s.partyType}{s.holderName ? ` — ${s.holderName}` : ''}{s.branchName ? ` (${s.branchName})` : ''}</span>
                   {s.decidedAt && <span style={{ color: '#888', fontSize: '.78rem' }} dir="ltr">{s.decidedAt}</span>}
                 </div>

@@ -6,6 +6,13 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { StorageService } from '../../common/storage/storage.service';
 import { getContext, getTenantIdOrThrow } from '../../common/tenant/tenant-context';
 import { SMS_DRIVERS, SmsService, TenantSmsConfig } from '../auth/sms.service';
+import { normalizeTheme, THEME_PRESETS } from './theme';
+
+/** Prisma JSON column value for a validated theme (DbNull clears it). */
+export function themeValue(input: unknown) {
+  const t = normalizeTheme(input);
+  return t ? (t as Prisma.InputJsonObject) : Prisma.DbNull;
+}
 
 export type AssetKind = 'logo' | 'favicon' | 'font';
 
@@ -29,6 +36,7 @@ interface UpdateSettings {
   lateNoticeWarning?: boolean;
   embedOrigins?: string[];
   hqCeiling?: string | null;
+  theme?: unknown;
 }
 
 @Injectable()
@@ -59,6 +67,8 @@ export class BrandingService {
       lateNoticeWarning: t.lateNoticeWarning,
       kind: t.kind,
       hqCeiling: t.hqCeiling != null ? t.hqCeiling.toString() : null,
+      theme: t.theme ?? null,
+      themePresets: Object.entries(THEME_PRESETS).map(([key, p]) => ({ key, label: p.label, theme: p.theme })),
       embedOrigins: t.embedOrigins,
       hasLogo: !!t.logoKey,
       hasFavicon: !!t.faviconKey,
@@ -80,6 +90,7 @@ export class BrandingService {
         ...(dto.lateNoticeWarning !== undefined ? { lateNoticeWarning: dto.lateNoticeWarning } : {}),
         ...(dto.embedOrigins !== undefined ? { embedOrigins: dto.embedOrigins } : {}),
         ...(dto.hqCeiling !== undefined ? { hqCeiling: dto.hqCeiling ? new Prisma.Decimal(dto.hqCeiling) : null } : {}),
+        ...(dto.theme !== undefined ? { theme: themeValue(dto.theme) } : {}),
       },
     });
     await this.audit.record({ action: AuditAction.EDIT, targetType: 'TenantBranding', targetId: id, metadata: dto as Record<string, unknown> });
@@ -201,6 +212,7 @@ export class BrandingService {
       primaryColor: t.primaryColor,
       fontFamily: t.fontFamily,
       lateNoticeWarning: t.lateNoticeWarning,
+      theme: t.theme ?? null,
       logoUrl: t.logoKey ? '/tenant/assets/logo' : null,
       faviconUrl: t.faviconKey ? '/tenant/assets/favicon' : null,
       fontUrl: t.fontKey ? '/tenant/assets/font' : null,
