@@ -5,7 +5,7 @@ import { BrandMark } from './brand';
 /** `bg` sets a full-screen background image behind the card (light + dark variants). */
 export function AuthCard({ title, subtitle, children, bg }: { title: string; subtitle?: string; children: ReactNode; bg?: { light: string; dark: string } }) {
   return (
-    <div className="min-h-[70vh] flex items-center justify-center">
+    <div className="min-h-[calc(70*var(--zvh))] flex items-center justify-center">
       {bg && (
         <>
           <div className="auth-bg auth-bg-light" style={{ backgroundImage: `url(${bg.light})` }} aria-hidden />

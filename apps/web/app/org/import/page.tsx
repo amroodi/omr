@@ -82,7 +82,7 @@ export default function ImportPage() {
           </div>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <button onClick={doPreview} disabled={!file || loading} className="btn btn-ghost btn-sm">پیش‌نمایش و اعتبارسنجی</button>
           <button onClick={doCommit} disabled={!file || loading || !preview || (preview.summary.claims + preview.summary.people) === 0 || (hasClaims && !insurerId)} className="btn btn-primary btn-sm">ثبت ردیف‌های معتبر</button>
         </div>

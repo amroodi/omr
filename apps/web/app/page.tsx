@@ -10,7 +10,7 @@ import { DotGrid } from './components/DotGrid';
 
 export default function Landing() {
   return (
-    <div className="relative min-h-[68vh] flex items-center justify-center">
+    <div className="relative min-h-[calc(68*var(--zvh))] flex items-center justify-center">
       {/* full-bleed animated background */}
       <div className="aurora" style={{ position: 'fixed' }}><span /></div>
       <DotGrid />

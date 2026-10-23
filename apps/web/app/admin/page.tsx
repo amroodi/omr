@@ -99,7 +99,7 @@ export default function AdminDashboard() {
       {showPw && <ChangePasswordModal onClose={() => setShowPw(false)} />}
       {partnersFor && (
         <div onClick={() => setPartnersFor(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div onClick={(e) => e.stopPropagation()} className="card p-5 space-y-3" style={{ width: '100%', maxWidth: 440, maxHeight: '80vh', overflowY: 'auto' }}>
+          <div onClick={(e) => e.stopPropagation()} className="card p-5 space-y-3" style={{ width: '100%', maxWidth: 440, maxHeight: 'calc(80 * var(--zvh))', overflowY: 'auto' }}>
             <div className="flex justify-between items-center"><h3 className="font-bold">بیمه‌گرهای طرف قرارداد «{partnersFor.name}»</h3><button onClick={() => setPartnersFor(null)} className="text-sm" style={{ color: 'var(--muted)' }}>✕</button></div>
             <p className="text-xs" style={{ color: 'var(--muted)' }}>این کارگزاری فقط می‌تواند برای بیمه‌گرهای انتخاب‌شده پرونده ثبت کند.</p>
             {partners === null ? <p className="text-sm" style={{ color: 'var(--muted)' }}>در حال بارگذاری…</p> :

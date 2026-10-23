@@ -95,7 +95,7 @@ export default function EstelamResult() {
   const openDefs = (r?.deficiencies ?? []).filter((d: any) => !d.resolvedAt);
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--panel-bg)' }}>
+    <div style={{ minHeight: 'calc(100 * var(--zvh))', background: 'var(--panel-bg)' }}>
       {/* Navy top bar */}
       <div style={{ background: '#012141', height: 64, display: 'flex', alignItems: 'center', gap: 12, padding: '0 clamp(16px,4vw,48px)' }}>
         <Link href="/" className="flex items-center gap-2 text-sm font-bold" style={{ color: '#fff' }}>

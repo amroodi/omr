@@ -201,7 +201,8 @@ export default function WorkDeskPage() {
           </div>
         )}
 
-        <div className="grid items-center gap-2 mt-4" style={{ gridTemplateColumns: '1fr auto 1fr' }}>
+        {/* Phones: wrap and centre; from sm up: advanced toggle on the side, buttons centred. */}
+        <div className="flex flex-wrap justify-center sm:grid items-center gap-2 mt-4" style={{ gridTemplateColumns: '1fr auto 1fr' }}>
           <span>
             <button onClick={() => setAdv((a) => !a)} className="btn btn-ghost btn-sm">
               <Icon path={adv ? 'M18 15l-6-6-6 6' : 'M6 9l6 6 6-6'} /> جستجوی پیشرفته
