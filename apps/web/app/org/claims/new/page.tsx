@@ -64,7 +64,7 @@ export default function NewClaim() {
       <div className="card p-5 max-w-xl space-y-4">
         <ErrorBox message={error} />
         <Field label="کانال فروش">
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             {[['BROKER', 'از طریق نمایندگی/کارگزاری'], ['DIRECT', 'فروش مستقیم بیمه‌گر']].map(([v, l]) => (
               <button key={v} type="button" onClick={() => setF({ ...f, channel: v, sellingBranchId: v === 'BROKER' ? '' : f.sellingBranchId })} className="btn btn-sm flex-1" style={f.channel === v ? { background: 'var(--brand)', color: '#fff' } : { background: 'var(--surface-2)', color: 'var(--muted)', border: '1px solid var(--border)' }}>{l}</button>
             ))}

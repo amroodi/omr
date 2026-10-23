@@ -66,7 +66,7 @@ export default function OrgDashboard() {
 
       <div className="flex justify-between items-center gap-2 mb-3 flex-wrap">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="جستجوی شماره پرونده یا نام…" className="input" style={{ maxWidth: 280 }} />
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {hasPerm('org', 'export:list') && total > 0 && (
             <button onClick={() => client.download(`/exports/claims.xlsx${q ? `?q=${encodeURIComponent(q)}` : ''}`, 'org', 'claims.xlsx')} className="btn btn-ghost btn-sm" title="خروجی اکسل (با توجه به جستجو)"><Icon path="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" /> خروجی اکسل</button>
           )}

@@ -103,7 +103,7 @@ export function Shell({
             <Link href={homeHref}>صفحه اصلی</Link>{breadcrumb ? ` / ${breadcrumb}` : ''}
           </span>
           <span className="ptopbar-spacer" />
-          {action && <span className="no-print">{action}</span>}
+          {action && <span className="no-print ptopbar-action">{action}</span>}
           <span className="no-print"><NotificationBell realm={realm} /></span>
           <span className="no-print"><ThemeToggle /></span>
         </header>

@@ -234,7 +234,7 @@ function BranchesTab() {
   const add = async () => { setErr(''); try { await client.post('/branches', f, 'org'); setF({ name: '', code: '' }); load(); } catch (e: any) { setErr(e.message); } };
   const del = async (id: string) => { try { await client.del(`/branches/${id}`, 'org'); load(); } catch (e: any) { setErr(e.message); } };
   return (
-    <div className="grid lg:grid-cols-[300px_1fr] gap-5">
+    <div className="grid grid-cols-[minmax(0,1fr)] lg:grid-cols-[300px_minmax(0,1fr)] gap-5">
       <div className="card p-4 space-y-3 h-fit">
         <h3 className="font-semibold text-sm">افزودن شعبه</h3>
         <ErrorBox message={err} />
@@ -268,7 +268,7 @@ function LevelsTab() {
   };
   const del = async (id: string) => { try { await client.del(`/approval-levels/${id}`, 'org'); load(); } catch (e: any) { setErr(e.message); } };
   return (
-    <div className="grid lg:grid-cols-[300px_1fr] gap-5">
+    <div className="grid grid-cols-[minmax(0,1fr)] lg:grid-cols-[300px_minmax(0,1fr)] gap-5">
       <div className="card p-4 space-y-3 h-fit">
         <h3 className="font-semibold text-sm">افزودن سطح تایید</h3>
         <ErrorBox message={err} />

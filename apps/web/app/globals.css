@@ -5,6 +5,10 @@
 
 /* ────────────────────────────── Design tokens ────────────────────────────── */
 :root {
+  /* Proportional desktop scaling (lib/scale.ts): --app-zoom is the page zoom; --zvh is 1vh
+     corrected for it, so full-window heights stay full-window at any zoom. */
+  --app-zoom: 1;
+  --zvh: calc(1vh / var(--app-zoom));
   --bg: #eef1f8;
   --bg-grad-1: #e8ecfa;
   --bg-grad-2: #eef1f8;
@@ -78,9 +82,16 @@ html {
   direction: rtl;
   /* Never let the whole page scroll sideways on mobile — wide tables keep their own
      .overflow-x-auto scroll container; this only clips stray page-level overflow.
-     `clip` (not `hidden`) so sticky headers/sidebars keep working. */
-  overflow-x: clip;
+     `clip` (not `hidden`) so sticky headers/sidebars keep working. Older phones (iOS < 16) don't
+     know `clip` and would let the page be dragged sideways, so they get `hidden` instead. */
+  overflow-x: hidden;
 }
+body { overflow-x: hidden; max-width: 100%; }
+@supports (overflow-x: clip) {
+  html, body { overflow-x: clip; }
+}
+/* Media and embeds never wider than their container (phones). */
+img, video, iframe, svg, canvas { max-width: 100%; }
 body {
   margin: 0;
   overflow-x: clip;
@@ -91,7 +102,7 @@ body {
     radial-gradient(1000px 500px at -10% 10%, var(--bg-grad-1), transparent 55%),
     var(--bg);
   background-attachment: fixed;
-  min-height: 100vh;
+  min-height: calc(100 * var(--zvh));
   -webkit-font-smoothing: antialiased;
 }
 a {
@@ -479,6 +490,8 @@ h1, h2, h3 {
   background-blend-mode: multiply;
 }
 :root.dark .pshell { background-blend-mode: screen; }
+/* The panel frame covers the window; never let the page behind it add a scrollbar (e.g. when zoomed). */
+html:has(.pshell) { overflow: hidden; }
 .pshell-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .pshell-content { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 20px clamp(12px, 2.2vw, 30px) 60px; }
 .pshell-wrap { max-width: 1320px; margin: 0 auto; width: 100%; }
@@ -493,6 +506,15 @@ h1, h2, h3 {
 .pbreadcrumb { font-size: 0.82rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pbreadcrumb a { color: var(--brand); font-weight: 600; }
 .ptopbar-spacer { flex: 1; }
+.ptopbar-action { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+/* Phones: the title truncates instead of pushing the bell/theme switch off-screen, the breadcrumb
+   hides, and page-specific buttons drop to their own row under the title. */
+@media (max-width: 640px) {
+  .ptopbar { height: auto; min-height: var(--topbar-h); flex-wrap: wrap; row-gap: 6px; padding-block: 8px; gap: 8px; }
+  .ptopbar-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 1rem; }
+  .pbreadcrumb, .ptopbar-spacer { display: none; }
+  .ptopbar-action { order: 10; flex-basis: 100%; flex-wrap: wrap; }
+}
 
 /* Sidebar (navy, right side in RTL) */
 .psidebar {
@@ -629,7 +651,7 @@ h1, h2, h3 {
 
 /* Centred modal */
 .pmodal-backdrop { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; padding: 16px; }
-.pmodal { background: var(--surface); border-radius: 18px; width: 100%; max-width: 640px; max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-lg); }
+.pmodal { background: var(--surface); border-radius: 18px; width: 100%; max-width: 640px; max-height: calc(90 * var(--zvh)); overflow-y: auto; box-shadow: var(--shadow-lg); }
 .pmodal-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 22px; border-bottom: 1px solid var(--border); }
 .pmodal-title { font-weight: 800; }
 .pmodal-x { background: transparent; border: 0; color: var(--muted); cursor: pointer; font-size: 1.4rem; line-height: 1; }
@@ -660,14 +682,18 @@ h1, h2, h3 {
 .fancy-loader .lbl { font-size: 0.9rem; font-weight: 700; color: var(--muted); }
 
 /* Work Desk — horizontally scrollable strip of permission work-queue tiles */
-.wd-tiles { display: flex; gap: 0; overflow-x: auto; background: var(--surface-2); border: 1px solid var(--border); border-radius: 14px; }
-.wd-tile { flex: 0 0 auto; min-width: 132px; padding: 14px 12px 16px; text-align: center; border-inline-start: 1px solid var(--border); cursor: pointer; transition: background .14s ease; background: transparent; border-top: 0; border-bottom: 0; }
-.wd-tile:first-child { border-inline-start: 0; }
+.wd-tiles {
+  /* Every queue visible at once (no sideways scroll): as many equal columns as fit, wrapping to a new
+     row on narrow screens. Each tile draws its own divider (outline), clipped at the rounded edge. */
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(86px, 1fr)); gap: 0;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
+}
+.wd-tile { outline: 1px solid var(--border); outline-offset: -0.5px; min-width: 0; padding: 10px 6px 12px; text-align: center; cursor: pointer; transition: background .14s ease; background: var(--surface-2); display: flex; flex-direction: column; align-items: center; }
 .wd-tile:hover { background: var(--brand-soft); }
-.wd-tile-label { font-size: 0.76rem; color: var(--muted); line-height: 1.55; display: flex; align-items: center; justify-content: center; min-height: 3.1em; }
-.wd-tile-count { font-size: 1.5rem; font-weight: 800; margin-top: 8px; color: var(--brand); }
+.wd-tile-label { font-size: 0.72rem; color: var(--muted); line-height: 1.5; display: flex; align-items: center; justify-content: center; min-height: 4.5em; overflow-wrap: anywhere; }
+.wd-tile-count { font-size: 1.25rem; font-weight: 800; margin-top: 4px; color: var(--brand); }
 .wd-tile.is-zero { cursor: default; }
-.wd-tile.is-zero:hover { background: transparent; }
+.wd-tile.is-zero:hover { background: var(--surface-2); }
 .wd-tile.is-zero .wd-tile-count { color: var(--muted); }
 
 /* Amber info bar (non-error system message, like their bottom tip) */
@@ -767,7 +793,7 @@ h1, h2, h3 {
 .welcome-bg > * { position: relative; z-index: 1; }
 
 /* ═══ Two-pane assessment screen (ارزیابی) — left docs viewer + right form, each scrolls alone ═══ */
-.assess-split { display: flex; gap: 14px; height: calc(100vh - 148px); }
+.assess-split { display: flex; gap: 14px; height: calc(100 * var(--zvh) - 148px); }
 .assess-pane { flex: 1; min-width: 0; overflow: auto; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); }
 .assess-docs { background: var(--surface-2); }
 .assess-toolbar { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; gap: 10px; padding: 9px 14px; background: var(--topbar-accent); color: #fff; font-size: 0.85rem; }
@@ -777,22 +803,24 @@ h1, h2, h3 {
 .assess-doc-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; font-size: 0.8rem; }
 .assess-doc-media { display: flex; justify-content: center; }
 .assess-doc-img { display: block; max-width: 100%; height: auto; border-radius: 8px; box-shadow: var(--shadow-sm); background: #fff; }
-.assess-doc-pdf { width: 100%; height: 75vh; border: 0; border-radius: 8px; background: #fff; }
+.assess-doc-pdf { width: 100%; height: calc(75 * var(--zvh)); border: 0; border-radius: 8px; background: #fff; }
 .assess-form-inner { padding: 18px; }
 .assess-form-inner .input { border-radius: 10px; } /* forms here read denser than pill style */
 @media (max-width: 860px) {
   .assess-split { flex-direction: column; height: auto; }
   .assess-pane { height: auto; max-height: none; }
-  .assess-docs { min-height: 60vh; }
+  .assess-docs { min-height: calc(60 * var(--zvh)); }
 }
 
 /* Mobile: sidebar becomes an off-canvas drawer */
 .psidebar-scrim { display: none; }
 @media (max-width: 860px) {
-  .psidebar { position: fixed; inset-block: 0; inset-inline-end: 0; z-index: 55; transform: translateX(100%); width: var(--side-w) !important; box-shadow: var(--shadow-lg); }
+  /* Off-canvas drawer: when closed it is also `visibility: hidden` so no mobile browser lets the
+     user pan towards it. */
+  .psidebar { position: fixed; inset-block: 0; inset-inline-end: 0; z-index: 55; transform: translateX(100%); width: min(var(--side-w), 86vw) !important; box-shadow: var(--shadow-lg); visibility: hidden; transition: transform 0.22s ease, visibility 0s linear 0.22s; }
   [dir='rtl'] .psidebar { transform: translateX(-100%); }
-  .psidebar.is-open { transform: translateX(0); }
-  .psidebar.is-rail { width: var(--side-w) !important; }
+  .psidebar.is-open { transform: translateX(0); visibility: visible; transition: transform 0.22s ease; }
+  .psidebar.is-rail { width: min(var(--side-w), 86vw) !important; }
   .psidebar.is-rail .psidebar-name, .psidebar.is-rail .psidebar-sub,
   .psidebar.is-rail .pnav-item .lbl, .psidebar.is-rail .pnav-section .lbl { display: block; }
   .psidebar.is-rail .psidebar-logo .circle { width: 100px; height: 100px; }

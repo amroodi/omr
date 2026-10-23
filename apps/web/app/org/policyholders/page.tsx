@@ -77,7 +77,7 @@ function CompaniesTab({ companies, reload, setMsg }: { companies: Company[]; rel
   const childrenOf = (id: string) => companies.filter((c) => c.parentId === id);
 
   return (
-    <div className="grid lg:grid-cols-[320px_1fr] gap-5">
+    <div className="grid grid-cols-[minmax(0,1fr)] lg:grid-cols-[320px_minmax(0,1fr)] gap-5">
       <div className="card p-4 space-y-3 h-fit">
         <h3 className="font-semibold text-sm">افزودن شرکت بیمه‌گزار</h3>
         <Field label="نام شرکت *"><input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
@@ -134,7 +134,7 @@ function CompanyCard({ c, companies, insurers, open, onToggle, reload, setMsg, s
 
   return (
     <div className="card p-4" style={{ opacity: c.isActive ? 1 : 0.65 }}>
-      <button type="button" onClick={onToggle} className="w-full flex items-center justify-between gap-3 text-right">
+      <button type="button" onClick={onToggle} className="w-full flex items-center justify-between gap-3 text-right flex-wrap">
         <span className="flex items-center gap-3 min-w-0">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           {c.hasLogo ? <img src={`${client.base}/policyholder-companies/${c.id}/logo?v=${logoVer}`} alt="" style={{ width: 36, height: 36, objectFit: 'contain' }} />
@@ -144,7 +144,7 @@ function CompanyCard({ c, companies, insurers, open, onToggle, reload, setMsg, s
             <span className="text-xs" style={{ color: 'var(--muted)' }}>{c.accounts.toLocaleString('fa-IR')} نماینده{c.contactName ? ` · ${c.contactName}` : ''}</span>
           </span>
         </span>
-        <span className="flex items-center gap-2 shrink-0">
+        <span className="flex items-center gap-2 flex-wrap justify-end">
           {!c.isActive && <span className="badge badge-neutral">غیرفعال</span>}
           {c.currentInsurer ? <span className="badge badge-success">بیمه‌گر فعلی: {c.currentInsurer.name}</span> : <span className="badge badge-warning">بدون قرارداد فعال</span>}
           <span style={{ color: 'var(--muted)' }}>{open ? '▴' : '▾'}</span>
@@ -254,7 +254,7 @@ function AccountsTab({ companies, setMsg }: { companies: Company[]; setMsg: (m: 
   };
 
   return (
-    <div className="grid lg:grid-cols-[320px_1fr] gap-5">
+    <div className="grid grid-cols-[minmax(0,1fr)] lg:grid-cols-[320px_minmax(0,1fr)] gap-5">
       <div className="card p-4 space-y-3 h-fit">
         <h3 className="font-semibold text-sm">افزودن نمایندهٔ بیمه‌گزار (تایید فوری)</h3>
         <p className="text-xs" style={{ color: 'var(--muted)' }}>نماینده با کد ملی و کد پیامکی وارد پنل بیمه‌گزار می‌شود و پرونده‌ها را برای شرکت خود ثبت می‌کند.</p>

@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useRef } from 'react';
+import { appZoom } from '../../lib/scale';
 
 /**
  * Interactive dotted-grid background. A square lattice of faint dots that light up brand-orange
@@ -43,7 +44,9 @@ export function DotGrid({ gap = 26, radius = 160, dotSize = 1.4, baseAlpha = 0.1
 
     const resize = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      w = window.innerWidth; h = window.innerHeight;
+      // The page may be zoomed (lib/scale.ts): size the canvas in page px so it still covers the window.
+      const z = appZoom();
+      w = window.innerWidth / z; h = window.innerHeight / z;
       canvas.width = Math.floor(w * dpr);
       canvas.height = Math.floor(h * dpr);
       canvas.style.width = w + 'px';
@@ -95,7 +98,7 @@ export function DotGrid({ gap = 26, radius = 160, dotSize = 1.4, baseAlpha = 0.1
       raf = requestAnimationFrame(draw);
     };
 
-    const onMove = (e: MouseEvent) => { mouse.x = e.clientX; mouse.y = e.clientY; };
+    const onMove = (e: MouseEvent) => { const z = appZoom(); mouse.x = e.clientX / z; mouse.y = e.clientY / z; };
     const onLeave = () => { mouse.x = -9999; mouse.y = -9999; };
 
     resize();
