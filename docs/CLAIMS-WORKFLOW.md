@@ -7,6 +7,48 @@ auditable approval hierarchy for life-insurance death claims — sellable to **a
 This is a proposal for review. Open questions at the end are now resolved — see "Confirmed
 decisions" immediately below.
 
+## Workflow v2 (current engine, 2026-10-23)
+
+Supersedes the amount-ceiling ladder (§3–4) and the separate per-document pipeline. One chain,
+one position per claim (`Claim.currentStage` + `flowDirection` + `flowPurpose`), rules in
+`apps/api/src/modules/claims/workflow.ts`, actions via `POST /claims/:id/action`.
+
+    بیمه‌گزار → کارگزاری → شعبه → مدیریت ستاد → (شورای فنی)        (DIRECT channel skips کارگزاری)
+
+- **Up:** each desk ✓/✕ every latest document at its own desk, then «ارسال به …». شعبه must record
+  **اعلام خسارت** (`PUT /claims/:id/loss-notice`) before forwarding to ستاد.
+- **ستاد:** «دستور پرداخت — ارسال به شعبه» (blocked above `Tenant.hqCeiling` or without مبلغ قطعی),
+  «ارجاع به شورای فنی», return, or رد نهایی.
+- **شورای فنی:** «دستور پرداخت — ارسال به مدیریت ستاد» → ستاد hands it to شعبه → شعبه «ثبت پرداخت».
+- **Down (عودت):** the returning desk sends it one level down; every desk below forwards it by hand
+  («ارسال به {desk}», optional note + letter) until بیمه‌گزار. `claim:override` holders (admins) may
+  send it straight to بیمه‌گزار. After رفع نقص the fixed documents climb back up; earlier approvals of
+  unchanged documents stand, so each desk re-checks only the replacements. If شورای فنی returned it,
+  ستاد can only send it back to the council.
+- **Desks:** broker org → کارگزاری; insurer user with a branch → شعبه (only the claim's handling
+  branch, chosen by کارگزاری); central insurer user → ستاد, or شورای فنی when `OrgUser.desk = COUNCIL`.
+- **Original documents (side track, claim stays put):** شعبه asks بیمه‌گزار after approving the scans
+  and cannot forward to ستاد until they are received; they stay at شعبه (`Claim.physicalAt`). ستاد asks
+  شعبه; شورای فنی's request is relayed by ستاد to شعبه. Whoever holds them sends (tracking no. + letter),
+  the requester confirms receipt; ستاد/شورا can send them back to شعبه. A desk waiting for originals
+  can't order payment/refer until they arrive. `ClaimPhysicalRequest` + `ClaimPhysicalEvent`,
+  `POST /claims/:id/physical` (and `/customer/claims/:id/physical` for بیمه‌گزار).
+- **Trace:** every hand-off is a `ClaimStep` (desk, action, note, actor, time) with optional
+  `ClaimLetter` (number/date/subject/scan); shown in all panels (operator names only inside orgs).
+
+## بیمه‌گزار companies & routing (2026-10-24)
+
+- **بیمه‌گزار = a company** (`PolicyholderCompany`, owned by the brokerage; optional parent for
+  subsidiaries; name, logo, contact details). People who log into the بیمه‌گزار panel are its
+  representatives (`CustomerAccount.companyId`); the panel shows the company's name + logo.
+- **Insurer contracts with dates** (`PolicyholderContract`: insurer, policy no., start/end). The
+  بیمه‌گزار never picks the insurer: a claim routes to the contract that covered the **date of death**
+  (so a company that moves from one insurer to another keeps older deaths with the old insurer).
+  کارگزاری manages companies, contracts and representatives on «بیمه‌گزاران».
+- **استعلام** asks for the company first, then the deceased's کد ملی and the requester's own mobile; the
+  result adds tracking, ذینفع‌ها, پاسخگوی آنلاین (`InquiryMessage` → کارگزاری inbox + بیمه‌گزار),
+  سوالات متداول and the company's contact card.
+
 ## 0. Confirmed decisions
 
 1. **Cross-tenant.** Each insurer (INSURER) and each brokerage (BROKER) is its own organization,

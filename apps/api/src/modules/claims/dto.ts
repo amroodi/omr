@@ -3,6 +3,7 @@ import {
   ArrayNotEmpty,
   IsArray,
   IsEnum,
+  IsIn,
   IsISO8601,
   IsNumberString,
   IsOptional,
@@ -65,4 +66,77 @@ export class DecisionDto {
   @ArrayNotEmpty()
   @IsString({ each: true })
   deficiencies?: string[];
+}
+
+const ACTION_KEYS = ['SUBMIT', 'FORWARD', 'REFER_COUNCIL', 'PAY_ORDER', 'RETURN', 'RETURN_DIRECT', 'DOWN_FORWARD', 'DOWN_DIRECT', 'MARK_PAID', 'REJECT_FINAL', 'REQUEST_PHYSICAL'] as const;
+
+export class ActionDto {
+  @IsIn(ACTION_KEYS as unknown as string[])
+  action!: (typeof ACTION_KEYS)[number];
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 1000)
+  note?: string;
+
+  @IsOptional()
+  @IsUUID()
+  letterId?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  deficiencies?: string[];
+
+  @IsOptional()
+  @IsUUID()
+  branchId?: string;
+}
+
+export class LossNoticeDto {
+  @IsString()
+  @Length(1, 60)
+  number!: string;
+
+  @IsOptional()
+  @IsISO8601()
+  date?: string;
+}
+
+/** Multipart fields of a letter (the scan itself is the optional `file` part). */
+export class LetterDto {
+  @IsOptional()
+  @IsString()
+  @Length(0, 60)
+  number?: string;
+
+  @IsOptional()
+  @IsISO8601()
+  date?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 200)
+  subject?: string;
+}
+
+const PHYSICAL_KEYS = ['PHYSICAL_SEND', 'PHYSICAL_RELAY', 'PHYSICAL_RECEIVE', 'PHYSICAL_RETURN'] as const;
+
+export class PhysicalDto {
+  @IsIn(PHYSICAL_KEYS as unknown as string[])
+  action!: (typeof PHYSICAL_KEYS)[number];
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 1000)
+  note?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 60)
+  trackingNo?: string;
+
+  @IsOptional()
+  @IsUUID()
+  letterId?: string;
 }

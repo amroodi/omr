@@ -1,10 +1,12 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { NotificationsModule } from '../notifications/notifications.module';
+import { PolicyholdersModule } from '../policyholders/policyholders.module';
 import { InquiryController } from './inquiry.controller';
 import { InquiryService } from './inquiry.service';
 
 @Module({
-  imports: [AuthModule], // for SmsService
+  imports: [AuthModule, PolicyholdersModule, NotificationsModule], // SmsService, company contact, «پاسخگوی آنلاین» notices
   controllers: [InquiryController],
   providers: [InquiryService],
 })

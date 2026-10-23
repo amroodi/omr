@@ -24,6 +24,7 @@ const TENANT_MODELS = new Set<string>([
   'ClaimFieldDef',
   'ApiKey',
   'Notification',
+  'PolicyholderCompany',
 ]);
 
 const READ_OPS = new Set(['findMany', 'findFirst', 'findFirstOrThrow', 'count', 'aggregate', 'groupBy']);

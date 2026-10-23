@@ -11,12 +11,14 @@ interface CreateInput {
   password: string;
   roleId: string;
   branchId?: string;
+  desk?: 'HQ' | 'COUNCIL';
 }
 interface UpdateInput {
   displayName?: string;
   roleId?: string;
   branchId?: string | null;
   isActive?: boolean;
+  desk?: 'HQ' | 'COUNCIL' | null;
 }
 
 @Injectable()
@@ -38,6 +40,7 @@ export class UsersService {
         lastLoginAt: true,
         role: { select: { id: true, name: true } },
         branch: { select: { id: true, name: true } },
+        desk: true,
       },
     });
   }
@@ -57,6 +60,7 @@ export class UsersService {
         passwordHash: await this.hash.hashPassword(input.password),
         roleId: input.roleId,
         branchId: input.branchId ?? null,
+        desk: input.branchId ? null : (input.desk ?? null),
       },
       select: { id: true, username: true, displayName: true },
     });
@@ -77,6 +81,7 @@ export class UsersService {
         ...(input.roleId ? { roleId: input.roleId } : {}),
         ...(input.branchId !== undefined ? { branchId: input.branchId } : {}),
         ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
+        ...(input.desk !== undefined ? { desk: input.desk } : {}),
       },
       select: { id: true, username: true, displayName: true, isActive: true },
     });

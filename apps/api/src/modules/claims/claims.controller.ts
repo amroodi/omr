@@ -17,7 +17,7 @@ import { Permissions } from '../../common/rbac/decorators';
 import { PERMISSIONS } from '../../common/rbac/permissions';
 import { ClaimFieldsService } from '../claim-fields/claim-fields.service';
 import { ClaimsService } from './claims.service';
-import { DecisionDto, FileClaimDto } from './dto';
+import { ActionDto, DecisionDto, FileClaimDto, LetterDto, LossNoticeDto, PhysicalDto } from './dto';
 
 const docLimits = { fileSize: 15 * 1024 * 1024 };
 
@@ -172,13 +172,13 @@ export class ClaimsController {
     return this.claims.verifyDocument(id, docId, body?.action, body?.note);
   }
 
-  /** Set a per-document approval at one checkpoint (کارگزاری/شعبه/ستاد). */
+  /** Set a per-document approval at the caller's desk (کارگزاری/شعبه/ستاد/شورای فنی). */
   @Permissions(PERMISSIONS.DOC_VERIFY)
   @Post(':id/documents/:docId/review')
   reviewDocument(
     @Param('id') id: string,
     @Param('docId') docId: string,
-    @Body() body: { stage: 'BROKER' | 'BRANCH' | 'COUNCIL'; state: 'PENDING' | 'APPROVED' | 'REJECTED'; note?: string },
+    @Body() body: { stage: 'BROKER' | 'BRANCH' | 'HQ' | 'COUNCIL'; state: 'PENDING' | 'APPROVED' | 'REJECTED'; note?: string },
   ) {
     return this.claims.reviewDocument(id, docId, body?.stage, body?.state, body?.note);
   }
@@ -190,35 +190,41 @@ export class ClaimsController {
     return this.claims.setFinalizedAmount(id, body?.amount);
   }
 
-  /** معرف forwards / insurer level endorses (engine routes by authority ceiling). */
+  /** Take a workflow action offered in `workflow.actions` of GET /claims/:id (see workflow.ts). */
   @Permissions(PERMISSIONS.CLAIM_PROCESS)
-  @Post(':id/endorse')
-  endorse(@Param('id') id: string, @Body() dto: DecisionDto) {
-    return this.claims.decide(id, 'ENDORSE', dto);
+  @Post(':id/action')
+  act(@Param('id') id: string, @Body() dto: ActionDto) {
+    return this.claims.act(id, dto);
   }
 
-  @Permissions(PERMISSIONS.CLAIM_PROCESS)
-  @Post(':id/return-incomplete')
-  returnIncomplete(@Param('id') id: string, @Body() dto: DecisionDto) {
-    return this.claims.decide(id, 'RETURN_INCOMPLETE', dto);
+  /** Relay / send / receive / return the original (physical) documents. */
+  @Permissions(PERMISSIONS.CLAIM_READ)
+  @Post(':id/physical')
+  physical(@Param('id') id: string, @Body() dto: PhysicalDto) {
+    return this.claims.physicalAct(id, dto);
   }
 
+  /** شعبه records اعلام خسارت (registered in the insurer's own system). */
   @Permissions(PERMISSIONS.CLAIM_PROCESS)
-  @Post(':id/reject')
-  reject(@Param('id') id: string, @Body() dto: DecisionDto) {
-    return this.claims.decide(id, 'REJECT', dto);
+  @Put(':id/loss-notice')
+  setLossNotice(@Param('id') id: string, @Body() dto: LossNoticeDto) {
+    return this.claims.setLossNotice(id, dto.number, dto.date);
   }
 
-  /** بیمه‌گزار resolves deficiencies and resubmits (restarts the chain). */
-  @Permissions(PERMISSIONS.CLAIM_FILE)
-  @Post(':id/rectify')
-  rectify(@Param('id') id: string, @Body() dto: DecisionDto) {
-    return this.claims.rectify(id, dto.note);
+  /** Create a letter (مکاتبه) to attach to the next action; returns its id. */
+  @Permissions(PERMISSIONS.CLAIM_READ)
+  @Post(':id/letters')
+  @UseInterceptors(FileInterceptor('file', { limits: docLimits }))
+  createLetter(@Param('id') id: string, @Body() dto: LetterDto, @UploadedFile() file?: Express.Multer.File) {
+    return this.claims.createLetter(id, dto, file);
   }
 
-  @Permissions(PERMISSIONS.CLAIM_PROCESS)
-  @Post(':id/pay')
-  pay(@Param('id') id: string) {
-    return this.claims.markPaid(id);
+  @Permissions(PERMISSIONS.CLAIM_READ)
+  @Get(':id/letters/:letterId/file')
+  async letterFile(@Param('id') id: string, @Param('letterId') letterId: string, @Res() res: Response) {
+    const { buffer, mimeType, fileName } = await this.claims.getLetterFile(id, letterId);
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fileName)}"`);
+    res.send(buffer);
   }
 }

@@ -1,4 +1,4 @@
-import { IsArray, IsBoolean, IsHexColor, IsInt, IsOptional, IsString, Length, Matches, Max, Min } from 'class-validator';
+import { IsArray, IsBoolean, IsHexColor, IsInt, IsOptional, IsString, Length, Matches, Max, Min, ValidateIf } from 'class-validator';
 
 export class UpdateBrandingDto {
   @IsOptional()
@@ -15,6 +15,11 @@ export class UpdateBrandingDto {
   @IsOptional()
   @IsBoolean()
   lateNoticeWarning?: boolean; // show/hide the "خارج از مهلت" warning
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null && v !== '')
+  @Matches(/^\d{1,18}$/)
+  hqCeiling?: string | null; // مدیریت ستاد payment ceiling (ریال); empty/null = unlimited
 
   @IsOptional()
   @IsHexColor()
@@ -35,6 +40,11 @@ export class UpdateBrandingDto {
   @IsArray()
   @Matches(/^https?:\/\/[a-zA-Z0-9.:-]+$/, { each: true, message: 'هر مبدأ باید مانند https://example.com باشد' })
   embedOrigins?: string[];
+
+  // Theme tokens object, a preset name (e.g. "alborz"), or null to restore the default design.
+  // Validated in branding/theme.ts (hex colours + one constrained gradient only).
+  @IsOptional()
+  theme?: Record<string, string> | string | null;
 }
 
 export class SmsConfigDto {

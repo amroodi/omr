@@ -5,6 +5,7 @@ import { client, hasPerm } from '../../../../../lib/client';
 import { Shell, Icon } from '../../../../components/Shell';
 import { ClaimTypeBadge, CLAIM_TYPE_LABELS, ErrorBox, FancyLoader, StatusBadge } from '../../../../components/ui';
 import { ORG_NAV } from '../../../nav';
+import { Workflow, WorkflowPanel } from '../../../../components/WorkflowPanel';
 
 interface DocReview { stage: string; state: string; canEdit: boolean }
 interface ClaimDoc { id: string; fileName: string; status: string; statusLabel: string; note: string | null; version: number; isLatest: boolean; reviews?: DocReview[] }
@@ -16,9 +17,10 @@ interface Claim {
   estimatedAmount?: string; claimedAmount: string; finalizedAmount?: string | null;
   eventDate: string | null; policyHolder?: { name: string | null; nationalCode: string | null } | null;
   insurer?: { name: string } | null; broker?: { name: string } | null; sellingBranchName?: string | null;
+  workflow?: Workflow;
 }
 
-const STAGE_LABEL: Record<string, string> = { BROKER: 'معرف (کارگزاری)', BRANCH: 'شعبه', COUNCIL: 'ستاد (شورای فنی)' };
+const STAGE_LABEL: Record<string, string> = { BROKER: 'کارگزاری', BRANCH: 'شعبه', HQ: 'مدیریت ستاد', COUNCIL: 'شورای فنی' };
 const ICON_CHECK = 'M20 6L9 17l-5-5';
 const ICON_X = 'M6 18L18 6M6 6l12 12';
 
@@ -49,8 +51,6 @@ export default function AssessClaim() {
   const [busy, setBusy] = useState(false);
   const [zoom, setZoom] = useState(100);
   const [finalAmt, setFinalAmt] = useState('');
-  const [showDef, setShowDef] = useState(false);
-  const [defText, setDefText] = useState('');
   const canProcess = hasPerm('org', 'claim:process');
 
   const load = async () => {
@@ -73,14 +73,6 @@ export default function AssessClaim() {
     await client.post(`/claims/${id}/documents/${docId}/review`, { stage, state, note }, 'org');
   });
   const saveFinalized = () => act(() => client.put(`/claims/${id}/finalized-amount`, { amount: finalAmt }, 'org'));
-  const endorse = () => act(() => client.post(`/claims/${id}/endorse`, {}, 'org'));
-  const reject = () => act(() => client.post(`/claims/${id}/reject`, { note: 'رد پرونده در ارزیابی' }, 'org'));
-  const returnIncomplete = () => act(async () => {
-    const deficiencies = defText.split('\n').map((s) => s.trim()).filter(Boolean);
-    if (deficiencies.length === 0) throw new Error('حداقل یک مورد نقص را وارد کنید');
-    await client.post(`/claims/${id}/return-incomplete`, { deficiencies }, 'org');
-    setShowDef(false); setDefText('');
-  });
 
   // The checkpoint(s) this operator may actually set (from the docs' canEdit flags).
   const myStages = useMemo(() => {
@@ -191,20 +183,10 @@ export default function AssessClaim() {
                 </div>
               )}
 
-              {/* Decisions */}
-              {canProcess && !closed && (
-                <div className="border-t pt-3 space-y-2" style={{ borderColor: 'var(--border)' }}>
-                  <div className="flex flex-wrap gap-2">
-                    <button onClick={endorse} disabled={busy} className="btn btn-solid btn-sm">تایید و ارسال</button>
-                    <button onClick={() => setShowDef(!showDef)} disabled={busy} className="btn btn-ghost btn-sm" style={{ color: 'var(--warning)' }}>اعلام نقص / عودت</button>
-                    <button onClick={reject} disabled={busy} className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }}>رد پرونده</button>
-                  </div>
-                  {showDef && (
-                    <div className="space-y-2">
-                      <textarea value={defText} onChange={(e) => setDefText(e.target.value)} placeholder="هر مورد نقص در یک خط" className="input" rows={3} />
-                      <button onClick={returnIncomplete} disabled={busy} className="btn btn-sm" style={{ background: 'var(--warning)', color: '#fff' }}>ارسال نقص مدارک به بیمه‌گزار</button>
-                    </div>
-                  )}
+              {/* Workflow actions (server-offered for this desk) */}
+              {claim.workflow && (
+                <div className="border-t pt-3" style={{ borderColor: 'var(--border)' }}>
+                  <WorkflowPanel claimId={id} workflow={claim.workflow} realm="org" onDone={load} compact />
                 </div>
               )}
 

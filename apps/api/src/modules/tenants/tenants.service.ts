@@ -9,6 +9,7 @@ import { SYSTEM_ROLES } from '../../common/rbac/permissions';
 import { getContext } from '../../common/tenant/tenant-context';
 import { DEFAULT_REQUIRED_DOCS } from '../required-docs/defaults';
 import { DEFAULT_CLAIM_FIELDS } from '../claim-fields/defaults';
+import { themeValue } from '../branding/branding.service';
 
 interface ProvisionInput {
   name: string;
@@ -47,7 +48,7 @@ export class TenantsService {
   }
 
   /** Platform-only: edit an organization's name / type / slug. */
-  async update(id: string, input: { name?: string; kind?: 'INSURER' | 'BROKER'; slug?: string }) {
+  async update(id: string, input: { name?: string; kind?: 'INSURER' | 'BROKER'; slug?: string; theme?: unknown }) {
     const db = this.prisma.unscoped();
     const current = await db.tenant.findUnique({ where: { id }, select: { kind: true } });
     if (!current) throw new BadRequestException('سازمان یافت نشد');
@@ -61,6 +62,7 @@ export class TenantsService {
       if (clash && clash.id !== id) throw new BadRequestException('این شناسه سازمان قبلاً استفاده شده است');
       data.slug = slug;
     }
+    if (input.theme !== undefined) data.theme = themeValue(input.theme);
     if (Object.keys(data).length === 0) return { ok: true };
 
     const t = await db.tenant.update({ where: { id }, data });

@@ -35,6 +35,7 @@ export const DEFAULT_CLAIM_FIELDS: FieldDefSeed[] = [
 
   // ── Beneficiary (ذینفع) ──
   { key: 'beneficiary_type', label: 'نوع ذینفع', type: 'SELECT', group: 'BENEFICIARY', editableBy: BOTH, options: ['همسر', 'فرزند', 'پدر', 'مادر', 'سایر'], order: 20 },
+  { key: 'beneficiaries', label: 'ذینفعان / وراث قانونی (نام و سهم هر نفر)', type: 'TEXT', group: 'BENEFICIARY', editableBy: BOTH, order: 22 },
   { key: 'beneficiary_iban', label: 'شماره شبا ذینفع', type: 'IBAN', group: 'BENEFICIARY', editableBy: BOTH, order: 21 },
 
   // ── Workflow stages: brokerage ──

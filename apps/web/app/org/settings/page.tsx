@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { client } from '../../../lib/client';
+import { applyTheme } from '../../../lib/theme';
 import { Shell } from '../../components/Shell';
 import { CLAIM_TYPE_LABELS, ErrorBox, Field } from '../../components/ui';
 import { ORG_NAV } from '../nav';
@@ -41,7 +42,7 @@ function BrandingTab() {
   useEffect(() => { load(); }, []);
   const save = async () => {
     setMsg(null);
-    try { await client.patch('/tenant/settings', { name: s.name, primaryColor: s.primaryColor, contactHeader: s.contactHeader, noticeDays: Number(s.noticeDays), lateNoticeWarning: s.lateNoticeWarning !== false }, 'org'); setMsg({ t: 'ok', m: 'ذخیره شد' }); load(); }
+    try { await client.patch('/tenant/settings', { name: s.name, contactHeader: s.contactHeader, noticeDays: Number(s.noticeDays), lateNoticeWarning: s.lateNoticeWarning !== false, ...(s.kind === 'INSURER' ? { hqCeiling: String(s.hqCeiling ?? '').replace(/[^\d]/g, '') || null } : {}) }, 'org'); setMsg({ t: 'ok', m: 'ذخیره شد' }); load(); }
     catch (e: any) { setMsg({ t: 'err', m: e.message }); }
   };
   const uploadLogo = async (file: File) => {
@@ -53,8 +54,12 @@ function BrandingTab() {
     <div className="card p-5 max-w-lg space-y-3">
       {msg && <div className={msg.t === 'ok' ? 'alert-success' : 'alert-error'}>{msg.m}</div>}
       <Field label="نام سازمان"><input className="input" value={s.name || ''} onChange={(e) => setS({ ...s, name: e.target.value })} /></Field>
-      <Field label="رنگ اصلی"><input className="input" type="text" value={s.primaryColor || ''} onChange={(e) => setS({ ...s, primaryColor: e.target.value })} placeholder="#FF9500" style={{ direction: 'ltr' }} /></Field>
       <Field label="سربرگ تماس (در خروجی‌ها)"><input className="input" value={s.contactHeader || ''} onChange={(e) => setS({ ...s, contactHeader: e.target.value })} /></Field>
+      {s.kind === 'INSURER' && (
+        <Field label="سقف اختیار پرداخت مدیریت ستاد (ریال) — خالی = نامحدود؛ بالاتر از آن ارجاع به شورای فنی الزامی است">
+          <input className="input" inputMode="numeric" value={s.hqCeiling ?? ''} onChange={(e) => setS({ ...s, hqCeiling: e.target.value.replace(/[^\d]/g, '') })} style={{ direction: 'ltr', textAlign: 'right' }} placeholder="مثلاً 5000000000" />
+        </Field>
+      )}
       <Field label="مهلت اعلام خسارت (روز)"><input className="input" type="number" value={s.noticeDays ?? 30} onChange={(e) => setS({ ...s, noticeDays: e.target.value })} style={{ direction: 'ltr', textAlign: 'right' }} /></Field>
       <label className="flex items-center gap-2 text-sm cursor-pointer">
         <input type="checkbox" checked={s.lateNoticeWarning !== false} onChange={(e) => setS({ ...s, lateNoticeWarning: e.target.checked })} />
@@ -66,6 +71,62 @@ function BrandingTab() {
         {s.hasLogo && <span className="badge badge-success">لوگو تنظیم شده</span>}
       </div>
       <button onClick={save} className="btn btn-primary btn-sm">ذخیره</button>
+      <ThemeEditor settings={s} onSaved={load} />
+    </div>
+  );
+}
+
+// Panel colour tokens an organization can set (validated server-side: branding/theme.ts).
+const THEME_FIELDS: [string, string][] = [
+  ['brand', 'رنگ اصلی (دکمه‌ها و برجسته‌ها)'],
+  ['title', 'رنگ عنوان صفحه'],
+  ['sidebar', 'منوی کناری'],
+  ['sidebarDeep', 'منوی کناری — ردیف فعال'],
+  ['canvas', 'پس‌زمینهٔ صفحه'],
+  ['loginButton', 'دکمهٔ ورود'],
+];
+
+/** «قالب رنگی پنل»: the look this organization's operators get; empty = the default (Damuon) design. */
+function ThemeEditor({ settings, onSaved }: { settings: any; onSaved: () => void }) {
+  const [t, setT] = useState<Record<string, string>>(settings.theme || {});
+  const [msg, setMsg] = useState<{ t: 'ok' | 'err'; m: string } | null>(null);
+  const presets: { key: string; label: string; theme: Record<string, string> }[] = settings.themePresets || [];
+  const save = async (theme: Record<string, string> | null) => {
+    setMsg(null);
+    try {
+      const r = await client.patch<any>('/tenant/settings', { theme }, 'org');
+      setT(r.theme || {}); applyTheme(r.theme); onSaved();
+      setMsg({ t: 'ok', m: theme ? 'قالب رنگی اعمال شد' : 'طرح پیش‌فرض بازگردانده شد' });
+    } catch (e: any) { setMsg({ t: 'err', m: e.message }); }
+  };
+  return (
+    <div className="border-t pt-4 mt-2 space-y-3" style={{ borderColor: 'var(--border)' }}>
+      <h3 className="font-bold text-sm">قالب رنگی پنل سازمان</h3>
+      <p className="text-xs" style={{ color: 'var(--muted)' }}>کاربران این سازمان پنل را با این رنگ‌ها و لوگوی سازمان می‌بینند. خالی = طرح پیش‌فرض.</p>
+      {msg && <div className={msg.t === 'ok' ? 'alert-success' : 'alert-error'}>{msg.m}</div>}
+      <div className="flex flex-wrap gap-2">
+        {presets.map((p) => (
+          <button key={p.key} onClick={() => setT({ ...p.theme })} className="btn btn-ghost btn-sm" style={{ borderInlineStart: `6px solid ${p.theme.brand}` }}>قالب {p.label}</button>
+        ))}
+        <button onClick={() => setT({})} className="btn btn-ghost btn-sm">طرح پیش‌فرض</button>
+      </div>
+      <div className="grid sm:grid-cols-2 gap-2">
+        {THEME_FIELDS.map(([k, label]) => (
+          <label key={k} className="flex items-center gap-2 text-xs">
+            <input type="color" value={t[k] || '#ffffff'} onChange={(e) => setT({ ...t, [k]: e.target.value })} style={{ width: 34, height: 28, border: 0, background: 'none' }} />
+            <span className="flex-1">{label}</span>
+            {t[k] && <button className="text-[11px]" style={{ color: 'var(--muted)' }} onClick={() => { const n = { ...t }; delete n[k]; setT(n); }}>حذف</button>}
+          </label>
+        ))}
+      </div>
+      <Field label="پس‌زمینهٔ صفحهٔ ورود (رنگ یا linear-gradient)">
+        <input className="input" value={t.loginBg || ''} onChange={(e) => setT({ ...t, loginBg: e.target.value })} placeholder="linear-gradient(120deg, #4458d0 0%, #c150c1 100%)" style={{ direction: 'ltr', fontSize: 12 }} />
+      </Field>
+      {t.loginBg && <div className="rounded-lg h-10" style={{ background: t.loginBg }} />}
+      <div className="flex gap-2">
+        <button onClick={() => save(Object.keys(t).length ? t : null)} className="btn btn-primary btn-sm">ذخیرهٔ قالب رنگی</button>
+        {settings.slug && <a className="btn btn-ghost btn-sm" href={`/org/login?org=${settings.slug}`} target="_blank" rel="noreferrer">پیش‌نمایش صفحهٔ ورود</a>}
+      </div>
     </div>
   );
 }

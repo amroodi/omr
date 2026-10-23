@@ -109,7 +109,7 @@ export class CustomerService {
   }
 
   // ── Org-side بیمه‌گزار onboarding (tenant-scoped) ── admin-created accounts are ACTIVE at once
-  async createAccount(input: { nationalCode: string; phone: string; fullName?: string }) {
+  async createAccount(input: { nationalCode: string; phone: string; fullName?: string; companyId?: string }) {
     const tenantId = getTenantIdOrThrow();
     const { nid, phone } = this.validatePair(input.nationalCode, input.phone);
     const nidHash = this.crypto.blindIndex(nid)!;
@@ -118,6 +118,7 @@ export class CustomerService {
     }
     const acc = await this.prisma.scoped.customerAccount.create({
       data: {
+        companyId: input.companyId ? await this.ownCompany(input.companyId) : null,
         tenantId,
         nationalCode: this.crypto.encrypt(nid)!,
         nationalCodeHash: nidHash,
@@ -132,6 +133,25 @@ export class CustomerService {
     return { id: acc.id, ok: true };
   }
 
+  private async ownCompany(id: string): Promise<string> {
+    const c = await this.prisma.scoped.policyholderCompany.findFirst({ where: { id }, select: { id: true } });
+    if (!c) throw new BadRequestException('شرکت بیمه‌گزار یافت نشد');
+    return c.id;
+  }
+
+  /** The signed-in بیمه‌گزار representative and the company they represent (panel header: name + logo). */
+  async me() {
+    const ctx = getContext();
+    if (ctx?.actorType !== 'CUSTOMER' || !ctx.actorId) throw new ForbiddenException('فقط برای بیمه‌گزار');
+    const acc = await this.prisma.unscoped().customerAccount.findUnique({ where: { id: ctx.actorId }, include: { company: true } });
+    if (!acc) throw new NotFoundException('حساب یافت نشد');
+    const c = acc.company;
+    return {
+      fullName: acc.fullName ? this.crypto.decrypt(acc.fullName) : null,
+      company: c ? { id: c.id, name: c.name, hasLogo: !!c.logoKey, phone: c.phone, email: c.email, address: c.address, website: c.website, contactName: c.contactName } : null,
+    };
+  }
+
   async listAccounts(status?: CustomerSignupStatus) {
     // Full National ID / phone are shown only to org users holding view:pii; otherwise masked.
     const canPii = (getContext()?.permissions ?? []).includes('view:pii');
@@ -139,6 +159,7 @@ export class CustomerService {
       where: status ? { signupStatus: status } : {},
       orderBy: { createdAt: 'desc' },
       take: 500,
+      include: { company: { select: { id: true, name: true } } },
     });
     return rows.map((r) => {
       const nid = this.crypto.decrypt(r.nationalCode) ?? '';
@@ -152,6 +173,7 @@ export class CustomerService {
         phoneMasked: phone ? `••••${phone.slice(-4)}` : null,
         canViewPii: canPii,
         signupStatus: r.signupStatus,
+        company: r.company,
         isActive: r.isActive,
         createdAt: toJalali(r.createdAt),
         lastLoginAt: r.lastLoginAt ? toJalali(r.lastLoginAt) : null,

@@ -6,7 +6,10 @@ import { ErrorBox, Field } from '../../components/ui';
 import { ORG_NAV } from '../nav';
 
 interface Role { id: string; name: string; permissions: string[]; isSystem: boolean }
-interface User { id: string; username: string; displayName: string; isActive: boolean; role: { name: string } | null }
+interface User { id: string; username: string; displayName: string; isActive: boolean; role: { name: string } | null; branch?: { id: string; name: string } | null; desk?: string | null }
+
+// Insurer desks (کارگزاری users are always «کارگزاری»; branch users are «شعبه»).
+const seatLabel = (u: User) => u.branch ? `شعبه: ${u.branch.name}` : u.desk === 'COUNCIL' ? 'شورای فنی' : 'مدیریت ستاد';
 
 export default function UsersRoles() {
   const [roles, setRoles] = useState<Role[]>([]);
@@ -19,7 +22,16 @@ export default function UsersRoles() {
   const [roleMsg, setRoleMsg] = useState<{ t: 'ok' | 'err'; m: string } | null>(null);
   const [roleBusy, setRoleBusy] = useState(false);
 
-  const [nu, setNu] = useState({ username: '', displayName: '', password: '', roleId: '' });
+  const [nu, setNu] = useState({ username: '', displayName: '', password: '', roleId: '', seat: 'HQ' });
+  const [isInsurer, setIsInsurer] = useState(false);
+  const [branches, setBranches] = useState<{ id: string; name: string; code: string }[]>([]);
+  useEffect(() => {
+    client.get<{ kind?: string }>('/tenant/branding', 'org').then((b) => {
+      if (b.kind !== 'INSURER') return;
+      setIsInsurer(true);
+      client.get<{ id: string; name: string; code: string }[]>('/branches', 'org').then(setBranches).catch(() => {});
+    }).catch(() => {});
+  }, []);
   const [userMsg, setUserMsg] = useState<{ t: 'ok' | 'err'; m: string } | null>(null);
   const [userBusy, setUserBusy] = useState(false);
   const [confirmDel, setConfirmDel] = useState<string | null>(null);
@@ -58,9 +70,10 @@ export default function UsersRoles() {
     setUserBusy(true);
     try {
       const payload: Record<string, string> = { username: nu.username.trim(), password: nu.password, roleId: nu.roleId };
+      if (isInsurer) { if (nu.seat.startsWith('branch:')) payload.branchId = nu.seat.slice(7); else payload.desk = nu.seat; }
       if (nu.displayName.trim()) payload.displayName = nu.displayName.trim();
       await client.post('/users', payload, 'org');
-      setNu({ username: '', displayName: '', password: '', roleId: '' });
+      setNu({ username: '', displayName: '', password: '', roleId: '', seat: 'HQ' });
       setUserMsg({ t: 'ok', m: 'کاربر با موفقیت ساخته شد.' });
       load();
     } catch (e: any) { setUserMsg({ t: 'err', m: e.message }); } finally { setUserBusy(false); }
@@ -117,6 +130,7 @@ export default function UsersRoles() {
                 <span className="text-sm font-semibold">{u.displayName} <span style={{ color: 'var(--muted)' }} className="font-normal">({u.username})</span></span>
                 <span className="text-xs flex items-center gap-2">
                   <span style={{ color: 'var(--muted)' }}>{u.role?.name}</span>
+                  {isInsurer && <span className="badge badge-neutral">{seatLabel(u)}</span>}
                   {!u.isActive && <span className="badge badge-danger">غیرفعال</span>}
                   {confirmDel === u.id ? (
                     <span className="flex items-center gap-1">
@@ -148,6 +162,15 @@ export default function UsersRoles() {
                 {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
               </select>
             </Field>
+            {isInsurer && (
+              <Field label="محل خدمت در گردش کار پرونده">
+                <select value={nu.seat} onChange={(e) => setNu({ ...nu, seat: e.target.value })} className="input">
+                  <option value="HQ">مدیریت ستاد</option>
+                  <option value="COUNCIL">شورای فنی</option>
+                  {branches.map((b) => <option key={b.id} value={`branch:${b.id}`}>شعبه: {b.name} ({b.code})</option>)}
+                </select>
+              </Field>
+            )}
             <Msg v={userMsg} />
             <button onClick={createUser} disabled={userBusy} className="btn btn-primary btn-sm">{userBusy ? '…' : 'ساخت کاربر'}</button>
           </div>

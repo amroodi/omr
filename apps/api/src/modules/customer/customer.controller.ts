@@ -12,7 +12,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
-import { IsOptional, IsString, Length, Matches } from 'class-validator';
+import { IsOptional, IsString, IsUUID, Length, Matches } from 'class-validator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { Permissions, Public } from '../../common/rbac/decorators';
 import { PERMISSIONS } from '../../common/rbac/permissions';
@@ -23,9 +23,14 @@ class CreateCustomerDto {
   @ToAsciiDigits() @IsString() @Length(8, 12) nationalCode!: string;
   @ToAsciiDigits() @IsString() @Matches(/^0?9\d{9}$/) phone!: string;
   @IsOptional() @IsString() @Length(2, 120) fullName?: string;
+
+  @IsOptional()
+  @IsUUID()
+  companyId?: string;
 }
 import { CustomerSignupStatus } from '@prisma/client';
 import { ClaimsService } from '../claims/claims.service';
+import { PhysicalDto } from '../claims/dto';
 import { CustomerAuthService } from './customer-auth.service';
 import { CustomerService } from './customer.service';
 import { CustomerFileClaimDto, CustomerRequestOtpDto, CustomerSignupDto, CustomerSignupVerifyDto, CustomerVerifyOtpDto } from './dto';
@@ -137,8 +142,8 @@ export class CustomerController {
   @Post('claims')
   fileClaim(@Body() dto: CustomerFileClaimDto) {
     return this.claims.file({
-      insurerTenantId: dto.insurerTenantId,
       channel: 'BROKER' as any,
+      deceasedBirthDate: dto.deceasedBirthDate,
       claimType: dto.claimType,
       eventDate: dto.eventDate,
       description: dto.description,
@@ -148,9 +153,15 @@ export class CustomerController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('me')
+  me() {
+    return this.customer.me();
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get('claims')
-  myClaims() {
-    return this.claims.listMine();
+  myClaims(@Query('q') q?: string) {
+    return this.claims.listMine(q);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -170,6 +181,13 @@ export class CustomerController {
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 15 * 1024 * 1024 } }))
   uploadClaimDoc(@Param('id') id: string, @Query('docCode') docCode: string, @UploadedFile() file: Express.Multer.File) {
     return this.claims.uploadDocument(id, file, docCode);
+  }
+
+  /** بیمه‌گزار sends the original documents to شعبه when asked. */
+  @UseGuards(JwtAuthGuard)
+  @Post('claims/:id/physical')
+  physical(@Param('id') id: string, @Body() dto: PhysicalDto) {
+    return this.claims.physicalAct(id, dto);
   }
 
   @UseGuards(JwtAuthGuard)

@@ -9,6 +9,18 @@ import { Shell } from '../../../components/Shell';
 import { CUSTOMER_NAV } from '../../nav';
 
 const toAscii = (s: string) => s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
+// Death claims ask for the date of death; accident disability / medical claims for the accident date.
+const DEATH_TYPES = new Set(['DEATH_ILLNESS', 'DEATH_ACCIDENT']);
+
+/** Whole years between two ISO dates (age at death); null when either is missing or implausible. */
+function ageBetween(birthIso: string | null, atIso: string | null): number | null {
+  if (!birthIso) return null;
+  const b = new Date(birthIso); const e = atIso ? new Date(atIso) : new Date();
+  let a = e.getUTCFullYear() - b.getUTCFullYear();
+  if (e.getUTCMonth() < b.getUTCMonth() || (e.getUTCMonth() === b.getUTCMonth() && e.getUTCDate() < b.getUTCDate())) a--;
+  return a >= 0 && a < 130 ? a : null;
+}
+
 function jalaliToIso(input: string): string | null {
   const parts = toAscii(input).split('/').map((p) => parseInt(p, 10));
   if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) return null;
@@ -32,36 +44,42 @@ function PField({ label, help, children }: { label: string; help?: string; child
 
 export default function CustomerNewClaim() {
   const router = useRouter();
-  const [insurers, setInsurers] = useState<{ id: string; name: string }[]>([]);
-  const [f, setF] = useState({ insurerTenantId: '', claimType: 'DEATH_ILLNESS', eventDate: '', deceasedFullName: '', deceasedNationalCode: '', description: '' });
+  const [company, setCompany] = useState<{ name: string } | null | undefined>(undefined);
+  const [f, setF] = useState({ claimType: 'DEATH_ILLNESS', eventDate: '', birthDate: '', deceasedFullName: '', deceasedNationalCode: '', description: '' });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!getToken('customer')) { router.push('/customer/login'); return; }
-    client.get<{ id: string; name: string }[]>('/customer/insurers', 'customer').then(setInsurers).catch((e) => setError(e.message));
+    client.get<{ company: { name: string } | null }>('/customer/me', 'customer').then((m) => setCompany(m.company)).catch(() => setCompany(null));
     // eslint-disable-next-line
   }, []);
 
   const submit = async () => {
     setError('');
-    if (!f.insurerTenantId) return setError('بیمه‌گر را انتخاب کنید');
     const iso = f.eventDate ? jalaliToIso(f.eventDate) : null;
-    if (f.eventDate && !iso) return setError('تاریخ وقوع نامعتبر است (نمونه: ۱۴۰۵/۰۷/۰۱)');
+    if (f.eventDate && !iso) return setError(`${eventLabel} نامعتبر است (نمونه: ۱۴۰۵/۰۷/۰۱)`);
+    const birthIso = f.birthDate ? jalaliToIso(f.birthDate) : null;
+    if (f.birthDate && !birthIso) return setError('تاریخ تولد نامعتبر است (نمونه: ۱۳۴۵/۰۵/۱۲)');
+    if (birthIso && iso && new Date(birthIso) > new Date(iso)) return setError(`تاریخ تولد بعد از ${eventLabel} است`);
     setBusy(true);
     try {
       const payload: Record<string, string> = {
-        insurerTenantId: f.insurerTenantId,
         claimType: f.claimType,
         deceasedFullName: f.deceasedFullName.trim(),
         deceasedNationalCode: toAscii(f.deceasedNationalCode).trim(),
       };
       if (iso) payload.eventDate = iso;
+      if (birthIso) payload.deceasedBirthDate = birthIso;
       if (f.description.trim()) payload.description = f.description.trim();
       const c = await client.post<{ id: string }>('/customer/claims', payload, 'customer');
       router.push(`/customer/claims/${c.id}`);
     } catch (e: any) { setError(e.message); } finally { setBusy(false); }
   };
+
+  const isDeath = DEATH_TYPES.has(f.claimType);
+  const eventLabel = isDeath ? 'تاریخ فوت' : 'تاریخ وقوع حادثه';
+  const age = ageBetween(f.birthDate ? jalaliToIso(f.birthDate) : null, f.eventDate ? jalaliToIso(f.eventDate) : null);
 
   return (
     <Shell title="ثبت پرونده خسارت" breadcrumb="ثبت پرونده خسارت" sectionLabel="خسارت عمر و حادثه" nav={CUSTOMER_NAV} realm="customer">
@@ -69,18 +87,16 @@ export default function CustomerNewClaim() {
         {/* Guidance banner */}
         <div className="pinfobox mb-6 text-center">
           پس از ثبت پرونده، مدارک موردنیاز را در صفحهٔ پرونده بارگذاری کنید. لطفاً مشخصات بیمه‌شدهٔ متوفی و نوع پرونده را با دقت وارد نمایید.
+          <div className="text-xs mt-1 font-normal">
+            {company
+              ? <>پرونده برای «{company.name}» ثبت می‌شود و کارگزاری آن را بر اساس قرارداد بیمه‌ای شرکت شما به بیمه‌گر مربوط ارسال می‌کند.</>
+              : company === null ? <>حساب شما هنوز به شرکت بیمه‌گزار متصل نشده است؛ برای ثبت پرونده با کارگزاری تماس بگیرید.</> : null}
+          </div>
         </div>
 
         <ErrorBox message={error} />
 
         <div className="grid md:grid-cols-2 gap-5 mt-4">
-          <PField label="بیمه‌گر *" help="شرکت بیمه‌ای که پرونده نزد آن پیگیری می‌شود را انتخاب کنید.">
-            <select className="input" value={f.insurerTenantId} onChange={(e) => setF({ ...f, insurerTenantId: e.target.value })}>
-              <option value="">— انتخاب بیمه‌گر —</option>
-              {insurers.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
-            </select>
-          </PField>
-
           <PField label="نوع پرونده *" help="علت فوت یا نوع خسارت را مشخص کنید.">
             <select className="input" value={f.claimType} onChange={(e) => setF({ ...f, claimType: e.target.value })}>
               {Object.entries(CLAIM_TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -95,8 +111,16 @@ export default function CustomerNewClaim() {
             <input className="input" value={f.deceasedNationalCode} onChange={(e) => setF({ ...f, deceasedNationalCode: e.target.value })} inputMode="numeric" style={{ direction: 'ltr', textAlign: 'right' }} />
           </PField>
 
-          <PField label="تاریخ وقوع (شمسی)" help="تاریخ فوت یا وقوع حادثه به تقویم شمسی.">
+          <PField label="تاریخ تولد بیمه‌شده (شمسی)" help="تاریخ تولد متوفی؛ سن او به‌طور خودکار محاسبه می‌شود.">
+            <JalaliDatePicker value={f.birthDate} onChange={(v) => setF({ ...f, birthDate: v })} placeholder="۱۳۴۵/۰۵/۱۲" />
+          </PField>
+
+          <PField label={`${eventLabel} (شمسی) *`} help={isDeath ? 'تاریخ فوت بیمه‌شده به تقویم شمسی؛ بیمه‌گر بر اساس قرارداد معتبر در این تاریخ تعیین می‌شود.' : 'تاریخ وقوع حادثه به تقویم شمسی.'}>
             <JalaliDatePicker value={f.eventDate} onChange={(v) => setF({ ...f, eventDate: v })} placeholder="۱۴۰۵/۰۷/۰۱" />
+          </PField>
+
+          <PField label={isDeath ? 'سن متوفی (هنگام فوت)' : 'سن بیمه‌شده (هنگام حادثه)'} help="از روی تاریخ تولد و تاریخ فوت محاسبه می‌شود.">
+            <input className="input" readOnly value={age != null ? `${age.toLocaleString('fa-IR')} سال` : '— (پس از ورود تاریخ‌ها)'} style={{ background: 'var(--surface-2)' }} />
           </PField>
         </div>
 
@@ -106,7 +130,7 @@ export default function CustomerNewClaim() {
         </div>
 
         <div className="flex justify-center mt-8">
-          <button onClick={submit} disabled={busy || !f.deceasedFullName || !f.deceasedNationalCode} className="btn btn-solid btn-solid-lg">
+          <button onClick={submit} disabled={busy || !f.deceasedFullName || !f.deceasedNationalCode || !f.eventDate || company === null} className="btn btn-solid btn-solid-lg">
             {busy ? 'در حال ثبت…' : 'ثبت پرونده و ادامه به بارگذاری مدارک'}
           </button>
         </div>
