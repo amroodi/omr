@@ -1,4 +1,4 @@
-import { above, actionsFor, ActionContext, below, chainOf, higher } from './workflow';
+import { above, actionsFor, ActionContext, below, chainOf, higher, physicalActionsFor } from './workflow';
 
 const broker = { brokerTenantId: 'b1' };
 const direct = { brokerTenantId: null };
@@ -13,6 +13,7 @@ function ctx(over: Partial<ActionContext['claim']> = {}, rest: Partial<ActionCon
     hqCeiling: null,
     docs: { count: 2, allApproved: true, rejectedLabels: [], rejectedAnywhere: [] },
     branches: [{ id: 'br1', name: 'شعبه مرکزی', code: '100' }],
+    physical: { at: 'BRANCH', open: null },
     ...rest,
   };
 }
@@ -89,5 +90,34 @@ describe('actionsFor', () => {
 
   it('closed claims offer nothing', () => {
     expect(actionsFor(ctx({ status: 'PAID', currentStage: null }))).toEqual([]);
+  });
+});
+
+describe('physical documents', () => {
+  const none = { at: null, open: null };
+  it('شعبه asks بیمه‌گزار only after approving the scans, and cannot forward until the originals arrive', () => {
+    const at = { currentStage: 'BRANCH' as const, lossNoticeNumber: '1' };
+    expect(get(ctx(at, { physical: none }), 'REQUEST_PHYSICAL')?.label).toBe('درخواست اصل مدارک از بیمه‌گزار');
+    expect(get(ctx(at, { physical: none, docs: { count: 1, allApproved: false, rejectedLabels: [], rejectedAnywhere: [] } }), 'REQUEST_PHYSICAL')?.disabled).toBeTruthy();
+    expect(get(ctx(at, { physical: none }), 'FORWARD')?.disabled).toContain('اصل مدارک');
+    expect(keys(ctx(at))).not.toContain('REQUEST_PHYSICAL'); // already at شعبه
+  });
+
+  it('a desk waiting for the originals cannot decide yet', () => {
+    const c = ctx({ currentStage: 'HQ', finalizedAmount: '1' }, { physical: { at: 'BRANCH', open: { requesterStage: 'HQ', holderStage: 'BRANCH', status: 'REQUESTED' } } });
+    expect(get(c, 'PAY_ORDER')?.disabled).toBe('در انتظار دریافت اصل مدارک');
+    expect(get(c, 'REFER_COUNCIL')?.disabled).toBe('در انتظار دریافت اصل مدارک');
+    expect(keys(c)).not.toContain('REQUEST_PHYSICAL');
+    expect(keys(c)).toContain('RETURN');
+  });
+
+  it('a council request is relayed by ستاد, sent by شعبه, received by the council', () => {
+    const open = (holderStage: any, status: any = 'REQUESTED') => ({ at: 'BRANCH' as const, open: { requesterStage: 'COUNCIL' as const, holderStage, status } });
+    expect(physicalActionsFor('HQ', open('HQ'))).toEqual([{ key: 'PHYSICAL_RELAY', label: 'ارسال درخواست اصل مدارک به شعبه' }]);
+    expect(physicalActionsFor('BRANCH', open('BRANCH'))).toEqual([{ key: 'PHYSICAL_SEND', label: 'ارسال اصل مدارک به شورای فنی' }]);
+    expect(physicalActionsFor('COUNCIL', open('BRANCH', 'SENT'))[0].key).toBe('PHYSICAL_RECEIVE');
+    expect(physicalActionsFor('HQ', open('BRANCH'))).toEqual([]);
+    expect(physicalActionsFor('POLICYHOLDER', { at: null, open: { requesterStage: 'BRANCH', holderStage: 'POLICYHOLDER', status: 'REQUESTED' } })[0].label).toBe('ارسال اصل مدارک به شعبه');
+    expect(physicalActionsFor('COUNCIL', { at: 'COUNCIL', open: null })[0].key).toBe('PHYSICAL_RETURN');
   });
 });

@@ -27,6 +27,12 @@ one position per claim (`Claim.currentStage` + `flowDirection` + `flowPurpose`),
   ستاد can only send it back to the council.
 - **Desks:** broker org → کارگزاری; insurer user with a branch → شعبه (only the claim's handling
   branch, chosen by کارگزاری); central insurer user → ستاد, or شورای فنی when `OrgUser.desk = COUNCIL`.
+- **Original documents (side track, claim stays put):** شعبه asks بیمه‌گزار after approving the scans
+  and cannot forward to ستاد until they are received; they stay at شعبه (`Claim.physicalAt`). ستاد asks
+  شعبه; شورای فنی's request is relayed by ستاد to شعبه. Whoever holds them sends (tracking no. + letter),
+  the requester confirms receipt; ستاد/شورا can send them back to شعبه. A desk waiting for originals
+  can't order payment/refer until they arrive. `ClaimPhysicalRequest` + `ClaimPhysicalEvent`,
+  `POST /claims/:id/physical` (and `/customer/claims/:id/physical` for بیمه‌گزار).
 - **Trace:** every hand-off is a `ClaimStep` (desk, action, note, actor, time) with optional
   `ClaimLetter` (number/date/subject/scan); shown in all panels (operator names only inside orgs).
 

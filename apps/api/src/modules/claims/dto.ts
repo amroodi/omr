@@ -68,7 +68,7 @@ export class DecisionDto {
   deficiencies?: string[];
 }
 
-const ACTION_KEYS = ['SUBMIT', 'FORWARD', 'REFER_COUNCIL', 'PAY_ORDER', 'RETURN', 'RETURN_DIRECT', 'DOWN_FORWARD', 'DOWN_DIRECT', 'MARK_PAID', 'REJECT_FINAL'] as const;
+const ACTION_KEYS = ['SUBMIT', 'FORWARD', 'REFER_COUNCIL', 'PAY_ORDER', 'RETURN', 'RETURN_DIRECT', 'DOWN_FORWARD', 'DOWN_DIRECT', 'MARK_PAID', 'REJECT_FINAL', 'REQUEST_PHYSICAL'] as const;
 
 export class ActionDto {
   @IsIn(ACTION_KEYS as unknown as string[])
@@ -118,4 +118,25 @@ export class LetterDto {
   @IsString()
   @Length(0, 200)
   subject?: string;
+}
+
+const PHYSICAL_KEYS = ['PHYSICAL_SEND', 'PHYSICAL_RELAY', 'PHYSICAL_RECEIVE', 'PHYSICAL_RETURN'] as const;
+
+export class PhysicalDto {
+  @IsIn(PHYSICAL_KEYS as unknown as string[])
+  action!: (typeof PHYSICAL_KEYS)[number];
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 1000)
+  note?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 60)
+  trackingNo?: string;
+
+  @IsOptional()
+  @IsUUID()
+  letterId?: string;
 }

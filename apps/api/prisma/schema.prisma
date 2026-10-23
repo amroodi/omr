@@ -708,6 +708,9 @@ model Claim {
   lossNoticeDate   DateTime?
   lossNoticeById   String?
 
+  // Where the original (physical) documents are. null = still with the بیمه‌گزار (not collected yet).
+  physicalAt WorkflowStage?
+
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
   deletedAt DateTime? // soft-delete: hidden everywhere, restorable within the retention window, then purged for good
@@ -717,6 +720,7 @@ model Claim {
   deficiencies ClaimDeficiency[]
   fieldValues  ClaimFieldValue[]
   letters      ClaimLetter[]
+  physicalRequests ClaimPhysicalRequest[]
 
   @@index([insurerTenantId, status])
   @@index([brokerTenantId])
@@ -790,6 +794,7 @@ model ClaimLetter {
   claimId          String
   claim            Claim     @relation(fields: [claimId], references: [id])
   stepId           String? // the ClaimStep this letter accompanied (set when the action is taken)
+  physicalEventId  String? // or the physical-documents event it accompanied
   number           String?
   letterDate       DateTime?
   subject          String?
@@ -803,6 +808,47 @@ model ClaimLetter {
 
   @@index([claimId])
   @@index([stepId])
+}
+
+enum PhysicalStatus {
+  REQUESTED // the request is with `holderStage` (send, or relay it down)
+  SENT // originals on their way to the requester
+  RECEIVED // requester confirmed receipt (closed)
+}
+
+// A request for the original documents. شعبه asks بیمه‌گزار; ستاد asks شعبه; شورای فنی asks through
+// ستاد → شعبه. The claim itself stays at its desk meanwhile. One open request per claim.
+model ClaimPhysicalRequest {
+  id             String         @id @default(uuid())
+  claimId        String
+  claim          Claim          @relation(fields: [claimId], references: [id])
+  requesterStage WorkflowStage // who receives the originals
+  holderStage    WorkflowStage // who must act on the request now
+  status         PhysicalStatus @default(REQUESTED)
+  createdById    String?
+  createdAt      DateTime       @default(now())
+  sentAt         DateTime?
+  receivedAt     DateTime?
+
+  events ClaimPhysicalEvent[]
+
+  @@index([claimId, status])
+}
+
+model ClaimPhysicalEvent {
+  id         String               @id @default(uuid())
+  requestId  String
+  request    ClaimPhysicalRequest @relation(fields: [requestId], references: [id])
+  claimId    String
+  stage      WorkflowStage // desk that acted
+  action     String // REQUEST | RELAY | SEND | RECEIVE | RETURN
+  note       String?
+  trackingNo String? // courier / post tracking number
+  actorId    String?
+  createdAt  DateTime             @default(now())
+
+  @@index([claimId])
+  @@index([requestId])
 }
 
 model ClaimParticipant {

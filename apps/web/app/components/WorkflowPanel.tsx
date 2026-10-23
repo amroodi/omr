@@ -18,7 +18,18 @@ export interface Workflow {
   myStage: string | null; holdsDesk: boolean;
   lossNotice: { number: string; date: string | null } | null; canRecordLossNotice: boolean;
   actions: WorkflowAction[];
+  physical?: PhysicalView;
 }
+
+/** Where the original documents are, the open request (if any), its history, and this user's moves. */
+export interface PhysicalView {
+  at: string; atLabel: string; collected: boolean;
+  open: { requesterStage: string; holderStage: string; status: 'REQUESTED' | 'SENT'; requesterLabel: string; holderLabel: string } | null;
+  actions: { key: string; label: string; seat: string }[];
+  events: { id: string; stageLabel: string; action: string; note: string | null; trackingNo: string | null; at: string; by: string | null; letters: TimelineStep['letters'] }[];
+}
+
+const PHYSICAL_EVENT_FA: Record<string, string> = { REQUEST: 'درخواست اصل مدارک', RELAY: 'ارسال درخواست به سطح پایین‌تر', SEND: 'ارسال اصل مدارک', RECEIVE: 'تایید دریافت اصل مدارک', RETURN: 'بازگرداندن اصل مدارک به شعبه' };
 
 const TONE: Record<string, string> = { primary: 'btn btn-solid btn-sm', warning: 'btn btn-ghost btn-sm', danger: 'btn btn-ghost btn-sm', ghost: 'btn btn-ghost btn-sm' };
 const TONE_COLOR: Record<string, string | undefined> = { warning: 'var(--warning)', danger: 'var(--danger)' };
@@ -46,7 +57,8 @@ function phase(w: Workflow): string {
 export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact }: {
   claimId: string; workflow: Workflow; realm: 'org' | 'customer'; onDone: () => void; compact?: boolean;
 }) {
-  const [open, setOpen] = useState<WorkflowAction | null>(null);
+  const [open, setOpen] = useState<(WorkflowAction & { physical?: boolean }) | null>(null);
+  const [tracking, setTracking] = useState('');
   const [note, setNote] = useState('');
   const [defs, setDefs] = useState('');
   const [branchId, setBranchId] = useState('');
@@ -58,8 +70,8 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact }: 
   const base = realm === 'customer' ? '/customer/claims' : '/claims';
   const cur = w.chain.findIndex((c) => c.stage === w.currentStage);
 
-  const start = (a: WorkflowAction) => {
-    setErr(''); setNote(''); setDefs(''); setLetter({ number: '', date: '', subject: '' }); setLetterFile(null);
+  const start = (a: WorkflowAction & { physical?: boolean }) => {
+    setErr(''); setNote(''); setDefs(''); setTracking(''); setLetter({ number: '', date: '', subject: '' }); setLetterFile(null);
     setBranchId(a.selectedBranchId || (a.branchOptions?.length === 1 ? a.branchOptions[0].id : ''));
     setOpen(a);
   };
@@ -69,7 +81,8 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact }: 
     setErr(''); setBusy(true);
     try {
       if (realm === 'customer') {
-        await client.post(`${base}/${claimId}/rectify`, { note: note || undefined }, 'customer');
+        if (open.physical) await client.post(`${base}/${claimId}/physical`, { action: open.key, note: note || undefined, trackingNo: tracking || undefined }, 'customer');
+        else await client.post(`${base}/${claimId}/rectify`, { note: note || undefined }, 'customer');
       } else {
         let letterId: string | undefined;
         if (letter.number.trim() || letterFile) {
@@ -82,7 +95,8 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact }: 
           letterId = (await client.postForm<{ id: string }>(`/claims/${claimId}/letters`, fd, 'org')).id;
         }
         const deficiencies = defs.split('\n').map((s) => s.trim()).filter(Boolean);
-        await client.post(`/claims/${claimId}/action`, {
+        if (open.physical) await client.post(`/claims/${claimId}/physical`, { action: open.key, note: note || undefined, trackingNo: tracking || undefined, letterId }, 'org');
+        else await client.post(`/claims/${claimId}/action`, {
           action: open.key, note: note || undefined, letterId,
           deficiencies: deficiencies.length ? deficiencies : undefined,
           branchId: branchId || undefined,
@@ -141,6 +155,50 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact }: 
         </div>
       )}
 
+      {/* Original documents (side track) */}
+      {w.physical && (w.physical.collected || w.physical.open || w.physical.actions.length > 0 || w.physical.events.length > 0) && (
+        <div className="rounded-lg p-2.5 text-sm space-y-1.5" style={{ background: 'var(--surface-2)' }}>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <span className="font-semibold">اصل مدارک (فیزیکی)</span>
+            <span className="text-xs">محل نگهداری: <b style={{ color: 'var(--brand)' }}>{w.physical.atLabel}</b></span>
+          </div>
+          {w.physical.open && (
+            <div className="text-xs">
+              {w.physical.open.status === 'REQUESTED'
+                ? <>درخواست «{w.physical.open.requesterLabel}» — در انتظار اقدام «{w.physical.open.holderLabel}»</>
+                : <>اصل مدارک برای «{w.physical.open.requesterLabel}» ارسال شده — در انتظار تایید دریافت</>}
+            </div>
+          )}
+          {w.physical.actions.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {w.physical.actions.map((a) => (
+                <button key={a.key + a.seat} onClick={() => start({ key: a.key, label: a.label, tone: 'primary', physical: true })} disabled={busy} className="btn btn-solid btn-sm">{a.label}</button>
+              ))}
+            </div>
+          )}
+          {w.physical.events.length > 0 && (
+            <details className="text-xs">
+              <summary className="cursor-pointer" style={{ color: 'var(--muted)' }}>سوابق جابه‌جایی اصل مدارک ({w.physical.events.length.toLocaleString('fa-IR')})</summary>
+              <ul className="mt-1.5 space-y-1">
+                {w.physical.events.map((e) => (
+                  <li key={e.id}>
+                    <b>{e.stageLabel}</b>: {PHYSICAL_EVENT_FA[e.action] || e.action}
+                    <span style={{ color: 'var(--muted)' }}> — {e.at}{e.by ? ` — ${e.by}` : ''}</span>
+                    {e.trackingNo && <span> — کد رهگیری: {e.trackingNo}</span>}
+                    {e.note && <div>«{e.note}»</div>}
+                    {(e.letters || []).map((l) => (
+                      <div key={l.id} style={{ color: 'var(--muted)' }}>نامه {l.number ? `شمارهٔ ${l.number}` : ''}{l.date ? ` — ${l.date}` : ''}
+                        {l.hasFile && realm === 'org' && <button className="btn btn-ghost btn-sm" onClick={() => client.view(`/claims/${claimId}/letters/${l.id}/file`, 'org')}>مشاهده</button>}
+                      </div>
+                    ))}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </div>
+      )}
+
       {/* Actions */}
       {w.actions.length > 0 ? (
         <div className="space-y-1.5">
@@ -183,6 +241,12 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact }: 
                 <div>
                   <label className="label">موارد نقص (هر مورد در یک خط) — مدارک ردشده خودکار افزوده می‌شوند</label>
                   <textarea className="input" rows={3} value={defs} onChange={(e) => setDefs(e.target.value)} />
+                </div>
+              )}
+              {open.physical && (open.key === 'PHYSICAL_SEND' || open.key === 'PHYSICAL_RETURN') && (
+                <div>
+                  <label className="label">کد رهگیری پست / پیک (اختیاری)</label>
+                  <input className="input" value={tracking} onChange={(e) => setTracking(e.target.value)} style={{ direction: 'ltr', textAlign: 'right' }} />
                 </div>
               )}
               <div>

@@ -31,7 +31,8 @@ export type ActionKey =
   | 'DOWN_FORWARD' // hand a return / payment order on to the desk below
   | 'DOWN_DIRECT' // admin: hand a return straight to بیمه‌گزار
   | 'MARK_PAID' // شعبه records the payout to the beneficiary
-  | 'REJECT_FINAL'; // substantive rejection (not covered etc.)
+  | 'REJECT_FINAL' // substantive rejection (not covered etc.)
+  | 'REQUEST_PHYSICAL'; // ask for the original documents (side track — the claim stays put)
 
 export interface WorkflowAction {
   key: ActionKey;
@@ -97,6 +98,47 @@ export interface ActionContext {
   hqCeiling: { toString(): string } | null;
   docs: DeskDocFacts;
   branches: { id: string; name: string; code: string }[]; // insurer branches (for کارگزاری → شعبه)
+  physical: PhysicalState;
+}
+
+// ── Original (physical) documents ──
+// They go بیمه‌گزار → شعبه and stay there, unless ستاد or شورای فنی ask for them; a request travels
+// down one desk at a time (شورا → ستاد → شعبه) until it reaches whoever holds the originals.
+export type PhysicalActionKey = 'PHYSICAL_SEND' | 'PHYSICAL_RELAY' | 'PHYSICAL_RECEIVE' | 'PHYSICAL_RETURN';
+
+export interface PhysicalState {
+  at: Stage | null; // null = still with the بیمه‌گزار
+  open: { requesterStage: Stage; holderStage: Stage; status: 'REQUESTED' | 'SENT' } | null;
+}
+
+export interface PhysicalAction {
+  key: PhysicalActionKey;
+  label: string;
+}
+
+const PHYSICAL_CHAIN: Stage[] = ['POLICYHOLDER', 'BRANCH', 'HQ', 'COUNCIL'];
+
+export function physicalBelow(s: Stage): Stage | null {
+  const i = PHYSICAL_CHAIN.indexOf(s);
+  return i > 0 ? PHYSICAL_CHAIN[i - 1] : null;
+}
+
+export function custodyOf(p: PhysicalState): Stage {
+  return p.at ?? 'POLICYHOLDER';
+}
+
+/** Physical-document actions for the desk `me` sits at on this claim (independent of the claim's position). */
+export function physicalActionsFor(me: Stage | null, p: PhysicalState): PhysicalAction[] {
+  if (!me) return [];
+  const o = p.open;
+  if (o?.status === 'REQUESTED' && o.holderStage === me) {
+    if (custodyOf(p) === me) return [{ key: 'PHYSICAL_SEND', label: `ارسال اصل مدارک به ${STAGE_FA[o.requesterStage]}` }];
+    const next = physicalBelow(me);
+    return next ? [{ key: 'PHYSICAL_RELAY', label: `ارسال درخواست اصل مدارک به ${STAGE_FA[next]}` }] : [];
+  }
+  if (o?.status === 'SENT' && o.requesterStage === me) return [{ key: 'PHYSICAL_RECEIVE', label: 'تایید دریافت اصل مدارک' }];
+  if (!o && (me === 'HQ' || me === 'COUNCIL') && p.at === me) return [{ key: 'PHYSICAL_RETURN', label: 'بازگرداندن اصل مدارک به شعبه' }];
+  return [];
 }
 
 /**
@@ -136,9 +178,12 @@ export function actionsFor(ctx: ActionContext): WorkflowAction[] {
   }
 
   // ── UP: this desk is reviewing ──
+  const ph = ctx.physical;
+  const waitingOriginals = ph.open?.requesterStage === s ? 'در انتظار دریافت اصل مدارک' : undefined;
   if (s === 'BROKER' || s === 'BRANCH') {
     let disabled = notApproved;
     if (!disabled && s === 'BRANCH' && !claim.lossNoticeNumber) disabled = 'ابتدا اعلام خسارت را ثبت کنید';
+    if (!disabled && s === 'BRANCH' && !ph.at) disabled = waitingOriginals ?? 'ابتدا اصل مدارک را از بیمه‌گزار دریافت کنید';
     if (!disabled && s === 'BROKER' && !ctx.branches.length) disabled = 'بیمه‌گر هیچ شعبه‌ای تعریف نکرده است';
     out.push({
       key: 'FORWARD',
@@ -148,23 +193,29 @@ export function actionsFor(ctx: ActionContext): WorkflowAction[] {
       ...(s === 'BROKER' ? { branchOptions: ctx.branches, selectedBranchId: claim.handlingBranchId } : {}),
     });
   } else if (s === 'HQ') {
-    const council = { key: 'REFER_COUNCIL' as const, label: 'ارجاع به شورای فنی', tone: 'primary' as const, disabled: notApproved };
+    const council = { key: 'REFER_COUNCIL' as const, label: 'ارجاع به شورای فنی', tone: 'primary' as const, disabled: notApproved ?? waitingOriginals };
     if (claim.returnTargetStage === 'COUNCIL') {
       // شورای فنی returned it — after the fix it must go back to the council, not be paid here.
       out.push({ ...council, label: 'ارسال به شورای فنی' });
     } else {
       const payable = Number((claim.finalizedAmount ?? claim.claimedAmount).toString());
       const ceiling = ctx.hqCeiling != null ? Number(ctx.hqCeiling.toString()) : null;
-      let disabled = notApproved;
+      let disabled = notApproved ?? waitingOriginals;
       if (!disabled && claim.finalizedAmount == null) disabled = 'ابتدا مبلغ خسارت قطعی را ثبت کنید';
       if (!disabled && ceiling != null && payable > ceiling) disabled = 'مبلغ بیش از سقف اختیار مدیریت ستاد است؛ پرونده را به شورای فنی ارجاع دهید';
       out.push({ key: 'PAY_ORDER', label: 'دستور پرداخت — ارسال به شعبه', tone: 'primary', disabled });
       out.push(council);
     }
   } else if (s === 'COUNCIL') {
-    let disabled = notApproved;
+    let disabled = notApproved ?? waitingOriginals;
     if (!disabled && claim.finalizedAmount == null) disabled = 'ابتدا مبلغ خسارت قطعی را ثبت کنید';
     out.push({ key: 'PAY_ORDER', label: 'دستور پرداخت — ارسال به مدیریت ستاد', tone: 'primary', disabled });
+  }
+
+  // Ask for the originals: شعبه from بیمه‌گزار (after approving the scans), ستاد from شعبه, شورا via ستاد.
+  if (s !== 'BROKER' && !ph.open && custodyOf(ph) !== s) {
+    const label = s === 'BRANCH' ? 'درخواست اصل مدارک از بیمه‌گزار' : s === 'HQ' ? 'درخواست اصل مدارک از شعبه' : 'درخواست اصل مدارک (از طریق مدیریت ستاد)';
+    out.push({ key: 'REQUEST_PHYSICAL', label, tone: 'ghost', disabled: s === 'BRANCH' ? notApproved : undefined });
   }
 
   if (dn) {

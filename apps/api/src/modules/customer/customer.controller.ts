@@ -26,6 +26,7 @@ class CreateCustomerDto {
 }
 import { CustomerSignupStatus } from '@prisma/client';
 import { ClaimsService } from '../claims/claims.service';
+import { PhysicalDto } from '../claims/dto';
 import { CustomerAuthService } from './customer-auth.service';
 import { CustomerService } from './customer.service';
 import { CustomerFileClaimDto, CustomerRequestOtpDto, CustomerSignupDto, CustomerSignupVerifyDto, CustomerVerifyOtpDto } from './dto';
@@ -170,6 +171,13 @@ export class CustomerController {
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 15 * 1024 * 1024 } }))
   uploadClaimDoc(@Param('id') id: string, @Query('docCode') docCode: string, @UploadedFile() file: Express.Multer.File) {
     return this.claims.uploadDocument(id, file, docCode);
+  }
+
+  /** بیمه‌گزار sends the original documents to شعبه when asked. */
+  @UseGuards(JwtAuthGuard)
+  @Post('claims/:id/physical')
+  physical(@Param('id') id: string, @Body() dto: PhysicalDto) {
+    return this.claims.physicalAct(id, dto);
   }
 
   @UseGuards(JwtAuthGuard)

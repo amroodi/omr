@@ -17,7 +17,7 @@ import { Permissions } from '../../common/rbac/decorators';
 import { PERMISSIONS } from '../../common/rbac/permissions';
 import { ClaimFieldsService } from '../claim-fields/claim-fields.service';
 import { ClaimsService } from './claims.service';
-import { ActionDto, DecisionDto, FileClaimDto, LetterDto, LossNoticeDto } from './dto';
+import { ActionDto, DecisionDto, FileClaimDto, LetterDto, LossNoticeDto, PhysicalDto } from './dto';
 
 const docLimits = { fileSize: 15 * 1024 * 1024 };
 
@@ -195,6 +195,13 @@ export class ClaimsController {
   @Post(':id/action')
   act(@Param('id') id: string, @Body() dto: ActionDto) {
     return this.claims.act(id, dto);
+  }
+
+  /** Relay / send / receive / return the original (physical) documents. */
+  @Permissions(PERMISSIONS.CLAIM_READ)
+  @Post(':id/physical')
+  physical(@Param('id') id: string, @Body() dto: PhysicalDto) {
+    return this.claims.physicalAct(id, dto);
   }
 
   /** شعبه records اعلام خسارت (registered in the insurer's own system). */

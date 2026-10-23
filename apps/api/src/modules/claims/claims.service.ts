@@ -10,7 +10,7 @@ import { OcrService } from '../../integrations/ocr/ocr.service';
 import { ClaimFieldsService } from '../claim-fields/claim-fields.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PERMISSIONS } from '../../common/rbac/permissions';
-import { above, actionsFor, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, Purpose, ReviewDesk, Stage, STAGE_FA, WorkflowAction } from './workflow';
+import { above, actionsFor, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, physicalActionsFor, PhysicalActionKey, physicalBelow, PhysicalState, Purpose, ReviewDesk, Stage, STAGE_FA, WorkflowAction } from './workflow';
 
 const CLAIM_DOC_MIME = new Set(['application/pdf', 'image/jpeg', 'image/png']);
 
@@ -55,6 +55,13 @@ export interface ActInput {
   letterId?: string; // a ClaimLetter created beforehand via POST /claims/:id/letters
   deficiencies?: string[]; // RETURN: free-text deficiency lines (rejected documents are added automatically)
   branchId?: string; // FORWARD from کارگزاری: the insurer branch that will handle the claim
+}
+
+export interface PhysicalInput {
+  action: PhysicalActionKey;
+  note?: string;
+  trackingNo?: string; // courier / post tracking number when sending
+  letterId?: string;
 }
 
 /**
@@ -231,7 +238,11 @@ export class ClaimsService {
 
   /** Does the caller hold the claim's current desk (right desk, right org, right branch)? */
   private holdsDesk(claim: any, desk: Desk): boolean {
-    const s = claim.currentStage as Stage | null;
+    return this.sitsAt(claim, claim.currentStage as Stage | null, desk);
+  }
+
+  /** Does the caller sit at desk `s` of this claim (right desk, right org, right branch)? */
+  private sitsAt(claim: any, s: Stage | null, desk: Desk): boolean {
     if (!s || claim.imported) return false;
     const ctx = getContext();
     if (s === 'POLICYHOLDER') {
@@ -280,14 +291,15 @@ export class ClaimsService {
   private async availableActions(claim: any, desk: Desk): Promise<WorkflowAction[]> {
     if (!this.holdsDesk(claim, desk)) return [];
     const db = this.db();
-    const [docs, insurer, branches] = await Promise.all([
+    const [docs, insurer, branches, physical] = await Promise.all([
       this.deskDocFacts(claim),
       db.tenant.findUnique({ where: { id: claim.insurerTenantId }, select: { hqCeiling: true } }),
       claim.currentStage === 'BROKER'
         ? db.branch.findMany({ where: { tenantId: claim.insurerTenantId }, orderBy: { code: 'asc' }, select: { id: true, name: true, code: true } })
         : Promise.resolve([]),
+      this.physicalState(claim),
     ]);
-    return actionsFor({ claim, isAdmin: desk.isAdmin, hqCeiling: insurer?.hqCeiling ?? null, docs, branches });
+    return actionsFor({ claim, isAdmin: desk.isAdmin, hqCeiling: insurer?.hqCeiling ?? null, docs, branches, physical });
   }
 
   /** The claim's place in the chain + what the caller can do, for the panels. */
@@ -308,6 +320,7 @@ export class ClaimsService {
       lossNotice: claim.lossNoticeNumber ? { number: claim.lossNoticeNumber, date: claim.lossNoticeDate ? toJalali(claim.lossNoticeDate, false) : null } : null,
       canRecordLossNotice: s === 'BRANCH' && claim.flowDirection === 'UP' && holds,
       actions: await this.availableActions(claim, desk),
+      physical: await this.physicalView(claim, desk),
     };
   }
 
@@ -329,10 +342,7 @@ export class ClaimsService {
 
     const step = await db.claimStep.findFirst({ where: { claimId, state: 'PENDING' }, orderBy: { order: 'desc' } });
     if (!step) throw new BadRequestException('این پرونده مرحله فعالی ندارد');
-    if (input.letterId) {
-      const letter = await db.claimLetter.findFirst({ where: { id: input.letterId, claimId, stepId: null } });
-      if (!letter) throw new BadRequestException('نامهٔ پیوست نامعتبر است');
-    }
+    await this.assertLetterFree(claimId, input.letterId);
 
     const s = claim.currentStage as Stage;
     const dn = below(claim, s);
@@ -410,6 +420,16 @@ export class ClaimsService {
         if (claim.brokerTenantId) await this.notifyOrg(claim.brokerTenantId, 'پرداخت خسارت', `خسارت پروندهٔ ${claim.claimNumber} توسط شعبه پرداخت شد.`, `/org/claims/${claimId}`);
         break;
       }
+      case 'REQUEST_PHYSICAL': {
+        // Side track: the claim stays at this desk; the request goes one desk down.
+        const holder = physicalBelow(s)!;
+        const req = await db.claimPhysicalRequest.create({ data: { claimId, requesterStage: s, holderStage: holder, createdById: this.actor() } });
+        const ev = await db.claimPhysicalEvent.create({ data: { requestId: req.id, claimId, stage: s, action: 'REQUEST', note, actorId: this.actor() } });
+        if (input.letterId) await db.claimLetter.update({ where: { id: input.letterId }, data: { physicalEventId: ev.id } });
+        await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'ClaimPhysicalRequest', targetId: req.id, metadata: { claimId, requester: s, holder } });
+        await this.notifyHolder(claim, holder, 'درخواست اصل مدارک', `${STAGE_FA[s]} اصل مدارک پروندهٔ ${claim.claimNumber} را درخواست کرده است.`);
+        break;
+      }
       case 'REJECT_FINAL': {
         await this.move(claim, step, { ...base, closeState: 'REJECTED', to: null, status: ClaimStatus.REJECTED });
         await this.audit.record({ action: AuditAction.CLAIM_REJECT, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { by: s } });
@@ -473,6 +493,110 @@ export class ClaimsService {
     if (!n) throw new BadRequestException('شمارهٔ اعلام خسارت الزامی است');
     await db.claim.update({ where: { id: claimId }, data: { lossNoticeNumber: n, lossNoticeDate: date ? new Date(date) : new Date(), lossNoticeById: this.actor() } });
     await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { lossNoticeNumber: n } });
+    return this.get(claimId);
+  }
+
+  // ─────────────────────────── Original (physical) documents ───────────────────────────
+  private async openPhysicalRequest(claimId: string) {
+    return this.db().claimPhysicalRequest.findFirst({ where: { claimId, status: { in: ['REQUESTED', 'SENT'] } }, orderBy: { createdAt: 'desc' } });
+  }
+
+  private async physicalState(claim: any): Promise<PhysicalState> {
+    const o = await this.openPhysicalRequest(claim.id);
+    return { at: (claim.physicalAt as Stage | null) ?? null, open: o ? { requesterStage: o.requesterStage as Stage, holderStage: o.holderStage as Stage, status: o.status as 'REQUESTED' | 'SENT' } : null };
+  }
+
+  /** The desks the caller sits at on this claim, for physical-document actions (an org user acting for بیمه‌گزار counts too). */
+  private physicalSeats(claim: any, desk: Desk): Stage[] {
+    const seats: Stage[] = [];
+    if (desk.stage && desk.stage !== 'POLICYHOLDER' && this.sitsAt(claim, desk.stage, desk)) seats.push(desk.stage);
+    if (this.sitsAt(claim, 'POLICYHOLDER', desk)) seats.push('POLICYHOLDER');
+    return seats;
+  }
+
+  private async physicalView(claim: any, desk: Desk) {
+    const db = this.db();
+    const state = await this.physicalState(claim);
+    const seats = this.physicalSeats(claim, desk);
+    const actions = seats.flatMap((st) => physicalActionsFor(st, state).map((a) => ({ ...a, seat: st })));
+    const [events, letters] = await Promise.all([
+      db.claimPhysicalEvent.findMany({ where: { claimId: claim.id }, orderBy: { createdAt: 'asc' } }),
+      db.claimLetter.findMany({ where: { claimId: claim.id, physicalEventId: { not: null } } }),
+    ]);
+    const isOrg = getContext()?.actorType === 'ORG_USER';
+    const actorIds = isOrg ? [...new Set(events.map((e) => e.actorId).filter(Boolean))] as string[] : [];
+    const users = actorIds.length ? await db.orgUser.findMany({ where: { id: { in: actorIds } }, select: { id: true, displayName: true } }) : [];
+    const uMap = new Map(users.map((u) => [u.id, u.displayName]));
+    const o = state.open;
+    return {
+      at: state.at ?? 'POLICYHOLDER',
+      atLabel: STAGE_FA[state.at ?? 'POLICYHOLDER'],
+      collected: !!state.at,
+      open: o ? { ...o, requesterLabel: STAGE_FA[o.requesterStage], holderLabel: STAGE_FA[o.holderStage] } : null,
+      actions,
+      events: events.map((e) => ({
+        id: e.id, stage: e.stage, stageLabel: STAGE_FA[e.stage as Stage], action: e.action, note: e.note, trackingNo: e.trackingNo,
+        at: toJalali(e.createdAt), by: e.actorId ? (uMap.get(e.actorId) ?? null) : null,
+        letters: letters.filter((l) => l.physicalEventId === e.id).map((l) => ({ id: l.id, number: l.number, subject: l.subject, date: l.letterDate ? toJalali(l.letterDate, false) : null, hasFile: !!l.storageKey, fileName: l.fileName })),
+      })),
+    };
+  }
+
+  private async assertLetterFree(claimId: string, letterId?: string) {
+    if (!letterId) return;
+    const letter = await this.db().claimLetter.findFirst({ where: { id: letterId, claimId, stepId: null, physicalEventId: null } });
+    if (!letter) throw new BadRequestException('نامهٔ پیوست نامعتبر است');
+  }
+
+  /** Relay / send / receive / return the original documents. Offered per desk by physicalActionsFor. */
+  async physicalAct(claimId: string, input: PhysicalInput) {
+    const db = this.db();
+    const claim = await db.claim.findUnique({ where: { id: claimId } });
+    if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
+    this.assertParticipant(claim);
+    const desk = await this.myDesk();
+    const state = await this.physicalState(claim);
+    const seat = this.physicalSeats(claim, desk).find((st) => physicalActionsFor(st, state).some((a) => a.key === input.action));
+    if (!seat) throw new ForbiddenException('این اقدام برای شما در دسترس نیست');
+    await this.assertLetterFree(claimId, input.letterId);
+    const note = input.note?.trim() || null;
+    const trackingNo = input.trackingNo?.trim() || null;
+    const open = await this.openPhysicalRequest(claimId);
+    const event = async (requestId: string, action: string) => {
+      const ev = await db.claimPhysicalEvent.create({ data: { requestId, claimId, stage: seat, action, note, trackingNo, actorId: this.actor() } });
+      if (input.letterId) await db.claimLetter.update({ where: { id: input.letterId }, data: { physicalEventId: ev.id } });
+    };
+
+    switch (input.action) {
+      case 'PHYSICAL_RELAY': {
+        const next = physicalBelow(seat)!;
+        await db.claimPhysicalRequest.update({ where: { id: open!.id }, data: { holderStage: next } });
+        await event(open!.id, 'RELAY');
+        await this.notifyHolder(claim, next, 'درخواست اصل مدارک', `${STAGE_FA[open!.requesterStage as Stage]} اصل مدارک پروندهٔ ${claim.claimNumber} را درخواست کرده است (ارسال از طریق ${STAGE_FA[seat]}).`);
+        break;
+      }
+      case 'PHYSICAL_SEND': {
+        await db.claimPhysicalRequest.update({ where: { id: open!.id }, data: { status: 'SENT', sentAt: new Date() } });
+        await event(open!.id, 'SEND');
+        await this.notifyHolder(claim, open!.requesterStage as Stage, 'ارسال اصل مدارک', `اصل مدارک پروندهٔ ${claim.claimNumber} توسط ${STAGE_FA[seat]} ارسال شد${trackingNo ? ` (کد رهگیری ${trackingNo})` : ''}.`);
+        break;
+      }
+      case 'PHYSICAL_RECEIVE': {
+        await db.claimPhysicalRequest.update({ where: { id: open!.id }, data: { status: 'RECEIVED', receivedAt: new Date() } });
+        await event(open!.id, 'RECEIVE');
+        await db.claim.update({ where: { id: claimId }, data: { physicalAt: seat } });
+        break;
+      }
+      case 'PHYSICAL_RETURN': {
+        // ستاد / شورا sends the originals back to شعبه, where they are kept.
+        const req = await db.claimPhysicalRequest.create({ data: { claimId, requesterStage: 'BRANCH', holderStage: seat, status: 'SENT', sentAt: new Date(), createdById: this.actor() } });
+        await event(req.id, 'RETURN');
+        await this.notifyHolder(claim, 'BRANCH', 'بازگشت اصل مدارک', `اصل مدارک پروندهٔ ${claim.claimNumber} از ${STAGE_FA[seat]} به شعبه بازگردانده شد.`);
+        break;
+      }
+    }
+    await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'ClaimPhysical', targetId: claimId, metadata: { action: input.action, seat, trackingNo } });
+    await this.notifyAdminsActivity('اصل مدارک', `${await this.actorLabel()} روی پروندهٔ ${claim.claimNumber}: «${physicalActionsFor(seat, state).find((a) => a.key === input.action)?.label}».`, `/org/claims/${claimId}`);
     return this.get(claimId);
   }
 
@@ -611,8 +735,12 @@ export class ClaimsService {
   private async hardDelete(claimId: string) {
     const u = this.prisma.unscoped();
     const docs = await u.document.findMany({ where: { claimId }, select: { storageKey: true } });
+    const letters = await u.claimLetter.findMany({ where: { claimId, storageKey: { not: null } }, select: { storageKey: true } });
     await u.$transaction([
       u.documentReview.deleteMany({ where: { document: { claimId } } }), // FK RESTRICT → before documents
+      u.claimPhysicalEvent.deleteMany({ where: { claimId } }), // before their requests
+      u.claimPhysicalRequest.deleteMany({ where: { claimId } }),
+      u.claimLetter.deleteMany({ where: { claimId } }),
       u.claimFieldValue.deleteMany({ where: { claimId } }),
       u.claimDeficiency.deleteMany({ where: { claimId } }),
       u.claimStep.deleteMany({ where: { claimId } }),
@@ -620,8 +748,8 @@ export class ClaimsService {
       u.document.deleteMany({ where: { claimId } }),
       u.claim.delete({ where: { id: claimId } }),
     ]);
-    for (const d of docs) {
-      try { await this.storage.remove(d.storageKey); } catch { /* orphan file is harmless */ }
+    for (const d of [...docs, ...letters]) {
+      try { await this.storage.remove(d.storageKey!); } catch { /* orphan file is harmless */ }
     }
   }
 
@@ -965,6 +1093,7 @@ export class ClaimsService {
       'stage-council': { label: 'در انتظار بررسی شورای فنی', where: up('COUNCIL'), desk: ['COUNCIL'] },
       'returning': { label: 'عودت‌شده — در انتظار ارسال به سطح پایین‌تر', where: { flowDirection: 'DOWN', flowPurpose: 'DEFICIENCY', currentStage: { not: 'POLICYHOLDER' } }, desk: ['BROKER', 'BRANCH', 'HQ'] },
       'to-pay': { label: 'دستور پرداخت — در انتظار پرداخت', where: { flowPurpose: 'PAYMENT', status: ClaimStatus.APPROVED }, desk: ['BRANCH', 'HQ'] },
+      'physical': { label: 'اصل مدارک — درخواست‌های باز', where: { physicalRequests: { some: { status: { in: ['REQUESTED', 'SENT'] } } } }, desk: ['BRANCH', 'HQ', 'COUNCIL'] },
       'paid': { label: 'پرداخت‌شده', where: { status: ClaimStatus.PAID } },
       'rejected': { label: 'ردشده', where: { status: ClaimStatus.REJECTED } },
     };
@@ -989,7 +1118,10 @@ export class ClaimsService {
       tiles.push({ key: 'all', label: 'همه پرونده‌ها', count: allCount, actionable: false, mine: 0, href: '/org/claims' });
       for (const [key, q] of Object.entries(this.wdQueues())) {
         const rows = await db.claim.findMany({ where: { AND: [scope, q.where] }, select: { id: true, currentStage: true, flowDirection: true, handlingBranchId: true, brokerTenantId: true, insurerTenantId: true, policyHolderId: true, imported: true } });
-        const mine = rows.filter((c) => this.holdsDesk(c, desk)).length;
+        const mine = key === 'physical'
+          // requests waiting on my desk: to send/relay (REQUESTED with me) or to confirm receipt (SENT to me)
+          ? (desk.stage ? await db.claim.count({ where: { AND: [scope, { physicalRequests: { some: { OR: [{ status: 'REQUESTED', holderStage: desk.stage }, { status: 'SENT', requesterStage: desk.stage }] } } }] } }) : 0)
+          : rows.filter((c) => this.holdsDesk(c, desk)).length;
         tiles.push({ key, label: q.label, count: rows.length, actionable: !!desk.stage && !!q.desk?.includes(desk.stage), mine });
       }
     }

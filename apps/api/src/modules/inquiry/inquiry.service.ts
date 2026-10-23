@@ -368,6 +368,7 @@ export class InquiryService {
       description: c.description ?? null,
       // Where the claim is now + every hand-off (desk names only — operator names stay internal).
       currentStageLabel: c.currentStage ? STAGE_FA[c.currentStage as Stage] : null,
+      physicalAtLabel: STAGE_FA[(c.physicalAt as Stage | null) ?? 'POLICYHOLDER'], // where the original documents are
       steps: (c.steps ?? []).map((s: any) => ({
         order: s.order, partyType: s.partyType, stage: s.stage ?? null, stageLabel: s.stage ? STAGE_FA[s.stage as Stage] : null,
         direction: s.direction, purpose: s.purpose ?? null, state: s.state, action: s.action ?? null, decidedAt: s.decidedAt ? toJalali(s.decidedAt) : null,
