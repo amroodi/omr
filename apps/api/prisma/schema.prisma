@@ -42,6 +42,9 @@ model Tenant {
   fontFamily    String?  @default("Vazirmatn")
   noticeDays    Int      @default(30) // deadline (days from event) for the بیمه‌گزار to report
   lateNoticeWarning Boolean @default(true) // show the "خارج از مهلت" warning on this org's claims
+  // Payment authority of مدیریت ستاد (INSURER only). Above it ستاد cannot order payment and must refer
+  // the claim to شورای فنی. null = unlimited.
+  hqCeiling     Decimal? @db.Decimal(18, 2)
   // Origins allowed to embed the inquiry widget in an <iframe> (CSP frame-ancestors allowlist).
   embedOrigins  String[] @default([])
   isActive      Boolean  @default(true)
@@ -185,6 +188,9 @@ model OrgUser {
   branch       Branch?  @relation(fields: [branchId], references: [id])
   roleId       String
   role         Role     @relation(fields: [roleId], references: [id])
+  // Which desk of the claim chain this operator sits at. Derived when null: broker org → BROKER,
+  // insurer user with a branch → BRANCH, central insurer user → HQ. Set COUNCIL for شورای فنی members.
+  desk         WorkflowStage?
   username     String
   displayName  String
   passwordHash String // argon2id
@@ -444,7 +450,8 @@ model Document {
 enum ReviewStage {
   BROKER // کارگزاری (معرف)
   BRANCH // شعبه
-  COUNCIL // ستاد / شورای فنی
+  COUNCIL // شورای فنی
+  HQ // مدیریت ستاد
 }
 
 enum ReviewState {
@@ -688,6 +695,19 @@ model Claim {
   legacyData      Json? // full source row (PII columns stripped) for later follow-up
 
   status    ClaimStatus @default(DRAFT)
+
+  // ── Workflow position ── where the claim sits in the chain right now (null once closed).
+  currentStage      WorkflowStage?
+  flowDirection     FlowDirection?
+  flowPurpose       FlowPurpose?
+  returnTargetStage WorkflowStage? // highest stage that returned it; the fixed docs climb back up to here
+  handlingBranchId  String? // insurer branch (شعبه) handling the claim — chosen by کارگزاری or = selling branch
+
+  // اعلام خسارت — recorded by شعبه after registering the loss in the insurer's own system.
+  lossNoticeNumber String?
+  lossNoticeDate   DateTime?
+  lossNoticeById   String?
+
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
   deletedAt DateTime? // soft-delete: hidden everywhere, restorable within the retention window, then purged for good
@@ -696,11 +716,32 @@ model Claim {
   participants ClaimParticipant[]
   deficiencies ClaimDeficiency[]
   fieldValues  ClaimFieldValue[]
+  letters      ClaimLetter[]
 
   @@index([insurerTenantId, status])
   @@index([brokerTenantId])
   @@index([deceasedNationalCodeHash])
   @@index([deletedAt])
+}
+
+// The desks of the claim chain, bottom → top.
+enum WorkflowStage {
+  POLICYHOLDER // بیمه‌گزار
+  BROKER // کارگزاری
+  BRANCH // شعبه
+  HQ // مدیریت ستاد
+  COUNCIL // شورای فنی
+}
+
+enum FlowDirection {
+  UP // under review, climbing toward authority
+  DOWN // cascading back down (a return for fixes, or a payment order)
+}
+
+enum FlowPurpose {
+  REVIEW // reviewing on the way up
+  DEFICIENCY // returned for رفع نقص, travelling down to بیمه‌گزار
+  PAYMENT // payment ordered, travelling down to شعبه
 }
 
 enum ClaimPartyType {
@@ -729,7 +770,10 @@ model ClaimStep {
   holderTenantId String // org that holds this step
   holderBranchId String? // specific branch (معرف in DIRECT channel)
   direction      String         @default("UP") // UP (toward authority) | DOWN (decision cascade)
+  stage          WorkflowStage? // desk holding this step (v2 engine)
+  purpose        FlowPurpose?
   state          ClaimStepState @default(PENDING)
+  action         String? // the action that closed this step (e.g. FORWARD, RETURN, PAY_ORDER)
   note           String?
   decidedById    String?
   decidedAt      DateTime?
@@ -740,6 +784,27 @@ model ClaimStep {
 }
 
 // Which organizations may access a claim (the filing بیمه‌گزار is matched via policyHolderId).
+// Correspondence (مکاتبه) attached to a hand-off: the letter's number/date/subject and optional scan.
+model ClaimLetter {
+  id               String    @id @default(uuid())
+  claimId          String
+  claim            Claim     @relation(fields: [claimId], references: [id])
+  stepId           String? // the ClaimStep this letter accompanied (set when the action is taken)
+  number           String?
+  letterDate       DateTime?
+  subject          String?
+  storageKey       String? // encrypted scan
+  fileName         String?
+  mimeType         String?
+  sizeBytes        Int?
+  createdById      String?
+  createdByTenantId String?
+  createdAt        DateTime  @default(now())
+
+  @@index([claimId])
+  @@index([stepId])
+}
+
 model ClaimParticipant {
   id        String   @id @default(uuid())
   claimId   String

@@ -21,6 +21,7 @@ export const PERMISSIONS = {
   CLAIM_PROCESS: 'claim:process', // معرف control + insurer-level decisions
   CLAIM_DELETE: 'claim:delete', // permanently delete a claim (admin only; audit-logged)
   LEVEL_MANAGE: 'level:manage', // configure the insurer's approval ladder & ceilings
+  CLAIM_OVERRIDE: 'claim:override', // management discretion: send a return straight down to بیمه‌گزار, skipping desks
 
   // Exports
   EXPORT_LIST: 'export:list',

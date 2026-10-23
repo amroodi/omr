@@ -11,7 +11,7 @@ interface DocReview { stage: string; state: string }
 interface Doc { id: string; fileName: string; status: string; statusLabel: string; reviews?: DocReview[] }
 interface Item { code: string; label: string; uploaded: boolean; documents: Doc[] }
 interface Checklist { complete: boolean; items: Item[]; otherDocuments?: Doc[] }
-interface Step { order: number; partyType: string; state: string; holderName?: string | null; branchName?: string | null; decidedByName?: string | null; decidedAt?: string | null }
+interface Step { order: number; partyType: string; stageLabel?: string | null; state: string; holderName?: string | null; branchName?: string | null; decidedByName?: string | null; decidedAt?: string | null }
 interface Claim {
   id: string; claimNumber: string; status: string; claimType: string; deceasedName: string | null;
   estimatedAmount?: string; claimedAmount: string; finalizedAmount?: string | null; payableAmount?: string;
@@ -22,7 +22,7 @@ interface Claim {
 
 const DOC_BADGE: Record<string, string> = { PENDING: 'badge-warning', VERIFIED: 'badge-success', REJECTED: 'badge-danger', NEEDS_INFO: 'badge-warning' };
 const STEP_PARTY: Record<string, string> = { POLICYHOLDER: 'بیمه‌گزار', MOAREF: 'معرف', INSURER_LEVEL: 'سطح بیمه‌گر' };
-const STAGE_FA: Record<string, string> = { BROKER: 'کارگزاری', BRANCH: 'شعبه', COUNCIL: 'ستاد' };
+const STAGE_FA: Record<string, string> = { BROKER: 'کارگزاری', BRANCH: 'شعبه', HQ: 'ستاد', COUNCIL: 'شورای فنی' };
 const EYE = 'M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8zM12 15a3 3 0 100-6 3 3 0 000 6z';
 const PERSON_ICON = 'M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8z';
 const DOC_ICON = 'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM14 2v6h6';
@@ -194,7 +194,7 @@ export default function TrackClaim() {
               {(sel.steps || []).map((s, i) => (
                 <div key={i} className="trk-doc">
                   <span className="flex items-center justify-center rounded-full shrink-0" style={{ width: 26, height: 26, background: s.state === 'PENDING' ? '#FF9500' : s.state === 'APPROVED' ? '#00A859' : '#E5E5E5', color: '#fff', fontSize: 12, fontWeight: 700 }}>{s.order}</span>
-                  <span className="lbl">{STEP_PARTY[s.partyType] || s.partyType}{s.holderName ? ` — ${s.holderName}` : ''}{s.branchName ? ` (${s.branchName})` : ''}</span>
+                  <span className="lbl">{s.stageLabel || STEP_PARTY[s.partyType] || s.partyType}{s.holderName ? ` — ${s.holderName}` : ''}{s.branchName ? ` (${s.branchName})` : ''}</span>
                   {s.decidedAt && <span style={{ color: '#888', fontSize: '.78rem' }} dir="ltr">{s.decidedAt}</span>}
                 </div>
               ))}

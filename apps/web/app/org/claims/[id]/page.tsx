@@ -6,6 +6,7 @@ import { Shell, Icon } from '../../../components/Shell';
 import { ClaimTypeBadge, CLAIM_TYPE_LABELS, ErrorBox, StatusBadge } from '../../../components/ui';
 import { ORG_NAV } from '../../nav';
 import { FieldsSection } from './fields-section';
+import { Workflow, WorkflowPanel, WorkflowTimeline, TimelineStep } from '../../../components/WorkflowPanel';
 
 interface DocReview { stage: string; state: string; canEdit: boolean }
 interface ClaimDoc { id: string; fileName: string; status: string; statusLabel: string; note: string | null; uploadedAt: string | null; version: number; isLatest: boolean; reviews?: DocReview[] }
@@ -24,12 +25,11 @@ interface Claim {
   insurer?: { name: string } | null;
   broker?: { name: string } | null;
   sellingBranchName?: string | null;
-  steps?: Step[];
+  handlingBranchName?: string | null;
+  steps?: (Step & TimelineStep)[];
   deficiencies?: { items: string[]; resolvedAt: string | null }[];
+  workflow?: Workflow;
 }
-
-const STEP_PARTY: Record<string, string> = { POLICYHOLDER: 'بیمه‌گزار', MOAREF: 'معرف', INSURER_LEVEL: 'سطح بیمه‌گر' };
-const STEP_STATE: Record<string, string> = { PENDING: 'در انتظار', FORWARDED: 'ارسال‌شده', ESCALATED: 'ارجاع به بالاتر', APPROVED: 'تایید', RETURNED_INCOMPLETE: 'نقص مدارک', REJECTED: 'رد', ACKED: 'ثبت' };
 
 // Icon paths
 const ICON_CHECK = 'M20 6L9 17l-5-5';
@@ -37,49 +37,7 @@ const ICON_X = 'M6 18L18 6M6 6l12 12';
 const ICON_CAM = 'M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2zM12 17a4 4 0 100-8 4 4 0 000 8z';
 
 // The three claim approval checkpoints shown beside each document.
-const STAGE_LABEL: Record<string, string> = { BROKER: 'کارگزاری', BRANCH: 'شعبه', COUNCIL: 'ستاد' };
-
-/** The claim's step timeline (مسیر گردش کار) — used in both the edit tab and the preview. */
-function StepsTimeline({ steps }: { steps?: Step[] }) {
-  return (
-    <div className="space-y-3">
-      {(steps || []).map((s, i) => {
-        const active = s.state === 'PENDING';
-        const role = s.partyType === 'INSURER_LEVEL' ? (s.levelName || 'سطح بیمه‌گر') : (STEP_PARTY[s.partyType] || s.partyType);
-        const isPerson = s.holderKind === 'POLICYHOLDER';
-        const org = !isPerson && s.holderName ? `${s.holderKind === 'INSURER' ? 'بیمه‌گر' : s.holderKind === 'BROKER' ? 'کارگزاری' : ''} ${s.holderName}`.trim() : '';
-        const where = !isPerson && (s.branchName ? s.branchName : (s.holderKind ? 'دفتر مرکزی' : ''));
-        return (
-          <div key={i} className="flex gap-2.5 text-sm">
-            <span className="flex items-center justify-center rounded-full shrink-0 mt-0.5" style={{ width: 24, height: 24, background: active ? 'var(--brand)' : s.state === 'APPROVED' ? 'var(--success)' : 'var(--surface-2)', color: active || s.state === 'APPROVED' ? '#fff' : 'var(--muted)', fontSize: 11 }}>{s.order}</span>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-semibold">{role}</span>
-                <span className={`badge ${active ? 'badge-warning' : s.state === 'APPROVED' ? 'badge-success' : s.state === 'REJECTED' ? 'badge-danger' : 'badge-neutral'}`}>{STEP_STATE[s.state] || s.state}</span>
-              </div>
-              {org && <div className="text-xs" style={{ color: 'var(--muted)' }}>{org}{where ? ` — ${where}` : ''}</div>}
-              {isPerson && (
-                <details className="mt-0.5 text-xs">
-                  <summary className="cursor-pointer select-none" style={{ color: 'var(--muted)' }}>
-                    <span style={{ color: 'var(--text)' }}>{s.person?.name || 'بیمه‌گزار'}</span>
-                    <span className="mr-1" style={{ color: 'var(--brand)' }}>— مشاهده اطلاعات</span>
-                  </summary>
-                  <div className="mt-1 rounded-lg p-2 space-y-0.5" style={{ background: 'var(--surface-2)' }}>
-                    <div><span style={{ color: 'var(--muted)' }}>نام: </span>{s.person?.name || '—'}</div>
-                    <div style={{ direction: 'ltr', textAlign: 'right' }}><span style={{ color: 'var(--muted)' }}>تلفن: </span>{s.person?.phone || '—'}</div>
-                    <div style={{ direction: 'ltr', textAlign: 'right' }}><span style={{ color: 'var(--muted)' }}>کد ملی: </span>{s.person?.nationalCode || '—'}</div>
-                  </div>
-                </details>
-              )}
-              {active && <div className="text-xs" style={{ color: 'var(--brand)' }}>در انتظار اقدام این مرحله</div>}
-              {s.decidedByName && <div className="text-[11px]" style={{ color: 'var(--muted)' }}>اقدام‌کننده: {s.decidedByName}{s.decidedAt ? ` — ${s.decidedAt}` : ''}</div>}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
+const STAGE_LABEL: Record<string, string> = { BROKER: 'کارگزاری', BRANCH: 'شعبه', HQ: 'ستاد', COUNCIL: 'شورای فنی' };
 
 export default function ClaimDetail() {
   const { id } = useParams<{ id: string }>();
@@ -88,15 +46,13 @@ export default function ClaimDetail() {
   const [checklist, setChecklist] = useState<Checklist | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [defText, setDefText] = useState('');
-  const [showDef, setShowDef] = useState(false);
   const [tab, setTab] = useState<'info' | 'workflow' | 'docs' | 'route'>('info'); // اطلاعات ↔ گردش کار ↔ مدارک ↔ مسیر
   const [mode, setMode] = useState<'preview' | 'edit'>('preview'); // open as read-only preview; «ویرایش» switches to tabs
   const [finalAmt, setFinalAmt] = useState(''); // مبلغ خسارت قطعی (set after assessment)
   const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const camRefs = useRef<Record<string, HTMLInputElement | null>>({}); // mobile camera capture
   // UI-gating by permission (the API enforces these independently).
-  const canProcess = hasPerm('org', 'claim:process'); // تایید/رد/پرداخت/اعلام نقص
+  const canProcess = hasPerm('org', 'claim:process'); // مبلغ قطعی + اقدامات گردش کار
   const canFile = hasPerm('org', 'claim:file'); // بارگذاری مدرک / رفع نقص
   const canDelete = hasPerm('org', 'claim:delete'); // حذف پرونده (مدیر سازمان)
 
@@ -141,17 +97,6 @@ export default function ClaimDetail() {
     let note: string | undefined;
     if (state === 'REJECTED') { note = window.prompt('دلیل رد (اختیاری):') || undefined; }
     await client.post(`/claims/${id}/documents/${docId}/review`, { stage, state, note }, 'org');
-  });
-
-  const endorse = () => act(() => client.post(`/claims/${id}/endorse`, {}, 'org'));
-  const reject = () => act(() => client.post(`/claims/${id}/reject`, { note: 'رد پرونده' }, 'org'));
-  const pay = () => act(() => client.post(`/claims/${id}/pay`, {}, 'org'));
-  const rectify = () => act(() => client.post(`/claims/${id}/rectify`, { note: 'رفع نقص' }, 'org'));
-  const returnIncomplete = () => act(async () => {
-    const deficiencies = defText.split('\n').map((s) => s.trim()).filter(Boolean);
-    if (deficiencies.length === 0) throw new Error('حداقل یک مورد نقص را وارد کنید');
-    await client.post(`/claims/${id}/return-incomplete`, { deficiencies }, 'org');
-    setShowDef(false); setDefText('');
   });
 
   const Row = ({ label, value }: { label: string; value: any }) => value ? (
@@ -217,6 +162,7 @@ export default function ClaimDetail() {
                   <div className="text-xs mb-0.5" style={{ color: 'var(--muted)' }}>بیمه‌گر</div>
                   <div className="font-semibold">{claim.insurer.name}</div>
                   {claim.sellingBranchName && <div className="text-xs" style={{ color: 'var(--muted)' }}>شعبه فروشنده: {claim.sellingBranchName}</div>}
+                  {claim.handlingBranchName && claim.handlingBranchName !== claim.sellingBranchName && <div className="text-xs" style={{ color: 'var(--muted)' }}>شعبهٔ رسیدگی‌کننده: {claim.handlingBranchName}</div>}
                 </div>
               )}
             </div>
@@ -225,34 +171,14 @@ export default function ClaimDetail() {
             )}
           </div>
 
-          {/* Action bar (full width) */}
-          {(canProcess || canFile || canDelete) && (
+          {/* Workflow: position in the chain + the actions the server offers this user */}
+          {claim.workflow && (
             <div className="card p-4 no-print">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-bold ml-1">اقدامات:</span>
-                {['PAID', 'REJECTED'].includes(claim.status) ? (
-                  <span className="text-sm" style={{ color: 'var(--muted)' }}>پرونده بسته شده است.</span>
-                ) : claim.status === 'RETURNED_INCOMPLETE' ? (
-                  canFile
-                    ? <button onClick={rectify} disabled={busy} className="btn btn-primary btn-sm">رفع نقص و ارسال مجدد</button>
-                    : <span className="text-sm" style={{ color: 'var(--muted)' }}>در انتظار رفع نقص توسط بیمه‌گزار.</span>
-                ) : claim.status === 'APPROVED' ? (
-                  canProcess
-                    ? <button onClick={pay} disabled={busy} className="btn btn-primary btn-sm">ثبت پرداخت</button>
-                    : <span className="text-sm" style={{ color: 'var(--muted)' }}>در انتظار ثبت پرداخت.</span>
-                ) : canProcess ? (
-                  <>
-                    <button onClick={endorse} disabled={busy} className="btn btn-primary btn-sm">تایید و ارسال</button>
-                    <button onClick={() => setShowDef(!showDef)} disabled={busy} className="btn btn-ghost btn-sm" style={{ color: 'var(--warning)' }}>اعلام نقص مدارک</button>
-                    <button onClick={reject} disabled={busy} className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }}>رد پرونده</button>
-                  </>
-                ) : canFile ? (
-                  <span className="text-sm" style={{ color: 'var(--muted)' }}>مدارک را در بخش «مدارک» بارگذاری کنید.</span>
-                ) : (
-                  <span className="text-sm" style={{ color: 'var(--muted)' }}>اقدامی برای نقش شما در دسترس نیست.</span>
-                )}
-                {canDelete && <button onClick={removeClaim} disabled={busy} className="btn btn-ghost btn-sm mr-auto" style={{ color: 'var(--danger)' }} title="انتقال به سطل بازیافت (۱۴ روز قابل بازیابی)">حذف پرونده</button>}
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <h3 className="font-bold">گردش کار پرونده</h3>
+                {canDelete && <button onClick={removeClaim} disabled={busy} className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} title="انتقال به سطل بازیافت (۱۴ روز قابل بازیابی)">حذف پرونده</button>}
               </div>
+              <WorkflowPanel claimId={id} workflow={claim.workflow} realm="org" onDone={load} />
               {/* Finalized damage amount (مبلغ خسارت قطعی) — set by the assessing operator after review. */}
               {canProcess && !['REJECTED'].includes(claim.status) && (
                 <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t" style={{ borderColor: 'var(--border)' }}>
@@ -266,12 +192,6 @@ export default function ClaimDetail() {
                 </div>
               )}
 
-              {showDef && canProcess && (
-                <div className="space-y-2 mt-3">
-                  <textarea value={defText} onChange={(e) => setDefText(e.target.value)} placeholder="هر مورد نقص در یک خط" className="input" rows={3} />
-                  <button onClick={returnIncomplete} disabled={busy} className="btn btn-sm" style={{ background: 'var(--warning)', color: '#fff' }}>ارسال نقص مدارک</button>
-                </div>
-              )}
             </div>
           )}
 
@@ -297,7 +217,7 @@ export default function ClaimDetail() {
               )}
               <div className="card p-5">
                 <h3 className="font-bold mb-3">مسیر گردش کار</h3>
-                <StepsTimeline steps={claim.steps} />
+                <WorkflowTimeline claimId={id} steps={claim.steps} realm="org" />
               </div>
             </>
           )}
@@ -406,7 +326,7 @@ export default function ClaimDetail() {
           {tab === 'route' && (
             <div className="card p-5">
               <h3 className="font-bold mb-3">مسیر گردش کار</h3>
-              <StepsTimeline steps={claim.steps} />
+              <WorkflowTimeline claimId={id} steps={claim.steps} realm="org" />
             </div>
           )}
           </>

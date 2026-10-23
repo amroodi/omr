@@ -9,14 +9,14 @@ import { toJalali } from '../../common/jalali/jalali.util';
 import { OcrService } from '../../integrations/ocr/ocr.service';
 import { ClaimFieldsService } from '../claim-fields/claim-fields.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { PERMISSIONS } from '../../common/rbac/permissions';
+import { above, actionsFor, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, Purpose, ReviewDesk, Stage, STAGE_FA, WorkflowAction } from './workflow';
 
 const CLAIM_DOC_MIME = new Set(['application/pdf', 'image/jpeg', 'image/png']);
 
 // How long a soft-deleted claim stays restorable before the daily purge removes it for good.
 export const CLAIM_RETENTION_DAYS = 14;
 
-// The three claim approval checkpoints (کارگزاری / شعبه / ستاد).
-type ReviewStageName = 'BROKER' | 'BRANCH' | 'COUNCIL';
 type ReviewStateName = 'PENDING' | 'APPROVED' | 'REJECTED';
 
 const DOC_STATUS_LABELS: Record<string, string> = {
@@ -41,14 +41,28 @@ interface FileClaimInput {
   policyHolderId?: string;
 }
 
-export type Decision = 'ENDORSE' | 'RETURN_INCOMPLETE' | 'REJECT';
+/** The caller's seat in the claim chain (see myDesk). */
+interface Desk {
+  stage: Stage | null;
+  tenantId: string | null;
+  branchId: string | null;
+  isAdmin: boolean; // claim:override — may skip desks on the way down (management discretion)
+}
+
+export interface ActInput {
+  action: ActionKey;
+  note?: string;
+  letterId?: string; // a ClaimLetter created beforehand via POST /claims/:id/letters
+  deficiencies?: string[]; // RETURN: free-text deficiency lines (rejected documents are added automatically)
+  branchId?: string; // FORWARD from کارگزاری: the insurer branch that will handle the claim
+}
 
 /**
- * Death-claim routing engine. See docs/CLAIMS-WORKFLOW.md.
+ * Death-claim routing engine. See docs/CLAIMS-WORKFLOW.md and ./workflow.ts for the chain rules.
  *
  * Claims are cross-tenant, so this uses the UN-scoped client with explicit access checks:
- * an org user may act only on a step whose holderTenantId equals their tenant; the بیمه‌گزار
- * (customer realm) may act only on a POLICYHOLDER step of their own claim.
+ * an operator may act only while the claim sits at their desk (holdsDesk); the بیمه‌گزار
+ * (customer realm) only while it sits with them.
  */
 @Injectable()
 export class ClaimsService {
@@ -134,6 +148,11 @@ export class ClaimsService {
       moarefRole = 'MOAREF_BRANCH';
     }
 
+    // The بیمه‌گزار keeps a claim they filed until they press «ارسال به …» (documents are uploaded
+    // first); an operator filing on their behalf puts it straight onto the first reviewer's desk.
+    const byPolicyHolder = getContext()?.actorType === 'CUSTOMER';
+    const firstStage: Stage = byPolicyHolder ? 'POLICYHOLDER' : input.channel === 'BROKER' ? 'BROKER' : 'BRANCH';
+
     const nid = input.deceasedNationalCode;
     const claimNumber = await this.newClaimNumber();
     const claim = await db.claim.create({
@@ -154,7 +173,11 @@ export class ClaimsService {
         policyNumber: input.policyNumber ?? null,
         claimedAmount: input.claimedAmount ?? '0',
         description: input.description ?? null,
-        status: ClaimStatus.UNDER_REVIEW,
+        status: byPolicyHolder ? ClaimStatus.SUBMITTED : ClaimStatus.UNDER_REVIEW,
+        currentStage: firstStage,
+        flowDirection: 'UP',
+        flowPurpose: 'REVIEW',
+        handlingBranchId: moarefBranchId,
         participants: {
           create: [
             { tenantId: input.insurerTenantId, role: 'INSURER' },
@@ -162,113 +185,331 @@ export class ClaimsService {
           ],
         },
         steps: {
-          create: [{ order: 1, partyType: 'MOAREF', holderTenantId: moarefTenantId, holderBranchId: moarefBranchId, state: 'PENDING', direction: 'UP' }],
+          create: [{
+            order: 1,
+            partyType: firstStage === 'POLICYHOLDER' ? 'POLICYHOLDER' : 'MOAREF',
+            stage: firstStage,
+            purpose: 'REVIEW',
+            holderTenantId: firstStage === 'POLICYHOLDER' ? input.insurerTenantId : moarefTenantId,
+            holderBranchId: firstStage === 'BRANCH' ? moarefBranchId : null,
+            state: 'PENDING',
+            direction: 'UP',
+          }],
         },
       },
       include: { steps: true },
     });
 
     await this.audit.record({ action: AuditAction.CLAIM_SUBMIT, tenantId: input.insurerTenantId, targetType: 'Claim', targetId: claim.id, metadata: { channel: input.channel, moaref: moarefRole } });
-    await this.notifyOrg(moarefTenantId, 'پرونده خسارت جدید', `پرونده ${claim.claimNumber} برای بررسی در انتظار شماست.`);
-    await this.notifyPolicyHolder(claim.policyHolderId, 'ثبت پرونده خسارت', `پرونده ${claim.claimNumber} ثبت شد و در حال بررسی است.`);
+    if (byPolicyHolder) {
+      await this.notifyPolicyHolder(claim.policyHolderId, 'ثبت پرونده خسارت', `پرونده ${claim.claimNumber} ثبت شد؛ مدارک را بارگذاری و پرونده را ارسال کنید.`);
+    } else {
+      await this.notifyOrg(moarefTenantId, 'پرونده خسارت جدید', `پرونده ${claim.claimNumber} برای بررسی در انتظار شماست.`);
+      await this.notifyPolicyHolder(claim.policyHolderId, 'ثبت پرونده خسارت', `پرونده ${claim.claimNumber} ثبت شد و در حال بررسی است.`);
+    }
     return this.present(claim);
   }
 
-  // ─────────────────────────── Decisions ───────────────────────────
-  async decide(claimId: string, decision: Decision, opts: { note?: string; deficiencies?: string[] } = {}) {
-    const { claim, step } = await this.loadActive(claimId);
-    this.assertStepActor(step, claim);
+  // ─────────────────────────── Workflow (v2 engine) ───────────────────────────
+  /** Which desk of the chain the caller sits at, and whether they hold management discretion. */
+  private async myDesk(): Promise<Desk> {
+    const ctx = getContext();
+    if (ctx?.actorType === 'CUSTOMER') return { stage: 'POLICYHOLDER', tenantId: ctx.tenantId ?? null, branchId: null, isAdmin: false };
+    if (ctx?.actorType !== 'ORG_USER' || !ctx.tenantId) return { stage: null, tenantId: null, branchId: null, isAdmin: false };
+    const db = this.db();
+    const [tenant, user] = await Promise.all([
+      db.tenant.findUnique({ where: { id: ctx.tenantId }, select: { kind: true } }),
+      ctx.actorId ? db.orgUser.findUnique({ where: { id: ctx.actorId }, select: { desk: true, branchId: true } }) : null,
+    ]);
+    const branchId = user?.branchId ?? ctx.branchId ?? null;
+    let stage: Stage;
+    if (tenant?.kind === 'BROKER') stage = 'BROKER';
+    else if (user?.desk === 'HQ' || user?.desk === 'COUNCIL' || user?.desk === 'BRANCH') stage = user.desk;
+    else stage = branchId ? 'BRANCH' : 'HQ';
+    return { stage, tenantId: ctx.tenantId, branchId, isAdmin: (ctx.permissions ?? []).includes(PERMISSIONS.CLAIM_OVERRIDE) };
+  }
 
-    if (decision === 'RETURN_INCOMPLETE') return this.returnIncomplete(claim, step, opts.deficiencies ?? [], opts.note);
-    if (decision === 'REJECT') {
-      if (step.partyType === 'MOAREF') throw new BadRequestException('معرف تنها می‌تواند نقص مدارک اعلام کند');
-      return this.reject(claim, step, opts.note);
+  /** Does the caller hold the claim's current desk (right desk, right org, right branch)? */
+  private holdsDesk(claim: any, desk: Desk): boolean {
+    const s = claim.currentStage as Stage | null;
+    if (!s || claim.imported) return false;
+    const ctx = getContext();
+    if (s === 'POLICYHOLDER') {
+      // The بیمه‌گزار — or a participant org acting on their behalf (filing staff with claim:file).
+      if (ctx?.actorType === 'CUSTOMER') return claim.policyHolderId === ctx.actorId;
+      return ctx?.actorType === 'ORG_USER' && (ctx.permissions ?? []).includes(PERMISSIONS.CLAIM_FILE) && (ctx.tenantId === claim.insurerTenantId || ctx.tenantId === claim.brokerTenantId);
     }
-    // ENDORSE
-    if (step.partyType === 'MOAREF') return this.forwardToInsurer(claim, step, opts.note);
-    if (step.partyType === 'INSURER_LEVEL') return this.endorseLevel(claim, step, opts.note);
-    throw new BadRequestException('این مرحله قابل تصمیم‌گیری نیست');
+    if (desk.stage !== s) return false;
+    if (s === 'BROKER') return desk.tenantId === claim.brokerTenantId;
+    if (desk.tenantId !== claim.insurerTenantId) return false;
+    if (s === 'BRANCH') return !claim.handlingBranchId || desk.branchId === claim.handlingBranchId;
+    return true;
   }
 
-  private async forwardToInsurer(claim: any, step: any, note?: string) {
-    const db = this.db();
-    const first = await this.levelAt(claim.insurerTenantId, 1);
-    if (!first) throw new BadRequestException('بیمه‌گر هیچ سطح تاییدی تعریف نکرده است');
-    await db.claimStep.update({ where: { id: step.id }, data: { state: 'FORWARDED', note: note ?? null, decidedById: this.actor(), decidedAt: new Date() } });
-    await this.addStep(claim.id, step.order + 1, 'INSURER_LEVEL', claim.insurerTenantId, { levelId: first.id });
-    await this.audit.record({ action: AuditAction.CLAIM_FORWARD, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claim.id });
-    await this.notifyOrg(claim.insurerTenantId, 'پرونده برای تایید ارجاع شد', `پرونده ${claim.claimNumber} در سطح بیمه‌گر در انتظار بررسی است.`);
-    await this.notifyAdminsActivity('اقدام در گردش کار', `${await this.actorLabel()} پروندهٔ ${claim.claimNumber} را تایید و به بیمه‌گر ارجاع داد.`, `/org/claims/${claim.id}`);
-    return this.reload(claim.id);
+  /** Latest version of each document on the claim (one per required-doc code; each "other" upload on its own). */
+  private async latestDocs(claimId: string) {
+    const docs = await this.db().document.findMany({ where: { claimId }, orderBy: { createdAt: 'desc' }, select: { id: true, docCode: true, fileName: true, reviews: { select: { stage: true, state: true } } } });
+    const seen = new Set<string>();
+    return docs.filter((d) => {
+      if (!d.docCode) return true;
+      if (seen.has(d.docCode)) return false;
+      seen.add(d.docCode);
+      return true;
+    });
   }
 
-  private async endorseLevel(claim: any, step: any, note?: string) {
-    const db = this.db();
-    const level = await db.approvalLevel.findUnique({ where: { id: step.levelId } });
-    if (!level) throw new BadRequestException('سطح تایید یافت نشد');
-    const amount = new Prisma.Decimal(claim.claimedAmount);
-    const withinCeiling = level.ceiling === null || amount.lessThanOrEqualTo(level.ceiling);
+  private async deskDocFacts(claim: any): Promise<DeskDocFacts> {
+    const [latest, reqs] = await Promise.all([
+      this.latestDocs(claim.id),
+      this.db().requiredDocument.findMany({ where: { tenantId: claim.insurerTenantId }, select: { code: true, label: true } }),
+    ]);
+    const labels = new Map(reqs.map((r) => [r.code, r.label]));
+    const label = (d: { docCode: string | null; fileName: string }) => (d.docCode && labels.get(d.docCode)) || d.fileName;
+    const s = claim.currentStage as Stage | null;
+    const reviewing = !!s && s !== 'POLICYHOLDER';
+    const stateAt = (d: (typeof latest)[number]) => d.reviews.find((r) => r.stage === s)?.state ?? 'PENDING';
+    return {
+      count: latest.length,
+      allApproved: reviewing && latest.length > 0 && latest.every((d) => stateAt(d) === 'APPROVED'),
+      rejectedLabels: reviewing ? latest.filter((d) => stateAt(d) === 'REJECTED').map(label) : [],
+      rejectedAnywhere: latest.filter((d) => d.reviews.some((r) => r.state === 'REJECTED')).map(label),
+    };
+  }
 
-    if (withinCeiling) {
-      // Authorized here → final approval, decision cascades down.
-      await db.claimStep.update({ where: { id: step.id }, data: { state: 'APPROVED', note: note ?? null, decidedById: this.actor(), decidedAt: new Date() } });
-      await db.claim.update({ where: { id: claim.id }, data: { status: ClaimStatus.APPROVED } });
-      await this.audit.record({ action: AuditAction.CLAIM_APPROVE, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claim.id, metadata: { levelOrder: level.order } });
-      await this.notifyPolicyHolder(claim.policyHolderId, 'تایید پرونده خسارت', `پرونده ${claim.claimNumber} تایید شد.`);
-      await this.notifyOrg(claim.insurerTenantId, 'پرونده تایید شد', `پرونده ${claim.claimNumber} تایید نهایی شد و آماده پرداخت است.`);
-      await this.notifyAdminsActivity('تایید نهایی پرونده', `${await this.actorLabel()} پروندهٔ ${claim.claimNumber} را در سطح «${level.name}» تایید نهایی کرد.`, `/org/claims/${claim.id}`);
-      return this.reload(claim.id);
+  /** Actions the caller may take on the claim right now (empty unless they hold its desk). */
+  private async availableActions(claim: any, desk: Desk): Promise<WorkflowAction[]> {
+    if (!this.holdsDesk(claim, desk)) return [];
+    const db = this.db();
+    const [docs, insurer, branches] = await Promise.all([
+      this.deskDocFacts(claim),
+      db.tenant.findUnique({ where: { id: claim.insurerTenantId }, select: { hqCeiling: true } }),
+      claim.currentStage === 'BROKER'
+        ? db.branch.findMany({ where: { tenantId: claim.insurerTenantId }, orderBy: { code: 'asc' }, select: { id: true, name: true, code: true } })
+        : Promise.resolve([]),
+    ]);
+    return actionsFor({ claim, isAdmin: desk.isAdmin, hqCeiling: insurer?.hqCeiling ?? null, docs, branches });
+  }
+
+  /** The claim's place in the chain + what the caller can do, for the panels. */
+  private async workflowView(claim: any) {
+    const desk = await this.myDesk();
+    const s = claim.currentStage as Stage | null;
+    const holds = this.holdsDesk(claim, desk);
+    return {
+      chain: chainOf(claim).map((st) => ({ stage: st, label: STAGE_FA[st] })),
+      currentStage: s,
+      currentStageLabel: s ? STAGE_FA[s] : null,
+      direction: claim.flowDirection ?? null,
+      purpose: claim.flowPurpose ?? null,
+      returnTargetStage: claim.returnTargetStage ?? null,
+      returnTargetLabel: claim.returnTargetStage ? STAGE_FA[claim.returnTargetStage as Stage] : null,
+      myStage: desk.stage,
+      holdsDesk: holds,
+      lossNotice: claim.lossNoticeNumber ? { number: claim.lossNoticeNumber, date: claim.lossNoticeDate ? toJalali(claim.lossNoticeDate, false) : null } : null,
+      canRecordLossNotice: s === 'BRANCH' && claim.flowDirection === 'UP' && holds,
+      actions: await this.availableActions(claim, desk),
+    };
+  }
+
+  /**
+   * Take one workflow action. The action must be among those `availableActions` offers the caller
+   * (so every rule lives in one place); a disabled action fails with its reason.
+   */
+  async act(claimId: string, input: ActInput) {
+    const db = this.db();
+    const claim = await db.claim.findUnique({ where: { id: claimId } });
+    if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
+    this.assertParticipant(claim);
+    const desk = await this.myDesk();
+    const actions = await this.availableActions(claim, desk);
+    const a = actions.find((x) => x.key === input.action);
+    if (!a) throw new ForbiddenException(this.holdsDesk(claim, desk) ? 'این اقدام در این مرحله مجاز نیست' : 'پرونده در اختیار شما نیست');
+    if (a.disabled) throw new BadRequestException(a.disabled);
+    if (a.needsNote && !input.note?.trim()) throw new BadRequestException('توضیح الزامی است');
+
+    const step = await db.claimStep.findFirst({ where: { claimId, state: 'PENDING' }, orderBy: { order: 'desc' } });
+    if (!step) throw new BadRequestException('این پرونده مرحله فعالی ندارد');
+    if (input.letterId) {
+      const letter = await db.claimLetter.findFirst({ where: { id: input.letterId, claimId, stepId: null } });
+      if (!letter) throw new BadRequestException('نامهٔ پیوست نامعتبر است');
     }
-    // Beyond this level's authority → escalate strictly to the next level (no skipping).
-    const next = await this.levelAt(claim.insurerTenantId, level.order + 1);
-    if (!next) throw new BadRequestException('سطح بالاتری برای ارجاع تعریف نشده است');
-    await db.claimStep.update({ where: { id: step.id }, data: { state: 'ESCALATED', note: note ?? null, decidedById: this.actor(), decidedAt: new Date() } });
-    await this.addStep(claim.id, step.order + 1, 'INSURER_LEVEL', claim.insurerTenantId, { levelId: next.id });
-    await this.audit.record({ action: AuditAction.CLAIM_ESCALATE, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claim.id, metadata: { from: level.order, to: next.order } });
-    await this.notifyOrg(claim.insurerTenantId, 'ارجاع به سطح بالاتر', `پرونده ${claim.claimNumber} برای تایید به سطح بالاتر ارجاع شد.`);
-    await this.notifyAdminsActivity('ارجاع به سطح بالاتر', `${await this.actorLabel()} پروندهٔ ${claim.claimNumber} را از سطح «${level.name}» به «${next.name}» ارجاع داد.`, `/org/claims/${claim.id}`);
-    return this.reload(claim.id);
+
+    const s = claim.currentStage as Stage;
+    const dn = below(claim, s);
+    const up = above(claim, s);
+    const note = input.note?.trim() || null;
+    const base = { action: a.key, note, letterId: input.letterId };
+
+    switch (a.key) {
+      case 'SUBMIT': {
+        const resubmit = (await db.claimDeficiency.count({ where: { claimId, resolvedAt: null } })) > 0;
+        await db.claimDeficiency.updateMany({ where: { claimId, resolvedAt: null }, data: { resolvedAt: new Date() } });
+        await this.move(claim, step, { ...base, closeState: 'FORWARDED', to: up!, direction: 'UP', purpose: 'REVIEW', status: ClaimStatus.UNDER_REVIEW });
+        await this.audit.record({ action: resubmit ? AuditAction.CLAIM_RECTIFY : AuditAction.CLAIM_SUBMIT, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId });
+        await this.notifyHolder(claim, up!, resubmit ? 'رفع نقص انجام شد' : 'پرونده خسارت جدید', resubmit
+          ? `نقص مدارک پروندهٔ ${claim.claimNumber} رفع شد؛ مدارک اصلاح‌شده در انتظار بررسی شماست.`
+          : `پروندهٔ ${claim.claimNumber} برای بررسی در انتظار شماست.`);
+        break;
+      }
+      case 'FORWARD': {
+        const extra: Prisma.ClaimUpdateInput = {};
+        let branchId = claim.handlingBranchId;
+        if (s === 'BROKER') {
+          branchId = input.branchId || claim.handlingBranchId;
+          if (!branchId) throw new BadRequestException('شعبهٔ رسیدگی‌کننده را انتخاب کنید');
+          if (!a.branchOptions?.some((b) => b.id === branchId)) throw new BadRequestException('شعبه متعلق به بیمه‌گر نیست');
+          extra.handlingBranchId = branchId;
+        }
+        if (claim.returnTargetStage === s) extra.returnTargetStage = null;
+        await this.move(claim, step, { ...base, closeState: 'FORWARDED', to: up!, direction: 'UP', purpose: 'REVIEW', status: ClaimStatus.UNDER_REVIEW, extra, branchId });
+        await this.audit.record({ action: AuditAction.CLAIM_FORWARD, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { from: s, to: up } });
+        await this.notifyHolder(claim, up!, 'پرونده برای بررسی ارسال شد', `پروندهٔ ${claim.claimNumber} از ${STAGE_FA[s]} برای بررسی به شما ارسال شد.`);
+        break;
+      }
+      case 'REFER_COUNCIL': {
+        const extra: Prisma.ClaimUpdateInput = claim.returnTargetStage === 'HQ' ? { returnTargetStage: null } : {};
+        await this.move(claim, step, { ...base, closeState: 'ESCALATED', to: 'COUNCIL', direction: 'UP', purpose: 'REVIEW', status: ClaimStatus.UNDER_REVIEW, extra });
+        await this.audit.record({ action: AuditAction.CLAIM_ESCALATE, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { from: s, to: 'COUNCIL' } });
+        await this.notifyHolder(claim, 'COUNCIL', 'ارجاع به شورای فنی', `پروندهٔ ${claim.claimNumber} از مدیریت ستاد به شورای فنی ارجاع شد.`);
+        break;
+      }
+      case 'PAY_ORDER': {
+        await this.move(claim, step, { ...base, closeState: 'APPROVED', to: dn!, direction: 'DOWN', purpose: 'PAYMENT', status: ClaimStatus.APPROVED, extra: { returnTargetStage: null } });
+        await this.audit.record({ action: AuditAction.CLAIM_APPROVE, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { by: s } });
+        await this.notifyHolder(claim, dn!, 'دستور پرداخت', `برای پروندهٔ ${claim.claimNumber} از سوی ${STAGE_FA[s]} دستور پرداخت صادر شد.`);
+        await this.notifyPolicyHolder(claim.policyHolderId, 'تایید پرونده خسارت', `پروندهٔ ${claim.claimNumber} تایید شد و دستور پرداخت صادر شده است.`);
+        break;
+      }
+      case 'RETURN':
+      case 'RETURN_DIRECT': {
+        const docs = await this.deskDocFacts(claim);
+        const items = [...docs.rejectedLabels.map((l) => `مدرک ردشده: ${l}`), ...(input.deficiencies ?? []).map((x) => x.trim()).filter(Boolean)];
+        if (!items.length) throw new BadRequestException('حداقل یک مدرک را رد کنید یا یک مورد نقص بنویسید');
+        const to: Stage = a.key === 'RETURN_DIRECT' ? 'POLICYHOLDER' : dn!;
+        await db.claimDeficiency.create({ data: { claimId, raisedByTenantId: getContext()?.tenantId ?? null, raisedByStepId: step.id, items: JSON.stringify(items) } });
+        await this.move(claim, step, { ...base, closeState: 'RETURNED_INCOMPLETE', to, direction: 'DOWN', purpose: 'DEFICIENCY', status: ClaimStatus.RETURNED_INCOMPLETE, extra: { returnTargetStage: higher(claim.returnTargetStage as Stage | null, s) } });
+        await this.audit.record({ action: AuditAction.CLAIM_RETURN_INCOMPLETE, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { by: s, to, items } });
+        await this.notifyHolder(claim, to, 'عودت پرونده برای رفع نقص', `پروندهٔ ${claim.claimNumber} از سوی ${STAGE_FA[s]} برای رفع نقص عودت شد: ${items.join('، ')}`);
+        break;
+      }
+      case 'DOWN_FORWARD':
+      case 'DOWN_DIRECT': {
+        const to: Stage = a.key === 'DOWN_DIRECT' ? 'POLICYHOLDER' : dn!;
+        const purpose = claim.flowPurpose as Purpose;
+        await this.move(claim, step, { ...base, closeState: 'FORWARDED', to, direction: 'DOWN', purpose, status: claim.status });
+        await this.audit.record({ action: AuditAction.CLAIM_FORWARD, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { from: s, to, purpose } });
+        await this.notifyHolder(claim, to, purpose === 'PAYMENT' ? 'دستور پرداخت' : 'عودت پرونده برای رفع نقص', purpose === 'PAYMENT'
+          ? `دستور پرداخت پروندهٔ ${claim.claimNumber} برای اقدام به شما ارسال شد.`
+          : `پروندهٔ ${claim.claimNumber} برای رفع نقص از ${STAGE_FA[s]} به شما ارسال شد.`);
+        break;
+      }
+      case 'MARK_PAID': {
+        await this.move(claim, step, { ...base, closeState: 'ACKED', to: null, status: ClaimStatus.PAID });
+        await this.audit.record({ action: AuditAction.CLAIM_PAY, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId });
+        await this.notifyPolicyHolder(claim.policyHolderId, 'پرداخت خسارت', `خسارت پروندهٔ ${claim.claimNumber} پرداخت شد.`);
+        if (claim.brokerTenantId) await this.notifyOrg(claim.brokerTenantId, 'پرداخت خسارت', `خسارت پروندهٔ ${claim.claimNumber} توسط شعبه پرداخت شد.`, `/org/claims/${claimId}`);
+        break;
+      }
+      case 'REJECT_FINAL': {
+        await this.move(claim, step, { ...base, closeState: 'REJECTED', to: null, status: ClaimStatus.REJECTED });
+        await this.audit.record({ action: AuditAction.CLAIM_REJECT, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { by: s } });
+        await this.notifyPolicyHolder(claim.policyHolderId, 'رد پرونده خسارت', `پروندهٔ ${claim.claimNumber} رد شد${note ? `: ${note}` : '.'}`);
+        if (claim.brokerTenantId) await this.notifyOrg(claim.brokerTenantId, 'رد پرونده خسارت', `پروندهٔ ${claim.claimNumber} توسط ${STAGE_FA[s]} رد شد.`, `/org/claims/${claimId}`);
+        break;
+      }
+    }
+    await this.notifyAdminsActivity('اقدام در گردش کار', `${await this.actorLabel()} روی پروندهٔ ${claim.claimNumber}: «${a.label}».`, `/org/claims/${claimId}`);
+    return this.get(claimId);
   }
 
-  private async returnIncomplete(claim: any, step: any, items: string[], note?: string) {
+  /** Close the pending step and open the next desk's step (or close the claim when `to` is null). */
+  private async move(
+    claim: any,
+    step: any,
+    m: { action: ActionKey; closeState: string; note: string | null; letterId?: string; to: Stage | null; direction?: Direction; purpose?: Purpose; status: ClaimStatus; extra?: Prisma.ClaimUpdateInput; branchId?: string | null },
+  ) {
     const db = this.db();
-    await db.claimStep.update({ where: { id: step.id }, data: { state: 'RETURNED_INCOMPLETE', note: note ?? null, decidedById: this.actor(), decidedAt: new Date() } });
-    await db.claimDeficiency.create({ data: { claimId: claim.id, raisedByTenantId: getContext()?.tenantId ?? null, raisedByStepId: step.id, items: JSON.stringify(items) } });
-    await db.claim.update({ where: { id: claim.id }, data: { status: ClaimStatus.RETURNED_INCOMPLETE } });
-    // Hand back to the بیمه‌گزار for رفع نقص.
-    await this.addStep(claim.id, step.order + 1, 'POLICYHOLDER', claim.insurerTenantId, { direction: 'DOWN' });
-    await this.audit.record({ action: AuditAction.CLAIM_RETURN_INCOMPLETE, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claim.id, metadata: { items } });
-    await this.notifyPolicyHolder(claim.policyHolderId, 'نقص مدارک پرونده', `برای پرونده ${claim.claimNumber} نقص مدارک اعلام شد؛ برای رفع نقص وارد پنل شوید.`);
-    await this.notifyAdminsActivity('اعلام نقص مدارک', `${await this.actorLabel()} برای پروندهٔ ${claim.claimNumber} نقص مدارک اعلام کرد.`, `/org/claims/${claim.id}`);
-    return this.reload(claim.id);
+    await db.claimStep.update({ where: { id: step.id }, data: { state: m.closeState as any, action: m.action, note: m.note, decidedById: this.actor(), decidedAt: new Date() } });
+    if (m.letterId) await db.claimLetter.update({ where: { id: m.letterId }, data: { stepId: step.id } });
+    if (m.to) {
+      const holderTenantId = m.to === 'BROKER' ? claim.brokerTenantId : claim.insurerTenantId;
+      const partyType = m.to === 'POLICYHOLDER' ? 'POLICYHOLDER' : m.to === 'BROKER' ? 'MOAREF' : 'INSURER_LEVEL';
+      await db.claimStep.create({
+        data: {
+          claimId: claim.id, order: step.order + 1, partyType, holderTenantId, stage: m.to, purpose: m.purpose, direction: m.direction ?? 'UP', state: 'PENDING',
+          holderBranchId: m.to === 'BRANCH' ? (m.branchId ?? claim.handlingBranchId ?? null) : null,
+        },
+      });
+    }
+    await db.claim.update({
+      where: { id: claim.id },
+      data: { ...(m.extra ?? {}), status: m.status, currentStage: m.to, flowDirection: m.to ? m.direction : null, flowPurpose: m.to ? m.purpose : null },
+    });
   }
 
-  private async reject(claim: any, step: any, note?: string) {
-    const db = this.db();
-    await db.claimStep.update({ where: { id: step.id }, data: { state: 'REJECTED', note: note ?? null, decidedById: this.actor(), decidedAt: new Date() } });
-    await db.claim.update({ where: { id: claim.id }, data: { status: ClaimStatus.REJECTED } });
-    await this.audit.record({ action: AuditAction.CLAIM_REJECT, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claim.id });
-    await this.notifyPolicyHolder(claim.policyHolderId, 'رد پرونده خسارت', `پرونده ${claim.claimNumber} رد شد. برای اطلاعات بیشتر با سازمان تماس بگیرید.`);
-    await this.notifyAdminsActivity('رد پرونده', `${await this.actorLabel()} پروندهٔ ${claim.claimNumber} را رد کرد.`, `/org/claims/${claim.id}`);
-    return this.reload(claim.id);
+  /** Tell whoever now holds the claim: the بیمه‌گزار, or the holding org's inbox. */
+  private async notifyHolder(claim: any, to: Stage, title: string, body: string) {
+    if (to === 'POLICYHOLDER') return this.notifyPolicyHolder(claim.policyHolderId, title, body);
+    const tenantId = to === 'BROKER' ? claim.brokerTenantId : claim.insurerTenantId;
+    if (tenantId) await this.notifyOrg(tenantId, title, `${body} (مرحله: ${STAGE_FA[to]})`, `/org/claims/${claim.id}`);
   }
 
-  /** بیمه‌گزار resolves deficiencies and resubmits — restarts the FULL chain (no skipping). */
+  /** بیمه‌گزار sends the claim on — initial submission or after رفع نقص. */
   async rectify(claimId: string, note?: string) {
-    const { claim, step } = await this.loadActive(claimId);
-    if (step.partyType !== 'POLICYHOLDER') throw new BadRequestException('پرونده در وضعیت رفع نقص نیست');
-    this.assertStepActor(step, claim);
+    return this.act(claimId, { action: 'SUBMIT', note });
+  }
+
+  /** شعبه records اعلام خسارت (the loss registered in the insurer's own system) before forwarding. */
+  async setLossNotice(claimId: string, number: string, date?: string) {
     const db = this.db();
-    await db.claimDeficiency.updateMany({ where: { claimId: claim.id, resolvedAt: null }, data: { resolvedAt: new Date() } });
-    await db.claimStep.update({ where: { id: step.id }, data: { state: 'FORWARDED', note: note ?? null, decidedById: this.actor(), decidedAt: new Date() } });
-    // Re-enter at معرف — identical to the original entry (full re-review).
-    const moarefTenantId = claim.channel === 'BROKER' ? claim.brokerTenantId! : claim.insurerTenantId;
-    await this.addStep(claim.id, step.order + 1, 'MOAREF', moarefTenantId, { holderBranchId: claim.sellingBranchId });
-    await db.claim.update({ where: { id: claim.id }, data: { status: ClaimStatus.UNDER_REVIEW } });
-    await this.audit.record({ action: AuditAction.CLAIM_RECTIFY, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claim.id });
-    await this.notifyOrg(moarefTenantId, 'رفع نقص انجام شد', `بیمه‌گزار نقص مدارک پرونده ${claim.claimNumber} را رفع کرد؛ پرونده دوباره در انتظار بررسی است.`);
-    await this.notifyAdminsActivity('رفع نقص مدارک', `${await this.actorLabel()} نقص مدارک پروندهٔ ${claim.claimNumber} را رفع و آن را دوباره ارسال کرد.`, `/org/claims/${claim.id}`);
-    return this.reload(claim.id);
+    const claim = await db.claim.findUnique({ where: { id: claimId } });
+    if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
+    this.assertParticipant(claim);
+    const desk = await this.myDesk();
+    if (claim.currentStage !== 'BRANCH' || claim.flowDirection !== 'UP' || !this.holdsDesk(claim, desk)) {
+      throw new ForbiddenException('ثبت اعلام خسارت فقط توسط شعبهٔ رسیدگی‌کننده ممکن است');
+    }
+    const n = String(number ?? '').trim();
+    if (!n) throw new BadRequestException('شمارهٔ اعلام خسارت الزامی است');
+    await db.claim.update({ where: { id: claimId }, data: { lossNoticeNumber: n, lossNoticeDate: date ? new Date(date) : new Date(), lossNoticeById: this.actor() } });
+    await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { lossNoticeNumber: n } });
+    return this.get(claimId);
+  }
+
+  // ── Letters (مکاتبات) that accompany a hand-off ──
+  async createLetter(claimId: string, input: { number?: string; date?: string; subject?: string }, file?: Express.Multer.File) {
+    const db = this.db();
+    const claim = await db.claim.findUnique({ where: { id: claimId } });
+    if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
+    this.assertParticipant(claim);
+    if (!input.number?.trim() && !file?.buffer?.length) throw new BadRequestException('شمارهٔ نامه یا فایل نامه الزامی است');
+    let stored: { storageKey: string; fileName: string; mimeType: string; sizeBytes: number } | null = null;
+    if (file?.buffer?.length) {
+      if (!CLAIM_DOC_MIME.has(file.mimetype)) throw new BadRequestException('فقط PDF، JPG و PNG مجاز است');
+      stored = { storageKey: await this.storage.save(claim.insurerTenantId, file.buffer), fileName: file.originalname, mimeType: file.mimetype, sizeBytes: file.size };
+    }
+    const ctx = getContext();
+    const letter = await db.claimLetter.create({
+      data: {
+        claimId, number: input.number?.trim() || null, letterDate: input.date ? new Date(input.date) : null, subject: input.subject?.trim() || null,
+        ...(stored ?? {}), createdById: ctx?.actorId ?? null, createdByTenantId: ctx?.tenantId ?? null,
+      },
+      select: { id: true },
+    });
+    await this.audit.record({ action: AuditAction.UPLOAD, tenantId: claim.insurerTenantId, targetType: 'ClaimLetter', targetId: letter.id, metadata: { claimId } });
+    return letter;
+  }
+
+  async getLetterFile(claimId: string, letterId: string): Promise<{ buffer: Buffer; mimeType: string; fileName: string }> {
+    const db = this.db();
+    const claim = await db.claim.findUnique({ where: { id: claimId } });
+    if (!claim) throw new NotFoundException('پرونده یافت نشد');
+    this.assertParticipant(claim);
+    const l = await db.claimLetter.findFirst({ where: { id: letterId, claimId } });
+    if (!l?.storageKey) throw new NotFoundException('فایل نامه یافت نشد');
+    const buffer = await this.storage.read(l.storageKey);
+    await this.audit.record({ action: AuditAction.VIEW, tenantId: claim.insurerTenantId, targetType: 'ClaimLetterFile', targetId: letterId });
+    return { buffer, mimeType: l.mimeType ?? 'application/octet-stream', fileName: l.fileName ?? 'letter' };
   }
 
   /**
@@ -286,24 +527,6 @@ export class ClaimsService {
     await db.claim.update({ where: { id: claimId }, data: { finalizedAmount: new Prisma.Decimal(normalized) } });
     await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { finalizedAmount: normalized } });
     await this.notifyAdminsActivity('ثبت مبلغ قطعی خسارت', `${await this.actorLabel()} مبلغ قطعی خسارت پروندهٔ ${claim.claimNumber} را ثبت کرد.`, `/org/claims/${claimId}`);
-    return this.reload(claimId);
-  }
-
-  /** Insurer's شعبه records the payout after final approval. The معرف (broker) never pays. */
-  async markPaid(claimId: string) {
-    const claim = await this.db().claim.findUnique({ where: { id: claimId } });
-    if (!claim) throw new NotFoundException('پرونده یافت نشد');
-    this.assertParticipant(claim);
-    const ctx = getContext();
-    // Payment is the insurer's (شعبه) responsibility — a brokerage/معرف may review but not pay.
-    if (ctx?.actorType === 'ORG_USER' && ctx.tenantId !== claim.insurerTenantId) {
-      throw new ForbiddenException('پرداخت توسط کارگزاری (معرف) انجام نمی‌شود؛ پرداخت بر عهدهٔ شعبهٔ بیمه‌گر است');
-    }
-    if (claim.status !== ClaimStatus.APPROVED) throw new BadRequestException('پرونده تایید نشده است');
-    await this.db().claim.update({ where: { id: claimId }, data: { status: ClaimStatus.PAID } });
-    await this.audit.record({ action: AuditAction.CLAIM_PAY, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId });
-    await this.notifyPolicyHolder(claim.policyHolderId, 'پرداخت خسارت', `خسارت پرونده ${claim.claimNumber} پرداخت شد.`);
-    await this.notifyAdminsActivity('پرداخت خسارت', `${await this.actorLabel()} پرداخت خسارت پروندهٔ ${claim.claimNumber} را ثبت کرد.`, `/org/claims/${claimId}`);
     return this.reload(claimId);
   }
 
@@ -404,11 +627,12 @@ export class ClaimsService {
 
   // ─────────────────────────── Reads ───────────────────────────
   async get(claimId: string) {
-    const claim = await this.db().claim.findUnique({ where: { id: claimId }, include: { steps: { orderBy: { order: 'asc' } }, deficiencies: true } });
+    const claim = await this.db().claim.findUnique({ where: { id: claimId }, include: { steps: { orderBy: { order: 'asc' } }, deficiencies: true, letters: { orderBy: { createdAt: 'asc' } } } });
     if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
     this.assertParticipant(claim);
     const result: any = this.present(claim, true);
     await this.enrichParties(claim, result);
+    result.workflow = await this.workflowView(claim);
     return result;
   }
 
@@ -423,7 +647,7 @@ export class ClaimsService {
     const db = this.db();
     const steps: any[] = claim.steps ?? [];
     const tenantIds = [...new Set([claim.insurerTenantId, ...(claim.brokerTenantId ? [claim.brokerTenantId] : []), ...steps.map((s) => s.holderTenantId)].filter(Boolean))];
-    const branchIds = [...new Set([...(claim.sellingBranchId ? [claim.sellingBranchId] : []), ...steps.map((s) => s.holderBranchId)].filter(Boolean))] as string[];
+    const branchIds = [...new Set([claim.sellingBranchId, claim.handlingBranchId, ...steps.map((s) => s.holderBranchId)].filter(Boolean))] as string[];
     const levelIds = [...new Set(steps.map((s) => s.levelId).filter(Boolean))] as string[];
     const actorIds = [...new Set(steps.map((s) => s.decidedById).filter(Boolean))] as string[];
 
@@ -455,6 +679,7 @@ export class ClaimsService {
     result.insurer = ins ? { name: ins.name } : null;
     result.broker = claim.brokerTenantId && tMap.get(claim.brokerTenantId) ? { name: tMap.get(claim.brokerTenantId)!.name } : null;
     result.sellingBranchName = claim.sellingBranchId ? (bMap.get(claim.sellingBranchId) ?? null) : null;
+    result.handlingBranchName = claim.handlingBranchId ? (bMap.get(claim.handlingBranchId) ?? null) : null;
 
     result.steps = (result.steps ?? []).map((s: any, i: number) => {
       const raw = steps[i] ?? {};
@@ -496,7 +721,7 @@ export class ClaimsService {
       if (!byCode.has(k)) byCode.set(k, []);
       byCode.get(k)!.push(d);
     }
-    // Per-document approvals at the three checkpoints (کارگزاری/شعبه/ستاد).
+    // Per-document approvals at each desk (کارگزاری/شعبه/ستاد/شورای فنی).
     const docReviews = docs.length
       ? await db.documentReview.findMany({ where: { documentId: { in: docs.map((d) => d.id) } } })
       : [];
@@ -505,12 +730,9 @@ export class ClaimsService {
       if (!reviewsByDoc.has(r.documentId)) reviewsByDoc.set(r.documentId, new Map());
       reviewsByDoc.get(r.documentId)!.set(r.stage, r.state);
     }
-    const applicableStages = (claim.brokerTenantId ? ['BROKER', 'BRANCH', 'COUNCIL'] : ['BRANCH', 'COUNCIL']) as ReviewStageName[];
-    const canEditStage: Record<string, boolean> = {
-      BROKER: this.canReviewStage(claim, 'BROKER'),
-      BRANCH: this.canReviewStage(claim, 'BRANCH'),
-      COUNCIL: this.canReviewStage(claim, 'COUNCIL'),
-    };
+    const applicableStages = await this.reviewDesks(claim);
+    const desk = await this.myDesk();
+    const canEditStage = Object.fromEntries(applicableStages.map((st) => [st, this.canReviewStage(claim, st, desk)])) as Record<string, boolean>;
     // Present each docCode's uploads newest-first, with an explicit version number so admins can
     // tell new re-uploads from older ones at a glance. The newest is the "current" version.
     const present = (group: typeof docs) =>
@@ -571,69 +793,59 @@ export class ClaimsService {
   }
 
   /**
-   * Who may set a given checkpoint's review (all require the doc:verify permission):
-   *  - کارگزاری (BROKER): a user of the معرف/broker org on this claim.
-   *  - شعبه (BRANCH): an insurer-org user assigned to a branch (OrgUser.branchId set).
-   *  - ستاد (COUNCIL): a central insurer-org user (no branch — مدیریت مرکزی / شورای فنی).
+   * A desk may set its own ✓/✕ on documents only while it holds the claim on the way UP (doc:verify).
+   * Desks: کارگزاری (broker org), شعبه (the claim's handling branch), مدیریت ستاد and شورای فنی (central
+   * insurer users; OrgUser.desk = COUNCIL marks a council member).
    */
-  private canReviewStage(claim: any, stage: ReviewStageName): boolean {
-    const ctx = getContext();
-    if (ctx?.actorType !== 'ORG_USER') return false;
-    if (!(ctx.permissions ?? []).includes('doc:verify')) return false;
-    if (stage === 'BROKER') return !!claim.brokerTenantId && ctx.tenantId === claim.brokerTenantId;
-    if (ctx.tenantId !== claim.insurerTenantId) return false;
-    if (stage === 'BRANCH') return !!ctx.branchId; // branch operators (شعبه)
-    if (stage === 'COUNCIL') return !ctx.branchId; // central management / شورای فنی (ستاد)
-    return false;
+  private canReviewStage(claim: any, stage: ReviewDesk, desk: Desk): boolean {
+    if (!(getContext()?.permissions ?? []).includes(PERMISSIONS.DOC_VERIFY)) return false;
+    return claim.currentStage === stage && claim.flowDirection === 'UP' && desk.stage === stage && this.holdsDesk(claim, desk);
   }
 
-  /** Set a per-document approval at one checkpoint (کارگزاری/شعبه/ستاد) and roll it up to the doc status. */
-  async reviewDocument(claimId: string, docId: string, stage: ReviewStageName, state: ReviewStateName, note?: string) {
+  /** Review columns shown per document: the desks on this claim's chain (شورای فنی once it was referred). */
+  private async reviewDesks(claim: any): Promise<ReviewDesk[]> {
+    const referred = claim.currentStage === 'COUNCIL' || (await this.db().claimStep.count({ where: { claimId: claim.id, stage: 'COUNCIL' } })) > 0;
+    return chainOf(claim).filter((s): s is ReviewDesk => s !== 'POLICYHOLDER' && (s !== 'COUNCIL' || referred));
+  }
+
+  /** Set a per-document approval at the caller's desk and roll it up to the doc status. */
+  async reviewDocument(claimId: string, docId: string, stage: ReviewDesk, state: ReviewStateName, note?: string) {
     const db = this.db();
     const claim = await db.claim.findUnique({ where: { id: claimId } });
     if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
     this.assertParticipant(claim);
-    if (!this.canReviewStage(claim, stage)) throw new ForbiddenException('اجازهٔ بررسی این مرحله را ندارید');
+    const desk = await this.myDesk();
+    if (!this.canReviewStage(claim, stage, desk)) throw new ForbiddenException('بررسی مدارک این مرحله در حال حاضر در اختیار شما نیست');
     const doc = await db.document.findFirst({ where: { id: docId, claimId }, select: { id: true } });
     if (!doc) throw new NotFoundException('سند یافت نشد');
     const ctx = getContext();
     const decidedAt = state === 'PENDING' ? null : new Date();
     await db.documentReview.upsert({
-      where: { documentId_stage: { documentId: docId, stage: stage as any } },
-      update: { state: state as any, reviewerId: ctx?.actorId ?? null, note: note ?? null, decidedAt },
-      create: { documentId: docId, stage: stage as any, state: state as any, reviewerId: ctx?.actorId ?? null, note: note ?? null, decidedAt },
+      where: { documentId_stage: { documentId: docId, stage } },
+      update: { state, reviewerId: ctx?.actorId ?? null, note: note ?? null, decidedAt },
+      create: { documentId: docId, stage, state, reviewerId: ctx?.actorId ?? null, note: note ?? null, decidedAt },
     });
     await this.recomputeDocStatus(docId, claim);
     await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'ClaimDocumentReview', targetId: docId, metadata: { stage, state, note } });
-    const stageFa = { BROKER: 'کارگزاری', BRANCH: 'شعبه', COUNCIL: 'ستاد' }[stage] ?? stage;
     const stateFa = { PENDING: 'در انتظار', APPROVED: 'تایید', REJECTED: 'رد' }[state] ?? state;
-    await this.notifyAdminsActivity('بررسی مدرک (مرحله‌ای)', `${await this.actorLabel()} در مرحلهٔ «${stageFa}» یکی از مدارک پروندهٔ ${claim.claimNumber} را «${stateFa}» کرد.`, `/org/claims/${claimId}`);
+    await this.notifyAdminsActivity('بررسی مدرک (مرحله‌ای)', `${await this.actorLabel()} در مرحلهٔ «${STAGE_FA[stage]}» یکی از مدارک پروندهٔ ${claim.claimNumber} را «${stateFa}» کرد.`, `/org/claims/${claimId}`);
     return { ok: true };
   }
 
-  /** Roll the applicable checkpoint reviews up into the document's overall verificationStatus. */
+  /**
+   * Roll the desk reviews up into the document's overall verificationStatus (display only — moving
+   * the claim is always an explicit action by the desk that holds it).
+   */
   private async recomputeDocStatus(docId: string, claim: any) {
     const db = this.db();
     const reviews = await db.documentReview.findMany({ where: { documentId: docId } });
-    const applicable: ReviewStageName[] = claim.brokerTenantId ? ['BROKER', 'BRANCH', 'COUNCIL'] : ['BRANCH', 'COUNCIL'];
-    const stateOf = (s: ReviewStageName) => reviews.find((r) => r.stage === s)?.state ?? 'PENDING';
+    const applicable = await this.reviewDesks(claim);
+    const stateOf = (s: ReviewDesk) => reviews.find((r) => r.stage === s)?.state ?? 'PENDING';
     let status: 'PENDING' | 'VERIFIED' | 'REJECTED' = 'PENDING';
     if (applicable.some((s) => stateOf(s) === 'REJECTED')) status = 'REJECTED';
     else if (applicable.every((s) => stateOf(s) === 'APPROVED')) status = 'VERIFIED';
-    await db.document.update({ where: { id: docId }, data: { verificationStatus: status as any } });
-
-    // When every uploaded document has cleared all applicable checkpoints (معرف→شعبه→ستاد), the
-    // claim is fully approved and ready for payment by شعبه → advance its status (forward-only).
-    if (status === 'VERIFIED' && claim.status === ClaimStatus.UNDER_REVIEW) {
-      const docs = await db.document.findMany({ where: { claimId: claim.id }, select: { verificationStatus: true } });
-      if (docs.length > 0 && docs.every((d) => d.verificationStatus === 'VERIFIED')) {
-        await db.claim.update({ where: { id: claim.id }, data: { status: ClaimStatus.APPROVED } });
-        await this.audit.record({ action: AuditAction.CLAIM_APPROVE, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claim.id, metadata: { via: 'document-review' } });
-        await this.notifyOrg(claim.insurerTenantId, 'پرونده آمادهٔ پرداخت', `همهٔ مراحل ارزیابی پروندهٔ ${claim.claimNumber} تایید شد؛ آمادهٔ پرداخت توسط شعبه است.`);
-      }
-    }
+    await db.document.update({ where: { id: docId }, data: { verificationStatus: status } });
   }
-
   /** Upload a document to a claim, tagged with the required-document code it satisfies. */
   async uploadDocument(claimId: string, file: Express.Multer.File, docCode: string) {
     if (!file?.buffer?.length) throw new BadRequestException('فایلی دریافت نشد');
@@ -703,17 +915,9 @@ export class ClaimsService {
     const where =
       ctx?.actorType === 'CUSTOMER'
         ? { policyHolderId: ctx.actorId, deletedAt: null }
-        : { deletedAt: null, OR: [{ insurerTenantId: ctx?.tenantId }, { brokerTenantId: ctx?.tenantId }, { participants: { some: { tenantId: ctx?.tenantId } } }] };
-    const claims = await db.claim.findMany({ where, orderBy: { updatedAt: 'desc' }, include: { steps: { where: { state: 'PENDING' } } } });
-    return claims.map((c) => ({ ...(this.present(c) as object), needsAction: this.needsAction(c) }));
-  }
-
-  private needsAction(c: any): boolean {
-    const ctx = getContext();
-    const pending = (c.steps ?? []).find((s: any) => s.state === 'PENDING');
-    if (!pending) return false;
-    if (pending.partyType === 'POLICYHOLDER') return ctx?.actorType === 'CUSTOMER' ? c.policyHolderId === ctx.actorId : ctx?.tenantId === c.insurerTenantId || ctx?.tenantId === c.brokerTenantId;
-    return ctx?.actorType === 'ORG_USER' && ctx.tenantId === pending.holderTenantId;
+        : this.wdScope(ctx?.tenantId);
+    const [claims, desk] = await Promise.all([db.claim.findMany({ where, orderBy: { updatedAt: 'desc' } }), this.myDesk()]);
+    return claims.map((c) => ({ ...(this.present(c) as object), needsAction: this.holdsDesk(c, desk) }));
   }
 
   /** Insurers the caller's brokerage is partnered with (only these can be filed against). */
@@ -726,19 +930,15 @@ export class ClaimsService {
     return this.db().tenant.findMany({ where: { id: { in: ids }, kind: 'INSURER', isActive: true }, orderBy: { name: 'asc' }, select: { id: true, name: true, slug: true } });
   }
 
-  /** Work queue: claims with a PENDING step the caller must act on. */
+  /** Work queue: claims sitting at the caller's desk. */
   async queue() {
     const ctx = getContext();
-    const db = this.db();
-    if (ctx?.actorType === 'CUSTOMER') {
-      const claims = await db.claim.findMany({ where: { policyHolderId: ctx.actorId, deletedAt: null, steps: { some: { state: 'PENDING', partyType: 'POLICYHOLDER' } } }, include: { steps: true } });
-      return claims.map((c) => this.present(c));
-    }
-    const claims = await db.claim.findMany({
-      where: { deletedAt: null, steps: { some: { state: 'PENDING', holderTenantId: ctx?.tenantId } } },
-      include: { steps: true },
-    });
-    return claims.map((c) => this.present(c));
+    const desk = await this.myDesk();
+    const where: Prisma.ClaimWhereInput = ctx?.actorType === 'CUSTOMER'
+      ? { policyHolderId: ctx.actorId, deletedAt: null, currentStage: 'POLICYHOLDER' }
+      : { AND: [this.wdScope(ctx?.tenantId), this.deskWhere(desk)] };
+    const claims = await this.db().claim.findMany({ where, orderBy: { updatedAt: 'desc' } });
+    return claims.filter((c) => this.holdsDesk(c, desk)).map((c) => this.present(c));
   }
 
   /** Claim scope visible to the caller (insurer/broker/participant), excluding soft-deleted. */
@@ -746,126 +946,75 @@ export class ClaimsService {
     return { deletedAt: null, OR: [{ insurerTenantId: tenantId }, { brokerTenantId: tenantId }, { participants: { some: { tenantId: tenantId ?? undefined } } }] };
   }
 
-  /**
-   * The authenticity-review checkpoint this operator owns (see canReviewStage):
-   *  - a brokerage (معرف) tenant → BROKER (کارگزاری, the 1st filter);
-   *  - an insurer BRANCH user (شعبه, 2nd filter + the one that pays) → BRANCH;
-   *  - a central insurer user (ستاد / شورای فنی, final filter) → COUNCIL.
-   */
-  private async operatorStage(): Promise<ReviewStageName> {
-    const ctx = getContext();
-    if (!ctx?.tenantId) return 'COUNCIL';
-    const tenant = await this.db().tenant.findUnique({ where: { id: ctx.tenantId }, select: { kind: true } });
-    if (tenant?.kind === 'BROKER') return 'BROKER';
-    return ctx.branchId ? 'BRANCH' : 'COUNCIL';
+  /** SQL pre-filter for "claims at my desk" (holdsDesk is the exact check). */
+  private deskWhere(desk: Desk): Prisma.ClaimWhereInput {
+    if (!desk.stage) return { id: '__none__' };
+    const w: Prisma.ClaimWhereInput = { currentStage: desk.stage };
+    if (desk.stage === 'BRANCH' && desk.branchId) w.OR = [{ handlingBranchId: desk.branchId }, { handlingBranchId: null }];
+    return w;
+  }
+
+  /** Work Desk queues: key → filter. Review queues hold claims climbing UP at that desk. */
+  private wdQueues(): Record<string, { label: string; where: Prisma.ClaimWhereInput; desk?: Stage[] }> {
+    const up = (s: Stage): Prisma.ClaimWhereInput => ({ currentStage: s, flowDirection: 'UP' });
+    return {
+      'stage-policyholder': { label: 'نزد بیمه‌گزار (تکمیل / رفع نقص)', where: { currentStage: 'POLICYHOLDER' } },
+      'stage-broker': { label: 'در انتظار بررسی کارگزاری', where: up('BROKER'), desk: ['BROKER'] },
+      'stage-branch': { label: 'در انتظار بررسی شعبه', where: up('BRANCH'), desk: ['BRANCH'] },
+      'stage-hq': { label: 'در انتظار بررسی مدیریت ستاد', where: up('HQ'), desk: ['HQ'] },
+      'stage-council': { label: 'در انتظار بررسی شورای فنی', where: up('COUNCIL'), desk: ['COUNCIL'] },
+      'returning': { label: 'عودت‌شده — در انتظار ارسال به سطح پایین‌تر', where: { flowDirection: 'DOWN', flowPurpose: 'DEFICIENCY', currentStage: { not: 'POLICYHOLDER' } }, desk: ['BROKER', 'BRANCH', 'HQ'] },
+      'to-pay': { label: 'دستور پرداخت — در انتظار پرداخت', where: { flowPurpose: 'PAYMENT', status: ClaimStatus.APPROVED }, desk: ['BRANCH', 'HQ'] },
+      'paid': { label: 'پرداخت‌شده', where: { status: ClaimStatus.PAID } },
+      'rejected': { label: 'ردشده', where: { status: ClaimStatus.REJECTED } },
+    };
   }
 
   /**
-   * Classify every in-scope ACTIVE claim into its current pipeline bucket, following the sequential
-   * approval filters معرف → شعبه → ستاد → (آماده پرداخت). A claim sits in the first applicable stage
-   * that has NOT yet approved all its documents; once every applicable stage has approved, it is READY
-   * for payment. Claims with no broker skip the معرف filter (شعبه → ستاد). Rejected-at-a-stage and
-   * doc-less claims are left out (they belong to the نقص / filing flows, not a review queue).
-   */
-  private async pipelineClassify(scope: Prisma.ClaimWhereInput): Promise<Record<'BROKER' | 'BRANCH' | 'COUNCIL' | 'READY', string[]>> {
-    const db = this.db();
-    const res = { BROKER: [] as string[], BRANCH: [] as string[], COUNCIL: [] as string[], READY: [] as string[] };
-    const claims = await db.claim.findMany({
-      where: { AND: [scope, { status: { in: [ClaimStatus.SUBMITTED, ClaimStatus.UNDER_REVIEW, ClaimStatus.APPROVED] } }] },
-      select: { id: true, brokerTenantId: true },
-    });
-    if (!claims.length) return res;
-    const ids = claims.map((c) => c.id);
-    const docs = await db.document.findMany({ where: { claimId: { in: ids } }, select: { id: true, claimId: true } });
-    const reviews = docs.length ? await db.documentReview.findMany({ where: { documentId: { in: docs.map((d) => d.id) } }, select: { documentId: true, stage: true, state: true } }) : [];
-    const docsByClaim = new Map<string, string[]>();
-    for (const d of docs) {
-      if (!d.claimId) continue;
-      if (!docsByClaim.has(d.claimId)) docsByClaim.set(d.claimId, []);
-      docsByClaim.get(d.claimId)!.push(d.id);
-    }
-    const revByDoc = new Map<string, Map<string, string>>();
-    for (const r of reviews) {
-      if (!revByDoc.has(r.documentId)) revByDoc.set(r.documentId, new Map());
-      revByDoc.get(r.documentId)!.set(r.stage, r.state);
-    }
-    for (const c of claims) {
-      const cd = docsByClaim.get(c.id) ?? [];
-      if (!cd.length) continue; // nothing uploaded yet → not in a review queue
-      const applicable: ReviewStageName[] = c.brokerTenantId ? ['BROKER', 'BRANCH', 'COUNCIL'] : ['BRANCH', 'COUNCIL'];
-      const approved = (s: ReviewStageName) => cd.every((d) => revByDoc.get(d)?.get(s) === 'APPROVED');
-      const rejected = (s: ReviewStageName) => cd.some((d) => revByDoc.get(d)?.get(s) === 'REJECTED');
-      if (applicable.some((s) => rejected(s))) continue; // a rejection pulls it out of the forward pipeline
-      const pending = applicable.find((s) => !approved(s));
-      if (!pending) res.READY.push(c.id);
-      else res[pending].push(c.id);
-    }
-    return res;
-  }
-
-  /**
-   * میز کار (Work Desk): the full case pipeline as work-queue tiles with live counts + a summary.
-   * Every role sees the whole pipeline (معرف → شعبه → ستاد → در انتظار پرداخت → پرداخت‌شده, plus نقص and
-   * همه) scoped to their own claims, so they can track a case end-to-end; `actionable` marks the
-   * stage(s) THIS operator may actually act on (معرف→معرف, شعبه→شعبه+پرداخت, ستاد→ستاد).
+   * میز کار (Work Desk): the whole chain as queue tiles with live counts, scoped to the caller's claims,
+   * so every desk can follow a case end-to-end. `actionable` marks the queues where claims sit at the
+   * caller's own desk, and `mine` counts how many of those the caller can act on right now.
    */
   async workDesk() {
     const ctx = getContext();
     const db = this.db();
-    const tenantId = ctx?.tenantId;
+    const desk = await this.myDesk();
+    const scope = this.wdScope(ctx?.tenantId);
     const perms = new Set(ctx?.permissions ?? []);
-    const has = (p: string) => perms.has(p);
-    const scope = this.wdScope(tenantId);
-    const stage = await this.operatorStage();
-    const roleLabel = { BROKER: 'معرف (کارگزاری)', BRANCH: 'شعبه', COUNCIL: 'ستاد (شورای فنی)' }[stage];
 
-    type Tile = { key: string; label: string; count: number; actionable: boolean; href?: string };
+    type Tile = { key: string; label: string; count: number; actionable: boolean; mine: number; href?: string };
     const tiles: Tile[] = [];
-    if (has('claim:read')) {
-      const buckets = await this.pipelineClassify(scope);
-      const [allCount, paidCount, returnedCount] = await Promise.all([
-        db.claim.count({ where: scope }),
-        db.claim.count({ where: { AND: [scope, { status: ClaimStatus.PAID }] } }),
-        db.claim.count({ where: { AND: [scope, { status: ClaimStatus.RETURNED_INCOMPLETE }] } }),
-      ]);
-      tiles.push({ key: 'all', label: 'همه پرونده‌ها', count: allCount, actionable: false, href: '/org/claims' });
-      tiles.push({ key: 'stage-broker', label: 'در انتظار ارزیابی معرف (کارگزاری)', count: buckets.BROKER.length, actionable: stage === 'BROKER' });
-      tiles.push({ key: 'stage-branch', label: 'در انتظار ارزیابی شعبه (کارشناس شعبه)', count: buckets.BRANCH.length, actionable: stage === 'BRANCH' });
-      tiles.push({ key: 'stage-council', label: 'در انتظار ارزیابی ستاد (شورای فنی)', count: buckets.COUNCIL.length, actionable: stage === 'COUNCIL' });
-      tiles.push({ key: 'to-pay', label: 'در انتظار پرداخت', count: buckets.READY.length, actionable: stage === 'BRANCH' });
-      tiles.push({ key: 'paid', label: 'پرداخت‌شده', count: paidCount, actionable: false, href: '/org/claims' });
-      tiles.push({ key: 'returned', label: 'نقص مدارک (عودت‌شده)', count: returnedCount, actionable: false });
+    if (perms.has(PERMISSIONS.CLAIM_READ)) {
+      const allCount = await db.claim.count({ where: scope });
+      tiles.push({ key: 'all', label: 'همه پرونده‌ها', count: allCount, actionable: false, mine: 0, href: '/org/claims' });
+      for (const [key, q] of Object.entries(this.wdQueues())) {
+        const rows = await db.claim.findMany({ where: { AND: [scope, q.where] }, select: { id: true, currentStage: true, flowDirection: true, handlingBranchId: true, brokerTenantId: true, insurerTenantId: true, policyHolderId: true, imported: true } });
+        const mine = rows.filter((c) => this.holdsDesk(c, desk)).length;
+        tiles.push({ key, label: q.label, count: rows.length, actionable: !!desk.stage && !!q.desk?.includes(desk.stage), mine });
+      }
     }
 
-    const pendingActions = tiles.filter((t) => t.actionable).reduce((s, t) => s + t.count, 0);
+    const pendingActions = tiles.reduce((s, t) => s + t.mine, 0);
     const user = ctx?.actorId ? await db.orgUser.findUnique({ where: { id: ctx.actorId }, select: { displayName: true, username: true } }) : null;
     return {
       userName: user?.displayName || user?.username || null,
-      role: stage,
-      roleLabel,
+      role: desk.stage,
+      roleLabel: desk.stage ? STAGE_FA[desk.stage] : '—',
       tiles,
-      summary: { pendingActions, queues: tiles.filter((t) => t.actionable && t.count > 0).length },
+      summary: { pendingActions, queues: tiles.filter((t) => t.mine > 0).length },
     };
   }
 
   /** The claim list for one Work Desk queue (for the tile → list view). */
   async workDeskQueue(key: string) {
-    const db = this.db();
     const scope = this.wdScope(getContext()?.tenantId);
-    const pipelineKey: Record<string, 'BROKER' | 'BRANCH' | 'COUNCIL' | 'READY'> = {
-      'stage-broker': 'BROKER', 'stage-branch': 'BRANCH', 'stage-council': 'COUNCIL', 'to-pay': 'READY',
-    };
     let where: Prisma.ClaimWhereInput;
-    if (pipelineKey[key]) {
-      const buckets = await this.pipelineClassify(scope);
-      const ids = buckets[pipelineKey[key]];
-      where = { id: { in: ids.length ? ids : ['__none__'] } };
-    } else if (key === 'all') where = scope;
-    else if (key === 'returned') where = { AND: [scope, { status: ClaimStatus.RETURNED_INCOMPLETE }] };
-    else if (key === 'paid') where = { AND: [scope, { status: ClaimStatus.PAID }] };
+    const q = this.wdQueues()[key];
+    if (q) where = { AND: [scope, q.where] };
+    else if (key === 'all') where = scope;
     else throw new BadRequestException('صف نامعتبر است');
-    const claims = await db.claim.findMany({ where, orderBy: { updatedAt: 'desc' }, take: 200 });
-    return claims.map((c) => ({ ...(this.present(c) as object), needsAction: false }));
+    const [claims, desk] = await Promise.all([this.db().claim.findMany({ where, orderBy: { updatedAt: 'desc' }, take: 200 }), this.myDesk()]);
+    return claims.map((c) => ({ ...(this.present(c) as object), needsAction: this.holdsDesk(c, desk) }));
   }
 
   /**
@@ -948,44 +1097,12 @@ export class ClaimsService {
   }
 
   // ─────────────────────────── Helpers ───────────────────────────
-  private async loadActive(claimId: string) {
-    const claim = await this.db().claim.findUnique({ where: { id: claimId } });
-    if (!claim) throw new NotFoundException('پرونده یافت نشد');
-    const step = await this.db().claimStep.findFirst({ where: { claimId, state: 'PENDING' }, orderBy: { order: 'desc' } });
-    if (!step) throw new BadRequestException('این پرونده مرحله فعالی ندارد');
-    return { claim, step };
-  }
-
-  private assertStepActor(step: any, claim: any) {
-    const ctx = getContext();
-    if (step.partyType === 'POLICYHOLDER') {
-      // The بیمه‌گزار (customer realm) — or a participant org (معرف/insurer) acting on their behalf.
-      const isOwner = ctx?.actorType === 'CUSTOMER' && claim.policyHolderId === ctx?.actorId;
-      const isParticipant = ctx?.actorType === 'ORG_USER' && (ctx.tenantId === claim.insurerTenantId || ctx.tenantId === claim.brokerTenantId);
-      if (!isOwner && !isParticipant) throw new ForbiddenException('اجازه اقدام روی این مرحله را ندارید');
-      return;
-    }
-    if (ctx?.actorType !== 'ORG_USER' || ctx.tenantId !== step.holderTenantId) {
-      throw new ForbiddenException('این مرحله در اختیار سازمان شما نیست');
-    }
-  }
-
   private assertParticipant(claim: any) {
     const ctx = getContext();
     if (ctx?.actorType === 'SUPER_ADMIN') return;
     if (ctx?.actorType === 'CUSTOMER' && claim.policyHolderId === ctx.actorId) return;
     if (ctx?.actorType === 'ORG_USER' && (ctx.tenantId === claim.insurerTenantId || ctx.tenantId === claim.brokerTenantId)) return;
     throw new ForbiddenException('دسترسی به این پرونده ندارید');
-  }
-
-  private levelAt(insurerTenantId: string, order: number) {
-    return this.db().approvalLevel.findFirst({ where: { tenantId: insurerTenantId, order, isActive: true } });
-  }
-
-  private addStep(claimId: string, order: number, partyType: any, holderTenantId: string, extra: { levelId?: string; holderBranchId?: string | null; direction?: string } = {}) {
-    return this.db().claimStep.create({
-      data: { claimId, order, partyType, holderTenantId, levelId: extra.levelId ?? null, holderBranchId: extra.holderBranchId ?? null, direction: extra.direction ?? 'UP', state: 'PENDING' },
-    });
   }
 
   private actor(): string | null {
@@ -1005,7 +1122,7 @@ export class ClaimsService {
   }
 
   private async reload(claimId: string) {
-    const claim = await this.db().claim.findUnique({ where: { id: claimId }, include: { steps: { orderBy: { order: 'asc' } }, deficiencies: true } });
+    const claim = await this.db().claim.findUnique({ where: { id: claimId }, include: { steps: { orderBy: { order: 'asc' } }, deficiencies: true, letters: { orderBy: { createdAt: 'asc' } } } });
     return this.present(claim, true);
   }
 
@@ -1029,12 +1146,23 @@ export class ClaimsService {
       noticeDeadline: c.noticeDeadline ? toJalali(c.noticeDeadline, false) : null,
       lateNotice: c.lateNotice,
       createdAt: c.createdAt ? toJalali(c.createdAt) : null,
+      currentStage: c.currentStage ?? null,
+      currentStageLabel: c.currentStage ? STAGE_FA[c.currentStage as Stage] : null,
+      flowDirection: c.flowDirection ?? null,
+      flowPurpose: c.flowPurpose ?? null,
     };
     if (!full) return base;
     return {
       ...base,
-      steps: (c.steps ?? []).map((s: any) => ({ order: s.order, partyType: s.partyType, state: s.state, levelId: s.levelId, holderTenantId: s.holderTenantId, note: s.note, decidedAt: s.decidedAt ? toJalali(s.decidedAt) : null })),
-      deficiencies: (c.deficiencies ?? []).map((d: any) => ({ items: safeParse(d.items), resolvedAt: d.resolvedAt ? toJalali(d.resolvedAt) : null })),
+      steps: (c.steps ?? []).map((s: any) => ({
+        order: s.order, partyType: s.partyType, stage: s.stage ?? null, stageLabel: s.stage ? STAGE_FA[s.stage as Stage] : null,
+        direction: s.direction, purpose: s.purpose ?? null, state: s.state, action: s.action ?? null,
+        levelId: s.levelId, holderTenantId: s.holderTenantId, note: s.note, decidedAt: s.decidedAt ? toJalali(s.decidedAt) : null,
+        letters: (c.letters ?? []).filter((l: any) => l.stepId === s.id).map((l: any) => ({
+          id: l.id, number: l.number, subject: l.subject, date: l.letterDate ? toJalali(l.letterDate, false) : null, hasFile: !!l.storageKey, fileName: l.fileName,
+        })),
+      })),
+      deficiencies: (c.deficiencies ?? []).map((d: any) => ({ items: safeParse(d.items), raisedByStepId: d.raisedByStepId, createdAt: d.createdAt ? toJalali(d.createdAt) : null, resolvedAt: d.resolvedAt ? toJalali(d.resolvedAt) : null })),
     };
   }
 }

@@ -1,4 +1,7 @@
-import { IsBoolean, IsOptional, IsString, IsUUID, Length } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional, IsString, IsUUID, Length, ValidateIf } from 'class-validator';
+
+// Central insurer desks an admin can assign (branch users are شعبه automatically). null = derive.
+const DESKS = ['HQ', 'COUNCIL'];
 
 export class CreateUserDto {
   @IsString()
@@ -20,6 +23,10 @@ export class CreateUserDto {
   @IsOptional()
   @IsUUID()
   branchId?: string;
+
+  @IsOptional()
+  @IsIn(DESKS)
+  desk?: 'HQ' | 'COUNCIL';
 }
 
 export class UpdateUserDto {
@@ -39,6 +46,11 @@ export class UpdateUserDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsIn(DESKS)
+  desk?: 'HQ' | 'COUNCIL' | null;
 }
 
 export class ResetPasswordDto {

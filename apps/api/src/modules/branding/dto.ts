@@ -1,4 +1,4 @@
-import { IsArray, IsBoolean, IsHexColor, IsInt, IsOptional, IsString, Length, Matches, Max, Min } from 'class-validator';
+import { IsArray, IsBoolean, IsHexColor, IsInt, IsOptional, IsString, Length, Matches, Max, Min, ValidateIf } from 'class-validator';
 
 export class UpdateBrandingDto {
   @IsOptional()
@@ -15,6 +15,11 @@ export class UpdateBrandingDto {
   @IsOptional()
   @IsBoolean()
   lateNoticeWarning?: boolean; // show/hide the "خارج از مهلت" warning
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null && v !== '')
+  @Matches(/^\d{1,18}$/)
+  hqCeiling?: string | null; // مدیریت ستاد payment ceiling (ریال); empty/null = unlimited
 
   @IsOptional()
   @IsHexColor()

@@ -7,6 +7,29 @@ auditable approval hierarchy for life-insurance death claims — sellable to **a
 This is a proposal for review. Open questions at the end are now resolved — see "Confirmed
 decisions" immediately below.
 
+## Workflow v2 (current engine, 2026-10-23)
+
+Supersedes the amount-ceiling ladder (§3–4) and the separate per-document pipeline. One chain,
+one position per claim (`Claim.currentStage` + `flowDirection` + `flowPurpose`), rules in
+`apps/api/src/modules/claims/workflow.ts`, actions via `POST /claims/:id/action`.
+
+    بیمه‌گزار → کارگزاری → شعبه → مدیریت ستاد → (شورای فنی)        (DIRECT channel skips کارگزاری)
+
+- **Up:** each desk ✓/✕ every latest document at its own desk, then «ارسال به …». شعبه must record
+  **اعلام خسارت** (`PUT /claims/:id/loss-notice`) before forwarding to ستاد.
+- **ستاد:** «دستور پرداخت — ارسال به شعبه» (blocked above `Tenant.hqCeiling` or without مبلغ قطعی),
+  «ارجاع به شورای فنی», return, or رد نهایی.
+- **شورای فنی:** «دستور پرداخت — ارسال به مدیریت ستاد» → ستاد hands it to شعبه → شعبه «ثبت پرداخت».
+- **Down (عودت):** the returning desk sends it one level down; every desk below forwards it by hand
+  («ارسال به {desk}», optional note + letter) until بیمه‌گزار. `claim:override` holders (admins) may
+  send it straight to بیمه‌گزار. After رفع نقص the fixed documents climb back up; earlier approvals of
+  unchanged documents stand, so each desk re-checks only the replacements. If شورای فنی returned it,
+  ستاد can only send it back to the council.
+- **Desks:** broker org → کارگزاری; insurer user with a branch → شعبه (only the claim's handling
+  branch, chosen by کارگزاری); central insurer user → ستاد, or شورای فنی when `OrgUser.desk = COUNCIL`.
+- **Trace:** every hand-off is a `ClaimStep` (desk, action, note, actor, time) with optional
+  `ClaimLetter` (number/date/subject/scan); shown in all panels (operator names only inside orgs).
+
 ## 0. Confirmed decisions
 
 1. **Cross-tenant.** Each insurer (INSURER) and each brokerage (BROKER) is its own organization,

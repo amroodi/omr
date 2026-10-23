@@ -41,7 +41,7 @@ function BrandingTab() {
   useEffect(() => { load(); }, []);
   const save = async () => {
     setMsg(null);
-    try { await client.patch('/tenant/settings', { name: s.name, primaryColor: s.primaryColor, contactHeader: s.contactHeader, noticeDays: Number(s.noticeDays), lateNoticeWarning: s.lateNoticeWarning !== false }, 'org'); setMsg({ t: 'ok', m: 'ذخیره شد' }); load(); }
+    try { await client.patch('/tenant/settings', { name: s.name, primaryColor: s.primaryColor, contactHeader: s.contactHeader, noticeDays: Number(s.noticeDays), lateNoticeWarning: s.lateNoticeWarning !== false, ...(s.kind === 'INSURER' ? { hqCeiling: String(s.hqCeiling ?? '').replace(/[^\d]/g, '') || null } : {}) }, 'org'); setMsg({ t: 'ok', m: 'ذخیره شد' }); load(); }
     catch (e: any) { setMsg({ t: 'err', m: e.message }); }
   };
   const uploadLogo = async (file: File) => {
@@ -55,6 +55,11 @@ function BrandingTab() {
       <Field label="نام سازمان"><input className="input" value={s.name || ''} onChange={(e) => setS({ ...s, name: e.target.value })} /></Field>
       <Field label="رنگ اصلی"><input className="input" type="text" value={s.primaryColor || ''} onChange={(e) => setS({ ...s, primaryColor: e.target.value })} placeholder="#FF9500" style={{ direction: 'ltr' }} /></Field>
       <Field label="سربرگ تماس (در خروجی‌ها)"><input className="input" value={s.contactHeader || ''} onChange={(e) => setS({ ...s, contactHeader: e.target.value })} /></Field>
+      {s.kind === 'INSURER' && (
+        <Field label="سقف اختیار پرداخت مدیریت ستاد (ریال) — خالی = نامحدود؛ بالاتر از آن ارجاع به شورای فنی الزامی است">
+          <input className="input" inputMode="numeric" value={s.hqCeiling ?? ''} onChange={(e) => setS({ ...s, hqCeiling: e.target.value.replace(/[^\d]/g, '') })} style={{ direction: 'ltr', textAlign: 'right' }} placeholder="مثلاً 5000000000" />
+        </Field>
+      )}
       <Field label="مهلت اعلام خسارت (روز)"><input className="input" type="number" value={s.noticeDays ?? 30} onChange={(e) => setS({ ...s, noticeDays: e.target.value })} style={{ direction: 'ltr', textAlign: 'right' }} /></Field>
       <label className="flex items-center gap-2 text-sm cursor-pointer">
         <input type="checkbox" checked={s.lateNoticeWarning !== false} onChange={(e) => setS({ ...s, lateNoticeWarning: e.target.checked })} />

@@ -5,6 +5,7 @@ import { client, getToken } from '../../../../lib/client';
 import { CLAIM_TYPE_LABELS, ErrorBox, StatusBadge } from '../../../components/ui';
 import { Icon, Shell } from '../../../components/Shell';
 import { CUSTOMER_NAV } from '../../nav';
+import { TimelineStep, Workflow, WorkflowPanel, WorkflowTimeline } from '../../../components/WorkflowPanel';
 
 interface ClaimDoc { id: string; fileName: string; status: string; statusLabel: string; note: string | null; uploadedAt: string | null; version: number; isLatest: boolean }
 interface ChecklistItem { code: string; label: string; uploaded: boolean; latestStatus: string | null; documents: ClaimDoc[] }
@@ -17,6 +18,8 @@ interface Claim {
   eventDate: string | null; noticeDeadline: string | null; lateNotice: boolean;
   description?: string | null;
   deficiencies?: { items: string[]; resolvedAt: string | null }[];
+  steps?: TimelineStep[];
+  workflow?: Workflow;
 }
 
 export default function CustomerClaim() {
@@ -48,7 +51,6 @@ export default function CustomerClaim() {
   const act = async (fn: () => Promise<any>) => { setError(''); setBusy(true); try { await fn(); await load(); } catch (e: any) { setError(e.message); } finally { setBusy(false); } };
   const upload = (code: string, file: File) => act(async () => { const fd = new FormData(); fd.append('file', file); await client.postForm(`/customer/claims/${id}/documents?docCode=${encodeURIComponent(code)}`, fd, 'customer'); });
   const viewDoc = async (docId: string) => { setError(''); try { await client.view(`/customer/claims/${id}/documents/${docId}/file`, 'customer'); } catch (e: any) { setError(e.message); } };
-  const rectify = () => act(() => client.post(`/customer/claims/${id}/rectify`, { note: 'مدارک تکمیل شد' }, 'customer'));
 
   return (
     <Shell title="جزئیات پرونده" breadcrumb="جزئیات پرونده" sectionLabel="خسارت عمر و حادثه" nav={CUSTOMER_NAV} realm="customer">
@@ -79,8 +81,18 @@ export default function CustomerClaim() {
               {(claim.deficiencies || []).filter((d) => !d.resolvedAt).map((d, i) => (
                 <ul key={i} className="mr-4 list-disc text-sm" style={{ color: 'var(--danger)' }}>{(d.items || []).map((x, j) => <li key={j}>{x}</li>)}</ul>
               ))}
-              <p className="text-sm mt-2" style={{ color: 'var(--muted)' }}>مدارک خواسته‌شده را بارگذاری و سپس ارسال مجدد کنید.</p>
-              <button onClick={rectify} disabled={busy} className="btn btn-solid btn-pill btn-sm mt-3">رفع نقص و ارسال مجدد</button>
+              <p className="text-sm mt-2" style={{ color: 'var(--muted)' }}>مدارک خواسته‌شده را جایگزین کنید؛ پس از رسیدن پرونده به شما، دکمهٔ ارسال در بخش «روند پرونده» فعال می‌شود.</p>
+            </div>
+          )}
+
+          {claim.workflow && (
+            <div className="pcard p-6 space-y-4">
+              <h3 className="font-extrabold">روند پرونده</h3>
+              <WorkflowPanel claimId={id} workflow={claim.workflow} realm="customer" onDone={load} />
+              <details>
+                <summary className="cursor-pointer text-sm font-semibold" style={{ color: 'var(--brand)' }}>سوابق مراحل پرونده</summary>
+                <div className="mt-3"><WorkflowTimeline claimId={id} steps={claim.steps} realm="customer" /></div>
+              </details>
             </div>
           )}
 

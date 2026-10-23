@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { AuditAction } from '@prisma/client';
+import { AuditAction, Prisma } from '@prisma/client';
 import { AuditService } from '../../common/audit/audit.service';
 import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -28,6 +28,7 @@ interface UpdateSettings {
   noticeDays?: number;
   lateNoticeWarning?: boolean;
   embedOrigins?: string[];
+  hqCeiling?: string | null;
 }
 
 @Injectable()
@@ -56,6 +57,8 @@ export class BrandingService {
       fontFamily: t.fontFamily,
       noticeDays: t.noticeDays,
       lateNoticeWarning: t.lateNoticeWarning,
+      kind: t.kind,
+      hqCeiling: t.hqCeiling != null ? t.hqCeiling.toString() : null,
       embedOrigins: t.embedOrigins,
       hasLogo: !!t.logoKey,
       hasFavicon: !!t.faviconKey,
@@ -76,6 +79,7 @@ export class BrandingService {
         ...(dto.noticeDays !== undefined ? { noticeDays: dto.noticeDays } : {}),
         ...(dto.lateNoticeWarning !== undefined ? { lateNoticeWarning: dto.lateNoticeWarning } : {}),
         ...(dto.embedOrigins !== undefined ? { embedOrigins: dto.embedOrigins } : {}),
+        ...(dto.hqCeiling !== undefined ? { hqCeiling: dto.hqCeiling ? new Prisma.Decimal(dto.hqCeiling) : null } : {}),
       },
     });
     await this.audit.record({ action: AuditAction.EDIT, targetType: 'TenantBranding', targetId: id, metadata: dto as Record<string, unknown> });
@@ -193,6 +197,7 @@ export class BrandingService {
     if (!t) throw new NotFoundException('سازمان یافت نشد');
     return {
       name: t.name,
+      kind: t.kind,
       primaryColor: t.primaryColor,
       fontFamily: t.fontFamily,
       lateNoticeWarning: t.lateNoticeWarning,

@@ -17,6 +17,7 @@ import { getContext, getTenantIdOrThrow } from '../../common/tenant/tenant-conte
 import { toJalali } from '../../common/jalali/jalali.util';
 import { SmsService } from '../auth/sms.service';
 import { RequestOtpDto, VerifyOtpDto } from './dto';
+import { Stage, STAGE_FA } from '../claims/workflow';
 
 /**
  * The secure replacement for the legacy IDOR endpoints (`get_fields.php`,
@@ -365,7 +366,12 @@ export class InquiryService {
       eventDate: c.eventDate ? toJalali(c.eventDate, false) : null,
       createdAt: c.createdAt ? toJalali(c.createdAt, false) : null,
       description: c.description ?? null,
-      steps: (c.steps ?? []).map((s: any) => ({ order: s.order, partyType: s.partyType, state: s.state })),
+      // Where the claim is now + every hand-off (desk names only — operator names stay internal).
+      currentStageLabel: c.currentStage ? STAGE_FA[c.currentStage as Stage] : null,
+      steps: (c.steps ?? []).map((s: any) => ({
+        order: s.order, partyType: s.partyType, stage: s.stage ?? null, stageLabel: s.stage ? STAGE_FA[s.stage as Stage] : null,
+        direction: s.direction, purpose: s.purpose ?? null, state: s.state, action: s.action ?? null, decidedAt: s.decidedAt ? toJalali(s.decidedAt) : null,
+      })),
       deficiencies: (c.deficiencies ?? []).map((d: any) => ({ items: this.safeParse(d.items), resolvedAt: d.resolvedAt ? toJalali(d.resolvedAt, false) : null })),
     };
   }
