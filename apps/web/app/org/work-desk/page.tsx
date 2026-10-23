@@ -7,6 +7,7 @@ import { Shell, Icon } from '../../components/Shell';
 import { ORG_NAV } from '../nav';
 import { ClaimTypeBadge, CLAIM_TYPE_LABELS, ErrorBox, FancyLoader, NoticeModal, StatusBadge } from '../../components/ui';
 import { JalaliDatePicker } from '../../components/JalaliDatePicker';
+import { RangeSlider } from '../../components/RangeSlider';
 import { toGregorian } from 'jalaali-js';
 
 interface Tile { key: string; label: string; count: number; actionable: boolean; href?: string }
@@ -128,6 +129,7 @@ export default function WorkDeskPage() {
       .then((r) => { setRows(r); setActive((a) => (a ? { ...a, count: r.length } : a)); })
       .catch((e) => setError(e.message)).finally(() => setQLoading(false));
   };
+  const tilesJoined = !loading && !!data && arrangedTiles.length > 0;
   const clear = () => { setF({ ...EMPTY }); setActive(null); };
   const upd = (k: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement>) => setF((s) => ({ ...s, [k]: e.target.value }));
 
@@ -150,8 +152,10 @@ export default function WorkDeskPage() {
           )}
         </span>
       }>
-      {/* ── Search panel ── */}
-      <div className="pcard p-5 pform mb-5">
+      <ErrorBox message={error} />
+
+      {/* ── Search panel ── (queue tiles attach flush underneath) */}
+      <div className={`pcard p-5 pform mb-5 ${tilesJoined ? 'wd-search-joined' : ''}`}>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <input className="input" placeholder="شناسه / شماره پرونده" value={f.claimNumber} onChange={upd('claimNumber')} />
           <input className="input" placeholder="کد ملی بیمه‌شده (متوفی)" value={f.deceasedNationalCode} onChange={upd('deceasedNationalCode')} inputMode="numeric" />
@@ -186,33 +190,30 @@ export default function WorkDeskPage() {
               <JalaliDatePicker value={f.createdFrom} onChange={(v) => setF({ ...f, createdFrom: v })} placeholder="ثبت از تاریخ" />
               <JalaliDatePicker value={f.createdTo} onChange={(v) => setF({ ...f, createdTo: v })} placeholder="ثبت تا تاریخ" />
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <input className="input" placeholder="برآوردی از (ریال)" value={f.estMin} onChange={upd('estMin')} inputMode="numeric" />
-              <input className="input" placeholder="برآوردی تا" value={f.estMax} onChange={upd('estMax')} inputMode="numeric" />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <input className="input" placeholder="قطعی از (ریال)" value={f.finMin} onChange={upd('finMin')} inputMode="numeric" />
-              <input className="input" placeholder="قطعی تا" value={f.finMax} onChange={upd('finMax')} inputMode="numeric" />
-            </div>
             <select className="input" value={f.docCode} onChange={(e) => setF({ ...f, docCode: e.target.value })} title="جستجو بر اساس نوع مدرک (همهٔ انواع پرونده)">
               <option value="">— نوع مدرک —</option>
               {docTypes.map((d) => <option key={d.code} value={d.code}>{d.label}</option>)}
             </select>
+            <div className="sm:col-span-2 lg:col-span-3 grid grid-cols-1 lg:grid-cols-2 gap-3">
+              <RangeSlider label="مبلغ خسارت برآوردی" min={f.estMin} max={f.estMax} onChange={(a, b) => setF((s) => ({ ...s, estMin: a, estMax: b }))} />
+              <RangeSlider label="مبلغ خسارت قطعی" min={f.finMin} max={f.finMax} onChange={(a, b) => setF((s) => ({ ...s, finMin: a, finMax: b }))} />
+            </div>
           </div>
         )}
 
-        <div className="flex flex-wrap items-center justify-between gap-2 mt-4">
-          <button onClick={() => setAdv((a) => !a)} className="btn btn-ghost btn-sm">
-            <Icon path={adv ? 'M18 15l-6-6-6 6' : 'M6 9l6 6 6-6'} /> جستجوی پیشرفته
-          </button>
+        <div className="grid items-center gap-2 mt-4" style={{ gridTemplateColumns: '1fr auto 1fr' }}>
+          <span>
+            <button onClick={() => setAdv((a) => !a)} className="btn btn-ghost btn-sm">
+              <Icon path={adv ? 'M18 15l-6-6-6 6' : 'M6 9l6 6 6-6'} /> جستجوی پیشرفته
+            </button>
+          </span>
           <div className="flex items-center gap-2">
-            <button onClick={clear} className="btn btn-ghost btn-sm">پاک کردن</button>
             <button onClick={runSearch} className="btn btn-solid btn-sm px-6">جستجو</button>
+            <button onClick={clear} className="btn btn-ghost btn-sm">پاک کردن</button>
           </div>
+          <span />
         </div>
       </div>
-
-      <ErrorBox message={error} />
 
       {/* ── Work-queue tiles ── */}
       {loading ? (
@@ -226,7 +227,7 @@ export default function WorkDeskPage() {
           {arrangedTiles.length === 0 ? (
             <div className="pcard p-6 text-center text-sm" style={{ color: 'var(--muted)' }}>همهٔ برگه‌ها پنهان شده‌اند. از «شخصی‌سازی» می‌توانید دوباره نمایش دهید.</div>
           ) : (
-          <div className="wd-tiles">
+          <div className="wd-tiles wd-tiles-joined">
             {arrangedTiles.map((t) => (
               <div
                 key={t.key}

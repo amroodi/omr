@@ -789,3 +789,25 @@ h1, h2, h3 {
   .psidebar, .ptopbar { display: none !important; }
   .pshell-content { overflow: visible; padding: 0; }
 }
+
+/* ── Work Desk: tiles attached flush under the search card ── */
+.wd-search-joined { margin-bottom: 0 !important; border-bottom-left-radius: 0 !important; border-bottom-right-radius: 0 !important; }
+.wd-tiles.wd-tiles-joined { border-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
+
+/* ── Dual-thumb amount range slider ── */
+.rslider { background: var(--surface-2); border: 1px solid var(--border); border-radius: 16px; padding: 12px 16px 10px; }
+.rslider-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.rslider-label { font-weight: 700; font-size: .82rem; color: var(--text); }
+.rslider-val { font-size: .76rem; color: var(--muted); }
+.rslider-val b { color: var(--brand); font-weight: 800; }
+.rslider-track { position: relative; height: 22px; }
+.rslider-track::before { content: ''; position: absolute; inset-inline: 0; top: 50%; height: 6px; margin-top: -3px; border-radius: 999px; background: var(--border); }
+.rslider-fill { position: absolute; top: 50%; height: 6px; margin-top: -3px; border-radius: 999px; background: var(--brand); }
+.rslider-track input[type=range] { position: absolute; inset: 0; width: 100%; height: 22px; margin: 0; background: transparent; pointer-events: none; -webkit-appearance: none; appearance: none; }
+.rslider-track input[type=range]::-webkit-slider-runnable-track { background: transparent; height: 22px; }
+.rslider-track input[type=range]::-moz-range-track { background: transparent; }
+.rslider-track input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; pointer-events: auto; width: 20px; height: 20px; margin-top: 1px; border-radius: 50%; background: #fff; border: 3px solid var(--brand); box-shadow: 0 1px 4px rgba(0,0,0,.25); cursor: grab; }
+.rslider-track input[type=range]::-moz-range-thumb { pointer-events: auto; width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 3px solid var(--brand); box-shadow: 0 1px 4px rgba(0,0,0,.25); cursor: grab; }
+.rslider-track input[type=range]:active::-webkit-slider-thumb { cursor: grabbing; transform: scale(1.1); }
+.rslider-track input[type=range]:focus-visible::-webkit-slider-thumb { outline: 3px solid var(--brand-soft); }
+.rslider-scale { display: flex; justify-content: space-between; font-size: .68rem; color: var(--muted); margin-top: 4px; }
