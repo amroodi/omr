@@ -1,11 +1,12 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { toGregorian, toJalaali } from 'jalaali-js';
 
 const J_MONTHS = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'];
 const WEEK = ['ش', 'ی', 'د', 'س', 'چ', 'پ', 'ج']; // Saturday-first (RTL grid places index 0 on the right)
+const FIRST_YEAR = 1300; // birth dates of insured people go back decades
 const fa = (n: number | string) => String(n).replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[+d]);
-const asc = (s: string) => s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
+const asc = (s: string) => s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
 const pad = (n: number) => String(n).padStart(2, '0');
 
 function daysInJMonth(jy: number, jm: number): number {
@@ -25,51 +26,100 @@ function todayJ() {
   return toJalaali(n.getFullYear(), n.getMonth() + 1, n.getDate());
 }
 
-/** Lightweight Jalali (Persian) date picker. Emits/accepts "YYYY/MM/DD" (ASCII) like the forms expect. */
+/**
+ * Jalali (Persian) date picker. Emits/accepts "YYYY/MM/DD" (ASCII) like the forms expect.
+ * The date can be typed (Persian or Latin digits) or picked; the header has year + month dropdowns so
+ * far-away dates (e.g. a birth date decades back) take two clicks instead of hundreds of «ماه قبل».
+ */
 export function JalaliDatePicker({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
   const parsed = (() => {
     const p = asc(value || '').split('/').map((x) => parseInt(x, 10));
-    return p.length === 3 && p.every((n) => !isNaN(n)) ? { jy: p[0], jm: p[1], jd: p[2] } : null;
+    return p.length === 3 && p.every((n) => !isNaN(n)) && p[1] >= 1 && p[1] <= 12 ? { jy: p[0], jm: p[1], jd: p[2] } : null;
   })();
   const t = todayJ();
   const [open, setOpen] = useState(false);
   const [view, setView] = useState({ y: parsed?.jy ?? t.jy, m: parsed?.jm ?? t.jm });
   const ref = useRef<HTMLDivElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+  const [dx, setDx] = useState(0); // horizontal nudge that keeps the popup inside the viewport (narrow screens)
 
   useEffect(() => {
     const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as any)) setOpen(false); };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
-  useEffect(() => { if (open && parsed) setView({ y: parsed.jy, m: parsed.jm }); /* eslint-disable-next-line */ }, [open]);
+  useEffect(() => { if (open && parsed && parsed.jy >= FIRST_YEAR) setView({ y: parsed.jy, m: parsed.jm }); /* eslint-disable-next-line */ }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open) { setDx(0); return; }
+    const r = popRef.current?.getBoundingClientRect();
+    if (!r) return;
+    const m = 8;
+    setDx((cur) => {
+      const left = r.left - cur; const right = r.right - cur; // position without the current nudge
+      return left < m ? m - left : right > window.innerWidth - m ? window.innerWidth - m - right : 0;
+    });
+  }, [open]);
 
   const nDays = daysInJMonth(view.y, view.m);
   const lead = firstWeekday(view.y, view.m);
   const cells: (number | null)[] = [...Array(lead).fill(null), ...Array.from({ length: nDays }, (_, i) => i + 1)];
-  const prev = () => setView((v) => (v.m === 1 ? { y: v.y - 1, m: 12 } : { y: v.y, m: v.m - 1 }));
+  const prev = () => setView((v) => (v.m === 1 ? { y: Math.max(FIRST_YEAR, v.y - 1), m: v.y > FIRST_YEAR ? 12 : 1 } : { y: v.y, m: v.m - 1 }));
   const next = () => setView((v) => (v.m === 12 ? { y: v.y + 1, m: 1 } : { y: v.y, m: v.m + 1 }));
   const pick = (d: number) => { onChange(`${view.y}/${pad(view.m)}/${pad(d)}`); setOpen(false); };
   const isSel = (d: number) => parsed && parsed.jy === view.y && parsed.jm === view.m && parsed.jd === d;
+  const isToday = (d: number) => t.jy === view.y && t.jm === view.m && t.jd === d;
+  const years = Array.from({ length: t.jy + 2 - FIRST_YEAR + 1 }, (_, i) => t.jy + 2 - i); // newest first
+
+  // Typing: keep digits + slashes; auto-insert slashes after the year and month.
+  const onType = (raw: string) => {
+    let s = asc(raw).replace(/[^\d/]/g, '');
+    if (/^\d{5,}$/.test(s)) s = `${s.slice(0, 4)}/${s.slice(4, 6)}${s.length > 6 ? `/${s.slice(6, 8)}` : ''}`;
+    onChange(s.slice(0, 10));
+  };
+  // When a typed date becomes complete, move the calendar to it.
+  useEffect(() => { if (parsed && parsed.jy >= FIRST_YEAR && parsed.jy <= t.jy + 2) setView({ y: parsed.jy, m: parsed.jm }); /* eslint-disable-next-line */ }, [value]);
+
+  const selectStyle = { padding: '6px 8px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer' } as const;
+  const navBtn = { width: 36, height: 36, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontSize: '1.1rem', cursor: 'pointer', flexShrink: 0 } as const;
 
   return (
     <div ref={ref} style={{ position: 'relative' }}>
-      <input className="input" readOnly value={value ? fa(value) : ''} placeholder={placeholder || '۱۴۰۵/۰۷/۰۱'} onClick={() => setOpen((o) => !o)} style={{ direction: 'ltr', textAlign: 'right', cursor: 'pointer' }} />
+      <input className="input" value={value ? fa(value) : ''} placeholder={placeholder || '۱۴۰۵/۰۷/۰۱'} inputMode="numeric"
+        onChange={(e) => onType(e.target.value)} onFocus={() => setOpen(true)} onClick={() => setOpen(true)}
+        onKeyDown={(e) => { if (e.key === 'Escape' || e.key === 'Enter') setOpen(false); }}
+        style={{ direction: 'ltr', textAlign: 'right', cursor: 'pointer' }} aria-haspopup="dialog" aria-expanded={open} />
       {open && (
-        <div className="card" style={{ position: 'absolute', zIndex: 40, top: '110%', insetInlineStart: 0, width: 288, padding: 10 }}>
-          <div className="flex items-center justify-between mb-2">
-            <button type="button" onClick={prev} className="btn btn-ghost btn-sm">ماه قبل</button>
-            <span className="font-bold text-sm">{J_MONTHS[view.m - 1]} {fa(view.y)}</span>
-            <button type="button" onClick={next} className="btn btn-ghost btn-sm">ماه بعد</button>
+        <div ref={popRef} className="card" role="dialog" aria-label="انتخاب تاریخ"
+          style={{ position: 'absolute', zIndex: 60, top: 'calc(100% + 6px)', insetInlineStart: 0, width: 'min(360px, calc(100vw - 16px))', padding: 14, boxShadow: 'var(--shadow-lg)', transform: dx ? `translateX(${dx}px)` : undefined }}>
+          {/* Header: ‹ month ▾ year ▾ › */}
+          <div className="flex items-center gap-2 mb-3">
+            <button type="button" onClick={prev} style={navBtn} aria-label="ماه قبل" title="ماه قبل">›</button>
+            <select value={view.m} onChange={(e) => setView((v) => ({ ...v, m: Number(e.target.value) }))} style={{ ...selectStyle, flex: 1 }} aria-label="ماه">
+              {J_MONTHS.map((name, i) => <option key={name} value={i + 1}>{name}</option>)}
+            </select>
+            <select value={view.y} onChange={(e) => setView((v) => ({ ...v, y: Number(e.target.value) }))} style={{ ...selectStyle, width: 96 }} aria-label="سال">
+              {years.map((y) => <option key={y} value={y}>{fa(y)}</option>)}
+            </select>
+            <button type="button" onClick={next} style={navBtn} aria-label="ماه بعد" title="ماه بعد">‹</button>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 2, textAlign: 'center' }}>
-            {WEEK.map((w) => <div key={w} className="text-xs" style={{ color: 'var(--muted)', padding: '4px 0' }}>{w}</div>)}
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 4, textAlign: 'center' }}>
+            {WEEK.map((w) => <div key={w} className="text-sm font-bold" style={{ color: 'var(--muted)', padding: '4px 0' }}>{w}</div>)}
             {cells.map((d, i) => d === null ? <div key={i} /> : (
-              <button type="button" key={i} onClick={() => pick(d)} className="text-sm" style={{ padding: '6px 0', borderRadius: 8, border: '1px solid var(--border)', background: isSel(d) ? 'var(--brand)' : 'var(--surface-2)', color: isSel(d) ? '#fff' : 'inherit', cursor: 'pointer' }}>{fa(d)}</button>
+              <button type="button" key={i} onClick={() => pick(d)}
+                style={{
+                  height: 40, borderRadius: 10, fontSize: '0.95rem', fontWeight: isSel(d) || isToday(d) ? 800 : 500, cursor: 'pointer',
+                  border: isToday(d) && !isSel(d) ? '1.5px solid var(--brand)' : '1px solid var(--border)',
+                  background: isSel(d) ? 'var(--brand)' : 'var(--surface-2)', color: isSel(d) ? '#fff' : 'var(--text)',
+                }}>{fa(d)}</button>
             ))}
           </div>
-          <div className="flex justify-between mt-2">
+
+          <div className="flex items-center justify-between mt-3 gap-2">
             <button type="button" onClick={() => { const n = todayJ(); onChange(`${n.jy}/${pad(n.jm)}/${pad(n.jd)}`); setOpen(false); }} className="btn btn-ghost btn-sm">امروز</button>
-            {value && <button type="button" onClick={() => { onChange(''); setOpen(false); }} className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }}>پاک کردن</button>}
+            <span className="text-xs" style={{ color: 'var(--muted)' }}>می‌توانید تاریخ را تایپ هم کنید</span>
+            {value ? <button type="button" onClick={() => { onChange(''); setOpen(false); }} className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }}>پاک کردن</button> : <span />}
           </div>
         </div>
       )}
