@@ -68,9 +68,11 @@ export function validateField(
       return { valid: true };
     }
     case 'SELECT':
-      return !opts.options || opts.options.includes(value)
+      // Presets are suggestions: operators may type their own wording (e.g. «نامه اعلام فوت به شعبه ارسال شد»).
+      if (opts.options?.includes(value)) return { valid: true };
+      return value.trim().length > 0 && value.length <= 300
         ? { valid: true }
-        : { valid: false, message: 'گزینه نامعتبر است.' };
+        : { valid: false, message: 'مقدار انتخاب‌شده نامعتبر است (حداکثر ۳۰۰ نویسه).' };
     case 'BOOL':
       return ['true', 'false', '0', '1'].includes(value.toLowerCase())
         ? { valid: true }

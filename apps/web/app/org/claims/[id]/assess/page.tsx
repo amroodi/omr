@@ -3,12 +3,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { client, hasPerm } from '../../../../../lib/client';
 import { Shell, Icon } from '../../../../components/Shell';
-import { CLAIM_TYPE_LABELS, ClaimTypeBadge, ErrorBox, FancyLoader, ReviewButtons, Spinner, StatusBadge } from '../../../../components/ui';
+import { ClaimTypeBadge, ErrorBox, FancyLoader, Overlay, ReviewButtons, Spinner, StatusBadge } from '../../../../components/ui';
 import { ORG_NAV } from '../../../nav';
 import { Workflow, WorkflowPanel } from '../../../../components/WorkflowPanel';
-import { caseRef, caseTitle } from '../../../../../lib/caseTitle';
+import { caseTitle } from '../../../../../lib/caseTitle';
 
-interface DocReview { stage: string; state: string; canEdit: boolean }
+interface DocReview { stage: string; state: string; canEdit: boolean; changedAt?: string | null; changedBy?: string | null; changes?: number }
+interface HistoryEntry { at: string; stageLabel: string | null; state: string | null; by: string; text: string }
 interface ClaimDoc { id: string; fileName: string; status: string; statusLabel: string; note: string | null; version: number; isLatest: boolean; reviews?: DocReview[] }
 interface ChecklistItem { code: string; label: string; uploaded: boolean; documents: ClaimDoc[] }
 interface Checklist { complete: boolean; items: ChecklistItem[]; otherDocuments?: ClaimDoc[] }
@@ -16,7 +17,7 @@ interface DocMeta { id: string; docCode: string | null; fileName: string; mimeTy
 interface Claim {
   id: string; claimNumber: string; policyNumber?: string | null; status: string; claimType: string; deceasedName: string | null;
   estimatedAmount?: string; claimedAmount: string; finalizedAmount?: string | null;
-  eventDate: string | null; policyHolder?: { name: string | null; nationalCode: string | null } | null;
+  eventDate: string | null; deceasedBirthDate?: string | null; deceasedAge?: number | null; policyHolder?: { name: string | null; nationalCode: string | null } | null;
   insurer?: { name: string } | null; broker?: { name: string } | null; sellingBranchName?: string | null;
   workflow?: Workflow;
 }
@@ -51,6 +52,14 @@ export default function AssessClaim() {
   const [zoom, setZoom] = useState(100);
   const [finalAmt, setFinalAmt] = useState('');
   const canProcess = hasPerm('org', 'claim:process');
+  const [history, setHistory] = useState<{ title: string; entries: HistoryEntry[] | null } | null>(null);
+  const openHistory = (docId: string, title: string) => {
+    setHistory({ title, entries: null });
+    client.get<{ entries: HistoryEntry[] }>(`/claims/${id}/documents/${docId}/history`, 'org')
+      .then((h) => setHistory({ title, entries: h.entries }))
+      .catch((e) => { setHistory(null); setError(e.message); });
+  };
+  const downloadAll = () => act(() => client.download(`/claims/${id}/documents-zip`, 'org', `documents-${(claim?.policyNumber || claim?.claimNumber || id).replace(/[\/]/g, '-')}.zip`));
 
   const load = async () => {
     try {
@@ -120,7 +129,9 @@ export default function AssessClaim() {
                   {claim.insurer?.name && <div className="flex justify-between"><span style={{ color: 'var(--muted)' }}>بیمه‌گر</span><span className="font-semibold">{claim.insurer.name}{claim.sellingBranchName ? ` — ${claim.sellingBranchName}` : ''}</span></div>}
                   <div className="flex justify-between"><span style={{ color: 'var(--muted)' }}>مبلغ برآوردی</span><span className="font-semibold">{amt(claim.estimatedAmount ?? claim.claimedAmount)}</span></div>
                   <div className="flex justify-between"><span style={{ color: 'var(--muted)' }}>مبلغ قطعی</span><span className="font-semibold" style={{ color: claim.finalizedAmount ? 'var(--success)' : 'var(--muted)' }}>{amt(claim.finalizedAmount) || '— پس از ارزیابی'}</span></div>
-                  {claim.eventDate && <div className="flex justify-between"><span style={{ color: 'var(--muted)' }}>تاریخ وقوع</span><span className="font-semibold">{claim.eventDate}</span></div>}
+                  {claim.deceasedBirthDate && <div className="flex justify-between"><span style={{ color: 'var(--muted)' }}>تاریخ تولد</span><span className="font-semibold">{claim.deceasedBirthDate}</span></div>}
+                  {claim.eventDate && <div className="flex justify-between"><span style={{ color: 'var(--muted)' }}>{['DEATH_ILLNESS', 'DEATH_ACCIDENT'].includes(claim.claimType) ? 'تاریخ فوت' : 'تاریخ حادثه'}</span><span className="font-semibold">{claim.eventDate}</span></div>}
+                  {claim.deceasedAge != null && <div className="flex justify-between"><span style={{ color: 'var(--muted)' }}>{['DEATH_ILLNESS', 'DEATH_ACCIDENT'].includes(claim.claimType) ? 'سن متوفی' : 'سن بیمه‌شده'}</span><span className="font-semibold">{claim.deceasedAge.toLocaleString('fa-IR')} سال</span></div>}
                 </div>
               </div>
 
@@ -132,7 +143,7 @@ export default function AssessClaim() {
                 </div>
                 <div className="space-y-2">
                   {reviewDocs.map(({ label, d }) => (
-                    <div key={d.id} className="rounded-xl p-2.5" style={{ background: 'var(--surface-2)' }}>
+                    <div key={d.id} className={`rounded-xl p-2.5 as-doc${d.reviews?.length && d.reviews.every((r) => r.state === 'APPROVED') ? ' is-approved' : ''}`}>
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-xs font-semibold truncate">{label}</span>
                         <button onClick={() => document.getElementById(`doc-${d.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="btn btn-ghost btn-sm shrink-0" title="نمایش در تصویر">نمایش سند</button>
@@ -143,7 +154,12 @@ export default function AssessClaim() {
                             const editable = rv.canEdit && d.isLatest && !closed;
                             return (
                               <span key={rv.stage} className="flex items-center gap-1.5">
-                                <span className="font-semibold" style={{ color: 'var(--muted)' }}>{STAGE_LABEL[rv.stage] || rv.stage}:</span>
+                                {/* Hover: last change (time + operator); click: every change on this document, explained. */}
+                                <button type="button" className="as-stage" data-tip={rv.changedAt ? `آخرین تغییر: ${rv.changedAt}${rv.changedBy ? ` — ${rv.changedBy}` : ''}${(rv.changes ?? 0) > 1 ? ` (${(rv.changes ?? 0).toLocaleString('fa-IR')} تغییر — برای جزئیات کلیک کنید)` : ''}` : 'هنوز تغییری ثبت نشده'}
+                                  onClick={() => (rv.changes ?? 0) > 0 && openHistory(d.id, label)} aria-label={`سابقهٔ ${STAGE_LABEL[rv.stage] || rv.stage}`}>
+                                  {STAGE_LABEL[rv.stage] || rv.stage}:
+                                  {(rv.changes ?? 0) > 1 && <span className="as-count">{(rv.changes ?? 0).toLocaleString('fa-IR')}</span>}
+                                </button>
                                 <ReviewButtons state={rv.state} editable={editable} busy={busy} label={STAGE_LABEL[rv.stage]} onSet={(st) => reviewDoc(d.id, rv.stage, st)} />
                               </span>
                             );
@@ -193,6 +209,11 @@ export default function AssessClaim() {
           <div className="assess-pane assess-docs">
             <div className="assess-toolbar">
               <span>اسناد بارگذاری‌شده ({docs.length.toLocaleString('fa-IR')})</span>
+              {docs.length > 0 && (
+                <button className="zbtn as-dl" onClick={downloadAll} disabled={busy} title="دریافت همهٔ مدارک (فایل ZIP)" aria-label="دریافت همهٔ مدارک">
+                  <Icon path="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" />
+                </button>
+              )}
               <span className="mr-auto flex items-center gap-1.5">
                 <button className="zbtn" onClick={() => setZoom((z) => Math.max(40, z - 15))} title="کوچک‌تر">−</button>
                 <span style={{ minWidth: 44, textAlign: 'center' }}>{zoom.toLocaleString('fa-IR')}٪</span>
@@ -205,13 +226,44 @@ export default function AssessClaim() {
               <div key={d.id} id={`doc-${d.id}`} className="assess-doc">
                 <div className="assess-doc-head">
                   <span className="font-semibold truncate" style={{ color: 'var(--text)' }}>{d.fileName}</span>
-                  <button onClick={() => client.view(`/claims/${id}/documents/${d.id}/file`, 'org')} className="btn btn-ghost btn-sm shrink-0">باز کردن</button>
+                  <span className="flex items-center gap-1 shrink-0">
+                    <button onClick={() => client.download(`/claims/${id}/documents/${d.id}/file`, 'org', d.fileName).catch((e) => setError(e.message))} className="zbtn as-dl" title="دریافت همین مدرک" aria-label="دریافت مدرک">
+                      <Icon path="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" />
+                    </button>
+                    <button onClick={() => client.view(`/claims/${id}/documents/${d.id}/file`, 'org')} className="btn btn-ghost btn-sm">باز کردن</button>
+                  </span>
                 </div>
                 <DocMedia claimId={id} docId={d.id} fileName={d.fileName} zoom={zoom} />
               </div>
             ))}
           </div>
         </div>
+      )}
+
+      {/* «سابقهٔ تغییرات» of one document: every ✓/✕ with its time, operator and what it means */}
+      {history && (
+        <Overlay onClose={() => setHistory(null)}>
+          <div className="pmodal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560 }}>
+            <div className="pmodal-head">
+              <span className="pmodal-title">سابقهٔ تغییرات — {history.title}</span>
+              <button className="pmodal-x" onClick={() => setHistory(null)} aria-label="بستن">×</button>
+            </div>
+            <div className="pmodal-body">
+              {!history.entries ? <div className="py-6 flex justify-center"><Spinner /></div>
+                : history.entries.length === 0 ? <p className="text-sm" style={{ color: 'var(--muted)' }}>تغییری ثبت نشده است.</p>
+                : (
+                  <ol className="as-hist">
+                    {history.entries.map((h, i) => (
+                      <li key={i} className={h.state === 'APPROVED' ? 'is-ok' : h.state === 'REJECTED' ? 'is-no' : ''}>
+                        <div className="as-hist-at">{h.at}{h.stageLabel ? ` — ${h.stageLabel}` : ''}</div>
+                        <div>{h.text}</div>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+            </div>
+          </div>
+        </Overlay>
       )}
     </Shell>
   );

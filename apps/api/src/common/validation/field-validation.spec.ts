@@ -44,7 +44,9 @@ describe('field validation', () => {
     });
     it('validates SELECT options', () => {
       expect(validateField('SELECT', 'فرزند', { options: ['همسر', 'فرزند'] }).valid).toBe(true);
-      expect(validateField('SELECT', 'x', { options: ['همسر', 'فرزند'] }).valid).toBe(false);
+      // a value of the operator's own wording is accepted; only overlong text is refused
+      expect(validateField('SELECT', 'نامه اعلام فوت به شعبه ارسال شد', { options: ['همسر', 'فرزند'] }).valid).toBe(true);
+      expect(validateField('SELECT', 'x'.repeat(301), { options: ['همسر', 'فرزند'] }).valid).toBe(false);
     });
     it('allows empty (required is separate)', () => {
       expect(validateField('NATIONAL_CODE', '').valid).toBe(true);

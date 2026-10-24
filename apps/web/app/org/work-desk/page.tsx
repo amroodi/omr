@@ -1,7 +1,7 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { client, getToken, hasPerm } from '../../../lib/client';
 import { Shell, Icon } from '../../components/Shell';
 import { ORG_NAV } from '../nav';
@@ -17,13 +17,14 @@ interface QueueRow { id: string; claimNumber: string; policyNumber?: string | nu
 
 const fa = (n: number) => n.toLocaleString('fa-IR');
 const EMPTY = {
-  claimNumber: '', deceasedNationalCode: '', deceasedName: '', claimType: '', insurerTenantId: '',
-  eventFrom: '', eventTo: '', status: '', channel: '', createdFrom: '', createdTo: '', estMin: '', estMax: '', finMin: '', finMax: '', docCode: '',
+  policyNumber: '', deceasedNationalCode: '', deceasedName: '', claimType: '', insurerTenantId: '',
+  eventFrom: '', eventTo: '', status: '', channel: '', createdFrom: '', createdTo: '', estMin: '', estMax: '', finMin: '', finMax: '', docCode: '', beneficiaryType: '',
 };
 const STATUS_OPTIONS: [string, string][] = [
   ['SUBMITTED', 'ثبت‌شده'], ['UNDER_REVIEW', 'در حال بررسی'], ['RETURNED_INCOMPLETE', 'نقص مدارک'],
   ['APPROVED', 'تاییدشده (آماده پرداخت)'], ['PAID', 'پرداخت‌شده'], ['REJECTED', 'ردشده'],
 ];
+const BENEFICIARY_TYPES = ['وراث قانونی', 'ذینفع قانونی', 'همسر', 'فرزند', 'پدر', 'مادر', 'سایر'];
 const toAscii = (s: string) => s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
 function jToIso(input: string): string {
   const p = toAscii(input || '').split('/').map((x) => parseInt(x, 10));
@@ -33,7 +34,12 @@ function jToIso(input: string): string {
   return isNaN(d.getTime()) ? '' : d.toISOString();
 }
 
+// useSearchParams needs a Suspense boundary in the app router.
 export default function WorkDeskPage() {
+  return <Suspense fallback={null}><WorkDesk /></Suspense>;
+}
+
+function WorkDesk() {
   const router = useRouter();
   const [data, setData] = useState<WorkDesk | null>(null);
   const [insurers, setInsurers] = useState<{ id: string; name: string }[]>([]);
@@ -48,9 +54,9 @@ export default function WorkDeskPage() {
   const [qLoading, setQLoading] = useState(false);
   const [notice, setNotice] = useState('');
   const [docTypes, setDocTypes] = useState<{ code: string; label: string }[]>([]);
-  // Admin-only «پیگیری» shortcut — resolved after mount to avoid an SSR/client hydration mismatch.
-  const [isAdmin, setIsAdmin] = useState(false);
-  useEffect(() => { setIsAdmin(hasPerm('org', 'tenant:settings')); }, []);
+  // «پرونده جدید» needs claim:file — resolved after mount to avoid an SSR/client hydration mismatch.
+  const [canFile, setCanFile] = useState(false);
+  useEffect(() => { setCanFile(hasPerm('org', 'claim:file')); }, []);
 
   useEffect(() => {
     if (!getToken('org')) { router.push('/org/login'); return; }
@@ -77,6 +83,10 @@ export default function WorkDeskPage() {
   const [prefs, setPrefs] = useState<{ hidden: string[]; order: string[] }>({ hidden: [], order: [] });
   const [settingsOpen, setSettingsOpen] = useState(false);
   useEffect(() => { try { const p = localStorage.getItem('wdTilePrefs'); if (p) setPrefs(JSON.parse(p)); } catch { /* ignore */ } }, []);
+  // «شخصی‌سازی میز کار» in the sidebar links here with ?customize=1.
+  const customize = useSearchParams().get('customize') === '1';
+  useEffect(() => { if (data && customize) setSettingsOpen(true); }, [data, customize]);
+  const closeSettings = () => { setSettingsOpen(false); if (customize) router.replace('/org/work-desk'); };
   const savePrefs = (p: { hidden: string[]; order: string[] }) => { setPrefs(p); try { localStorage.setItem('wdTilePrefs', JSON.stringify(p)); } catch { /* ignore */ } };
 
   // Tiles in the operator's chosen order (unlisted keys keep their default order), hidden ones removed.
@@ -113,7 +123,7 @@ export default function WorkDeskPage() {
   const runSearch = () => {
     const p = new URLSearchParams();
     const set = (k: string, v: string) => { if (v) p.set(k, v); };
-    set('claimNumber', f.claimNumber.trim());
+    set('policyNumber', toAscii(f.policyNumber).trim());
     set('deceasedNationalCode', toAscii(f.deceasedNationalCode).replace(/\D/g, ''));
     set('deceasedName', f.deceasedName.trim());
     set('claimType', f.claimType);
@@ -125,6 +135,7 @@ export default function WorkDeskPage() {
     set('estMin', toAscii(f.estMin).replace(/\D/g, '')); set('estMax', toAscii(f.estMax).replace(/\D/g, ''));
     set('finMin', toAscii(f.finMin).replace(/\D/g, '')); set('finMax', toAscii(f.finMax).replace(/\D/g, ''));
     set('docCode', f.docCode);
+    set('beneficiaryType', f.beneficiaryType);
     setError(''); setActive({ key: 'search', label: 'نتایج جستجو', count: 0, actionable: false }); setRows([]); setQLoading(true);
     client.get<QueueRow[]>(`/claims/search?${p.toString()}`, 'org')
       .then((r) => { setRows(r); setActive((a) => (a ? { ...a, count: r.length } : a)); })
@@ -139,16 +150,10 @@ export default function WorkDeskPage() {
       action={
         <span className="flex items-center gap-2">
           {data?.roleLabel && <span className="badge badge-neutral whitespace-nowrap">نقش: {data.roleLabel}</span>}
-          {data && (
-            <button onClick={() => setSettingsOpen(true)} className="btn btn-ghost btn-sm" title="شخصی‌سازی برگه‌ها">
-              <Icon path="M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 008 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H2a2 2 0 110-4h.09A1.65 1.65 0 004.6 8a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V2a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H22a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z" />
-              <span className="hidden sm:inline">شخصی‌سازی</span>
-            </button>
-          )}
-          {isAdmin && (
-            <Link href="/org/track" className="btn btn-solid btn-sm" title="پیگیری آخرین وضعیت پرونده خسارت">
-              <Icon path="M11 19a8 8 0 100-16 8 8 0 000 16zM21 21l-4.3-4.3" />
-              <span className="hidden lg:inline">پیگیری آخرین وضعیت پرونده خسارت</span>
+          {canFile && (
+            <Link href="/org/claims/new" className="btn btn-solid btn-sm" title="ثبت پرونده خسارت جدید">
+              <Icon path="M12 5v14M5 12h14" />
+              <span className="hidden sm:inline">پرونده جدید</span>
             </Link>
           )}
         </span>
@@ -158,7 +163,7 @@ export default function WorkDeskPage() {
       {/* ── Search panel ── (queue tiles attach flush underneath) */}
       <div className={`pcard p-5 pform mb-5 ${tilesJoined ? 'wd-search-joined' : ''}`}>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          <input className="input" placeholder="شناسه / شماره پرونده" value={f.claimNumber} onChange={upd('claimNumber')} />
+          <input className="input" placeholder="شماره بیمه‌نامه" value={f.policyNumber} onChange={upd('policyNumber')} style={{ direction: 'ltr', textAlign: 'right' }} />
           <input className="input" placeholder="کد ملی بیمه‌شده (متوفی)" value={f.deceasedNationalCode} onChange={upd('deceasedNationalCode')} inputMode="numeric" />
           <input className="input" placeholder="نام بیمه‌شده (متوفی)" value={f.deceasedName} onChange={upd('deceasedName')} />
           <select className="input" value={f.claimType} onChange={(e) => setF({ ...f, claimType: e.target.value })}>
@@ -191,6 +196,10 @@ export default function WorkDeskPage() {
               <JalaliDatePicker value={f.createdFrom} onChange={(v) => setF({ ...f, createdFrom: v })} placeholder="ثبت از تاریخ" />
               <JalaliDatePicker value={f.createdTo} onChange={(v) => setF({ ...f, createdTo: v })} placeholder="ثبت تا تاریخ" />
             </div>
+            <select className="input" value={f.beneficiaryType} onChange={(e) => setF({ ...f, beneficiaryType: e.target.value })}>
+              <option value="">— نوع ذینفع —</option>
+              {BENEFICIARY_TYPES.map((b) => <option key={b} value={b}>{b}</option>)}
+            </select>
             <select className="input" value={f.docCode} onChange={(e) => setF({ ...f, docCode: e.target.value })} title="جستجو بر اساس نوع مدرک (همهٔ انواع پرونده)">
               <option value="">— نوع مدرک —</option>
               {docTypes.map((d) => <option key={d.code} value={d.code}>{d.label}</option>)}
@@ -227,7 +236,7 @@ export default function WorkDeskPage() {
       ) : (
         <>
           {arrangedTiles.length === 0 ? (
-            <div className="pcard p-6 text-center text-sm" style={{ color: 'var(--muted)' }}>همهٔ برگه‌ها پنهان شده‌اند. از «شخصی‌سازی» می‌توانید دوباره نمایش دهید.</div>
+            <div className="pcard p-6 text-center text-sm" style={{ color: 'var(--muted)' }}>همهٔ برگه‌ها پنهان شده‌اند. از «شخصی‌سازی میز کار» در منو می‌توانید دوباره نمایش دهید.</div>
           ) : (
           <div className="wd-tiles wd-tiles-joined">
             {arrangedTiles.map((t) => (
@@ -296,11 +305,11 @@ export default function WorkDeskPage() {
 
       {/* Personalization — show/hide/order the Work Desk tiles (saved per operator, on this device) */}
       {settingsOpen && data && (
-        <Overlay onClose={() => setSettingsOpen(false)}>
+        <Overlay onClose={closeSettings}>
           <div className="pmodal" onClick={(e) => e.stopPropagation()}>
             <div className="pmodal-head">
               <span className="pmodal-title">شخصی‌سازی برگه‌های میز کار</span>
-              <button className="pmodal-x" onClick={() => setSettingsOpen(false)} aria-label="بستن">×</button>
+              <button className="pmodal-x" onClick={closeSettings} aria-label="بستن">×</button>
             </div>
             <div className="pmodal-body">
               <p className="text-sm mb-3" style={{ color: 'var(--muted)' }}>برگه‌هایی که می‌خواهید در میز کار دیده شوند را انتخاب و ترتیبشان را تعیین کنید.</p>
@@ -328,7 +337,7 @@ export default function WorkDeskPage() {
               </div>
             </div>
             <div className="flex border-t" style={{ borderColor: 'var(--border)' }}>
-              <button onClick={() => setSettingsOpen(false)} className="flex-1 py-3 font-bold" style={{ color: 'var(--brand)' }}>تمام</button>
+              <button onClick={closeSettings} className="flex-1 py-3 font-bold" style={{ color: 'var(--brand)' }}>تمام</button>
             </div>
           </div>
         </Overlay>

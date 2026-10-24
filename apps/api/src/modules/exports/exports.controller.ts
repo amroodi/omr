@@ -1,8 +1,9 @@
-import { Controller, Get, Param, Query, Res } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, Res } from '@nestjs/common';
 import { CaseStatus } from '@prisma/client';
 import { Response } from 'express';
 import { Permissions } from '../../common/rbac/decorators';
 import { PERMISSIONS } from '../../common/rbac/permissions';
+import { TableExportDto } from './dto';
 import { ExportsService } from './exports.service';
 
 @Controller('exports')
@@ -31,6 +32,13 @@ export class ExportsController {
   }
 
   /** Single death-claim export (all fields). Audit-logged. */
+  /** «گزارش‌گیری»: save the report builder's current table as Excel. */
+  @Permissions(PERMISSIONS.EXPORT_LIST)
+  @Post('table.xlsx')
+  async tableXlsx(@Body() dto: TableExportDto, @Res() res: Response) {
+    await this.exports.tableXlsx(res, dto);
+  }
+
   @Permissions(PERMISSIONS.EXPORT_LIST)
   @Get('claim/:id.xlsx')
   async claimXlsx(@Param('id') id: string, @Res() res: Response) {

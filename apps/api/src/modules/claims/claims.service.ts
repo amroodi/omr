@@ -1,3 +1,4 @@
+import JSZip from 'jszip';
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditAction, ClaimStatus, ClaimType, Prisma, SalesChannel } from '@prisma/client';
 import { AuditService } from '../../common/audit/audit.service';
@@ -14,6 +15,9 @@ import { PERMISSIONS } from '../../common/rbac/permissions';
 import { above, actionsFor, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, physicalActionsFor, PhysicalActionKey, physicalBelow, PhysicalState, Purpose, ReviewDesk, Stage, STAGE_FA, WorkflowAction } from './workflow';
 
 const CLAIM_DOC_MIME = new Set(['application/pdf', 'image/jpeg', 'image/png']);
+// «فایل ذینفع» (list of heirs/beneficiaries and their shares) may also be an Excel sheet.
+export const BENEFICIARY_FILE_CODE = 'BENEFICIARY_FILE';
+const EXCEL_MIME = new Set(['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']);
 
 // How long a soft-deleted claim stays restorable before the daily purge removes it for good.
 export const CLAIM_RETENTION_DAYS = 14;
@@ -160,6 +164,15 @@ export class ClaimsService {
     // A بیمه‌گزار doesn't choose the insurer: the brokerage's contract for their company that covered
     // the date of death decides it (and supplies the policy number).
     let companyId = input.policyholderCompanyId ?? null;
+    if (companyId && ctx?.actorType === 'ORG_USER') {
+      // Staff may link only a company their own brokerage serves.
+      const co = await db.policyholderCompany.findUnique({ where: { id: companyId }, select: { tenantId: true } });
+      if (!co || co.tenantId !== ctx.tenantId) throw new NotFoundException('شرکت بیمه‌گزار یافت نشد');
+      if (input.policyHolderId) {
+        const acc = await db.customerAccount.findUnique({ where: { id: input.policyHolderId }, select: { companyId: true } });
+        if (acc?.companyId !== companyId) throw new BadRequestException('نماینده انتخاب‌شده متعلق به این شرکت نیست');
+      }
+    }
     if (ctx?.actorType === 'CUSTOMER') {
       const acc = await db.customerAccount.findUnique({ where: { id: ctx.actorId }, select: { companyId: true } });
       if (!acc?.companyId) throw new BadRequestException('حساب شما هنوز به شرکت بیمه‌گزار متصل نشده است؛ لطفاً با کارگزاری تماس بگیرید.');
@@ -224,7 +237,8 @@ export class ClaimsService {
         channel: input.channel,
         brokerTenantId: input.channel === 'BROKER' ? input.brokerTenantId : null,
         sellingBranchId: moarefBranchId,
-        policyHolderId: input.onBehalf ? input.policyHolderId ?? null : input.policyHolderId ?? getContext()?.actorId ?? null,
+        // The filing بیمه‌گزار account: the caller when a بیمه‌گزار files, else the representative staff picked (if any).
+        policyHolderId: input.policyHolderId ?? (ctx?.actorType === 'CUSTOMER' ? ctx.actorId : null) ?? null,
         policyholderCompanyId: companyId,
         deceasedBirthDate: input.deceasedBirthDate ? new Date(input.deceasedBirthDate) : null,
         deceasedFullName: this.crypto.encrypt(input.deceasedFullName)!,
@@ -912,10 +926,24 @@ export class ClaimsService {
       ? await db.documentReview.findMany({ where: { documentId: { in: docs.map((d) => d.id) } } })
       : [];
     const reviewsByDoc = new Map<string, Map<string, string>>();
+    const reviewRow = new Map<string, (typeof docReviews)[number]>(); // `${docId}|${stage}` → latest decision
     for (const r of docReviews) {
       if (!reviewsByDoc.has(r.documentId)) reviewsByDoc.set(r.documentId, new Map());
       reviewsByDoc.get(r.documentId)!.set(r.stage, r.state);
+      reviewRow.set(`${r.documentId}|${r.stage}`, r);
     }
+    // How many times each desk changed its ✓/✕ on each document (every change is in the audit log).
+    const changeCount = new Map<string, number>();
+    if (docs.length) {
+      const logs = await db.auditLog.findMany({ where: { targetType: 'ClaimDocumentReview', targetId: { in: docs.map((d) => d.id) } }, select: { targetId: true, metadata: true } });
+      for (const l of logs) {
+        const st = this.safeJson(l.metadata)?.stage;
+        if (st) { const k = `${l.targetId}|${st}`; changeCount.set(k, (changeCount.get(k) ?? 0) + 1); }
+      }
+    }
+    const reviewerIds = [...new Set(docReviews.map((r) => r.reviewerId).filter((x): x is string => !!x))];
+    const reviewers = reviewerIds.length ? await db.orgUser.findMany({ where: { id: { in: reviewerIds } }, select: { id: true, displayName: true, username: true } }) : [];
+    const reviewerName = new Map(reviewers.map((u) => [u.id, u.displayName || u.username]));
     const applicableStages = await this.reviewDesks(claim);
     const desk = await this.myDesk();
     const canEditStage = Object.fromEntries(applicableStages.map((st) => [st, this.canReviewStage(claim, st, desk)])) as Record<string, boolean>;
@@ -931,11 +959,18 @@ export class ClaimsService {
         uploadedAt: d.createdAt ? toJalali(d.createdAt) : null,
         version: group.length - i, // newest has the highest version number
         isLatest: i === 0,
-        reviews: applicableStages.map((st) => ({
-          stage: st,
-          state: reviewsByDoc.get(d.id)?.get(st) ?? 'PENDING',
-          canEdit: canEditStage[st],
-        })),
+        reviews: applicableStages.map((st) => {
+          const r = reviewRow.get(`${d.id}|${st}`);
+          return {
+            stage: st,
+            state: reviewsByDoc.get(d.id)?.get(st) ?? 'PENDING',
+            canEdit: canEditStage[st],
+            // Last change (shown on hover) and how many changes there were (more than one → full history on click).
+            changedAt: r ? toJalali(r.decidedAt ?? r.updatedAt) : null,
+            changedBy: r?.reviewerId ? reviewerName.get(r.reviewerId) ?? null : null,
+            changes: changeCount.get(`${d.id}|${st}`) ?? 0,
+          };
+        }),
       }));
     const items = reqs.map((r) => {
       const group = byCode.get(r.code) ?? [];
@@ -994,6 +1029,50 @@ export class ClaimsService {
     return chainOf(claim).filter((s): s is ReviewDesk => s !== 'POLICYHOLDER' && (s !== 'COUNCIL' || referred));
   }
 
+  /**
+   * Every ✓/✕ change on one document, oldest first, explained in Persian («کارشناس احمدی در مرحلهٔ شعبه
+   * این مدرک را تایید کرد»). Built from the audit log, which records each change with its operator.
+   */
+  async documentHistory(claimId: string, docId: string) {
+    const db = this.db();
+    const claim = await db.claim.findUnique({ where: { id: claimId } });
+    if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
+    this.assertParticipant(claim);
+    const doc = await db.document.findFirst({ where: { id: docId, claimId }, select: { id: true, fileName: true, docCode: true, createdAt: true } });
+    if (!doc) throw new NotFoundException('سند یافت نشد');
+    const logs = await db.auditLog.findMany({
+      where: { targetId: docId, targetType: { in: ['ClaimDocumentReview', 'ClaimDocument'] } },
+      orderBy: { createdAt: 'asc' },
+      select: { actorId: true, actorType: true, action: true, targetType: true, metadata: true, createdAt: true },
+    });
+    const ids = [...new Set(logs.map((l) => l.actorId).filter((x): x is string => !!x))];
+    const users = ids.length ? await db.orgUser.findMany({ where: { id: { in: ids } }, select: { id: true, displayName: true, username: true } }) : [];
+    const name = new Map(users.map((u) => [u.id, u.displayName || u.username]));
+    const STATE_VERB: Record<string, string> = { APPROVED: 'تایید کرد', REJECTED: 'رد کرد', PENDING: 'تایید/رد قبلی را برداشت و به «در انتظار بررسی» برگرداند' };
+    const entries = logs.map((l) => {
+      const m = this.safeJson(l.metadata) ?? {};
+      const who = (l.actorId && name.get(l.actorId)) || (l.actorType === 'CUSTOMER' || l.actorType === 'INSURED' ? 'بیمه‌گزار' : 'کاربر سامانه');
+      let text: string;
+      if (l.targetType === 'ClaimDocumentReview') {
+        const stage = STAGE_FA[m.stage as Stage] ?? m.stage ?? '—';
+        text = `${who} در مرحلهٔ «${stage}» این مدرک را ${STATE_VERB[m.state] ?? m.state}${m.note ? ` — توضیح: «${m.note}»` : ''}.`;
+      } else if (l.action === 'UPLOAD') {
+        text = `${who} این فایل را بارگذاری کرد.`;
+      } else if (m.verify) {
+        text = `${who} وضعیت کلی مدرک را «${DOC_STATUS_LABELS[m.verify] ?? m.verify}» ثبت کرد${m.note ? ` — توضیح: «${m.note}»` : ''}.`;
+      } else {
+        text = `${who} این مدرک را ویرایش کرد.`;
+      }
+      return { at: toJalali(l.createdAt), stage: m.stage ?? null, stageLabel: m.stage ? STAGE_FA[m.stage as Stage] ?? null : null, state: m.state ?? null, by: who, text };
+    });
+    return { documentId: doc.id, fileName: doc.fileName, entries };
+  }
+
+  private safeJson(s: string | null | undefined): any {
+    if (!s) return null;
+    try { return JSON.parse(s); } catch { return null; }
+  }
+
   /** Set a per-document approval at the caller's desk and roll it up to the doc status. */
   async reviewDocument(claimId: string, docId: string, stage: ReviewDesk, state: ReviewStateName, note?: string) {
     const db = this.db();
@@ -1035,7 +1114,10 @@ export class ClaimsService {
   /** Upload a document to a claim, tagged with the required-document code it satisfies. */
   async uploadDocument(claimId: string, file: Express.Multer.File, docCode: string) {
     if (!file?.buffer?.length) throw new BadRequestException('فایلی دریافت نشد');
-    if (!CLAIM_DOC_MIME.has(file.mimetype)) throw new BadRequestException('فقط PDF، JPG و PNG مجاز است');
+    const excelOk = docCode?.trim() === BENEFICIARY_FILE_CODE && EXCEL_MIME.has(file.mimetype);
+    if (!CLAIM_DOC_MIME.has(file.mimetype) && !excelOk) {
+      throw new BadRequestException(docCode?.trim() === BENEFICIARY_FILE_CODE ? 'فقط PDF یا اکسل مجاز است' : 'فقط PDF، JPG و PNG مجاز است');
+    }
     const db = this.db();
     const claim = await db.claim.findUnique({ where: { id: claimId } });
     if (!claim) throw new NotFoundException('پرونده یافت نشد');
@@ -1082,6 +1164,36 @@ export class ClaimsService {
     return { buffer, mimeType: doc.mimeType, fileName: doc.fileName };
   }
 
+  /**
+   * All the claim's current documents in one ZIP (the newest version of each required document plus
+   * any extra uploads), named «۰۱ - <document title>.<ext>» so they sort like the checklist.
+   */
+  async documentsZip(claimId: string): Promise<{ buffer: Buffer; fileName: string }> {
+    const db = this.db();
+    const claim = await db.claim.findUnique({ where: { id: claimId } });
+    if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
+    this.assertParticipant(claim);
+    const cl = await this.checklist(claimId);
+    const picks: { id: string; title: string }[] = [];
+    for (const it of cl.items) if (it.documents[0]) picks.push({ id: it.documents[0].id, title: it.label });
+    for (const d of cl.otherDocuments) picks.push({ id: d.id, title: 'سایر مدارک' });
+    if (!picks.length) throw new BadRequestException('مدرکی برای دریافت وجود ندارد');
+    const docs = await db.document.findMany({ where: { id: { in: picks.map((p) => p.id) } }, select: { id: true, storageKey: true, fileName: true } });
+    const byId = new Map(docs.map((d) => [d.id, d]));
+    const zip = new JSZip();
+    const clean = (s: string) => s.replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80).replace(/[.\s]+$/, '');
+    let n = 0;
+    for (const p of picks) {
+      const d = byId.get(p.id); if (!d) continue;
+      n++;
+      const ext = (d.fileName.match(/\.[A-Za-z0-9]{1,5}$/)?.[0] ?? '').toLowerCase();
+      zip.file(`${String(n).padStart(2, '0')} - ${clean(p.title)}${ext}`, await this.storage.read(d.storageKey));
+    }
+    const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+    await this.audit.record({ action: AuditAction.VIEW, tenantId: claim.insurerTenantId, targetType: 'ClaimDocumentsZip', targetId: claimId, metadata: { files: n } });
+    return { buffer, fileName: `documents-${claim.policyNumber || claim.claimNumber}.zip`.replace(/[\\/]/g, '-') };
+  }
+
   async listDocuments(claimId: string) {
     const db = this.db();
     const claim = await db.claim.findUnique({ where: { id: claimId } });
@@ -1092,6 +1204,119 @@ export class ClaimsService {
       orderBy: { createdAt: 'desc' },
       select: { id: true, docCode: true, fileName: true, mimeType: true, verificationStatus: true, createdAt: true },
     });
+  }
+
+  /**
+   * «گزارش‌گیری» data: every claim the caller's organization can see, flattened into one row per claim
+   * with all its facts (parties, dates, amounts, workflow position, documents) plus every structured
+   * field value. The report builder filters, groups and exports these rows in the browser.
+   * Dates are Jalali with ASCII digits ("1405/07/21") so they sort and compare as plain text.
+   */
+  async reportData() {
+    const ctx = getContext();
+    const db = this.db();
+    const claims = await db.claim.findMany({
+      where: this.wdScope(ctx?.tenantId),
+      orderBy: { createdAt: 'desc' },
+      take: 5000,
+      include: { steps: { select: { action: true, decidedAt: true } }, deficiencies: { select: { resolvedAt: true } } },
+    });
+    const ids = claims.map((c) => c.id);
+    const insurerIds = [...new Set(claims.map((c) => c.insurerTenantId))];
+    const tenantIds = [...new Set(claims.flatMap((c) => [c.insurerTenantId, c.brokerTenantId]).filter((x): x is string => !!x))];
+    const companyIds = [...new Set(claims.map((c) => c.policyholderCompanyId).filter((x): x is string => !!x))];
+    const branchIds = [...new Set(claims.flatMap((c) => [c.handlingBranchId, c.sellingBranchId]).filter((x): x is string => !!x))];
+    const [tenants, companies, branches, values, docs, reqs, defs] = await Promise.all([
+      tenantIds.length ? db.tenant.findMany({ where: { id: { in: tenantIds } }, select: { id: true, name: true } }) : [],
+      companyIds.length ? db.policyholderCompany.findMany({ where: { id: { in: companyIds } }, select: { id: true, name: true } }) : [],
+      branchIds.length ? db.branch.findMany({ where: { id: { in: branchIds } }, select: { id: true, name: true } }) : [],
+      ids.length ? db.claimFieldValue.findMany({ where: { claimId: { in: ids } }, select: { claimId: true, key: true, value: true } }) : [],
+      ids.length ? db.document.findMany({ where: { claimId: { in: ids } }, select: { claimId: true, docCode: true, verificationStatus: true }, orderBy: { createdAt: 'desc' } }) : [],
+      db.requiredDocument.findMany({ where: { isActive: true, tenantId: { in: insurerIds } }, select: { tenantId: true, code: true, appliesToTypes: true } }),
+      db.claimFieldDef.findMany({ where: { tenantId: { in: insurerIds }, isActive: true }, orderBy: { order: 'asc' }, select: { key: true, label: true, type: true } }),
+    ]);
+    const tName = new Map(tenants.map((t) => [t.id, t.name]));
+    const coName = new Map(companies.map((c) => [c.id, c.name]));
+    const brName = new Map(branches.map((b) => [b.id, b.name]));
+    // Field columns: every field defined by the insurers involved, in their own order.
+    const fieldCols = new Map<string, { label: string; type: string }>();
+    for (const d of defs) if (!fieldCols.has(d.key)) fieldCols.set(d.key, { label: d.label, type: d.type });
+    const fv = new Map<string, Record<string, string>>();
+    for (const v of values) { if (!fv.has(v.claimId)) fv.set(v.claimId, {}); if (v.value != null) fv.get(v.claimId)![v.key] = v.value; }
+    const docsBy = new Map<string, { docCode: string | null; verificationStatus: string }[]>();
+    for (const d of docs) { if (!d.claimId) continue; if (!docsBy.has(d.claimId)) docsBy.set(d.claimId, []); docsBy.get(d.claimId)!.push(d); }
+
+    const showPii = (ctx?.permissions ?? []).includes(PERMISSIONS.VIEW_PII);
+    const ascii = (s: string | null | undefined) => (s ? s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))) : null);
+    const jd = (d: Date | null | undefined) => (d ? ascii(toJalali(d, false)) : null);
+    const num = (d: Prisma.Decimal | null | undefined) => (d != null ? Number(d.toString()) : null);
+    const STATUS_FA: Record<string, string> = { DRAFT: 'پیش‌نویس', SUBMITTED: 'ثبت‌شده', UNDER_REVIEW: 'در حال بررسی', RETURNED_INCOMPLETE: 'نقص مدارک', APPROVED: 'تاییدشده', REJECTED: 'ردشده', PAID: 'پرداخت‌شده' };
+    const TYPE_FA: Record<string, string> = { DEATH_ILLNESS: 'فوت ناشی از بیماری', DEATH_ACCIDENT: 'فوت ناشی از حادثه', DISABILITY_ACCIDENT: 'نقص عضو / ازکارافتادگی ناشی از حادثه' };
+    const now = Date.now();
+
+    const rows = claims.map((c) => {
+      const f = fv.get(c.id) ?? {};
+      const cd = docsBy.get(c.id) ?? [];
+      const required = reqs.filter((r) => r.tenantId === c.insurerTenantId && r.appliesToTypes.includes(c.claimType)).map((r) => r.code);
+      const latestByCode = new Map<string, string>();
+      for (const d of cd) if (d.docCode && !latestByCode.has(d.docCode)) latestByCode.set(d.docCode, d.verificationStatus);
+      const uploaded = required.filter((code) => latestByCode.has(code)).length;
+      const approved = required.filter((code) => latestByCode.get(code) === 'VERIFIED').length;
+      const paidStep = c.steps.find((s) => s.action === 'MARK_PAID' && s.decidedAt);
+      const end = paidStep?.decidedAt ?? (c.status === 'REJECTED' ? c.updatedAt : null);
+      const nid = c.deceasedNationalCode ? this.crypto.decrypt(c.deceasedNationalCode) : null;
+      const row: Record<string, string | number | null> = {
+        policyNumber: c.policyNumber ?? f.policy_number ?? null,
+        claimNumber: c.claimNumber,
+        status: STATUS_FA[c.status] ?? c.status,
+        claimType: TYPE_FA[c.claimType] ?? c.claimType,
+        channel: c.channel === 'BROKER' ? 'کارگزاری' : 'مستقیم (شعبه)',
+        stage: c.currentStage ? STAGE_FA[c.currentStage as Stage] : 'بسته‌شده',
+        direction: !c.currentStage ? '—' : c.flowPurpose === 'PAYMENT' ? 'در مسیر پرداخت' : c.flowDirection === 'DOWN' ? 'عودت برای رفع نقص' : 'در حال بررسی',
+        insurer: tName.get(c.insurerTenantId) ?? null,
+        broker: c.brokerTenantId ? tName.get(c.brokerTenantId) ?? null : null,
+        company: (c.policyholderCompanyId && coName.get(c.policyholderCompanyId)) || f.company_name || c.employerName || null,
+        handlingBranch: c.handlingBranchId ? brName.get(c.handlingBranchId) ?? null : null,
+        sellingBranch: c.sellingBranchId ? brName.get(c.sellingBranchId) ?? null : null,
+        deceasedName: c.deceasedFullName ? this.crypto.decrypt(c.deceasedFullName) : null,
+        deceasedNationalCode: nid ? (showPii ? nid : `******${nid.slice(-4)}`) : null,
+        birthDate: jd(c.deceasedBirthDate) ?? ascii(f.birth_date),
+        age: ageAt(c.deceasedBirthDate, c.eventDate),
+        eventDate: jd(c.eventDate) ?? ascii(f.death_date),
+        createdAt: jd(c.createdAt),
+        noticeDeadline: jd(c.noticeDeadline),
+        lateNotice: c.lateNotice ? 'بله' : 'خیر',
+        paidDate: jd(paidStep?.decidedAt),
+        daysOpen: Math.max(0, Math.round(((end ? end.getTime() : now) - c.createdAt.getTime()) / 86400000)),
+        estimatedAmount: num(c.claimedAmount),
+        finalizedAmount: num(c.finalizedAmount),
+        payableAmount: num(c.finalizedAmount ?? c.claimedAmount),
+        lossNoticeNumber: c.lossNoticeNumber ?? null,
+        lossNoticeDate: jd(c.lossNoticeDate),
+        physicalAt: STAGE_FA[(c.physicalAt as Stage | null) ?? 'POLICYHOLDER'],
+        docsRequired: required.length,
+        docsUploaded: uploaded,
+        docsApproved: approved,
+        docsMissing: required.length - uploaded,
+        openDeficiencies: c.deficiencies.filter((d) => !d.resolvedAt).length,
+        beneficiaryType: f.beneficiary_type ?? c.beneficiaryType ?? null,
+        causeOfDeath: f.cause_of_death ?? c.causeOfDeath ?? null,
+        imported: c.imported ? 'بله' : 'خیر',
+      };
+      for (const [key, def] of fieldCols) {
+        const v = f[key] ?? null;
+        row[`f_${key}`] = v == null ? null
+          : def.type === 'AMOUNT' || def.type === 'NUMBER' ? Number(String(ascii(v)).replace(/[^\d.]/g, '')) || null
+          : def.type === 'DATE' ? ascii(v) : v;
+      }
+      return row;
+    });
+    const columns = [...REPORT_COLUMNS, ...[...fieldCols].map(([key, d]) => ({
+      key: `f_${key}`, label: d.label, group: 'فیلدهای پرونده',
+      type: d.type === 'AMOUNT' ? 'amount' : d.type === 'NUMBER' ? 'number' : d.type === 'DATE' ? 'date' : 'text',
+    }))];
+    await this.audit.record({ action: AuditAction.VIEW, tenantId: ctx?.tenantId, targetType: 'ClaimReport', metadata: { rows: rows.length } });
+    return { columns, rows, generatedAt: toJalali(new Date()) };
   }
 
   /** All claims the caller participates in, newest first, flagged if their action is needed. */
@@ -1227,7 +1452,15 @@ export class ClaimsService {
     const and: Prisma.ClaimWhereInput[] = [this.wdScope(getContext()?.tenantId)];
     const clean = (s?: string) => (s ?? '').trim();
 
-    if (clean(q.claimNumber)) and.push({ OR: [{ claimNumber: { contains: clean(q.claimNumber), mode: 'insensitive' } }, { policyNumber: { contains: clean(q.claimNumber), mode: 'insensitive' } }] });
+    // «شماره بیمه‌نامه» (cases are titled by it); the internal CLM number still matches for older links.
+    const pn = clean(q.policyNumber) || clean(q.claimNumber);
+    if (pn) and.push({ OR: [{ policyNumber: { contains: pn, mode: 'insensitive' } }, { claimNumber: { contains: pn, mode: 'insensitive' } }] });
+    // «نوع ذینفع»: the beneficiary-type field, or the imported column on older claims.
+    if (clean(q.beneficiaryType)) {
+      const bt = clean(q.beneficiaryType);
+      const fv = await db.claimFieldValue.findMany({ where: { key: 'beneficiary_type', value: bt }, select: { claimId: true } });
+      and.push({ OR: [{ beneficiaryType: bt }, { id: { in: fv.map((v) => v.claimId) } }] });
+    }
     if (clean(q.deceasedNationalCode)) {
       const h = this.crypto.blindIndex(clean(q.deceasedNationalCode).replace(/\D/g, ''));
       if (h) and.push({ deceasedNationalCodeHash: h });
@@ -1356,8 +1589,10 @@ export class ClaimsService {
       flowPurpose: c.flowPurpose ?? null,
     };
     if (!full) return base;
+    const paid = (c.steps ?? []).find((s: any) => s.action === 'MARK_PAID' && s.decidedAt);
     return {
       ...base,
+      paidDate: paid ? toJalali(paid.decidedAt, false) : null, // تاریخ پرداخت
       steps: (c.steps ?? []).map((s: any) => ({
         order: s.order, partyType: s.partyType, stage: s.stage ?? null, stageLabel: s.stage ? STAGE_FA[s.stage as Stage] : null,
         direction: s.direction, purpose: s.purpose ?? null, state: s.state, action: s.action ?? null,
@@ -1387,3 +1622,43 @@ function safeParse(s: string): unknown {
     return s;
   }
 }
+
+/** Built-in columns of the report builder (field-value columns are appended per insurer definition). */
+const REPORT_COLUMNS: { key: string; label: string; group: string; type: 'text' | 'number' | 'amount' | 'date' }[] = [
+  { key: 'policyNumber', label: 'شماره بیمه‌نامه', group: 'پرونده', type: 'text' },
+  { key: 'claimNumber', label: 'شمارهٔ داخلی پرونده', group: 'پرونده', type: 'text' },
+  { key: 'status', label: 'وضعیت پرونده', group: 'پرونده', type: 'text' },
+  { key: 'claimType', label: 'نوع پرونده', group: 'پرونده', type: 'text' },
+  { key: 'channel', label: 'کانال', group: 'پرونده', type: 'text' },
+  { key: 'imported', label: 'ورود دسته‌ای', group: 'پرونده', type: 'text' },
+  { key: 'stage', label: 'مرحلهٔ فعلی', group: 'گردش کار', type: 'text' },
+  { key: 'direction', label: 'جهت گردش', group: 'گردش کار', type: 'text' },
+  { key: 'lossNoticeNumber', label: 'شمارهٔ اعلام خسارت', group: 'گردش کار', type: 'text' },
+  { key: 'lossNoticeDate', label: 'تاریخ اعلام خسارت', group: 'گردش کار', type: 'date' },
+  { key: 'insurer', label: 'بیمه‌گر', group: 'طرفین', type: 'text' },
+  { key: 'broker', label: 'کارگزاری', group: 'طرفین', type: 'text' },
+  { key: 'company', label: 'بیمه‌گزار (شرکت)', group: 'طرفین', type: 'text' },
+  { key: 'handlingBranch', label: 'شعبهٔ رسیدگی', group: 'طرفین', type: 'text' },
+  { key: 'sellingBranch', label: 'شعبهٔ فروش', group: 'طرفین', type: 'text' },
+  { key: 'deceasedName', label: 'نام بیمه‌شده (متوفی)', group: 'بیمه‌شده', type: 'text' },
+  { key: 'deceasedNationalCode', label: 'کد ملی متوفی', group: 'بیمه‌شده', type: 'text' },
+  { key: 'birthDate', label: 'تاریخ تولد', group: 'بیمه‌شده', type: 'date' },
+  { key: 'age', label: 'سن هنگام فوت/حادثه', group: 'بیمه‌شده', type: 'number' },
+  { key: 'causeOfDeath', label: 'علت فوت', group: 'بیمه‌شده', type: 'text' },
+  { key: 'beneficiaryType', label: 'نوع ذینفع', group: 'بیمه‌شده', type: 'text' },
+  { key: 'eventDate', label: 'تاریخ فوت / حادثه', group: 'تاریخ‌ها', type: 'date' },
+  { key: 'createdAt', label: 'تاریخ ثبت اولیه', group: 'تاریخ‌ها', type: 'date' },
+  { key: 'noticeDeadline', label: 'مهلت اعلام', group: 'تاریخ‌ها', type: 'date' },
+  { key: 'lateNotice', label: 'خارج از مهلت', group: 'تاریخ‌ها', type: 'text' },
+  { key: 'paidDate', label: 'تاریخ پرداخت', group: 'تاریخ‌ها', type: 'date' },
+  { key: 'daysOpen', label: 'مدت رسیدگی (روز)', group: 'تاریخ‌ها', type: 'number' },
+  { key: 'estimatedAmount', label: 'مبلغ برآوردی', group: 'مبالغ', type: 'amount' },
+  { key: 'finalizedAmount', label: 'مبلغ قطعی', group: 'مبالغ', type: 'amount' },
+  { key: 'payableAmount', label: 'مبلغ قابل پرداخت', group: 'مبالغ', type: 'amount' },
+  { key: 'physicalAt', label: 'محل اصل مدارک', group: 'مدارک', type: 'text' },
+  { key: 'docsRequired', label: 'تعداد مدارک لازم', group: 'مدارک', type: 'number' },
+  { key: 'docsUploaded', label: 'مدارک بارگذاری‌شده', group: 'مدارک', type: 'number' },
+  { key: 'docsApproved', label: 'مدارک تاییدشده', group: 'مدارک', type: 'number' },
+  { key: 'docsMissing', label: 'مدارک ناقص', group: 'مدارک', type: 'number' },
+  { key: 'openDeficiencies', label: 'نقص‌های باز', group: 'مدارک', type: 'number' },
+];

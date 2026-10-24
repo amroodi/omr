@@ -1,16 +1,19 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toGregorian } from 'jalaali-js';
-import { client } from '../../../../lib/client';
+import { client, getToken } from '../../../../lib/client';
 import { Shell } from '../../../components/Shell';
-import { CLAIM_TYPE_LABELS, ErrorBox, Field } from '../../../components/ui';
+import { CLAIM_TYPE_LABELS, ErrorBox } from '../../../components/ui';
 import { JalaliDatePicker } from '../../../components/JalaliDatePicker';
 import { ORG_NAV } from '../../nav';
 
-const toAscii = (s: string) => s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
+interface Company { id: string; name: string; currentInsurer: { id: string; name: string } | null; contracts: { insurerName: string; policyNumber: string | null }[]; accounts: { id: string; fullName: string }[] }
 
-/** Parse a Jalali date "YYYY/MM/DD" (Persian or ASCII digits) to an ISO string, or null. */
+const toAscii = (s: string) => s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
+const DEATH_TYPES = new Set(['DEATH_ILLNESS', 'DEATH_ACCIDENT']);
+const NO_COMPANY = '__none__';
+
 function jalaliToIso(input: string): string | null {
   const parts = toAscii(input).split('/').map((p) => parseInt(p, 10));
   if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) return null;
@@ -18,91 +21,184 @@ function jalaliToIso(input: string): string | null {
   const d = new Date(Date.UTC(gy, gm - 1, gd));
   return isNaN(d.getTime()) ? null : d.toISOString();
 }
+function ageBetween(birthIso: string | null, atIso: string | null): number | null {
+  if (!birthIso) return null;
+  const b = new Date(birthIso); const e = atIso ? new Date(atIso) : new Date();
+  let a = e.getUTCFullYear() - b.getUTCFullYear();
+  if (e.getUTCMonth() < b.getUTCMonth() || (e.getUTCMonth() === b.getUTCMonth() && e.getUTCDate() < b.getUTCDate())) a--;
+  return a >= 0 && a < 130 ? a : null;
+}
 
+/** Field with a bold label and an optional help bubble — same look as the بیمه‌گزار panel's form. */
+function PField({ label, help, children }: { label: string; help?: string; children: ReactNode }) {
+  return (
+    <div>
+      <label className="label">{label}</label>
+      <div className="flex items-center gap-2">
+        <div className="flex-1 min-w-0">{children}</div>
+        {help && <span className="phelp" title={help}>؟</span>}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * «پرونده جدید» (from the Work Desk header) — the بیمه‌گزار panel's filing form, for staff. Picking the
+ * بیمه‌گزار company routes the case by its insurer contract and shows it in that company's panel; for a
+ * case without a company the insurer and sales channel are chosen by hand.
+ */
 export default function NewClaim() {
   const router = useRouter();
+  const [companies, setCompanies] = useState<Company[]>([]);
   const [insurers, setInsurers] = useState<{ id: string; name: string }[]>([]);
   const [branches, setBranches] = useState<{ id: string; name: string; code: string }[]>([]);
-  const [holders, setHolders] = useState<{ id: string; fullName: string | null; nationalCodeMasked: string | null }[]>([]);
-  const [f, setF] = useState({ insurerTenantId: '', channel: 'BROKER', sellingBranchId: '', policyHolderId: '', claimType: 'DEATH_ILLNESS', eventDate: '', deceasedFullName: '', deceasedNationalCode: '', claimedAmount: '', policyNumber: '' });
+  const [f, setF] = useState({
+    companyId: '', policyHolderId: '', insurerTenantId: '', channel: 'BROKER', sellingBranchId: '',
+    claimType: 'DEATH_ILLNESS', deceasedFullName: '', deceasedNationalCode: '', birthDate: '', eventDate: '', claimedAmount: '', policyNumber: '', description: '',
+  });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
+    if (!getToken('org')) { router.push('/org/login'); return; }
+    client.get<Company[]>('/claims/on-behalf/companies', 'org').then(setCompanies).catch(() => setCompanies([]));
     client.get<{ id: string; name: string }[]>('/claims/insurers', 'org').then(setInsurers).catch((e) => setError(e.message));
     client.get<{ id: string; name: string; code: string }[]>('/branches', 'org').then(setBranches).catch(() => {});
-    client.get<any[]>('/customer/accounts?status=ACTIVE', 'org').then(setHolders).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const co = companies.find((c) => c.id === f.companyId) ?? null;
+  const manual = f.companyId === NO_COMPANY || companies.length === 0;
+  const isDeath = DEATH_TYPES.has(f.claimType);
+  const eventLabel = isDeath ? 'تاریخ فوت' : 'تاریخ وقوع حادثه';
+  const age = ageBetween(f.birthDate ? jalaliToIso(f.birthDate) : null, f.eventDate ? jalaliToIso(f.eventDate) : null);
+  const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF((s) => ({ ...s, [k]: e.target.value }));
 
   const submit = async () => {
     setError('');
-    if (!f.insurerTenantId) return setError('بیمه‌گر را انتخاب کنید');
-    if (f.channel === 'DIRECT' && !f.sellingBranchId) return setError('شعبه فروش را انتخاب کنید');
+    if (!manual && !co) return setError('شرکت بیمه‌گزار را انتخاب کنید (یا «بدون شرکت بیمه‌گزار»)');
+    if (manual && !f.insurerTenantId) return setError('بیمه‌گر را انتخاب کنید');
+    if (manual && f.channel === 'DIRECT' && !f.sellingBranchId) return setError('شعبه فروش را انتخاب کنید');
     const iso = f.eventDate ? jalaliToIso(f.eventDate) : null;
-    if (f.eventDate && !iso) return setError('تاریخ وقوع نامعتبر است (نمونه: ۱۴۰۵/۰۷/۰۱)');
+    if (f.eventDate && !iso) return setError(`${eventLabel} نامعتبر است (نمونه: ۱۴۰۵/۰۷/۰۱)`);
+    const birthIso = f.birthDate ? jalaliToIso(f.birthDate) : null;
+    if (f.birthDate && !birthIso) return setError('تاریخ تولد نامعتبر است (نمونه: ۱۳۴۵/۰۵/۱۲)');
+    if (co && !iso) return setError(`${eventLabel} را وارد کنید؛ بیمه‌گر بر اساس قرارداد معتبر در این تاریخ تعیین می‌شود`);
     setBusy(true);
     try {
       const payload: Record<string, string> = {
-        insurerTenantId: f.insurerTenantId,
-        channel: f.channel,
+        channel: manual ? f.channel : 'BROKER',
         claimType: f.claimType,
         deceasedFullName: f.deceasedFullName.trim(),
         deceasedNationalCode: toAscii(f.deceasedNationalCode).trim(),
-        claimedAmount: toAscii(f.claimedAmount).replace(/[^\d]/g, ''),
+        claimedAmount: toAscii(f.claimedAmount).replace(/[^\d]/g, '') || '0',
       };
-      if (f.channel === 'DIRECT' && f.sellingBranchId) payload.sellingBranchId = f.sellingBranchId;
-      if (f.policyHolderId) payload.policyHolderId = f.policyHolderId;
+      if (co) { payload.policyholderCompanyId = co.id; if (f.policyHolderId) payload.policyHolderId = f.policyHolderId; }
+      else { payload.insurerTenantId = f.insurerTenantId; if (f.channel === 'DIRECT') payload.sellingBranchId = f.sellingBranchId; }
       if (iso) payload.eventDate = iso;
-      if (f.policyNumber.trim()) payload.policyNumber = f.policyNumber.trim();
+      if (birthIso) payload.deceasedBirthDate = birthIso;
+      if (f.policyNumber.trim()) payload.policyNumber = toAscii(f.policyNumber).trim();
+      if (f.description.trim()) payload.description = f.description.trim();
       const c = await client.post<{ id: string }>('/claims', payload, 'org');
       router.push(`/org/claims/${c.id}`);
     } catch (e: any) { setError(e.message); } finally { setBusy(false); }
   };
 
   return (
-    <Shell title="ثبت پرونده خسارت" subtitle="بارگذاری دیجیتال اعلام خسارت و مدارک متوفی/بیمه‌شده" nav={ORG_NAV} realm="org">
-      <div className="card p-5 max-w-xl space-y-4">
-        <ErrorBox message={error} />
-        <Field label="کانال فروش">
-          <div className="flex gap-2 flex-wrap">
-            {[['BROKER', 'از طریق نمایندگی/کارگزاری'], ['DIRECT', 'فروش مستقیم بیمه‌گر']].map(([v, l]) => (
-              <button key={v} type="button" onClick={() => setF({ ...f, channel: v, sellingBranchId: v === 'BROKER' ? '' : f.sellingBranchId })} className="btn btn-sm flex-1" style={f.channel === v ? { background: 'var(--brand)', color: '#fff' } : { background: 'var(--surface-2)', color: 'var(--muted)', border: '1px solid var(--border)' }}>{l}</button>
-            ))}
+    <Shell title="ثبت پرونده خسارت" breadcrumb="پرونده جدید" sectionLabel="خسارت عمر و حادثه" nav={ORG_NAV} realm="org">
+      <div className="pcard p-6 md:p-8 pform max-w-4xl mx-auto">
+        <div className="pinfobox mb-6 text-center">
+          پس از ثبت پرونده، مدارک موردنیاز را در صفحهٔ پرونده بارگذاری کنید. لطفاً مشخصات بیمه‌شدهٔ متوفی و نوع پرونده را با دقت وارد نمایید.
+          <div className="text-xs mt-1 font-normal">
+            {co
+              ? <>پرونده برای «{co.name}» ثبت می‌شود و در پنل این بیمه‌گزار هم دیده می‌شود؛ بیمه‌گر از روی قرارداد شرکت{co.contracts.length ? ` (${co.contracts.map((k) => k.insurerName).join('، ')})` : ''} در {eventLabel} تعیین می‌شود.</>
+              : manual ? <>پرونده بدون شرکت بیمه‌گزار ثبت می‌شود؛ بیمه‌گر و کانال فروش را خودتان انتخاب کنید.</> : null}
           </div>
-        </Field>
-        <Field label="بیمه‌گر">
-          <select className="input" value={f.insurerTenantId} onChange={(e) => setF({ ...f, insurerTenantId: e.target.value })}>
-            <option value="">— انتخاب بیمه‌گر —</option>
-            {insurers.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
-          </select>
-        </Field>
-        <Field label="بیمه‌گزار (برای بارگذاری مدارک در پنل خودش)">
-          <select className="input" value={f.policyHolderId} onChange={(e) => setF({ ...f, policyHolderId: e.target.value })}>
-            <option value="">— بدون اتصال به حساب بیمه‌گزار —</option>
-            {holders.map((h) => <option key={h.id} value={h.id}>{h.fullName || 'بی‌نام'} — {h.nationalCodeMasked}</option>)}
-          </select>
-          {holders.length === 0 && <p className="text-xs mt-1" style={{ color: 'var(--muted)' }}>بیمه‌گزار فعالی ثبت نشده — از «بیمه‌گزاران» اضافه/تایید کنید</p>}
-        </Field>
-        {f.channel === 'DIRECT' && (
-          <Field label="شعبه فروش">
-            <select className="input" value={f.sellingBranchId} onChange={(e) => setF({ ...f, sellingBranchId: e.target.value })}>
-              <option value="">— انتخاب شعبه —</option>
-              {branches.map((b) => <option key={b.id} value={b.id}>{b.name} ({b.code})</option>)}
+        </div>
+
+        <ErrorBox message={error} />
+
+        <div className="grid md:grid-cols-2 gap-5 mt-4">
+          {companies.length > 0 && (
+            <PField label="بیمه‌گزار (شرکت) *" help="شرکتی که متوفی در آن شاغل بوده است؛ پرونده در پنل همین بیمه‌گزار هم نمایش داده می‌شود.">
+              <select className="input" value={f.companyId} onChange={(e) => setF((s) => ({ ...s, companyId: e.target.value, policyHolderId: '' }))}>
+                <option value="">— انتخاب شرکت بیمه‌گزار —</option>
+                {companies.map((c) => <option key={c.id} value={c.id}>{c.name}{c.currentInsurer ? ` — ${c.currentInsurer.name}` : ''}</option>)}
+                <option value={NO_COMPANY}>بدون شرکت بیمه‌گزار (انتخاب دستی بیمه‌گر)</option>
+              </select>
+            </PField>
+          )}
+          {co && co.accounts.length > 0 && (
+            <PField label="نمایندهٔ بیمه‌گزار" help="اختیاری؛ نماینده پرونده را در پنل خود می‌بیند و برای رفع نقص پیام دریافت می‌کند.">
+              <select className="input" value={f.policyHolderId} onChange={set('policyHolderId')}>
+                <option value="">— بدون نماینده —</option>
+                {co.accounts.map((a) => <option key={a.id} value={a.id}>{a.fullName}</option>)}
+              </select>
+            </PField>
+          )}
+          {manual && (
+            <>
+              <PField label="بیمه‌گر *">
+                <select className="input" value={f.insurerTenantId} onChange={set('insurerTenantId')}>
+                  <option value="">— انتخاب بیمه‌گر —</option>
+                  {insurers.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+                </select>
+              </PField>
+              <PField label="کانال فروش">
+                <select className="input" value={f.channel} onChange={(e) => setF((s) => ({ ...s, channel: e.target.value, sellingBranchId: '' }))}>
+                  <option value="BROKER">از طریق نمایندگی / کارگزاری</option>
+                  <option value="DIRECT">فروش مستقیم بیمه‌گر</option>
+                </select>
+              </PField>
+              {f.channel === 'DIRECT' && (
+                <PField label="شعبه فروش *">
+                  <select className="input" value={f.sellingBranchId} onChange={set('sellingBranchId')}>
+                    <option value="">— انتخاب شعبه —</option>
+                    {branches.map((b) => <option key={b.id} value={b.id}>{b.name} ({b.code})</option>)}
+                  </select>
+                </PField>
+              )}
+            </>
+          )}
+
+          <PField label="نوع پرونده *" help="علت فوت یا نوع خسارت را مشخص کنید.">
+            <select className="input" value={f.claimType} onChange={set('claimType')}>
+              {Object.entries(CLAIM_TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
-            {branches.length === 0 && <p className="text-xs mt-1" style={{ color: 'var(--muted)' }}>شعبه‌ای تعریف نشده — از «تنظیمات سازمان ← شعب» اضافه کنید</p>}
-          </Field>
-        )}
-        <Field label="نوع پرونده">
-          <select className="input" value={f.claimType} onChange={(e) => setF({ ...f, claimType: e.target.value })}>
-            {Object.entries(CLAIM_TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
-        </Field>
-        <Field label="تاریخ وقوع (شمسی)"><JalaliDatePicker value={f.eventDate} onChange={(v) => setF({ ...f, eventDate: v })} /></Field>
-        <Field label="نام بیمه‌شده (متوفی)"><input className="input" value={f.deceasedFullName} onChange={(e) => setF({ ...f, deceasedFullName: e.target.value })} /></Field>
-        <Field label="کد ملی بیمه‌شده"><input className="input" value={f.deceasedNationalCode} onChange={(e) => setF({ ...f, deceasedNationalCode: e.target.value })} inputMode="numeric" /></Field>
-        <Field label="مبلغ خسارت برآوردی (ریال)"><input className="input" value={f.claimedAmount} onChange={(e) => setF({ ...f, claimedAmount: e.target.value })} inputMode="numeric" /></Field>
-        <Field label="شماره بیمه‌نامه (اختیاری)"><input className="input" value={f.policyNumber} onChange={(e) => setF({ ...f, policyNumber: e.target.value })} /></Field>
-        <button onClick={submit} disabled={busy || !f.deceasedFullName || !f.deceasedNationalCode || !f.claimedAmount} className="btn btn-primary w-full">{busy ? '…' : 'ثبت پرونده'}</button>
+          </PField>
+          <PField label="نام بیمه‌شده (متوفی) *">
+            <input className="input" value={f.deceasedFullName} onChange={set('deceasedFullName')} />
+          </PField>
+          <PField label="کد ملی بیمه‌شده *" help="کد ملی ۱۰ رقمی بیمه‌شدهٔ متوفی.">
+            <input className="input" value={f.deceasedNationalCode} onChange={set('deceasedNationalCode')} inputMode="numeric" style={{ direction: 'ltr', textAlign: 'right' }} />
+          </PField>
+          <PField label="تاریخ تولد بیمه‌شده (شمسی)" help="سن متوفی به‌طور خودکار محاسبه می‌شود.">
+            <JalaliDatePicker value={f.birthDate} onChange={(v) => setF((s) => ({ ...s, birthDate: v }))} placeholder="۱۳۴۵/۰۵/۱۲" />
+          </PField>
+          <PField label={`${eventLabel} (شمسی)${co ? ' *' : ''}`}>
+            <JalaliDatePicker value={f.eventDate} onChange={(v) => setF((s) => ({ ...s, eventDate: v }))} placeholder="۱۴۰۵/۰۷/۰۱" />
+          </PField>
+          <PField label={isDeath ? 'سن متوفی (هنگام فوت)' : 'سن بیمه‌شده (هنگام حادثه)'}>
+            <input className="input" readOnly value={age != null ? `${age.toLocaleString('fa-IR')} سال` : '— (پس از ورود تاریخ‌ها)'} style={{ background: 'var(--surface-2)' }} />
+          </PField>
+          <PField label="مبلغ خسارت برآوردی (ریال)" help="اختیاری؛ مبلغ قطعی پس از ارزیابی ثبت می‌شود.">
+            <input className="input" inputMode="numeric" value={f.claimedAmount} onChange={set('claimedAmount')} style={{ direction: 'ltr', textAlign: 'right' }} />
+          </PField>
+          <PField label="شماره بیمه‌نامه" help={co ? 'اگر خالی بماند از قرارداد شرکت برداشته می‌شود.' : 'اختیاری.'}>
+            <input className="input" value={f.policyNumber} onChange={set('policyNumber')} style={{ direction: 'ltr', textAlign: 'right' }} />
+          </PField>
+        </div>
+
+        <div className="mt-5">
+          <label className="label">توضیحات (اختیاری)</label>
+          <textarea className="input" rows={4} value={f.description} onChange={set('description')} placeholder="هر توضیح یا جزئیاتی که لازم می‌دانید بنویسید؛ مثلاً شرح حادثه یا موارد خاص پرونده." />
+        </div>
+
+        <div className="flex justify-center mt-8">
+          <button onClick={submit} disabled={busy || !f.deceasedFullName.trim() || !f.deceasedNationalCode.trim()} className="btn btn-solid btn-solid-lg">
+            {busy ? 'در حال ثبت…' : 'ثبت پرونده و ادامه به بارگذاری مدارک'}
+          </button>
+        </div>
       </div>
     </Shell>
   );
