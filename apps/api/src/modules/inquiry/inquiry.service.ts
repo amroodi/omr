@@ -388,6 +388,9 @@ export class InquiryService {
       eventDate: c.eventDate ? toJalali(c.eventDate, false) : null,
       createdAt: c.createdAt ? toJalali(c.createdAt, false) : null,
       description: c.description ?? null,
+      caseNotes: fv.case_notes ?? null, // «توضیحات پرونده» written by the organizations for the requester
+      // تاریخ پرداخت — when the payment was recorded (workflow), else the payment-order date field.
+      paidDate: (() => { const p = (c.steps ?? []).find((s: any) => s.action === 'MARK_PAID' && s.decidedAt); return p?.decidedAt ? toJalali(p.decidedAt, false) : fv.payment_order_date ?? null; })(),
       // Where the claim is now + every hand-off (desk names only — operator names stay internal).
       currentStageLabel: c.currentStage ? STAGE_FA[c.currentStage as Stage] : null,
       physicalAtLabel: STAGE_FA[(c.physicalAt as Stage | null) ?? 'POLICYHOLDER'], // where the original documents are

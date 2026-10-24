@@ -6,6 +6,7 @@ import { CLAIM_TYPE_LABELS, ErrorBox, Spinner, StatusBadge } from '../../../comp
 import { Icon, Shell } from '../../../components/Shell';
 import { CUSTOMER_NAV } from '../../nav';
 import { TimelineStep, Workflow, WorkflowPanel, WorkflowTimeline } from '../../../components/WorkflowPanel';
+import { caseRef, caseTitle } from '../../../../lib/caseTitle';
 
 interface ClaimDoc { id: string; fileName: string; status: string; statusLabel: string; note: string | null; uploadedAt: string | null; version: number; isLatest: boolean }
 interface ChecklistItem { code: string; label: string; uploaded: boolean; latestStatus: string | null; documents: ClaimDoc[] }
@@ -13,7 +14,7 @@ interface Checklist { complete: boolean; items: ChecklistItem[] }
 
 const DOC_BADGE: Record<string, string> = { PENDING: 'badge-warning', VERIFIED: 'badge-success', REJECTED: 'badge-danger', NEEDS_INFO: 'badge-warning' };
 interface Claim {
-  claimNumber: string; status: string; claimType: string; deceasedName: string | null;
+  claimNumber: string; policyNumber?: string | null; status: string; claimType: string; deceasedName: string | null;
   insurerTenantId?: string;
   eventDate: string | null; noticeDeadline: string | null; lateNotice: boolean;
   description?: string | null;
@@ -60,7 +61,7 @@ export default function CustomerClaim() {
         <>
           <div className="pcard p-6">
             <div className="flex justify-between items-center mb-2">
-              <span className="font-bold">پرونده {claim.claimNumber}</span>
+              <span className="font-bold">{caseTitle(claim)}</span>
               <StatusBadge status={claim.status} />
             </div>
             <div className="text-sm" style={{ color: 'var(--muted)' }}>

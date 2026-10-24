@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import { LogoTile } from './LogoTile';
 import { usePathname, useRouter } from 'next/navigation';
 import { ReactNode, useEffect, useState } from 'react';
 import { clearToken, client, getTenantSlug, hasPerm, Realm } from '../../lib/client';
@@ -132,10 +133,9 @@ export function Shell({
       {/* ── Navy sidebar (right, collapsible) ── */}
       <aside className={`psidebar no-print ${rail ? 'is-rail' : ''} ${open ? 'is-open' : ''}`}>
         <div className="psidebar-logo">
-          <Link href={homeHref} className="circle" aria-label="خانه">
+          <Link href={homeHref} className={`circle${logoUrl ? ' has-logo' : ''}`} aria-label="خانه">
             {logoUrl
-              // eslint-disable-next-line @next/next/no-img-element
-              ? <img src={logoUrl} alt="" />
+              ? <LogoTile src={logoUrl} round style={{ width: '100%', height: '100%' }} />
               : <BrandMark size={rail ? 30 : 74} />}
           </Link>
           <div className="psidebar-name">{brand?.name || 'دامون'}</div>

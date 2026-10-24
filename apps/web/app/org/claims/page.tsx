@@ -6,9 +6,10 @@ import { client, getToken, hasPerm } from '../../../lib/client';
 import { Shell, Icon } from '../../components/Shell';
 import { CLAIM_TYPE_LABELS, ErrorBox, StatusBadge } from '../../components/ui';
 import { ORG_NAV } from '../nav';
+import { caseTitle } from '../../../lib/caseTitle';
 
 interface Claim {
-  id: string; claimNumber: string; status: string; claimType: string; insurerTenantId?: string;
+  id: string; claimNumber: string; policyNumber?: string | null; deceasedNationalCode?: string | null; status: string; claimType: string; insurerTenantId?: string;
   deceasedName: string | null; claimedAmount: string; payableAmount?: string; finalizedAmount?: string | null; lateNotice: boolean; needsAction: boolean;
 }
 
@@ -47,7 +48,7 @@ export default function ClaimsList() {
       <ErrorBox message={error} />
       <div className="card overflow-x-auto">
         <table className="table">
-          <thead><tr>{['شماره', 'نوع', 'بیمه‌گر', 'بیمه‌شده', 'مبلغ', 'وضعیت', ''].map((h) => <th key={h}>{h}</th>)}</tr></thead>
+          <thead><tr>{['کد ملی متوفی', 'نوع', 'بیمه‌گر', 'بیمه‌شده', 'مبلغ', 'وضعیت', ''].map((h) => <th key={h}>{h}</th>)}</tr></thead>
           <tbody>
             {loading ? (
               <tr><td colSpan={7} className="text-center py-8" style={{ color: 'var(--muted)' }}>در حال بارگذاری…</td></tr>
@@ -55,7 +56,7 @@ export default function ClaimsList() {
               <tr><td colSpan={7} className="text-center py-8" style={{ color: 'var(--muted)' }}>پرونده‌ای نیست</td></tr>
             ) : shown.map((c) => (
               <tr key={c.id} style={{ cursor: 'pointer' }} onClick={() => router.push(`/org/claims/${c.id}`)}>
-                <td className="font-semibold">{c.claimNumber}</td>
+                <td className="font-semibold" style={{ direction: 'ltr', textAlign: 'right' }} title={caseTitle(c)}>{c.deceasedNationalCode || '—'}</td>
                 <td>{CLAIM_TYPE_LABELS[c.claimType] || c.claimType}</td>
                 <td>{insName(c.insurerTenantId)}</td>
                 <td>{c.deceasedName}</td>

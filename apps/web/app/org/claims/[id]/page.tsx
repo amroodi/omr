@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { ORG_NAV } from '../../nav';
 import { FieldsSection } from './fields-section';
 import { Workflow, WorkflowPanel, WorkflowTimeline, TimelineStep } from '../../../components/WorkflowPanel';
+import { caseRef, caseTitle } from '../../../../lib/caseTitle';
 
 interface DocReview { stage: string; state: string; canEdit: boolean }
 interface ClaimDoc { id: string; fileName: string; status: string; statusLabel: string; note: string | null; uploadedAt: string | null; version: number; isLatest: boolean; reviews?: DocReview[] }
@@ -18,7 +19,7 @@ const DOC_BADGE: Record<string, string> = { PENDING: 'badge-warning', VERIFIED: 
 interface StepPerson { name: string | null; phone: string | null; nationalCode: string | null }
 interface Step { order: number; partyType: string; state: string; holderName?: string | null; holderKind?: string | null; branchName?: string | null; levelName?: string | null; decidedByName?: string | null; decidedAt?: string | null; person?: StepPerson | null }
 interface Claim {
-  id: string; claimNumber: string; status: string; claimType: string; deceasedName: string | null;
+  id: string; claimNumber: string; policyNumber?: string | null; status: string; claimType: string; deceasedName: string | null;
   claimedAmount: string; estimatedAmount?: string; finalizedAmount?: string | null; payableAmount?: string;
   eventDate: string | null; noticeDeadline: string | null; lateNotice: boolean;
   deceasedBirthDate?: string | null; deceasedAge?: number | null;
@@ -130,7 +131,7 @@ export default function ClaimDetail() {
   ) : null;
 
   return (
-    <Shell title={claim ? `پرونده ${claim.claimNumber}` : 'پرونده خسارت'} nav={ORG_NAV} realm="org">
+    <Shell title={claim ? caseTitle(claim) : 'پرونده خسارت'} nav={ORG_NAV} realm="org">
       <ErrorBox message={error} />
       {!claim ? <div className="card p-12 flex justify-center"><FancyLoader label="در حال بارگذاری پرونده" /></div> : (
         <div className="space-y-5">
@@ -159,8 +160,8 @@ export default function ClaimDetail() {
           <div className="claim-hero">
             <div className="flex items-start justify-between gap-3 flex-wrap">
               <div className="min-w-0">
-                <div className="text-xs opacity-75">پرونده خسارت</div>
-                <div className="text-2xl font-extrabold leading-tight">{claim.claimNumber}</div>
+                <div className="text-xs opacity-75">{claim.policyNumber ? 'شماره بیمه‌نامه' : 'پرونده خسارت'}</div>
+                <div className="text-2xl font-extrabold leading-tight">{caseRef(claim)}</div>
                 <div className="text-base font-bold mt-1">{claim.deceasedName}</div>
               </div>
               <div className="flex items-center gap-2 flex-wrap">

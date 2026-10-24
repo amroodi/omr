@@ -5,15 +5,16 @@ import { client, getToken } from '../../../lib/client';
 import { Shell, Icon } from '../../components/Shell';
 import { ORG_NAV } from '../nav';
 import { ClaimTypeBadge, CLAIM_TYPE_LABELS, ErrorBox, FancyLoader, StatusBadge } from '../../components/ui';
+import { caseTitle } from '../../../lib/caseTitle';
 
-interface Row { id: string; claimNumber: string; status: string; claimType: string; deceasedName: string | null; insurerTenantId?: string }
+interface Row { id: string; claimNumber: string; policyNumber?: string | null; deceasedNationalCode?: string | null; status: string; claimType: string; deceasedName: string | null; insurerTenantId?: string }
 interface DocReview { stage: string; state: string }
 interface Doc { id: string; fileName: string; status: string; statusLabel: string; reviews?: DocReview[] }
 interface Item { code: string; label: string; uploaded: boolean; documents: Doc[] }
 interface Checklist { complete: boolean; items: Item[]; otherDocuments?: Doc[] }
 interface Step { order: number; partyType: string; stageLabel?: string | null; state: string; holderName?: string | null; branchName?: string | null; decidedByName?: string | null; decidedAt?: string | null }
 interface Claim {
-  id: string; claimNumber: string; status: string; claimType: string; deceasedName: string | null;
+  id: string; claimNumber: string; policyNumber?: string | null; deceasedNationalCode?: string | null; status: string; claimType: string; deceasedName: string | null;
   estimatedAmount?: string; claimedAmount: string; finalizedAmount?: string | null; payableAmount?: string;
   eventDate: string | null; noticeDeadline: string | null; createdAt: string | null;
   insurer?: { name: string } | null; broker?: { name: string } | null; sellingBranchName?: string | null;
@@ -114,7 +115,7 @@ export default function TrackClaim() {
               </div>
             </div>
             <div className="flex items-center justify-between gap-3 mt-3 flex-wrap">
-              <span className="font-bold">پرونده {sel.claimNumber}</span>
+              <span className="font-bold">{caseTitle(sel)}</span>
               <span className="flex items-center gap-2 flex-wrap">
                 <StatusBadge status={sel.status} />
                 <span className="trk-type-chip"><span className="dot" style={{ background: TYPE_DOT[sel.claimType] || '#888' }} />{CLAIM_TYPE_LABELS[sel.claimType] || sel.claimType}</span>
@@ -210,11 +211,11 @@ export default function TrackClaim() {
             <div className="p-8 text-center text-sm" style={{ color: 'var(--muted)' }}>پرونده‌ای یافت نشد.</div>
           ) : (
             <table className="table">
-              <thead><tr>{['شماره پرونده', 'نوع', 'بیمه‌شده (متوفی)', 'بیمه‌گر', 'وضعیت', ''].map((h) => <th key={h}>{h}</th>)}</tr></thead>
+              <thead><tr>{['کد ملی متوفی', 'نوع', 'بیمه‌شده (متوفی)', 'بیمه‌گر', 'وضعیت', ''].map((h) => <th key={h}>{h}</th>)}</tr></thead>
               <tbody>
                 {results.map((r) => (
                   <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => open(r.id)}>
-                    <td className="font-semibold">{r.claimNumber}</td>
+                    <td className="font-semibold" style={{ direction: 'ltr', textAlign: 'right' }} title={caseTitle(r)}>{r.deceasedNationalCode || '—'}</td>
                     <td><ClaimTypeBadge type={r.claimType} /></td>
                     <td>{r.deceasedName || '—'}</td>
                     <td>{(r.insurerTenantId && insurers[r.insurerTenantId]) || '—'}</td>

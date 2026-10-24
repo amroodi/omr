@@ -42,6 +42,7 @@ interface FileClaimInput {
   deceasedBirthDate?: string; // ISO
   policyHolderId?: string;
   policyholderCompanyId?: string; // بیمه‌گزار company (set automatically when the بیمه‌گزار files)
+  onBehalf?: boolean; // کارگزاری files *as* the بیمه‌گزار company (claim:file-on-behalf) — starts at their desk
 }
 
 /** The caller's seat in the claim chain (see myDesk). */
@@ -122,6 +123,35 @@ export class ClaimsService {
   }
 
   // ─────────────────────────── Filing ───────────────────────────
+  /**
+   * کارگزاری staff with claim:file-on-behalf open a case for one of their بیمه‌گزار companies (when the
+   * company asks the brokerage to do the job for them). The insurer comes from the company's contract.
+   */
+  async fileOnBehalf(input: Omit<FileClaimInput, 'channel' | 'insurerTenantId' | 'brokerTenantId' | 'sellingBranchId' | 'onBehalf'> & { policyholderCompanyId: string }) {
+    const ctx = getContext();
+    const company = await this.db().policyholderCompany.findUnique({ where: { id: input.policyholderCompanyId }, select: { tenantId: true, isActive: true } });
+    if (!company || company.tenantId !== ctx?.tenantId) throw new NotFoundException('شرکت بیمه‌گزار یافت نشد');
+    if (!company.isActive) throw new BadRequestException('این شرکت بیمه‌گزار غیرفعال است');
+    if (input.policyHolderId) {
+      const acc = await this.db().customerAccount.findUnique({ where: { id: input.policyHolderId }, select: { companyId: true } });
+      if (acc?.companyId !== input.policyholderCompanyId) throw new BadRequestException('نماینده انتخاب‌شده متعلق به این شرکت نیست');
+    }
+    return this.file({ ...input, channel: 'BROKER' as SalesChannel, onBehalf: true });
+  }
+
+  /** Companies the caller's brokerage serves, with their current insurer and representatives — for the on-behalf form. */
+  async onBehalfCompanies() {
+    const companies = (await this.policyholders.list()).filter((c) => c.isActive);
+    const accounts = companies.length
+      ? await this.prisma.scoped.customerAccount.findMany({ where: { companyId: { in: companies.map((c) => c.id) } }, select: { id: true, companyId: true, fullName: true } })
+      : [];
+    return companies.map((c) => ({
+      id: c.id, name: c.name, hasLogo: c.hasLogo, currentInsurer: c.currentInsurer,
+      contracts: c.contracts.filter((k) => k.isActive).map((k) => ({ insurerName: k.insurerName, policyNumber: k.policyNumber, startDate: k.startDate, endDate: k.endDate, isCurrent: k.isCurrent })),
+      accounts: accounts.filter((a) => a.companyId === c.id).map((a) => ({ id: a.id, fullName: this.crypto.decrypt(a.fullName) ?? 'بی‌نام' })),
+    }));
+  }
+
   async file(input: FileClaimInput) {
     const db = this.db();
     const ctx = getContext();
@@ -180,7 +210,9 @@ export class ClaimsService {
 
     // The بیمه‌گزار keeps a claim they filed until they press «ارسال به …» (documents are uploaded
     // first); an operator filing on their behalf puts it straight onto the first reviewer's desk.
-    const byPolicyHolder = getContext()?.actorType === 'CUSTOMER';
+    // Filing on behalf (claim:file-on-behalf) works the same: the case starts at the بیمه‌گزار desk, where
+    // the کارگزاری staff upload the documents and press «ارسال به کارگزاری» for them.
+    const byPolicyHolder = getContext()?.actorType === 'CUSTOMER' || !!input.onBehalf;
     const firstStage: Stage = byPolicyHolder ? 'POLICYHOLDER' : input.channel === 'BROKER' ? 'BROKER' : 'BRANCH';
 
     const nid = input.deceasedNationalCode;
@@ -192,7 +224,7 @@ export class ClaimsService {
         channel: input.channel,
         brokerTenantId: input.channel === 'BROKER' ? input.brokerTenantId : null,
         sellingBranchId: moarefBranchId,
-        policyHolderId: input.policyHolderId ?? getContext()?.actorId ?? null,
+        policyHolderId: input.onBehalf ? input.policyHolderId ?? null : input.policyHolderId ?? getContext()?.actorId ?? null,
         policyholderCompanyId: companyId,
         deceasedBirthDate: input.deceasedBirthDate ? new Date(input.deceasedBirthDate) : null,
         deceasedFullName: this.crypto.encrypt(input.deceasedFullName)!,
@@ -232,7 +264,7 @@ export class ClaimsService {
       include: { steps: true },
     });
 
-    await this.audit.record({ action: AuditAction.CLAIM_SUBMIT, tenantId: insurerTenantId, targetType: 'Claim', targetId: claim.id, metadata: { channel: input.channel, moaref: moarefRole } });
+    await this.audit.record({ action: AuditAction.CLAIM_SUBMIT, tenantId: insurerTenantId, targetType: 'Claim', targetId: claim.id, metadata: { channel: input.channel, moaref: moarefRole, ...(input.onBehalf ? { onBehalf: true, companyId } : {}) } });
     if (byPolicyHolder) {
       await this.notifyPolicyHolder(claim.policyHolderId, 'ثبت پرونده خسارت', `پرونده ${claim.claimNumber} ثبت شد؛ مدارک را بارگذاری و پرونده را ارسال کنید.`);
     } else {
@@ -1079,7 +1111,7 @@ export class ClaimsService {
       this.myDesk(),
     ]);
     const claims = term && !nidHash
-      ? rows.filter((c) => c.claimNumber.toLowerCase().includes(term.toLowerCase()) || (this.crypto.decrypt(c.deceasedFullName) ?? '').includes(term))
+      ? rows.filter((c) => c.claimNumber.toLowerCase().includes(term.toLowerCase()) || (c.policyNumber ?? '').includes(term) || (this.crypto.decrypt(c.deceasedFullName) ?? '').includes(term))
       : rows;
     return claims.map((c) => ({ ...(this.present(c) as object), needsAction: this.holdsDesk(c, desk) }));
   }
@@ -1195,7 +1227,7 @@ export class ClaimsService {
     const and: Prisma.ClaimWhereInput[] = [this.wdScope(getContext()?.tenantId)];
     const clean = (s?: string) => (s ?? '').trim();
 
-    if (clean(q.claimNumber)) and.push({ claimNumber: { contains: clean(q.claimNumber), mode: 'insensitive' } });
+    if (clean(q.claimNumber)) and.push({ OR: [{ claimNumber: { contains: clean(q.claimNumber), mode: 'insensitive' } }, { policyNumber: { contains: clean(q.claimNumber), mode: 'insensitive' } }] });
     if (clean(q.deceasedNationalCode)) {
       const h = this.crypto.blindIndex(clean(q.deceasedNationalCode).replace(/\D/g, ''));
       if (h) and.push({ deceasedNationalCodeHash: h });
@@ -1308,6 +1340,7 @@ export class ClaimsService {
       policyNumber: c.policyNumber ?? null,
       description: c.description ?? null,
       deceasedName: c.deceasedFullName ? this.crypto.decrypt(c.deceasedFullName) : null,
+      deceasedNationalCode: c.deceasedNationalCode ? this.crypto.decrypt(c.deceasedNationalCode) : null, // lists identify a case by it
       insurerTenantId: c.insurerTenantId,
       brokerTenantId: c.brokerTenantId,
       eventDate: c.eventDate ? toJalali(c.eventDate, false) : null,
