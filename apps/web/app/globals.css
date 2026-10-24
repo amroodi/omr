@@ -1236,3 +1236,62 @@ html[data-wall] .pshell { background-blend-mode: normal; }
   .rp-field { min-width: 0; flex: 1 1 140px; }
 }
 @media print { .psidebar, .ptopbar, .rp-builder, .rp-wrap > .pcard:first-child, .rp-actions { display: none !important; } }
+
+/* ── بیمه‌گزار case page: precise document trail, upload ring, final submit + result page ── */
+.cu-doc.tone-ok { border-color: #86efac; }
+.cu-doc.tone-bad { border-color: #fca5a5; }
+.cu-story { font-size: .8rem; margin-top: 2px; color: var(--muted); }
+.cu-doc.tone-ok .cu-story { color: #15803d; }
+.cu-doc.tone-bad .cu-story { color: var(--danger); font-weight: 700; }
+.cu-trail { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
+.cu-step { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 4px 10px; font-size: .72rem; font-weight: 700; background: var(--surface-2); color: var(--muted); }
+.cu-step svg { width: 13px; height: 13px; stroke-width: 3; }
+.cu-step.is-ok { background: #dcfce7; color: #15803d; }
+.cu-step.is-no { background: #fee2e2; color: #dc2626; }
+.cu-step.is-wait { background: #fef3c7; color: #b45309; }
+:root.dark .cu-step.is-ok { background: #12301f; color: #4ade80; }
+:root.dark .cu-step.is-no { background: #3b1219; color: #f87171; }
+:root.dark .cu-step.is-wait { background: #33270f; color: #fbbf24; }
+.cu-view { display: inline-flex; align-items: center; gap: 4px; font-size: .74rem; font-weight: 700; color: var(--brand); margin-inline-start: auto; }
+.cu-view svg { width: 14px; height: 14px; }
+.cu-reason { flex-basis: 100%; font-size: .76rem; color: var(--danger); }
+.cu-err { margin-top: 6px; font-size: .76rem; color: var(--danger); }
+.cu-older { margin-top: 8px; font-size: .76rem; }
+.cu-older summary { cursor: pointer; color: var(--muted); font-weight: 700; }
+.cu-check { background: #16a34a; color: #fff; border-color: #16a34a; cursor: default; }
+.cu-check.is-bad { background: #ef4444; border-color: #ef4444; }
+.cu-check svg { stroke-width: 3; }
+.cu-urgent { background: #fee2e2; color: #dc2626; border-color: #fca5a5; animation: cu-pulse 1.6s ease-in-out infinite; }
+@keyframes cu-pulse { 50% { box-shadow: 0 0 0 5px rgba(239,68,68,.18); } }
+.up-ring { position: relative; width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center; }
+.up-ring svg { position: absolute; inset: 0; transform: rotate(-90deg); }
+.up-ring-track { fill: none; stroke: var(--surface-2); stroke-width: 3.5; }
+.up-ring-bar { fill: none; stroke: var(--brand); stroke-width: 3.5; stroke-linecap: round; transition: stroke-dashoffset .2s linear; }
+.up-ring-t { font-size: .62rem; font-weight: 800; color: var(--brand); }
+.cu-final { background: #16a34a !important; }
+.cu-sent { display: inline-flex; align-items: center; gap: 8px; padding: 12px 18px; border-radius: 14px; background: #dcfce7; color: #15803d; font-weight: 700; font-size: .86rem; }
+:root.dark .cu-sent { background: #12301f; color: #4ade80; }
+.cu-sent svg { width: 18px; height: 18px; }
+.cu-result { padding: clamp(28px, 6vw, 56px) 24px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px; min-height: calc(55 * var(--zvh)); justify-content: center; }
+.cu-big { width: 132px; height: 132px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: #fff; animation: cu-pop .45s cubic-bezier(.2,1.4,.4,1) both; }
+.cu-big svg { width: 70px; height: 70px; stroke-width: 3.2; }
+.cu-big.is-ok { background: #16a34a; box-shadow: 0 18px 40px -16px rgba(22,163,74,.8); }
+.cu-big.is-no { background: #ef4444; box-shadow: 0 18px 40px -16px rgba(239,68,68,.8); }
+@keyframes cu-pop { from { transform: scale(.4); opacity: 0; } to { transform: none; opacity: 1; } }
+.cu-result-t { font-size: 1.35rem; font-weight: 800; }
+.cu-result-p { color: var(--muted); line-height: 1.9; max-width: 480px; }
+.cu-result-list { text-align: right; list-style: disc; padding-inline-start: 22px; color: var(--danger); font-size: .88rem; line-height: 1.9; }
+.cu-result-btns { display: flex; gap: 10px; margin-top: 10px; }
+@media (prefers-reduced-motion: reduce) { .cu-big, .cu-urgent { animation: none; } }
+
+/* Assessment: image viewer toolbar (images get the same tools the PDF viewer has) */
+.iv { border-radius: 10px; overflow: hidden; background: #525659; }
+.iv-bar { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; background: #323639; color: #fff; padding: 6px 10px; }
+.iv-btn { width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: #fff; font-size: 1.1rem; font-weight: 700; }
+.iv-btn:hover { background: rgba(255,255,255,.12); }
+.iv-btn svg { width: 17px; height: 17px; }
+.iv-pct { min-width: 46px; text-align: center; font-size: .8rem; }
+.iv-sep { width: 1px; height: 20px; background: rgba(255,255,255,.25); margin: 0 4px; }
+.iv-grow { flex: 1; }
+.iv-stage { overflow: auto; max-height: calc(75 * var(--zvh)); padding: 12px; display: flex; justify-content: center; align-items: flex-start; }
+.iv-img { display: block; max-width: none; height: auto; background: #fff; box-shadow: 0 4px 14px rgba(0,0,0,.35); transition: transform .2s; }

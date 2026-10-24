@@ -546,6 +546,13 @@ export class ClaimsService {
   }
 
   /** بیمه‌گزار sends the claim on — initial submission or after رفع نقص. */
+  /** Field values of a claim for a party that may only read them (the بیمه‌گزار's «روند پرونده»). */
+  async fieldsReadOnly(claimId: string) {
+    const d = await this.fields.listForClaim(claimId);
+    for (const g of Object.values(d.groups)) for (const f of g as any[]) f.canEdit = false;
+    return d;
+  }
+
   async rectify(claimId: string, note?: string) {
     return this.act(claimId, { action: 'SUBMIT', note });
   }
@@ -944,6 +951,7 @@ export class ClaimsService {
     const reviewerIds = [...new Set(docReviews.map((r) => r.reviewerId).filter((x): x is string => !!x))];
     const reviewers = reviewerIds.length ? await db.orgUser.findMany({ where: { id: { in: reviewerIds } }, select: { id: true, displayName: true, username: true } }) : [];
     const reviewerName = new Map(reviewers.map((u) => [u.id, u.displayName || u.username]));
+    const isCustomer = getContext()?.actorType === 'CUSTOMER';
     const applicableStages = await this.reviewDesks(claim);
     const desk = await this.myDesk();
     const canEditStage = Object.fromEntries(applicableStages.map((st) => [st, this.canReviewStage(claim, st, desk)])) as Record<string, boolean>;
@@ -967,7 +975,9 @@ export class ClaimsService {
             canEdit: canEditStage[st],
             // Last change (shown on hover) and how many changes there were (more than one → full history on click).
             changedAt: r ? toJalali(r.decidedAt ?? r.updatedAt) : null,
-            changedBy: r?.reviewerId ? reviewerName.get(r.reviewerId) ?? null : null,
+            // Operator names stay inside the organizations; the بیمه‌گزار sees the desk, time and reason.
+            changedBy: r?.reviewerId && !isCustomer ? reviewerName.get(r.reviewerId) ?? null : null,
+            note: r?.state === 'REJECTED' ? r.note ?? null : null, // why this desk rejected it
             changes: changeCount.get(`${d.id}|${st}`) ?? 0,
           };
         }),

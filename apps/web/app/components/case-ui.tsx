@@ -2,10 +2,10 @@
 import { ReactNode, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { client } from '../../../../lib/client';
-import { Icon } from '../../../components/Shell';
-import { CLAIM_TYPE_LABELS } from '../../../components/ui';
-import type { Workflow, TimelineStep } from '../../../components/WorkflowPanel';
+import { client, Realm } from '../../lib/client';
+import { Icon } from './Shell';
+import { CLAIM_TYPE_LABELS } from './ui';
+import type { Workflow, TimelineStep } from './WorkflowPanel';
 
 /**
  * Pieces shared by the case page (پیش‌نمایش) and its two sub-pages («مراحل و وضعیت گردش کار» and
@@ -13,14 +13,14 @@ import type { Workflow, TimelineStep } from '../../../components/WorkflowPanel';
  * with the dates and the case-notes pill, then grey-bodied cards with white label/value rows.
  */
 
-export interface DocReview { stage: string; state: string; canEdit: boolean; changedAt?: string | null; changedBy?: string | null; changes?: number }
+export interface DocReview { stage: string; state: string; canEdit: boolean; changedAt?: string | null; changedBy?: string | null; changes?: number; note?: string | null }
 export interface ClaimDoc { id: string; fileName: string; status: string; statusLabel: string; note: string | null; uploadedAt: string | null; version: number; isLatest: boolean; reviews?: DocReview[] }
 export interface ChecklistItem { code: string; label: string; uploaded: boolean; latestStatus: string | null; documents: ClaimDoc[] }
 export interface Checklist { claimType: string; complete: boolean; items: ChecklistItem[]; otherDocuments?: ClaimDoc[] }
 export interface FieldRow { key: string; label: string; type: string; options: string[]; required: boolean; value: string | null; source: string | null; confirmed: boolean; canEdit: boolean }
 export interface FieldsData { party: string; groups: Record<string, FieldRow[]> }
 export interface CaseClaim {
-  id: string; claimNumber: string; policyNumber?: string | null; status: string; claimType: string;
+  id: string; claimNumber: string; policyNumber?: string | null; status: string; claimType: string; insurerTenantId?: string;
   deceasedName: string | null; deceasedNationalCode?: string | null; deceasedBirthDate?: string | null; deceasedAge?: number | null;
   eventDate: string | null; createdAt?: string | null; paidDate?: string | null; noticeDeadline: string | null; lateNotice: boolean;
   claimedAmount: string; estimatedAmount?: string; finalizedAmount?: string | null; payableAmount?: string;
@@ -46,17 +46,18 @@ export const fmtAmount = (v: string | number | null | undefined) => {
 export const dateOnly = (s?: string | null) => (s ? s.split(' ')[0] : null);
 
 /** Loads the claim, its field values and its document checklist together. */
-export function useCase(id: string) {
+export function useCase(id: string, realm: Realm = 'org') {
   const [claim, setClaim] = useState<CaseClaim | null>(null);
   const [fields, setFields] = useState<FieldsData | null>(null);
   const [checklist, setChecklist] = useState<Checklist | null>(null);
   const [error, setError] = useState('');
   const load = async () => {
     try {
+      const base = realm === 'customer' ? '/customer/claims' : '/claims';
       const [c, f, cl] = await Promise.all([
-        client.get<CaseClaim>(`/claims/${id}`, 'org'),
-        client.get<FieldsData>(`/claims/${id}/fields`, 'org').catch(() => null),
-        client.get<Checklist>(`/claims/${id}/checklist`, 'org'),
+        client.get<CaseClaim>(`${base}/${id}`, realm),
+        client.get<FieldsData>(`${base}/${id}/fields`, realm).catch(() => null),
+        client.get<Checklist>(`${base}/${id}/checklist`, realm),
       ]);
       setClaim(c); setFields(f); setChecklist(cl);
     } catch (e: any) { setError(e.message); }
@@ -107,29 +108,43 @@ export const ICONS = {
   back: 'M9 18l6-6-6-6',
 };
 
-/** Navy header card: title + company, the two date chips, the notes pill and the back/exit buttons. */
-export function CaseHero({ title, claim, notes, back }: { title: string; claim: CaseClaim; notes: string; back?: string }) {
+/**
+ * Navy header card: title + subtitle, white chips (by default the two dates), the notes pill and the
+ * back/exit buttons. `exitHref` is where «خروج» goes (the org Work Desk, or the بیمه‌گزار home).
+ */
+export function CaseHero({ title, claim, notes, notesLabel = 'توضیحات پرونده:', back, sub, chips, badge, exitHref = '/org/work-desk' }: {
+  title: string; claim: CaseClaim; notes: string; notesLabel?: string; back?: string; sub?: string;
+  chips?: { label: string; value: ReactNode; icon?: string }[]; badge?: ReactNode; exitHref?: string;
+}) {
   const router = useRouter();
+  const list = chips ?? [
+    { label: 'تاریخ ثبت اولیه', value: dateOnly(claim.createdAt) || '—', icon: CAL },
+    { label: 'تاریخ پرداخت', value: claim.paidDate || '—', icon: CAL },
+  ];
   return (
     <div className="cs-hero">
       <div className="cs-hero-main">
-        <div className="cs-hero-title"><span className="cs-ico"><Icon path={ICONS.policy} /></span>{title}</div>
-        <div className="cs-hero-sub">{claim.policyholderCompany?.name || claim.insurer?.name || '—'}</div>
-        <div className="cs-dates">
-          <span className="cs-date"><span className="cap">تاریخ ثبت اولیه</span><Icon path={CAL} /><b>{dateOnly(claim.createdAt) || '—'}</b></span>
-          <span className="cs-date"><span className="cap">تاریخ پرداخت</span><Icon path={CAL} /><b>{claim.paidDate || '—'}</b></span>
-        </div>
+        <div className="cs-hero-title"><span className="cs-ico"><Icon path={ICONS.policy} /></span>{title}{badge}</div>
+        <div className="cs-hero-sub">{sub ?? (claim.policyholderCompany?.name || claim.insurer?.name || '—')}</div>
+        {list.length > 0 && (
+          <div className="cs-dates">
+            {list.map((c) => <span key={c.label} className="cs-date"><span className="cap">{c.label}</span><Icon path={c.icon || CAL} /><b>{c.value}</b></span>)}
+          </div>
+        )}
       </div>
       <div className="cs-hero-side">
-        <div className="cs-notes"><span className="cap">توضیحات پرونده:</span><NotesPill text={notes} /></div>
+        <div className="cs-notes"><span className="cap">{notesLabel}</span><NotesPill text={notes} /></div>
         <div className="cs-hero-btns no-pdf">
           {back && <Link href={back} className="cs-btn-back"><Icon path={ICONS.back} /> بازگشت</Link>}
-          <button type="button" className="cs-btn-exit" onClick={() => router.push('/org/work-desk')}><Icon path={ICONS.exit} /> خروج</button>
+          <button type="button" className="cs-btn-exit" onClick={() => router.push(exitHref)}><Icon path={ICONS.exit} /> خروج</button>
         </div>
       </div>
     </div>
   );
 }
+
+export const ICON_CAL = CAL;
+
 
 /** Grey-bodied card with a navy head (icon, title, optional note) that folds open/closed. */
 export function InfoCard({ title, icon, aside, children, wide }: { title: string; icon: string; aside?: string; children: ReactNode; wide?: boolean }) {
@@ -194,5 +209,53 @@ export function PersonCards({ claim, fv }: { claim: CaseClaim; fv: Record<string
       <div className="cs-person"><span className="cs-person-ico"><Icon path={ICONS.user} /></span><div><div className="cap">نام و نام خانوادگی</div><b>{isDeath && !name.startsWith('مرحوم') && name !== '—' ? `مرحوم ${name}` : name}</b></div></div>
       <div className="cs-person"><span className="cs-person-ico"><Icon path={ICONS.doc} /></span><div><div className="cap">نام شرکت / محل فعالیت</div><b>{claim.policyholderCompany?.name || fv.company_name || '—'}</b></div></div>
     </div>
+  );
+}
+
+/** Each executive step of the case: its date field and its status field (WORKFLOW_STAGE fields). */
+const WF_STEPS: { label: string; date?: string; status?: string; extra?: string }[] = [
+  { label: 'اعلام کارگزاری به بیمه‌گر', date: 'broker_to_insurer_date', status: 'broker_to_insurer_status' },
+  { label: 'اعلام فوت', date: 'death_notice_date', status: 'death_notice_status' },
+  { label: 'مراحل اجرایی', status: 'execution_stages' },
+  { label: 'درخواست مدارک', date: 'docs_request_date', status: 'docs_request_status' },
+  { label: 'دریافت مدارک', date: 'docs_receive_date', status: 'docs_receive_status' },
+  { label: 'درخواست کسری مدارک', date: 'missing_docs_request_date', status: 'missing_docs_request_status' },
+  { label: 'تکمیل پرونده', date: 'case_complete_date', status: 'case_complete_status', extra: 'case_complete' },
+  { label: 'ارسال به ستاد', date: 'send_to_hq_date', status: 'send_to_hq_status' },
+  { label: 'تایید شورای فنی و سایر', date: 'council_approve_date', status: 'council_approve_status' },
+  { label: 'برگشت به شعبه', date: 'return_to_branch_date', status: 'return_to_branch_status' },
+  { label: 'حواله پرداخت', date: 'payment_order_date', status: 'payment_order_status', extra: 'payment_order' },
+];
+/** Group 874's table: every executive step with its date and status, then «توضیحات پرونده». */
+export function WorkflowStepsTable({ claim, fv }: { claim: CaseClaim; fv: Record<string, string> }) {
+  return (
+    <section className="cs-table">
+              <div className="cs-table-h cs-grid-wf">
+                <span className="cs-th-main"><span className="cs-ico sm"><Icon path={ICONS.list} /></span>مراحل اجرایی</span>
+                <span>تاریخ</span>
+                <span>وضعیت</span>
+              </div>
+              <div className="cs-table-b">
+                {WF_STEPS.map((s) => {
+                  const date = s.date ? fv[s.date] : '';
+                  const status = [s.extra && s.extra !== 'payment_order' ? fv[s.extra] : '', s.status ? fv[s.status] : '', s.extra === 'payment_order' && fv.payment_order ? `حواله: ${fv.payment_order}` : '']
+                    .filter(Boolean).join(' — ');
+                  const done = !!(date || status);
+                  return (
+                    <div key={s.label} className="cs-tr cs-grid-wf">
+                      <span className="cs-td-main">{s.label}:</span>
+                      <span className="cs-td-date">{date ? faD(date) : '—'}</span>
+                      <span className="cs-td-status">
+                        <span className="min-w-0">{status || '—'}</span>
+                        <span className={`cs-mark ${done ? 'is-ok' : 'is-wait'}`} title={done ? 'ثبت شده' : 'هنوز ثبت نشده'}>
+                          <Icon path={done ? 'M20 6L9 17l-5-5' : 'M7 12h10'} />
+                        </span>
+                      </span>
+                    </div>
+                  );
+                })}
+                <div className="cs-tr cs-foot"><span className="cs-foot-l">توضیحات پرونده:</span><NotesPill text={fv.case_notes || phaseText(claim)} /></div>
+              </div>
+            </section>
   );
 }

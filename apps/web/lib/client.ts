@@ -128,6 +128,29 @@ export const client = {
     a.click();
     URL.revokeObjectURL(url);
   },
+  // Multipart upload that reports progress (fetch can't): onProgress gets 0–1 and the estimated seconds left.
+  upload: <T>(path: string, form: FormData, realm: Realm, onProgress: (fraction: number, secondsLeft: number | null) => void) =>
+    new Promise<T>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${BASE}${path}`);
+      Object.entries(headers(realm, false)).forEach(([k, v]) => xhr.setRequestHeader(k, v));
+      const started = Date.now();
+      xhr.upload.onprogress = (e) => {
+        if (!e.lengthComputable) return;
+        const f = e.loaded / e.total;
+        const elapsed = (Date.now() - started) / 1000;
+        onProgress(f, f > 0.02 && elapsed > 0.3 ? Math.max(0, Math.round((elapsed / f) * (1 - f))) : null);
+      };
+      xhr.onload = () => {
+        let data: any = {};
+        try { data = JSON.parse(xhr.responseText || '{}'); } catch { /* not JSON */ }
+        if (xhr.status >= 200 && xhr.status < 300) { onProgress(1, 0); resolve(data as T); return; }
+        if (xhr.status === 401) onUnauthorized(realm);
+        reject(new Error(data.message || `خطا (${xhr.status})`));
+      };
+      xhr.onerror = () => reject(new Error('ارتباط با سرور برقرار نشد؛ اتصال اینترنت را بررسی و دوباره تلاش کنید'));
+      xhr.send(form);
+    }),
   // POST a JSON body and save the file the server returns (e.g. a report built in the browser → Excel).
   downloadPost: async (path: string, body: unknown, realm: Realm, filename: string) => {
     const res = await fetch(`${BASE}${path}`, { method: 'POST', headers: headers(realm), body: JSON.stringify(body) });
