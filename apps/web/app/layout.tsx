@@ -4,6 +4,7 @@ import { AppHeader } from './components/AppHeader';
 import { ThemeApplier } from './components/ThemeApplier';
 import { THEME_BOOT_SCRIPT } from '../lib/theme';
 import { SCALE_BOOT_SCRIPT } from '../lib/scale';
+import { WALL_BOOT_SCRIPT } from '../lib/wallpaper';
 
 export const metadata: Metadata = {
   title: 'دامون | سامانه هوشمند مدیریت بیمه',
@@ -23,6 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
         <script dangerouslySetInnerHTML={{ __html: SCALE_BOOT_SCRIPT }} />
+        <script dangerouslySetInnerHTML={{ __html: WALL_BOOT_SCRIPT }} />
       </head>
       <body>
         <ThemeApplier />

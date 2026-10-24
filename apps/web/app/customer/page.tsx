@@ -6,7 +6,7 @@ import { client, getToken } from '../../lib/client';
 import { Shell } from '../components/Shell';
 import { Faq } from '../components/Faq';
 import { CUSTOMER_NAV } from './nav';
-import { BigIcon, CLAIM_TYPE_LABELS, ErrorBox, PanelStat, StatusBadge } from '../components/ui';
+import { BigIcon, CLAIM_TYPE_LABELS, ErrorBox, PanelStat, Spinner, StatusBadge } from '../components/ui';
 
 interface MyCase {
   caseNumber: string; status: string;
@@ -187,7 +187,7 @@ export default function CustomerDashboard() {
 
         {view && view !== 'faq' && view !== 'search' && (
           loading ? (
-            <div className="pcard p-10 text-center"><span className="pspinner inline-block" /></div>
+            <div className="pcard p-10 text-center"><Spinner /></div>
           ) : listed.length === 0 && listedCases.length === 0 ? (
             <div className="pcard p-8 text-center space-y-3">
               <p className="text-sm" style={{ color: 'var(--muted)' }}>{view === 'all' ? 'هنوز پرونده‌ای ندارید. برای شروع، یک پرونده خسارت ثبت کنید و سپس مدارک را بارگذاری کنید.' : 'پرونده‌ای در این دسته نیست.'}</p>

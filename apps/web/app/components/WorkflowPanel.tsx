@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { toGregorian } from 'jalaali-js';
 import { client } from '../../lib/client';
 import { JalaliDatePicker } from './JalaliDatePicker';
+import { Overlay } from './ui';
 
 /** Shape of `workflow` on GET /claims/:id (see apps/api/src/modules/claims/workflow.ts). */
 export interface WorkflowAction {
@@ -220,7 +221,7 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact }: 
       {err && !open && <div className="alert-error text-sm">{err}</div>}
 
       {open && (
-        <div className="pmodal-backdrop" onClick={() => !busy && setOpen(null)}>
+        <Overlay onClose={() => !busy && setOpen(null)}>
           <div className="pmodal" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
             <div className="pmodal-head">
               <span className="pmodal-title">{open.label}</span>
@@ -271,7 +272,7 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact }: 
               <button onClick={submit} disabled={busy || (!!open.branchOptions && !branchId) || (!!open.needsNote && !note.trim())} className="flex-1 py-3 font-bold" style={{ color: 'var(--brand)' }}>{busy ? 'در حال ارسال…' : 'تایید و ارسال'}</button>
             </div>
           </div>
-        </div>
+        </Overlay>
       )}
     </div>
   );

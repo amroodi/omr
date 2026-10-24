@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { client, hasPerm } from '../../../../../lib/client';
 import { Shell, Icon } from '../../../../components/Shell';
-import { ClaimTypeBadge, CLAIM_TYPE_LABELS, ErrorBox, FancyLoader, StatusBadge } from '../../../../components/ui';
+import { CLAIM_TYPE_LABELS, ClaimTypeBadge, ErrorBox, FancyLoader, ReviewButtons, Spinner, StatusBadge } from '../../../../components/ui';
 import { ORG_NAV } from '../../../nav';
 import { Workflow, WorkflowPanel } from '../../../../components/WorkflowPanel';
 
@@ -21,8 +21,6 @@ interface Claim {
 }
 
 const STAGE_LABEL: Record<string, string> = { BROKER: 'کارگزاری', BRANCH: 'شعبه', HQ: 'مدیریت ستاد', COUNCIL: 'شورای فنی' };
-const ICON_CHECK = 'M20 6L9 17l-5-5';
-const ICON_X = 'M6 18L18 6M6 6l12 12';
 
 /** One document rendered inline (image scaled by zoom, or PDF in an embed). */
 function DocMedia({ claimId, docId, fileName, zoom }: { claimId: string; docId: string; fileName: string; zoom: number }) {
@@ -36,7 +34,7 @@ function DocMedia({ claimId, docId, fileName, zoom }: { claimId: string; docId: 
     return () => { active = false; if (u) URL.revokeObjectURL(u); };
   }, [claimId, docId]);
   if (err) return <div className="text-xs py-4 text-center" style={{ color: 'var(--danger)' }}>خطا در بارگذاری سند</div>;
-  if (!src) return <div className="py-8 flex justify-center"><span className="pspinner" /></div>;
+  if (!src) return <div className="py-8 flex justify-center"><Spinner /></div>;
   if (src.mimeType === 'application/pdf') return <iframe className="assess-doc-pdf" src={src.url} title={fileName} />;
   return <div className="assess-doc-media"><img className="assess-doc-img" style={{ width: `${zoom}%` }} src={src.url} alt={fileName} /></div>;
 }
@@ -139,20 +137,13 @@ export default function AssessClaim() {
                         <button onClick={() => document.getElementById(`doc-${d.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="btn btn-ghost btn-sm shrink-0" title="نمایش در تصویر">نمایش سند</button>
                       </div>
                       {d.reviews && d.reviews.length > 0 && (
-                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs">
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-2 text-xs">
                           {d.reviews.map((rv) => {
                             const editable = rv.canEdit && d.isLatest && !closed;
                             return (
-                              <span key={rv.stage} className="flex items-center gap-1">
-                                <span style={{ color: 'var(--muted)' }}>{STAGE_LABEL[rv.stage] || rv.stage}:</span>
-                                {editable ? (
-                                  <>
-                                    <button onClick={() => reviewDoc(d.id, rv.stage, rv.state === 'APPROVED' ? 'PENDING' : 'APPROVED')} disabled={busy} title="تایید" className="inline-flex p-0.5" style={{ color: rv.state === 'APPROVED' ? 'var(--success)' : 'var(--muted)' }}><Icon path={ICON_CHECK} /></button>
-                                    <button onClick={() => reviewDoc(d.id, rv.stage, rv.state === 'REJECTED' ? 'PENDING' : 'REJECTED')} disabled={busy} title="رد" className="inline-flex p-0.5" style={{ color: rv.state === 'REJECTED' ? 'var(--danger)' : 'var(--muted)' }}><Icon path={ICON_X} /></button>
-                                  </>
-                                ) : (
-                                  <span style={{ color: rv.state === 'APPROVED' ? 'var(--success)' : rv.state === 'REJECTED' ? 'var(--danger)' : 'var(--warning)', fontWeight: 700 }}>{rv.state === 'APPROVED' ? '✓' : rv.state === 'REJECTED' ? '✕' : '●'}</span>
-                                )}
+                              <span key={rv.stage} className="flex items-center gap-1.5">
+                                <span className="font-semibold" style={{ color: 'var(--muted)' }}>{STAGE_LABEL[rv.stage] || rv.stage}:</span>
+                                <ReviewButtons state={rv.state} editable={editable} busy={busy} label={STAGE_LABEL[rv.stage]} onSet={(st) => reviewDoc(d.id, rv.stage, st)} />
                               </span>
                             );
                           })}

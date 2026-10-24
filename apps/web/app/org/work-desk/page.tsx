@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { client, getToken, hasPerm } from '../../../lib/client';
 import { Shell, Icon } from '../../components/Shell';
 import { ORG_NAV } from '../nav';
-import { ClaimTypeBadge, CLAIM_TYPE_LABELS, ErrorBox, FancyLoader, NoticeModal, StatusBadge } from '../../components/ui';
+import { ClaimTypeBadge, CLAIM_TYPE_LABELS, ErrorBox, FancyLoader, NoticeModal, Overlay, StatusBadge } from '../../components/ui';
 import { JalaliDatePicker } from '../../components/JalaliDatePicker';
 import { RangeSlider } from '../../components/RangeSlider';
 import { toGregorian } from 'jalaali-js';
@@ -295,7 +295,7 @@ export default function WorkDeskPage() {
 
       {/* Personalization — show/hide/order the Work Desk tiles (saved per operator, on this device) */}
       {settingsOpen && data && (
-        <div className="pmodal-backdrop" onClick={() => setSettingsOpen(false)}>
+        <Overlay onClose={() => setSettingsOpen(false)}>
           <div className="pmodal" onClick={(e) => e.stopPropagation()}>
             <div className="pmodal-head">
               <span className="pmodal-title">شخصی‌سازی برگه‌های میز کار</span>
@@ -330,7 +330,7 @@ export default function WorkDeskPage() {
               <button onClick={() => setSettingsOpen(false)} className="flex-1 py-3 font-bold" style={{ color: 'var(--brand)' }}>تمام</button>
             </div>
           </div>
-        </div>
+        </Overlay>
       )}
 
       {/* Post-login summary tip */}

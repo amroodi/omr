@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { client, getToken, hasPerm } from '../../lib/client';
 import { Shell, Icon } from '../components/Shell';
-import { ClaimTypeBadge, ErrorBox, StatCard, StatusBadge } from '../components/ui';
+import { BigIcon, ClaimTypeBadge, ErrorBox, PanelStat, Spinner, StatusBadge } from '../components/ui';
 import { ORG_NAV } from './nav';
 
 interface Claim {
@@ -13,6 +13,15 @@ interface Claim {
 }
 
 const PAGE_SIZES = [10, 30, 50, 100];
+const IN_FLOW = ['SUBMITTED', 'UNDER_REVIEW', 'RETURNED_INCOMPLETE', 'APPROVED'];
+type Filter = 'all' | 'reviewing' | 'paid' | 'action';
+const FILTER_LABEL: Record<Filter, string> = { all: 'همهٔ پرونده‌ها', reviewing: 'پرونده‌های در جریان', paid: 'پرونده‌های پرداخت‌شده', action: 'پرونده‌های نیازمند اقدام شما' };
+const ICONS = {
+  all: 'M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11',
+  reviewing: 'M12 6v6l4 2M12 22a10 10 0 100-20 10 10 0 000 20z',
+  paid: 'M20 6L9 17l-5-5',
+  action: 'M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z',
+};
 
 export default function OrgDashboard() {
   const router = useRouter();
@@ -23,6 +32,12 @@ export default function OrgDashboard() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [filter, setFilter] = useState<Filter>('all');
+  // Permissions live in the browser (token), so read them only after mount — reading them during the
+  // server render would make the server and browser HTML differ (hydration error).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+  const can = (perm: string) => mounted && hasPerm('org', perm);
 
   const load = async () => {
     setLoading(true); setError('');
@@ -35,17 +50,20 @@ export default function OrgDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const inGroup = (r: Claim, f: Filter) => f === 'all' || (f === 'reviewing' ? IN_FLOW.includes(r.status) : f === 'paid' ? r.status === 'PAID' : r.needsAction);
   const counts = useMemo(() => ({
-    reviewing: rows.filter((r) => ['SUBMITTED', 'UNDER_REVIEW', 'RETURNED_INCOMPLETE', 'APPROVED'].includes(r.status)).length,
-    paid: rows.filter((r) => r.status === 'PAID').length,
-    action: rows.filter((r) => r.needsAction).length,
-  }), [rows]);
+    all: rows.length,
+    reviewing: rows.filter((r) => inGroup(r, 'reviewing')).length,
+    paid: rows.filter((r) => inGroup(r, 'paid')).length,
+    action: rows.filter((r) => inGroup(r, 'action')).length,
+  }), [rows]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const shown = useMemo(
-    () => (q ? rows.filter((r) => `${r.claimNumber} ${r.deceasedName || ''}`.toLowerCase().includes(q.toLowerCase())) : rows),
-    [rows, q],
+    () => rows.filter((r) => inGroup(r, filter) && (!q || `${r.claimNumber} ${r.deceasedName || ''}`.toLowerCase().includes(q.toLowerCase()))),
+    [rows, q, filter], // eslint-disable-line react-hooks/exhaustive-deps
   );
-  useEffect(() => { setPage(1); }, [q, pageSize]);
+  useEffect(() => { setPage(1); }, [q, pageSize, filter]);
+  const pick = (f: Filter) => setFilter((cur) => (cur === f && f !== 'all' ? 'all' : f)); // second click clears
 
   const total = shown.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -55,25 +73,32 @@ export default function OrgDashboard() {
 
   return (
     <Shell title="مدیریت پرونده‌ها" subtitle="پرونده‌های خسارت فوت و حوادث و پیگیری مراحل" nav={ORG_NAV} realm="org">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-        <StatCard label="کل پرونده‌ها" value={rows.length} tone="brand" icon={<Icon path="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />} />
-        <StatCard label="در جریان" value={counts.reviewing} tone="warning" icon={<Icon path="M12 6v6l4 2M12 22a10 10 0 100-20 10 10 0 000 20z" />} />
-        <StatCard label="پرداخت‌شده" value={counts.paid} tone="success" icon={<Icon path="M20 6L9 17l-5-5" />} />
-        <StatCard label="نیازمند اقدام" value={counts.action} tone="muted" icon={<Icon path="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />} />
+      {/* Stat tiles — each filters the list below (second click shows all again) */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
+        {([['all', 'کل پرونده‌ها', 'navy'], ['reviewing', 'در جریان', 'warning'], ['paid', 'پرداخت‌شده', 'success'], ['action', 'نیازمند اقدام', 'danger']] as const).map(([f, label, tone]) => (
+          <button key={f} type="button" onClick={() => pick(f)} className={`pstat-btn${filter === f ? ' is-active' : ''}`} aria-pressed={filter === f} title={`نمایش ${FILTER_LABEL[f]}`}>
+            <PanelStat label={label} value={loading ? '…' : fa(counts[f])} icon={<BigIcon path={ICONS[f]} />} tone={tone}
+              unit={filter === f ? (f === 'all' ? 'در حال نمایش' : 'در حال نمایش — کلیک برای همه') : 'برای مشاهده کلیک کنید'} />
+          </button>
+        ))}
       </div>
 
       <ErrorBox message={error} />
 
+      <div className="flex items-center gap-2 mb-2">
+        <h2 className="font-extrabold">{FILTER_LABEL[filter]}</h2>
+        {filter !== 'all' && <button onClick={() => setFilter('all')} className="btn btn-ghost btn-sm">نمایش همه ✕</button>}
+      </div>
       <div className="flex justify-between items-center gap-2 mb-3 flex-wrap">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="جستجوی شماره پرونده یا نام…" className="input" style={{ maxWidth: 280 }} />
         <div className="flex items-center gap-2 flex-wrap">
-          {hasPerm('org', 'export:list') && total > 0 && (
+          {can('export:list') && total > 0 && (
             <button onClick={() => client.download(`/exports/claims.xlsx${q ? `?q=${encodeURIComponent(q)}` : ''}`, 'org', 'claims.xlsx')} className="btn btn-ghost btn-sm" title="خروجی اکسل (با توجه به جستجو)"><Icon path="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" /> خروجی اکسل</button>
           )}
-          {hasPerm('org', 'claim:delete') && (
+          {can('claim:delete') && (
             <Link href="/org/claims/trash" className="btn btn-ghost btn-sm" title="سطل بازیافت"><Icon path="M3 6h18M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" /> سطل بازیافت</Link>
           )}
-          {hasPerm('org', 'claim:file') && (
+          {can('claim:file') && (
             <Link href="/org/claims/new" className="btn btn-primary btn-sm"><Icon path="M12 5v14M5 12h14" /> پرونده جدید</Link>
           )}
         </div>
@@ -84,7 +109,7 @@ export default function OrgDashboard() {
           <thead><tr>{['شماره', 'نوع', 'بیمه‌گر', 'بیمه‌شده', 'مبلغ', 'وضعیت', ''].map((h) => <th key={h}>{h}</th>)}</tr></thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={7} className="text-center py-8" style={{ color: 'var(--muted)' }}>در حال بارگذاری…</td></tr>
+              <tr><td colSpan={7} className="text-center py-10"><Spinner /></td></tr>
             ) : paged.length === 0 ? (
               <tr><td colSpan={7} className="text-center py-8" style={{ color: 'var(--muted)' }}>پرونده‌ای یافت نشد</td></tr>
             ) : paged.map((c) => (

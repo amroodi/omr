@@ -7,6 +7,7 @@ import { ChangePasswordModal } from './ChangePasswordModal';
 import { NotificationBell } from './NotificationBell';
 import { BrandMark } from './brand';
 import { ThemeToggle } from '../theme-toggle';
+import { WallpaperPicker } from './WallpaperPicker';
 
 export interface NavItem {
   href: string;
@@ -78,6 +79,14 @@ export function Shell({
   const toggleRail = () => setRail((r) => { const n = !r; try { localStorage.setItem('navRail', n ? '1' : '0'); } catch {} return n; });
   const visibleNav = nav.filter((n) => !n.perm || (mounted && hasPerm(realm, n.perm)));
   const homeHref = realm === 'customer' ? '/customer' : realm === 'super' ? '/admin' : '/org';
+  // «بازگشت»: one step back when the user arrived from inside the site, otherwise to the panel home.
+  const isHome = pathname === homeHref || pathname === '/org/welcome';
+  const goBack = () => {
+    let internal = false;
+    try { internal = !!document.referrer && new URL(document.referrer).origin === window.location.origin; } catch { /* ignore */ }
+    if (internal && window.history.length > 1) router.back();
+    else router.push(homeHref);
+  };
   const logout = () => { clearToken(realm); router.push(`/${realm === 'super' ? 'admin' : realm}/login`); };
   const logoUrl = brand?.logoSrc !== undefined ? brand.logoSrc : brand?.hasLogo ? `${client.base}/tenant/assets/logo?tenant=${brand.slug}` : null;
 
@@ -98,6 +107,12 @@ export function Shell({
           >
             <Icon path="M4 6h16M4 12h16M4 18h16" />
           </button>
+          {!isHome && (
+            <button onClick={goBack} className="pback no-print" title="بازگشت به صفحهٔ قبل" aria-label="بازگشت">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 18l6-6-6-6" /></svg>
+              <span className="lbl">بازگشت</span>
+            </button>
+          )}
           <span className="ptopbar-title">{title}</span>
           <span className="pbreadcrumb">
             <Link href={homeHref}>صفحه اصلی</Link>{breadcrumb ? ` / ${breadcrumb}` : ''}
@@ -105,6 +120,7 @@ export function Shell({
           <span className="ptopbar-spacer" />
           {action && <span className="no-print ptopbar-action">{action}</span>}
           <span className="no-print"><NotificationBell realm={realm} /></span>
+          <span className="no-print"><WallpaperPicker /></span>
           <span className="no-print"><ThemeToggle /></span>
         </header>
 
