@@ -185,6 +185,50 @@ export class PolicyholdersService {
     return { ok: true };
   }
 
+  // ── Connection map: بیمه‌گزار → کارگزاری → بیمه‌گر ──
+  /**
+   * Everything the «نقشهٔ اتصال‌ها» view needs: this brokerage, its بیمه‌گزار companies (with their
+   * contracts), the insurers it works with, and the platform's other insurers it could add.
+   */
+  async network() {
+    const tenantId = getTenantIdOrThrow();
+    const db = this.db();
+    const [broker, companies, parts, allInsurers] = await Promise.all([
+      db.tenant.findUnique({ where: { id: tenantId }, select: { name: true, slug: true, logoKey: true } }),
+      this.list(),
+      db.brokerInsurerPartnership.findMany({ where: { brokerTenantId: tenantId } }),
+      db.tenant.findMany({ where: { kind: 'INSURER', isActive: true }, orderBy: { name: 'asc' }, select: { id: true, name: true, slug: true, logoKey: true, primaryColor: true, theme: true } }),
+    ]);
+    const active = new Set(parts.filter((p) => p.isActive).map((p) => p.insurerTenantId));
+    const color = (t: { primaryColor: string; theme: unknown }) => ((t.theme as any)?.brand as string | undefined) ?? t.primaryColor;
+    const routed = (insurerId: string) => companies.filter((c) => c.currentInsurer?.id === insurerId).length;
+    return {
+      broker: { name: broker?.name ?? '', slug: broker?.slug ?? '', hasLogo: !!broker?.logoKey },
+      companies,
+      insurers: allInsurers.filter((i) => active.has(i.id)).map((i) => ({ id: i.id, name: i.name, slug: i.slug, hasLogo: !!i.logoKey, color: color(i), companies: routed(i.id) })),
+      available: allInsurers.filter((i) => !active.has(i.id)).map((i) => ({ id: i.id, name: i.name })),
+    };
+  }
+
+  /** Connect this brokerage to an insurer registered on the platform (or end the cooperation). */
+  async setPartner(insurerTenantId: string, enabled: boolean) {
+    const brokerTenantId = getTenantIdOrThrow();
+    const db = this.db();
+    const ins = await db.tenant.findUnique({ where: { id: insurerTenantId }, select: { kind: true, isActive: true } });
+    if (!ins || ins.kind !== 'INSURER' || !ins.isActive) throw new BadRequestException('بیمه‌گر نامعتبر است');
+    if (!enabled) {
+      const inUse = await db.policyholderContract.count({ where: { insurerTenantId, isActive: true, company: { tenantId: brokerTenantId } } });
+      if (inUse) throw new BadRequestException(`${inUse.toLocaleString('fa-IR')} قرارداد فعال بیمه‌گزار با این بیمه‌گر دارید؛ ابتدا آن‌ها را غیرفعال کنید یا به بیمه‌گر دیگری منتقل کنید.`);
+    }
+    await db.brokerInsurerPartnership.upsert({
+      where: { brokerTenantId_insurerTenantId: { brokerTenantId, insurerTenantId } },
+      update: { isActive: enabled },
+      create: { brokerTenantId, insurerTenantId, isActive: enabled },
+    });
+    await this.audit.record({ action: AuditAction.EDIT, targetType: 'BrokerInsurerPartnership', targetId: insurerTenantId, metadata: { enabled } });
+    return { ok: true };
+  }
+
   // ── Public / routing ──
   /** Public company search for the استعلام form (needs ≥2 letters; at most 10 names — no full client list). */
   async search(q: string) {

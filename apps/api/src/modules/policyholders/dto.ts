@@ -71,6 +71,11 @@ export class ContractDto {
   isActive?: boolean;
 }
 
+export class PartnerDto {
+  @IsBoolean()
+  enabled!: boolean;
+}
+
 export class AssignCompanyDto {
   @IsOptional()
   @ValidateIf((_, v) => v !== null)

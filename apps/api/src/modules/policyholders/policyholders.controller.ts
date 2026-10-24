@@ -4,7 +4,7 @@ import { Response } from 'express';
 import { Permissions, Public } from '../../common/rbac/decorators';
 import { PERMISSIONS } from '../../common/rbac/permissions';
 import { TenantResolverGuard } from '../../common/tenant/tenant-resolver.guard';
-import { AssignCompanyDto, CompanyDto, ContractDto } from './dto';
+import { AssignCompanyDto, CompanyDto, ContractDto, PartnerDto } from './dto';
 import { PolicyholdersService } from './policyholders.service';
 
 /** بیمه‌گزار companies of a brokerage + their insurer contracts (کارگزاری panel). */
@@ -22,6 +22,20 @@ export class PolicyholdersController {
   @Post()
   create(@Body() dto: CompanyDto) {
     return this.svc.create(dto);
+  }
+
+  /** «نقشهٔ اتصال‌ها»: companies → this brokerage → insurers. */
+  @Permissions(PERMISSIONS.CUSTOMER_MANAGE)
+  @Get('network')
+  network() {
+    return this.svc.network();
+  }
+
+  /** The brokerage connects to (or ends cooperation with) an insurer registered on the platform. */
+  @Permissions(PERMISSIONS.TENANT_SETTINGS)
+  @Put('partners/:insurerId')
+  setPartner(@Param('insurerId') insurerId: string, @Body() dto: PartnerDto) {
+    return this.svc.setPartner(insurerId, dto.enabled);
   }
 
   @Permissions(PERMISSIONS.CLAIM_READ)
@@ -51,6 +65,8 @@ export class PolicyholdersController {
     const { buffer, mime } = await this.svc.logo(id);
     res.setHeader('Content-Type', mime);
     res.setHeader('Cache-Control', 'public, max-age=300');
+    // Public image shown on other origins (web panel, استعلام page) — like the tenant logo.
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     res.send(buffer);
   }
 
