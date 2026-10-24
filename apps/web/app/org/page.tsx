@@ -6,9 +6,10 @@ import { client, getToken, hasPerm } from '../../lib/client';
 import { Shell, Icon } from '../components/Shell';
 import { BigIcon, ClaimTypeBadge, ErrorBox, PanelStat, Spinner, StatusBadge } from '../components/ui';
 import { ORG_NAV } from './nav';
+import { caseTitle } from '../../lib/caseTitle';
 
 interface Claim {
-  id: string; claimNumber: string; status: string; claimType: string; insurerTenantId?: string;
+  id: string; claimNumber: string; policyNumber?: string | null; deceasedNationalCode?: string | null; status: string; claimType: string; insurerTenantId?: string;
   deceasedName: string | null; claimedAmount: string; payableAmount?: string; finalizedAmount?: string | null; lateNotice: boolean; needsAction: boolean;
 }
 
@@ -59,7 +60,7 @@ export default function OrgDashboard() {
   }), [rows]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const shown = useMemo(
-    () => rows.filter((r) => inGroup(r, filter) && (!q || `${r.claimNumber} ${r.deceasedName || ''}`.toLowerCase().includes(q.toLowerCase()))),
+    () => rows.filter((r) => inGroup(r, filter) && (!q || `${r.claimNumber} ${r.policyNumber || ''} ${r.deceasedNationalCode || ''} ${r.deceasedName || ''}`.toLowerCase().includes(q.toLowerCase()))),
     [rows, q, filter], // eslint-disable-line react-hooks/exhaustive-deps
   );
   useEffect(() => { setPage(1); }, [q, pageSize, filter]);
@@ -90,13 +91,16 @@ export default function OrgDashboard() {
         {filter !== 'all' && <button onClick={() => setFilter('all')} className="btn btn-ghost btn-sm">نمایش همه ✕</button>}
       </div>
       <div className="flex justify-between items-center gap-2 mb-3 flex-wrap">
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="جستجوی شماره پرونده یا نام…" className="input" style={{ maxWidth: 280 }} />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="جستجوی کد ملی، شماره بیمه‌نامه یا نام…" className="input" style={{ maxWidth: 280 }} />
         <div className="flex items-center gap-2 flex-wrap">
           {can('export:list') && total > 0 && (
             <button onClick={() => client.download(`/exports/claims.xlsx${q ? `?q=${encodeURIComponent(q)}` : ''}`, 'org', 'claims.xlsx')} className="btn btn-ghost btn-sm" title="خروجی اکسل (با توجه به جستجو)"><Icon path="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" /> خروجی اکسل</button>
           )}
           {can('claim:delete') && (
             <Link href="/org/claims/trash" className="btn btn-ghost btn-sm" title="سطل بازیافت"><Icon path="M3 6h18M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" /> سطل بازیافت</Link>
+          )}
+          {can('claim:file-on-behalf') && (
+            <Link href="/org/claims/on-behalf" className="btn btn-ghost btn-sm" title="ثبت پرونده و بارگذاری مدارک به جای شرکت بیمه‌گزار"><Icon path="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM19 8v6M22 11h-6" /> ثبت برای بیمه‌گزار</Link>
           )}
           {can('claim:file') && (
             <Link href="/org/claims/new" className="btn btn-primary btn-sm"><Icon path="M12 5v14M5 12h14" /> پرونده جدید</Link>
@@ -106,7 +110,7 @@ export default function OrgDashboard() {
 
       <div className="card overflow-x-auto">
         <table className="table">
-          <thead><tr>{['شماره', 'نوع', 'بیمه‌گر', 'بیمه‌شده', 'مبلغ', 'وضعیت', ''].map((h) => <th key={h}>{h}</th>)}</tr></thead>
+          <thead><tr>{['کد ملی متوفی', 'نوع', 'بیمه‌گر', 'بیمه‌شده', 'مبلغ', 'وضعیت', ''].map((h) => <th key={h}>{h}</th>)}</tr></thead>
           <tbody>
             {loading ? (
               <tr><td colSpan={7} className="text-center py-10"><Spinner /></td></tr>
@@ -114,7 +118,7 @@ export default function OrgDashboard() {
               <tr><td colSpan={7} className="text-center py-8" style={{ color: 'var(--muted)' }}>پرونده‌ای یافت نشد</td></tr>
             ) : paged.map((c) => (
               <tr key={c.id} style={{ cursor: 'pointer' }} onClick={() => router.push(`/org/claims/${c.id}`)}>
-                <td className="font-semibold">{c.claimNumber}</td>
+                <td className="font-semibold" style={{ direction: 'ltr', textAlign: 'right' }} title={caseTitle(c)}>{c.deceasedNationalCode || '—'}</td>
                 <td><ClaimTypeBadge type={c.claimType} /></td>
                 <td>{(c.insurerTenantId && insurers[c.insurerTenantId]) || '—'}</td>
                 <td>{c.deceasedName}</td>

@@ -172,6 +172,18 @@ A claim is visible to: its بیمه‌گزار (own claims only), the معرف t
 بیمه‌گر tenant processing it — each seeing only the fields appropriate to their step. Enforced by
 claim-scoped grants layered on the per-tenant isolation already in place; never the global scope.
 
+**Filing on behalf (`claim:file-on-behalf`).** کارگزاری staff holding this permission (the built-in
+admin role of every brokerage has it; other roles only when an admin adds it) can open a case for any
+active بیمه‌گزار company of their brokerage at «ثبت پرونده برای بیمه‌گزار» (`/org/claims/on-behalf`,
+`POST /claims/on-behalf`). The insurer and policy number come from the company's contract for the
+date of death, exactly as when the company files itself. The case starts at the بیمه‌گزار desk, where
+the staff upload the documents and press «ارسال به کارگزاری» for them; an optional representative of
+the company is attached so the case also shows in their panel.
+
+**Case title.** A case is named by its شماره بیمه‌نامه once known (from the contract at filing, or when
+the `policy_number` field is confirmed), otherwise by its CLM number. Lists identify cases by the
+deceased's کد ملی.
+
 ## 10. Migration approach
 
 `Case` is renamed/extended to `Claim` with the routing fields; existing cases map to claims in the

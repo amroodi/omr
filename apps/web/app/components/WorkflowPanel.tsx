@@ -283,6 +283,11 @@ const ACTION_FA: Record<string, string> = {
   RETURN: 'عودت برای رفع نقص', RETURN_DIRECT: 'عودت مستقیم (اختیار مدیریت)', DOWN_FORWARD: 'ارسال به سطح پایین‌تر',
   DOWN_DIRECT: 'ارسال مستقیم به بیمه‌گزار (اختیار مدیریت)', MARK_PAID: 'ثبت پرداخت', REJECT_FINAL: 'رد نهایی',
 };
+/** Older steps (before workflow v2) carry only a state, no action. */
+const STATE_FA: Record<string, string> = {
+  PENDING: 'در انتظار اقدام', FORWARDED: 'تایید و ارسال', ESCALATED: 'ارجاع به سطح بالاتر', APPROVED: 'تایید شد',
+  RETURNED_INCOMPLETE: 'عودت برای رفع نقص', REJECTED: 'رد شد', ACKED: 'دریافت و ارسال',
+};
 
 export interface TimelineStep {
   order: number; stage?: string | null; stageLabel?: string | null; direction?: string; purpose?: string | null;
@@ -305,7 +310,7 @@ export function WorkflowTimeline({ claimId, steps, realm }: { claimId: string; s
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <span className="font-semibold">{s.stageLabel || s.holderName || '—'}{s.branchName ? ` — ${s.branchName}` : ''}</span>
                 <span className="badge" style={{ background: 'var(--surface-2)', color }}>
-                  {pending ? (s.direction === 'DOWN' ? (s.purpose === 'PAYMENT' ? 'در انتظار اقدام (دستور پرداخت)' : 'در انتظار اقدام (عودت)') : 'در انتظار اقدام') : (ACTION_FA[s.action || ''] || s.state)}
+                  {pending ? (s.direction === 'DOWN' ? (s.purpose === 'PAYMENT' ? 'در انتظار اقدام (دستور پرداخت)' : 'در انتظار اقدام (عودت)') : 'در انتظار اقدام') : (ACTION_FA[s.action || ''] || STATE_FA[s.state] || s.state)}
                 </span>
               </div>
               {/* Operator names stay inside the organizations; outside parties see the desk and time only. */}

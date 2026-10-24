@@ -93,6 +93,7 @@ export class ClaimFieldsService {
       update: { value, source, confirmedById: actor, confirmedAt: new Date(), updatedById: actor },
       create: { claimId, key, value, source, confirmedById: actor, confirmedAt: new Date(), updatedById: actor },
     });
+    await this.syncPolicyNumber(claimId, key, saved.value);
     await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'ClaimField', targetId: claimId, metadata: { key, source } });
     return { key, value: saved.value, source: saved.source, confirmed: true };
   }
@@ -107,8 +108,18 @@ export class ClaimFieldsService {
     if (!existing) throw new NotFoundException('مقداری برای تایید وجود ندارد');
     const actor = getContext()?.actorId ?? null;
     await this.db().claimFieldValue.update({ where: { claimId_key: { claimId, key } }, data: { confirmedById: actor, confirmedAt: new Date() } });
+    await this.syncPolicyNumber(claimId, key, existing.value);
     await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'ClaimFieldConfirm', targetId: claimId, metadata: { key } });
     return { key, confirmed: true };
+  }
+
+  /**
+   * A human-confirmed شماره بیمه‌نامه also lands on the claim itself: from then on the case is titled by it
+   * (instead of its internal CLM number) in every list and page.
+   */
+  private async syncPolicyNumber(claimId: string, key: string, value: string | null) {
+    if (key !== 'policy_number') return;
+    await this.db().claim.update({ where: { id: claimId }, data: { policyNumber: value?.trim() || null } });
   }
 
   /**

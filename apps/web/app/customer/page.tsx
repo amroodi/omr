@@ -7,6 +7,7 @@ import { Shell } from '../components/Shell';
 import { Faq } from '../components/Faq';
 import { CUSTOMER_NAV } from './nav';
 import { BigIcon, CLAIM_TYPE_LABELS, ErrorBox, PanelStat, Spinner, StatusBadge } from '../components/ui';
+import { caseRef, caseTitle } from '../../lib/caseTitle';
 
 interface MyCase {
   caseNumber: string; status: string;
@@ -15,7 +16,7 @@ interface MyCase {
   stageDate: string | null; paidAt: string | null;
   recentPayments: { date: string; amount: string; status: string }[];
 }
-interface MyClaim { id: string; claimNumber: string; status: string; claimType: string; deceasedName: string | null; lateNotice: boolean; needsAction: boolean; currentStageLabel?: string | null; eventDate?: string | null }
+interface MyClaim { id: string; claimNumber: string; policyNumber?: string | null; status: string; claimType: string; deceasedName: string | null; lateNotice: boolean; needsAction: boolean; currentStageLabel?: string | null; eventDate?: string | null }
 
 const fa = (n: number) => n.toLocaleString('fa-IR');
 
@@ -59,7 +60,7 @@ function ClaimRow({ c }: { c: MyClaim }) {
   return (
     <Link href={`/customer/claims/${c.id}`} className="pcard p-4 flex items-center justify-between gap-3 card-hover">
       <div className="min-w-0">
-        <div className="font-bold">{c.claimNumber} <span className="font-normal" style={{ color: 'var(--muted)' }}>— {CLAIM_TYPE_LABELS[c.claimType] || c.claimType}</span></div>
+        <div className="font-bold">{caseTitle(c)} <span className="font-normal" style={{ color: 'var(--muted)' }}>— {CLAIM_TYPE_LABELS[c.claimType] || c.claimType}</span></div>
         <div className="text-sm mt-0.5" style={{ color: 'var(--muted)' }}>
           {c.deceasedName}{c.currentStageLabel ? ` · در اختیار: ${c.currentStageLabel}` : ''}
         </div>

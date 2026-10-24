@@ -4,6 +4,7 @@ export const ORG_NAV: NavItem[] = [
   { href: '/org/work-desk', label: 'میز کار', icon: <Icon path="M3 7l9-4 9 4v10l-9 4-9-4V7zM3 7l9 4 9-4M12 11v10" />, perm: 'claim:read' },
   { href: '/org', label: 'پرونده‌ها', icon: <Icon path="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" /> },
   { href: '/org/claims', label: 'پرونده‌های خسارت', icon: <Icon path="M12 2l7 3v6c0 4.2-2.9 7.7-7 9-4.1-1.3-7-4.8-7-9V5l7-3z" />, perm: 'claim:read' },
+  { href: '/org/claims/on-behalf', label: 'ثبت پرونده برای بیمه‌گزار', icon: <Icon path="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM14 2v6h6M12 18v-6M9 15h6" />, perm: 'claim:file-on-behalf' },
   { href: '/org/assessor', label: 'ارزیابی مدارک', icon: <Icon path="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM14 2v6h6M9 15l2 2 4-4" />, perm: 'doc:verify' },
   { href: '/org/track', label: 'پیگیری وضعیت پرونده', icon: <Icon path="M11 19a8 8 0 100-16 8 8 0 000 16zM21 21l-4.3-4.3" />, perm: 'tenant:settings' },
   { href: '/org/import', label: 'ورود دسته‌ای', icon: <Icon path="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />, perm: 'import:batch' },

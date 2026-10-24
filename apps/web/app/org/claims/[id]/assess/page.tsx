@@ -6,6 +6,7 @@ import { Shell, Icon } from '../../../../components/Shell';
 import { CLAIM_TYPE_LABELS, ClaimTypeBadge, ErrorBox, FancyLoader, ReviewButtons, Spinner, StatusBadge } from '../../../../components/ui';
 import { ORG_NAV } from '../../../nav';
 import { Workflow, WorkflowPanel } from '../../../../components/WorkflowPanel';
+import { caseRef, caseTitle } from '../../../../../lib/caseTitle';
 
 interface DocReview { stage: string; state: string; canEdit: boolean }
 interface ClaimDoc { id: string; fileName: string; status: string; statusLabel: string; note: string | null; version: number; isLatest: boolean; reviews?: DocReview[] }
@@ -13,7 +14,7 @@ interface ChecklistItem { code: string; label: string; uploaded: boolean; docume
 interface Checklist { complete: boolean; items: ChecklistItem[]; otherDocuments?: ClaimDoc[] }
 interface DocMeta { id: string; docCode: string | null; fileName: string; mimeType: string }
 interface Claim {
-  id: string; claimNumber: string; status: string; claimType: string; deceasedName: string | null;
+  id: string; claimNumber: string; policyNumber?: string | null; status: string; claimType: string; deceasedName: string | null;
   estimatedAmount?: string; claimedAmount: string; finalizedAmount?: string | null;
   eventDate: string | null; policyHolder?: { name: string | null; nationalCode: string | null } | null;
   insurer?: { name: string } | null; broker?: { name: string } | null; sellingBranchName?: string | null;
@@ -98,7 +99,7 @@ export default function AssessClaim() {
   const closed = claim ? ['PAID', 'REJECTED'].includes(claim.status) : false;
 
   return (
-    <Shell title={claim ? `ارزیابی پرونده ${claim.claimNumber}` : 'ارزیابی پرونده'} breadcrumb="ارزیابی پرونده" nav={ORG_NAV} realm="org"
+    <Shell title={claim ? `ارزیابی ${caseTitle(claim)}` : 'ارزیابی پرونده'} breadcrumb="ارزیابی پرونده" nav={ORG_NAV} realm="org"
       action={<button onClick={() => router.push('/org/work-desk')} className="btn btn-ghost btn-sm">بستن ✕</button>}>
       <ErrorBox message={error} />
       {!claim ? <div className="pcard p-12 flex justify-center"><FancyLoader label="در حال بارگذاری پرونده…" /></div> : (

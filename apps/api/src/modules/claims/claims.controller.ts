@@ -17,7 +17,7 @@ import { Permissions } from '../../common/rbac/decorators';
 import { PERMISSIONS } from '../../common/rbac/permissions';
 import { ClaimFieldsService } from '../claim-fields/claim-fields.service';
 import { ClaimsService } from './claims.service';
-import { ActionDto, DecisionDto, FileClaimDto, LetterDto, LossNoticeDto, PhysicalDto } from './dto';
+import { ActionDto, DecisionDto, FileClaimDto, FileOnBehalfDto, LetterDto, LossNoticeDto, PhysicalDto } from './dto';
 
 const docLimits = { fileSize: 15 * 1024 * 1024 };
 
@@ -33,6 +33,19 @@ export class ClaimsController {
   @Post()
   file(@Body() dto: FileClaimDto) {
     return this.claims.file(dto);
+  }
+
+  @Permissions(PERMISSIONS.CLAIM_FILE_ON_BEHALF)
+  @Get('on-behalf/companies')
+  onBehalfCompanies() {
+    return this.claims.onBehalfCompanies();
+  }
+
+  /** کارگزاری opens a case for one of its بیمه‌گزار companies and uploads the documents for them. */
+  @Permissions(PERMISSIONS.CLAIM_FILE_ON_BEHALF)
+  @Post('on-behalf')
+  fileOnBehalf(@Body() dto: FileOnBehalfDto) {
+    return this.claims.fileOnBehalf(dto);
   }
 
   /** All claims the caller participates in. */

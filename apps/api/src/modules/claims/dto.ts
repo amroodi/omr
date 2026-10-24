@@ -55,6 +55,44 @@ export class FileClaimDto {
   policyHolderId?: string;
 }
 
+/** کارگزاری files a case as a بیمه‌گزار company (claim:file-on-behalf). The insurer comes from its contract. */
+export class FileOnBehalfDto {
+  @IsUUID()
+  policyholderCompanyId!: string;
+
+  @IsOptional()
+  @IsUUID()
+  policyHolderId?: string; // a representative account of that company, so it also sees the case in its panel
+
+  @IsOptional()
+  @IsEnum(ClaimType)
+  claimType?: ClaimType;
+
+  @IsISO8601()
+  eventDate!: string;
+
+  @IsOptional()
+  @IsISO8601()
+  deceasedBirthDate?: string;
+
+  @IsString()
+  @Length(2, 120)
+  deceasedFullName!: string;
+
+  @IsString()
+  @Length(8, 12)
+  deceasedNationalCode!: string;
+
+  @IsOptional()
+  @IsNumberString()
+  claimedAmount?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 2000)
+  description?: string;
+}
+
 export class DecisionDto {
   @IsOptional()
   @IsString()

@@ -9,10 +9,11 @@ import { ClaimTypeBadge, CLAIM_TYPE_LABELS, ErrorBox, FancyLoader, NoticeModal, 
 import { JalaliDatePicker } from '../../components/JalaliDatePicker';
 import { RangeSlider } from '../../components/RangeSlider';
 import { toGregorian } from 'jalaali-js';
+import { caseTitle } from '../../../lib/caseTitle';
 
 interface Tile { key: string; label: string; count: number; actionable: boolean; href?: string }
 interface WorkDesk { userName: string | null; role: string; roleLabel: string; tiles: Tile[]; summary: { pendingActions: number; queues: number } }
-interface QueueRow { id: string; claimNumber: string; status: string; claimType: string; deceasedName: string | null; claimedAmount: string; payableAmount?: string; finalizedAmount?: string | null; insurerTenantId?: string }
+interface QueueRow { id: string; claimNumber: string; policyNumber?: string | null; deceasedNationalCode?: string | null; status: string; claimType: string; deceasedName: string | null; claimedAmount: string; payableAmount?: string; finalizedAmount?: string | null; insurerTenantId?: string }
 
 const fa = (n: number) => n.toLocaleString('fa-IR');
 const EMPTY = {
@@ -263,12 +264,12 @@ export default function WorkDeskPage() {
               ) : (
                 <div className="overflow-x-auto">
                   <table className="table">
-                    <thead><tr>{['#', 'شماره پرونده', 'نوع', 'بیمه‌گر', 'بیمه‌شده (متوفی)', 'مبلغ (ریال)', 'وضعیت', 'عملیات'].map((h) => <th key={h}>{h}</th>)}</tr></thead>
+                    <thead><tr>{['#', 'کد ملی متوفی', 'نوع', 'بیمه‌گر', 'بیمه‌شده (متوفی)', 'مبلغ (ریال)', 'وضعیت', 'عملیات'].map((h) => <th key={h}>{h}</th>)}</tr></thead>
                     <tbody>
                       {rows.map((r, i) => (
                         <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => router.push(`/org/claims/${r.id}`)}>
                           <td>{fa(i + 1)}</td>
-                          <td className="font-semibold">{r.claimNumber}</td>
+                          <td className="font-semibold" style={{ direction: 'ltr', textAlign: 'right' }} title={caseTitle(r)}>{r.deceasedNationalCode || '—'}</td>
                           <td><ClaimTypeBadge type={r.claimType} /></td>
                           <td>{(r.insurerTenantId && insurerMap[r.insurerTenantId]) || '—'}</td>
                           <td>{r.deceasedName || '—'}</td>
