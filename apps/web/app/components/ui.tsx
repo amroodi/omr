@@ -1,4 +1,24 @@
-import { ReactNode } from 'react';
+'use client';
+import { ReactNode, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+
+/**
+ * Full-screen pop-up layer (dimmed backdrop, centred content). Rendered straight into <body> so it
+ * stays fixed on the screen even when an ancestor is transformed/animated (which would otherwise
+ * make `position: fixed` scroll with the page). Clicking the backdrop calls `onClose`.
+ */
+export function Overlay({ children, onClose }: { children: ReactNode; onClose?: () => void }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => {
+    if (!onClose) return;
+    const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', k);
+    return () => document.removeEventListener('keydown', k);
+  }, [onClose]);
+  if (!mounted) return null;
+  return createPortal(<div className="pmodal-backdrop" onClick={onClose}>{children}</div>, document.body);
+}
 
 export function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -60,12 +80,55 @@ export function BigIcon({ path, size = 44 }: { path: string; size?: number }) {
   );
 }
 
+const OK_PATH = 'M5 12.5l4.5 4.5L19 7.5';
+const NO_PATH = 'M7 7l10 10M17 7L7 17';
+const DOT_PATH = 'M12 8v4l2.5 2.5M12 21a9 9 0 100-18 9 9 0 000 18z';
+
+/**
+ * Per-document approval at one desk: two clear buttons (thick ✓ / ✕ on tinted plates; the chosen one
+ * fills green / red). Clicking the chosen one again clears it back to «در حال بررسی». Read-only when
+ * `editable` is false — then a single coloured mark shows the state.
+ */
+export function ReviewButtons({ state, editable, busy, onSet, label }: {
+  state: string; editable: boolean; busy?: boolean; onSet?: (s: 'APPROVED' | 'REJECTED' | 'PENDING') => void; label?: string;
+}) {
+  const mark = (path: string) => (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d={path} /></svg>
+  );
+  if (!editable) {
+    const cls = state === 'APPROVED' ? 'rv-mark is-ok' : state === 'REJECTED' ? 'rv-mark is-no' : 'rv-mark is-wait';
+    const t = state === 'APPROVED' ? 'تایید' : state === 'REJECTED' ? 'رد' : 'در حال بررسی';
+    return <span className={cls} title={label ? `${label}: ${t}` : t}>{mark(state === 'APPROVED' ? OK_PATH : state === 'REJECTED' ? NO_PATH : DOT_PATH)}</span>;
+  }
+  return (
+    <span className="rv-group">
+      <button type="button" disabled={busy} onClick={() => onSet?.(state === 'APPROVED' ? 'PENDING' : 'APPROVED')}
+        className={`rv-btn ok${state === 'APPROVED' ? ' on' : ''}`} title={state === 'APPROVED' ? 'تایید شده — کلیک برای لغو' : 'تایید'} aria-label="تایید" aria-pressed={state === 'APPROVED'}>{mark(OK_PATH)}</button>
+      <button type="button" disabled={busy} onClick={() => onSet?.(state === 'REJECTED' ? 'PENDING' : 'REJECTED')}
+        className={`rv-btn no${state === 'REJECTED' ? ' on' : ''}`} title={state === 'REJECTED' ? 'رد شده — کلیک برای لغو' : 'رد'} aria-label="رد" aria-pressed={state === 'REJECTED'}>{mark(NO_PATH)}</button>
+    </span>
+  );
+}
+
 /** Fancy loading indicator — the operator's cue that the system is working, not stuck. */
-export function FancyLoader({ label = 'در حال بارگذاری…' }: { label?: string }) {
+/**
+ * Loading spinner: a soft track, a brand-coloured arc with a fading tail and a bright head, a thinner
+ * counter-rotating inner arc and a pulsing core. Follows the organization's theme colour.
+ */
+export function Spinner({ size = 46, label }: { size?: number; label?: string }) {
+  return (
+    <span className="spin" style={{ ['--s' as any]: `${size}px` }} role="status" aria-label={label || 'در حال بارگذاری'}>
+      <span className="spin-track" /><span className="spin-arc" /><span className="spin-arc2" /><span className="spin-core" />
+    </span>
+  );
+}
+
+export function FancyLoader({ label = 'در حال بارگذاری' }: { label?: string }) {
+  const text = label.replace(/[.…]+$/, '');
   return (
     <div className="fancy-loader">
-      <div className="fancy-spinner"><span className="fancy-spark" /></div>
-      {label && <div className="lbl">{label}</div>}
+      <Spinner size={72} label={text} />
+      {text && <div className="lbl">{text}<span className="dots"><i>.</i><i>.</i><i>.</i></span></div>}
     </div>
   );
 }
@@ -76,7 +139,7 @@ export function NoticeModal({ variant = 'info', title, children, confirmLabel = 
   const accent = variant === 'error' ? 'var(--danger)' : variant === 'success' ? 'var(--success)' : 'var(--brand)';
   const defaultTitle = variant === 'error' ? 'خطا' : variant === 'success' ? 'انجام شد' : 'توجه';
   return (
-    <div className="pmodal-backdrop" onClick={onClose}>
+    <Overlay onClose={onClose}>
       <div className="pmodal" style={{ maxWidth: 520, borderTop: `4px solid ${accent}` }} onClick={(e) => e.stopPropagation()}>
         <div className="pmodal-head">
           <span className="pmodal-title" style={{ color: accent }}>{title ?? defaultTitle}</span>
@@ -90,7 +153,7 @@ export function NoticeModal({ variant = 'info', title, children, confirmLabel = 
           <button onClick={onConfirm ?? onClose} className="flex-1 py-3 font-bold" style={{ color: accent }}>{confirmLabel}</button>
         </div>
       </div>
-    </div>
+    </Overlay>
   );
 }
 

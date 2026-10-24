@@ -2,8 +2,9 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { toGregorian } from 'jalaali-js';
 import { client, hasPerm } from '../../../lib/client';
-import { Field } from '../../components/ui';
+import { Field, Spinner } from '../../components/ui';
 import { JalaliDatePicker } from '../../components/JalaliDatePicker';
+import { Overlay } from '../../components/ui';
 import { appZoom } from '../../../lib/scale';
 
 interface Contract { id: string; insurerTenantId: string; insurerName: string; policyNumber: string | null; startDate: string | null; endDate: string | null; isActive: boolean; isCurrent: boolean }
@@ -107,7 +108,7 @@ export function NetworkTab({ setMsg, onChanged }: { setMsg: (m: { t: 'ok' | 'err
     setConnect(null);
   }, `«${connect.company.name}» از طریق کارگزاری به «${connect.insurer.name}» متصل شد.`);
 
-  if (!net) return <div className="card p-8 text-center"><span className="pspinner inline-block" /></div>;
+  if (!net) return <div className="card p-8 text-center"><Spinner /></div>;
   const selCompany = sel?.kind === 'company' ? net.companies.find((c) => c.id === sel.id) : null;
   const selInsurer = sel?.kind === 'insurer' ? net.insurers.find((i) => i.id === sel.id) : null;
   const brokerLogo = net.broker.hasLogo ? `${client.base}/tenant/assets/logo?tenant=${net.broker.slug}` : null;
@@ -252,7 +253,7 @@ export function NetworkTab({ setMsg, onChanged }: { setMsg: (m: { t: 'ok' | 'err
 
       {/* Connect dialog */}
       {connect && (
-        <div className="pmodal-backdrop" onClick={() => setConnect(null)}>
+        <Overlay onClose={() => setConnect(null)}>
           <div className="pmodal" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
             <div className="pmodal-head">
               <span className="pmodal-title">اتصال بیمه‌گزار به بیمه‌گر</span>
@@ -280,7 +281,7 @@ export function NetworkTab({ setMsg, onChanged }: { setMsg: (m: { t: 'ok' | 'err
               <button onClick={saveContract} className="flex-1 py-3 font-bold" style={{ color: 'var(--brand)' }}>ثبت اتصال</button>
             </div>
           </div>
-        </div>
+        </Overlay>
       )}
     </div>
   );

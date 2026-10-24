@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { client, getToken } from '../../../../lib/client';
-import { CLAIM_TYPE_LABELS, ErrorBox, StatusBadge } from '../../../components/ui';
+import { CLAIM_TYPE_LABELS, ErrorBox, Spinner, StatusBadge } from '../../../components/ui';
 import { Icon, Shell } from '../../../components/Shell';
 import { CUSTOMER_NAV } from '../../nav';
 import { TimelineStep, Workflow, WorkflowPanel, WorkflowTimeline } from '../../../components/WorkflowPanel';
@@ -56,7 +56,7 @@ export default function CustomerClaim() {
     <Shell title="جزئیات پرونده" breadcrumb="جزئیات پرونده" sectionLabel="خسارت عمر و حادثه" nav={CUSTOMER_NAV} realm="customer">
      <div className="space-y-5 max-w-3xl mx-auto">
       <ErrorBox message={error} />
-      {!claim ? <div className="pcard p-10 text-center"><span className="pspinner inline-block" /></div> : (
+      {!claim ? <div className="pcard p-10 text-center"><Spinner /></div> : (
         <>
           <div className="pcard p-6">
             <div className="flex justify-between items-center mb-2">
@@ -102,11 +102,16 @@ export default function CustomerClaim() {
               {checklist && <span className={`badge ${checklist.complete ? 'badge-success' : 'badge-warning'}`}>{checklist.complete ? 'کامل' : 'ناقص'}</span>}
             </div>
             <div className="space-y-2">
-              {checklist?.items.map((it) => (
-                <div key={it.code} className="py-2 border-b" style={{ borderColor: 'var(--border)' }}>
+              {checklist?.items.map((it) => {
+                // green = uploaded and fine; red = missing or rejected (needs a replacement)
+                const bad = !it.uploaded || it.latestStatus === 'REJECTED' || it.latestStatus === 'NEEDS_INFO';
+                const stateText = !it.uploaded ? 'بارگذاری نشده' : bad ? 'رد شده — مدرک جایگزین بارگذاری کنید' : it.latestStatus === 'VERIFIED' ? 'تایید شده' : 'بارگذاری شده — در حال بررسی';
+                return (
+                <div key={it.code} className={`doc-row ${bad ? 'is-bad' : 'is-ok'}`}>
                   <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm flex items-center gap-2">
-                      <span style={{ color: it.uploaded ? 'var(--success)' : 'var(--muted)' }}>{it.uploaded ? '✔' : '○'}</span>{it.label}
+                    <span className="text-sm min-w-0">
+                      <span className="font-bold block">{it.label}</span>
+                      <span className="doc-state">{stateText}</span>
                     </span>
                     <div className="flex items-center gap-1.5 shrink-0">
                       <input ref={(el) => { fileRefs.current[it.code] = el; }} type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }}
@@ -114,14 +119,16 @@ export default function CustomerClaim() {
                       {/* Mobile-only camera capture */}
                       <input ref={(el) => { camRefs.current[it.code] = el; }} type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
                         onChange={(e) => { const file = e.target.files?.[0]; if (file) upload(it.code, file); e.currentTarget.value = ''; }} />
-                      <button onClick={() => camRefs.current[it.code]?.click()} disabled={busy} className="btn btn-ghost btn-sm sm:hidden" title="گرفتن عکس با دوربین" aria-label="دوربین"><Icon path="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2zM12 17a4 4 0 100-8 4 4 0 000 8z" /></button>
-                      <button onClick={() => fileRefs.current[it.code]?.click()} disabled={busy} className="btn btn-ghost btn-sm">{it.uploaded ? 'بارگذاری مجدد' : 'بارگذاری'}</button>
+                      <button onClick={() => camRefs.current[it.code]?.click()} disabled={busy} className="icon-btn sm:hidden" title="گرفتن عکس با دوربین" aria-label="دوربین"><Icon path="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2zM12 17a4 4 0 100-8 4 4 0 000 8z" /></button>
+                      <button onClick={() => fileRefs.current[it.code]?.click()} disabled={busy} className="icon-btn" title={it.uploaded ? 'بارگذاری مجدد' : 'بارگذاری'} aria-label={it.uploaded ? 'بارگذاری مجدد' : 'بارگذاری'}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 15V3m0 0L7.5 7.5M12 3l4.5 4.5M4 15v4a2 2 0 002 2h12a2 2 0 002-2v-4" /></svg>
+                      </button>
                     </div>
                   </div>
                   {it.documents.length > 0 && (
                     <div className="mt-2 space-y-1.5 mr-6">
                       {it.documents.map((d) => (
-                        <div key={d.id} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5" style={{ background: d.isLatest ? 'var(--brand-soft)' : 'var(--surface-2)', opacity: d.isLatest ? 1 : 0.7 }}>
+                        <div key={d.id} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5" style={{ background: 'var(--surface)', border: '1px solid var(--border)', opacity: d.isLatest ? 1 : 0.7 }}>
                           <span className="text-xs flex items-center gap-2 min-w-0">
                             <span className="badge badge-neutral shrink-0">نسخه {d.version}</span>
                             {d.isLatest && <span className="badge badge-success shrink-0">جدیدترین</span>}
@@ -134,7 +141,7 @@ export default function CustomerClaim() {
                     </div>
                   )}
                 </div>
-              ))}
+                ); })}
             </div>
           </div>
         </>

@@ -3,7 +3,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { client, getTenantSlug, setTenantSlug, setToken } from '../../../lib/client';
 import { applyTheme, TenantTheme } from '../../../lib/theme';
-import { AuthCard } from '../../components/auth-card';
+import { AuthCard, LoginNav } from '../../components/auth-card';
 import { ErrorBox, Field } from '../../components/ui';
 
 interface OrgBrand { slug: string; name: string; hasLogo: boolean; theme: TenantTheme | null }
@@ -88,6 +88,7 @@ export default function OrgLogin() {
               {loading ? '…' : 'ورود به سامانه'}
             </button>
           </div>
+          <LoginNav onDark />
           <div className="text-center text-xs mt-4" style={{ color: 'rgba(255,255,255,0.85)' }}>با همکاری کارگزاری رسمی بیمه مستقیم برخط آتیه اندیشان دامون</div>
         </div>
       </div>

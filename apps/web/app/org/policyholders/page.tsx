@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { toGregorian } from 'jalaali-js';
 import { client } from '../../../lib/client';
 import { Shell } from '../../components/Shell';
-import { Field } from '../../components/ui';
+import { Field, Spinner } from '../../components/ui';
 import { JalaliDatePicker } from '../../components/JalaliDatePicker';
 import { ORG_NAV } from '../nav';
 import { NetworkTab } from './network';
@@ -317,7 +317,7 @@ function MessagesTab({ setMsg }: { setMsg: (m: { t: 'ok' | 'err'; m: string } | 
   const load = () => client.get<Msg[]>('/policyholder-companies/messages', 'org').then(setRows).catch((e) => setMsg({ t: 'err', m: e.message }));
   useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
   const done = async (m: Msg) => { try { await client.post(`/policyholder-companies/messages/${m.id}/handled`, {}, 'org'); load(); } catch (e: any) { setMsg({ t: 'err', m: e.message }); } };
-  if (!rows) return <div className="card p-8 text-center"><span className="pspinner inline-block" /></div>;
+  if (!rows) return <div className="card p-8 text-center"><Spinner /></div>;
   if (rows.length === 0) return <div className="card p-8 text-center text-sm" style={{ color: 'var(--muted)' }}>پیامی از استعلام‌کنندگان دریافت نشده است.</div>;
   return (
     <div className="space-y-2">

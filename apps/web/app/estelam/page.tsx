@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { StatusBadge } from '../components/ui';
+import { Spinner, StatusBadge } from '../components/ui';
 import { BrandMark } from '../components/brand';
 import { Icon } from '../components/Shell';
 import { Faq } from '../components/Faq';
@@ -111,7 +111,7 @@ export default function EstelamResult() {
 
       <div style={{ maxWidth: 1120, margin: '0 auto', padding: 'clamp(16px,3vw,34px)' }}>
         {!ready ? (
-          <div className="flex justify-center p-16"><span className="pspinner" /></div>
+          <div className="flex justify-center p-16"><Spinner /></div>
         ) : !r ? (
           <div className="pcard p-10 text-center space-y-3" style={{ marginTop: 24 }}>
             <p style={{ color: 'var(--muted)' }}>اطلاعات استعلامی یافت نشد. لطفاً دوباره استعلام کنید.</p>
