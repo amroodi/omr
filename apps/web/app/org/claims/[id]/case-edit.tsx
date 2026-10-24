@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { client } from '../../../../lib/client';
 import { Icon } from '../../../components/Shell';
 import { JalaliDatePicker } from '../../../components/JalaliDatePicker';
-import { FieldRow, FieldsData, notesTone } from './case-ui';
+import { FieldRow, FieldsData, notesTone } from '../../../components/case-ui';
 
 /**
  * «ویرایش» of a case, after the operator forms (to-ui-editing 1–3): three columns (بیمه‌شده / بیمه‌نامه /

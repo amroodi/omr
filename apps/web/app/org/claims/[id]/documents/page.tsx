@@ -9,7 +9,7 @@ import { ACTION_FA, STATE_FA } from '../../../../components/WorkflowPanel';
 import { ORG_NAV } from '../../../nav';
 import { caseTitle } from '../../../../../lib/caseTitle';
 import { downloadPdf } from '../../../../../lib/pdf';
-import { CaseHero, ClaimDoc, ICONS, NotesPill, PersonCards, phaseText, useCase } from '../case-ui';
+import { CaseHero, ClaimDoc, ICONS, NotesPill, PersonCards, phaseText, useCase } from '../../../../components/case-ui';
 
 const DESK_FA: Record<string, string> = { BROKER: 'کارگزاری', BRANCH: 'شعبه', HQ: 'ستاد', COUNCIL: 'شورای فنی' };
 const OK = 'M20 6L9 17l-5-5';

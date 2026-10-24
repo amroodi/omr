@@ -170,6 +170,13 @@ export class CustomerController {
     return this.claims.get(id);
   }
 
+  /** «روند پرونده»: the case's executive steps (dates/statuses), read-only for the بیمه‌گزار. */
+  @UseGuards(JwtAuthGuard)
+  @Get('claims/:id/fields')
+  claimFields(@Param('id') id: string) {
+    return this.claims.fieldsReadOnly(id);
+  }
+
   @UseGuards(JwtAuthGuard)
   @Get('claims/:id/checklist')
   claimChecklist(@Param('id') id: string) {
