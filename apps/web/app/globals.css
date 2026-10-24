@@ -760,12 +760,14 @@ html:has(.pshell) { overflow: hidden; }
 :root.dark .trk-ico-btn { background: var(--surface-2); color: var(--text); border-color: var(--border); }
 
 /* ═══ Auth page full-screen background image (org login) — light/dark variants ═══ */
-.auth-bg { position: fixed; inset: 0; z-index: -1; background-size: cover; background-position: center; background-repeat: no-repeat; }
-.auth-bg::after { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse 46% 56% at 50% 46%, rgba(255,255,255,0.4), transparent 72%); }
-.auth-bg-dark { display: none; }
-.auth-bg-dark::after { background: radial-gradient(ellipse 46% 56% at 50% 46%, rgba(0,0,0,0.35), transparent 72%); }
-:root.dark .auth-bg-light { display: none; }
-:root.dark .auth-bg-dark { display: block; }
+.auth-bg { position: fixed; inset: 0; z-index: -1; overflow: hidden; background: var(--bg); }
+/* Rotating images (RotatingBg): stacked layers, the active one fades in over the previous. */
+.auth-bg-layer { position: absolute; inset: 0; background-size: cover; background-position: center; background-repeat: no-repeat; opacity: 0; transition: opacity 1.4s ease; }
+.auth-bg-layer.is-on { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .auth-bg-layer { transition: none; } }
+/* Soft glow behind the card so it reads on any photo. */
+.auth-bg::after { content: ''; position: absolute; inset: 0; z-index: 1; background: radial-gradient(ellipse 46% 56% at 50% 46%, rgba(255,255,255,0.4), transparent 72%); }
+:root.dark .auth-bg::after { background: radial-gradient(ellipse 46% 56% at 50% 46%, rgba(0,0,0,0.35), transparent 72%); }
 
 /* ═══ Org welcome page (post-login entry to میز کار) — warm, hand-crafted feel ═══ */
 /* Full-viewport fixed cover so it sits ABOVE the global <main> box + footer (no second

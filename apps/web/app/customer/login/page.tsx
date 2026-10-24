@@ -57,7 +57,7 @@ export default function CustomerLogin() {
   const subtitle = mode === 'login' ? 'پیگیری پرونده‌های خسارت و بارگذاری مدارک' : 'ثبت‌نام بیمه‌گزار جدید — پس از تایید سازمان فعال می‌شود';
 
   return (
-    <AuthCard title={mode === 'login' ? 'ورود بیمه‌گزار' : 'ثبت‌نام بیمه‌گزار'} subtitle={subtitle} bg={{ light: '/auth-customer-light.jpg', dark: '/auth-customer-dark.jpg' }}>
+    <AuthCard title={mode === 'login' ? 'ورود بیمه‌گزار' : 'ثبت‌نام بیمه‌گزار'} subtitle={subtitle} bg={{ light: ['cust-day-1', 'cust-day-2'], dark: ['cust-night-1'] }}>
       <div className="space-y-4">
         <ErrorBox message={error} />
 

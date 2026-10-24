@@ -96,7 +96,7 @@ export default function OrgLogin() {
   }
 
   return (
-    <AuthCard title="ورود سازمان" subtitle="پنل مدیریت پرونده‌های سازمان" bg={{ light: '/auth-org-light.jpg', dark: '/auth-org-dark.jpg' }}>
+    <AuthCard title="ورود سازمان" subtitle="پنل مدیریت پرونده‌های سازمان" bg={{ light: ['org-day-1', 'org-day-2'], dark: ['org-night-1'] }}>
       <div className="space-y-4">
         {fields}
         <button onClick={submit} disabled={loading || !username || !password} className="btn btn-primary w-full">{loading ? '…' : 'ورود'}</button>

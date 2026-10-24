@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ReactNode } from 'react';
 import { BrandMark } from './brand';
+import { LoginBgSet, RotatingBg } from './RotatingBg';
 
 const LOGINS = [
   { href: '/customer/login', label: 'ورود بیمه‌گزار' },
@@ -29,16 +30,11 @@ export function LoginNav({ onDark }: { onDark?: boolean }) {
   );
 }
 
-/** `bg` sets a full-screen background image behind the card (light + dark variants). */
-export function AuthCard({ title, subtitle, children, bg }: { title: string; subtitle?: string; children: ReactNode; bg?: { light: string; dark: string } }) {
+/** `bg` sets full-screen background images behind the card that rotate on a timer (light + dark sets). */
+export function AuthCard({ title, subtitle, children, bg }: { title: string; subtitle?: string; children: ReactNode; bg?: LoginBgSet }) {
   return (
     <div className="min-h-[calc(70*var(--zvh))] flex items-center justify-center">
-      {bg && (
-        <>
-          <div className="auth-bg auth-bg-light" style={{ backgroundImage: `url(${bg.light})` }} aria-hidden />
-          <div className="auth-bg auth-bg-dark" style={{ backgroundImage: `url(${bg.dark})` }} aria-hidden />
-        </>
-      )}
+      {bg && <RotatingBg set={bg} />}
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center mb-6">
           <BrandMark size={48} />
