@@ -6,6 +6,7 @@ import { Shell } from '../../components/Shell';
 import { Field } from '../../components/ui';
 import { JalaliDatePicker } from '../../components/JalaliDatePicker';
 import { ORG_NAV } from '../nav';
+import { NetworkTab } from './network';
 
 interface Acc { id: string; fullName: string | null; nationalCode: string | null; nationalCodeMasked: string | null; phone: string | null; phoneMasked: string | null; canViewPii: boolean; signupStatus: string; isActive: boolean; createdAt: string | null; lastLoginAt: string | null; company: { id: string; name: string } | null }
 interface Contract { id: string; insurerTenantId: string; insurerName: string; policyNumber: string | null; startDate: string | null; endDate: string | null; isActive: boolean; note: string | null; isCurrent: boolean }
@@ -20,7 +21,7 @@ const STATUS: Record<string, { label: string; cls: string }> = {
   ACTIVE: { label: 'فعال', cls: 'badge-success' },
   REJECTED: { label: 'ردشده', cls: 'badge-neutral' },
 };
-const TABS = [['companies', 'شرکت‌های بیمه‌گزار'], ['accounts', 'نمایندگان (ورود به پنل بیمه‌گزار)'], ['messages', 'پیام‌های استعلام']] as const;
+const TABS = [['map', 'نقشهٔ اتصال‌ها'], ['companies', 'شرکت‌های بیمه‌گزار'], ['accounts', 'نمایندگان (ورود به پنل بیمه‌گزار)'], ['messages', 'پیام‌های استعلام']] as const;
 type Tab = (typeof TABS)[number][0];
 
 function jalaliToIso(v: string): string | null {
@@ -33,13 +34,13 @@ const tabStyle = (on: boolean) => (on ? { background: 'var(--brand)', color: '#f
 const EMPTY_CO = { name: '', parentId: '', phone: '', email: '', address: '', website: '', contactName: '' };
 
 export default function Policyholders() {
-  const [tab, setTab] = useState<Tab>('companies');
+  const [tab, setTab] = useState<Tab>('map');
   const [companies, setCompanies] = useState<Company[]>([]);
   const [msg, setMsg] = useState<{ t: 'ok' | 'err'; m: string } | null>(null);
   const loadCompanies = () => client.get<Company[]>('/policyholder-companies', 'org').then(setCompanies).catch((e) => setMsg({ t: 'err', m: e.message }));
   useEffect(() => {
     const t = new URLSearchParams(window.location.search).get('tab');
-    if (t === 'messages' || t === 'accounts') setTab(t);
+    if (t === 'messages' || t === 'accounts' || t === 'companies') setTab(t);
     loadCompanies();
   }, []);
 
@@ -49,6 +50,7 @@ export default function Policyholders() {
         {TABS.map(([k, l]) => <button key={k} onClick={() => setTab(k)} className="btn btn-sm" style={tabStyle(tab === k)}>{l}</button>)}
       </div>
       {msg && <div className={`${msg.t === 'ok' ? 'alert-success' : 'alert-error'} mb-3`}>{msg.m}</div>}
+      {tab === 'map' && <NetworkTab setMsg={setMsg} onChanged={loadCompanies} />}
       {tab === 'companies' && <CompaniesTab companies={companies} reload={loadCompanies} setMsg={setMsg} />}
       {tab === 'accounts' && <AccountsTab companies={companies} setMsg={setMsg} />}
       {tab === 'messages' && <MessagesTab setMsg={setMsg} />}
