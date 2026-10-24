@@ -13,8 +13,23 @@ import {
 } from 'class-validator';
 
 export class FileClaimDto {
+  // Omitted when a بیمه‌گزار company is given: its contract for the date of death decides the insurer.
+  @IsOptional()
   @IsUUID()
-  insurerTenantId!: string;
+  insurerTenantId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  policyholderCompanyId?: string;
+
+  @IsOptional()
+  @IsISO8601()
+  deceasedBirthDate?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 2000)
+  description?: string;
 
   @IsEnum(SalesChannel)
   channel!: SalesChannel;

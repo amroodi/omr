@@ -180,6 +180,17 @@ date of death, exactly as when the company files itself. The case starts at the 
 the staff upload the documents and press «ارسال به کارگزاری» for them; an optional representative of
 the company is attached so the case also shows in their panel.
 
+**Case pages (org).** The case opens on «پیش‌نمایش» (policy summary) with two sub-pages:
+`/org/claims/:id/documents` (each required document, its upload and every desk's ✓/✕, the workflow
+route and deficiency history) and `/org/claims/:id/workflow` (the executive steps — dates and statuses
+of the WORKFLOW_STAGE fields). Both download as PDF. Empty fields are pre-filled from the case itself
+and from the recorded hand-offs (e.g. «تاریخ ارسال به ستاد» = when the branch forwarded); a typed value
+always wins. «ویرایش» is the field editor; «ارزیابی پرونده» is the two-pane assessment page, where each
+desk's ✓/✕ shows its last change on hover and its full history (from the audit log) on click.
+
+**Reports.** «گزارش‌گیری» (`/org/reports`) builds reports in the browser from `GET /claims/report-data`
+(every visible case with all facts and field values); Excel export goes through `POST /exports/table.xlsx`.
+
 **Case title.** A case is named by its شماره بیمه‌نامه once known (from the contract at filing, or when
 the `policy_number` field is confirmed), otherwise by its CLM number. Lists identify cases by the
 deceased's کد ملی.

@@ -16,6 +16,10 @@ export interface NavItem {
   icon: ReactNode;
   /** Only show this item when the signed-in user holds this permission (or any of the list). */
   perm?: string | string[];
+  /** Category heading the item sits under; consecutive items with the same group share one heading. */
+  group?: string;
+  /** A menu entry that opens something instead of navigating («تغییر رمز عبور»). */
+  special?: 'password';
 }
 
 /**
@@ -79,7 +83,7 @@ export function Shell({
 
   const toggleRail = () => setRail((r) => { const n = !r; try { localStorage.setItem('navRail', n ? '1' : '0'); } catch {} return n; });
   const visibleNav = nav.filter((n) => !n.perm || (mounted && hasPerm(realm, n.perm)));
-  const homeHref = realm === 'customer' ? '/customer' : realm === 'super' ? '/admin' : '/org';
+  const homeHref = realm === 'customer' ? '/customer' : realm === 'super' ? '/admin' : '/org/work-desk';
   // «بازگشت»: one step back when the user arrived from inside the site, otherwise to the panel home.
   const isHome = pathname === homeHref || pathname === '/org/welcome';
   const goBack = () => {
@@ -148,28 +152,39 @@ export function Shell({
         </button>
 
         <nav className="psidebar-nav">
-          {sectionLabel && (
+          {sectionLabel && !nav.some((n) => n.group) && ( /* grouped menus carry their own headings */
             <div className="pnav-section">
               <span className="ico"><Icon path="M4 6h16M4 12h16M4 18h16" /></span>
               <span className="lbl">{sectionLabel}</span>
             </div>
           )}
-          {visibleNav.map((n) => {
-            const active = pathname === n.href;
-            return (
+          {visibleNav.map((n, i) => {
+            const active = pathname === n.href.split('?')[0] && !n.href.includes('?');
+            const heading = n.group && n.group !== visibleNav[i - 1]?.group
+              ? <div key={`g-${n.group}`} className="pnav-group"><span className="lbl">{n.group}</span></div>
+              : null;
+            const item = n.special === 'password' ? (
+              <button key={n.href} type="button" onClick={() => setShowPw(true)} className="pnav-item" title={n.label}>
+                <span className="ico">{n.icon}</span>
+                <span className="lbl">{n.label}</span>
+              </button>
+            ) : (
               <Link key={n.href} href={n.href} className={`pnav-item ${active ? 'is-active' : ''}`} title={n.label}>
                 <span className="ico">{n.icon}</span>
                 <span className="lbl">{n.label}</span>
               </Link>
             );
+            return heading ? [heading, item] : item;
           })}
         </nav>
 
         <div className="psidebar-foot">
-          <button onClick={() => setShowPw(true)} className="pnav-item" title="تغییر رمز عبور">
-            <span className="ico"><Icon path={PW_ICON} /></span>
-            <span className="lbl">تغییر رمز عبور</span>
-          </button>
+          {!nav.some((n) => n.special === 'password') && (
+            <button onClick={() => setShowPw(true)} className="pnav-item" title="تغییر رمز عبور">
+              <span className="ico"><Icon path={PW_ICON} /></span>
+              <span className="lbl">تغییر رمز عبور</span>
+            </button>
+          )}
           <button onClick={logout} className="pnav-item" title="خروج">
             <span className="ico" style={{ color: 'var(--danger)' }}><Icon path={OUT_ICON} /></span>
             <span className="lbl">خروج</span>

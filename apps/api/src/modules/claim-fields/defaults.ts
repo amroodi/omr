@@ -32,9 +32,10 @@ export const DEFAULT_CLAIM_FIELDS: FieldDefSeed[] = [
   { key: 'death_capital', label: 'سرمایه فوت', type: 'AMOUNT', group: 'CLAIM_DATA', editableBy: BOTH, order: 9 },
   { key: 'accident_capital', label: 'سرمایه حادثه', type: 'AMOUNT', group: 'CLAIM_DATA', editableBy: BOTH, order: 10 },
   { key: 'payable_amount', label: 'مبلغ قابل پرداخت', type: 'AMOUNT', group: 'CLAIM_DATA', editableBy: BOTH, order: 11 },
+  { key: 'death_kind', label: 'فوت', type: 'SELECT', group: 'CLAIM_DATA', editableBy: BOTH, options: ['در حال بررسی', 'فوت عادی (بیماری)', 'فوت ناشی از حادثه'], order: 12 },
 
   // ── Beneficiary (ذینفع) ──
-  { key: 'beneficiary_type', label: 'نوع ذینفع', type: 'SELECT', group: 'BENEFICIARY', editableBy: BOTH, options: ['همسر', 'فرزند', 'پدر', 'مادر', 'سایر'], order: 20 },
+  { key: 'beneficiary_type', label: 'نوع ذینفع', type: 'SELECT', group: 'BENEFICIARY', editableBy: BOTH, options: ['وراث قانونی', 'ذینفع قانونی', 'همسر', 'فرزند', 'پدر', 'مادر', 'سایر'], order: 20 },
   { key: 'beneficiaries', label: 'ذینفعان / وراث قانونی (نام و سهم هر نفر)', type: 'TEXT', group: 'BENEFICIARY', editableBy: BOTH, order: 22 },
   { key: 'beneficiary_iban', label: 'شماره شبا ذینفع', type: 'IBAN', group: 'BENEFICIARY', editableBy: BOTH, order: 21 },
 
@@ -53,6 +54,7 @@ export const DEFAULT_CLAIM_FIELDS: FieldDefSeed[] = [
   { key: 'docs_receive_status', label: 'وضعیت دریافت مدارک', type: 'SELECT', group: 'WORKFLOW_STAGE', editableBy: BOTH, options: ['مدارک دریافت شد', 'کامل', 'ناقص'], order: 43 },
   { key: 'missing_docs_request_date', label: 'تاریخ درخواست کسری مدارک', type: 'DATE', group: 'WORKFLOW_STAGE', editableBy: BOTH, order: 44 },
   { key: 'missing_docs_request_status', label: 'وضعیت درخواست کسری مدارک', type: 'SELECT', group: 'WORKFLOW_STAGE', editableBy: BOTH, options: ['کسری اعلام شد', 'رفع شد', 'ندارد'], order: 45 },
+  { key: 'case_complete', label: 'تکمیل پرونده', type: 'SELECT', group: 'WORKFLOW_STAGE', editableBy: BOTH, options: ['تکمیل', 'ناقص'], order: 46 },
   { key: 'case_complete_date', label: 'تاریخ تکمیل پرونده', type: 'DATE', group: 'WORKFLOW_STAGE', editableBy: BOTH, order: 46 },
   { key: 'case_complete_status', label: 'وضعیت تکمیل پرونده', type: 'SELECT', group: 'WORKFLOW_STAGE', editableBy: BOTH, options: ['پرونده کامل شده است', 'پرونده تکمیل شده و کسری ندارد', 'ناقص'], order: 47 },
 

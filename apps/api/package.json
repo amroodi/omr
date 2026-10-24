@@ -30,6 +30,7 @@
     "exceljs": "^4.4.0",
     "helmet": "^7.1.0",
     "jalaali-js": "^1.2.7",
+    "jszip": "^3.10.1",
     "reflect-metadata": "^0.2.1",
     "rxjs": "^7.8.1",
     "soap": "^1.13.2"

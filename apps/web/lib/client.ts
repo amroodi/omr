@@ -128,6 +128,19 @@ export const client = {
     a.click();
     URL.revokeObjectURL(url);
   },
+  // POST a JSON body and save the file the server returns (e.g. a report built in the browser → Excel).
+  downloadPost: async (path: string, body: unknown, realm: Realm, filename: string) => {
+    const res = await fetch(`${BASE}${path}`, { method: 'POST', headers: headers(realm), body: JSON.stringify(body) });
+    if (!res.ok) {
+      if (res.status === 401) onUnauthorized(realm);
+      const data = await res.json().catch(() => ({}));
+      throw new Error((data as any).message || `خطا (${res.status})`);
+    }
+    const url = URL.createObjectURL(await res.blob());
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  },
   // Open a protected file inline in a new tab (auth header can't ride on window.open).
   view: async (path: string, realm: Realm) => {
     const res = await fetch(`${BASE}${path}`, { headers: headers(realm, false) });

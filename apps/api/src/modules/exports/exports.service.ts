@@ -262,6 +262,40 @@ export class ExportsService {
     res.end();
   }
 
+  /**
+   * A report built in the browser (columns, filters and grouping chosen by the user) saved as Excel:
+   * organization name, report title and filters on top, then the table. Audit-logged with its size.
+   */
+  async tableXlsx(res: Response, t: { title: string; subtitle?: string; headers: string[]; rows: (string | number | null)[][] }): Promise<void> {
+    const header = await this.tenantHeader();
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'OMR Damuon';
+    const ws = wb.addWorksheet('گزارش', { views: [{ rightToLeft: true }] });
+    const width = Math.max(1, t.headers.length);
+    const title = (text: string, size: number) => {
+      const row = ws.addRow([text]);
+      ws.mergeCells(row.number, 1, row.number, width);
+      row.getCell(1).font = { bold: true, size };
+      row.getCell(1).alignment = { horizontal: 'center', wrapText: true };
+    };
+    title(header.name, 14);
+    title(t.title, 12);
+    if (t.subtitle) title(t.subtitle, 10);
+    title(`تاریخ تهیه: ${toJalali(new Date())}`, 9);
+    ws.addRow([]);
+    const hr = ws.addRow(t.headers);
+    hr.font = { bold: true };
+    hr.eachCell((c) => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } }; });
+    for (const r of t.rows) ws.addRow((Array.isArray(r) ? r : []).slice(0, width).map((v) => (v == null ? '' : typeof v === 'number' ? v : String(v).slice(0, 2000))));
+    ws.columns.forEach((col) => { col.width = 22; });
+    await this.audit.record({ action: AuditAction.EXPORT, targetType: 'ClaimReport', metadata: { format: 'xlsx', title: t.title, rows: t.rows.length, columns: t.headers.length } });
+    await this.notifyAdminsExport(`گزارش «${t.title}» (اکسل)`, t.rows.length, false);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="report.xlsx"');
+    await wb.xlsx.write(res);
+    res.end();
+  }
+
   /** Single-claim XLSX: header facts + every structured field value. Audit-logged. */
   async claimXlsx(res: Response, claimId: string): Promise<void> {
     const claim = await this.prisma.unscoped().claim.findFirst({ where: { id: claimId, ...this.claimTenantWhere() } });

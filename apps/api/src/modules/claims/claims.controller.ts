@@ -35,7 +35,8 @@ export class ClaimsController {
     return this.claims.file(dto);
   }
 
-  @Permissions(PERMISSIONS.CLAIM_FILE_ON_BEHALF)
+  // Also feeds the «پرونده جدید» form (any staff who files claims), not only filing on behalf.
+  @Permissions(PERMISSIONS.CLAIM_FILE)
   @Get('on-behalf/companies')
   onBehalfCompanies() {
     return this.claims.onBehalfCompanies();
@@ -95,6 +96,13 @@ export class ClaimsController {
   @Get('work-desk/queue')
   workDeskQueue(@Query('key') key: string) {
     return this.claims.workDeskQueue(key);
+  }
+
+  /** «گزارش‌گیری»: every visible claim flattened with all its facts and fields (report builder data). */
+  @Permissions(PERMISSIONS.CLAIM_READ)
+  @Get('report-data')
+  reportData() {
+    return this.claims.reportData();
   }
 
   /** Advanced search (جستجوی پیشرفته) over the caller's claims. */
@@ -164,6 +172,23 @@ export class ClaimsController {
     res.setHeader('Content-Type', mimeType);
     res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fileName)}"`);
     res.send(buffer);
+  }
+
+  /** All current documents of the claim in one ZIP («دریافت همهٔ مدارک»). */
+  @Permissions(PERMISSIONS.CLAIM_READ)
+  @Get(':id/documents-zip')
+  async documentsZip(@Param('id') id: string, @Res() res: Response) {
+    const { buffer, fileName } = await this.claims.documentsZip(id);
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}"`);
+    res.send(buffer);
+  }
+
+  /** Every ✓/✕ change on one document, explained in Persian (assessment page history). */
+  @Permissions(PERMISSIONS.CLAIM_READ)
+  @Get(':id/documents/:docId/history')
+  documentHistory(@Param('id') id: string, @Param('docId') docId: string) {
+    return this.claims.documentHistory(id, docId);
   }
 
   /** Upload a document to the claim, tagged with the required-document code it satisfies. */

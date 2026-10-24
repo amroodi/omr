@@ -278,13 +278,13 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact }: 
   );
 }
 
-const ACTION_FA: Record<string, string> = {
+export const ACTION_FA: Record<string, string> = {
   SUBMIT: 'ارسال', FORWARD: 'تایید و ارسال', REFER_COUNCIL: 'ارجاع به شورای فنی', PAY_ORDER: 'دستور پرداخت',
   RETURN: 'عودت برای رفع نقص', RETURN_DIRECT: 'عودت مستقیم (اختیار مدیریت)', DOWN_FORWARD: 'ارسال به سطح پایین‌تر',
   DOWN_DIRECT: 'ارسال مستقیم به بیمه‌گزار (اختیار مدیریت)', MARK_PAID: 'ثبت پرداخت', REJECT_FINAL: 'رد نهایی',
 };
 /** Older steps (before workflow v2) carry only a state, no action. */
-const STATE_FA: Record<string, string> = {
+export const STATE_FA: Record<string, string> = {
   PENDING: 'در انتظار اقدام', FORWARDED: 'تایید و ارسال', ESCALATED: 'ارجاع به سطح بالاتر', APPROVED: 'تایید شد',
   RETURNED_INCOMPLETE: 'عودت برای رفع نقص', REJECTED: 'رد شد', ACKED: 'دریافت و ارسال',
 };
