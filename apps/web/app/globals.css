@@ -434,6 +434,14 @@ h1, h2, h3 {
     inset 0 calc(-1px * var(--dn-s)) calc(2px * var(--dn-s)) rgba(255,255,255,.22);
   transition: border-color var(--dn-fade) ease;
 }
+.dn:not(.is-night) .dn-track {
+  border-color: rgba(186,198,220,.8);
+  box-shadow:
+    0 calc(1px * var(--dn-s)) calc(3px * var(--dn-s)) rgba(15,30,60,.1),
+    inset 0 0 0 calc(1px * var(--dn-s)) rgba(255,255,255,.7),
+    inset 0 calc(3px * var(--dn-s)) calc(7px * var(--dn-s)) rgba(60,80,120,.14),
+    inset 0 calc(-1px * var(--dn-s)) calc(2px * var(--dn-s)) rgba(255,255,255,.6);
+}
 .dn.is-night .dn-track { border-color: rgba(170,195,240,.32); }
 /* Glass rim drawn above the scenes, below the knob. */
 .dn-track::after {
