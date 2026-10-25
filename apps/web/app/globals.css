@@ -401,10 +401,12 @@ h1, h2, h3 {
 .dark .partner-logos .logo-dark { display: block; }
 
 /* Single-logo crops from the combined partners image (Bimmes = left half, Damuon = right half). */
-.plogo { height: 34px; width: 108px; background-repeat: no-repeat; background-size: auto 100%; display: inline-block; background-image: url('/partners-light.webp'); }
-.plogo-bimmes { background-position: left center; }
-.plogo-damuon { background-position: right center; }
-:root.dark .plogo { background-image: url('/partners-dark.webp'); }
+/* Partner logos on the main page: vector (SVG) — sharp at any size; light and dark versions. */
+.plogo { height: 34px; width: 108px; background-repeat: no-repeat; background-size: contain; background-position: center; display: inline-block; }
+.plogo-bimmes { background-image: url('/brand/partners/bimmes-light.svg'); }
+.plogo-damuon { background-image: url('/brand/partners/damuon-light.svg'); }
+:root.dark .plogo-bimmes { background-image: url('/brand/partners/bimmes-dark.svg'); }
+:root.dark .plogo-damuon { background-image: url('/brand/partners/damuon-dark.svg'); }
 
 /* Pill-shaped fields for the landing login card. */
 .login-pills .input { border-radius: 999px; padding-top: 0.8rem; padding-bottom: 0.8rem; }
