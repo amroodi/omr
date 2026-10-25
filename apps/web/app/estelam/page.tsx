@@ -47,7 +47,7 @@ function Result({ r }: { r: any }) {
       <div className="est-cols">
         <InfoCol title="اطلاعات بیمه‌شده">
           <InfoRow label="نام و نام خانوادگی" value={r.deceasedName ? (isDeath ? `مرحوم ${r.deceasedName}` : r.deceasedName) : null} />
-          <InfoRow label="کد ملی" value={r.nationalCodeMasked ? <bdi className="ltr-val">{r.nationalCodeMasked}</bdi> : null} />
+          <InfoRow label="کد ملی" value={(r.nationalCode || r.nationalCodeMasked) ? <bdi className="ltr-val">{r.nationalCode || r.nationalCodeMasked}</bdi> : null} />
           <InfoRow label="تاریخ تولد" value={r.birthDate} />
           <InfoRow label={isDeath ? 'سن هنگام فوت' : 'سن هنگام حادثه'} value={age} />
           <InfoRow label="نام شرکت محل فعالیت" value={co?.name || r.companyName} />

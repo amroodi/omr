@@ -21,6 +21,7 @@ import { RequestOtpDto, VerifyOtpDto } from './dto';
 import { chainOf, Stage, STAGE_FA } from '../claims/workflow';
 import { ageAt } from '../claims/claims.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { ClaimFieldsService } from '../claim-fields/claim-fields.service';
 import { PolicyholdersService } from '../policyholders/policyholders.service';
 
 /**
@@ -49,6 +50,7 @@ export class InquiryService {
     private readonly config: ConfigService,
     private readonly policyholders: PolicyholdersService,
     private readonly notifications: NotificationsService,
+    private readonly fields: ClaimFieldsService,
   ) {}
 
   /** Platform master switch: is OTP required at all? (false = view record directly, no code). */
@@ -375,7 +377,8 @@ export class InquiryService {
       claimType: c.claimType,
       insurerName: insurer?.name ?? null,
       deceasedName: dec(c.deceasedFullName),
-      nationalCodeMasked: nid ? `••••••${nid.slice(-4)}` : null,
+      nationalCode: nid, // the requester typed it themselves (OTP-verified), so it is shown in full
+      nationalCodeMasked: nid,
       birthDate: c.deceasedBirthDate ? toJalali(c.deceasedBirthDate, false) : (fv.birth_date ?? null),
       deceasedAge: ageAt(c.deceasedBirthDate, c.eventDate),
       companyName: fv.company_name ?? c.employerName ?? null,
@@ -388,7 +391,9 @@ export class InquiryService {
       eventDate: c.eventDate ? toJalali(c.eventDate, false) : null,
       createdAt: c.createdAt ? toJalali(c.createdAt, false) : null,
       description: c.description ?? null,
-      caseNotes: fv.case_notes ?? null, // «توضیحات پرونده» written by the organizations for the requester
+      caseNotes: fv.case_notes ?? null,
+      // «پیگیری آخرین وضعیت»: dates/statuses of every executive step (typed, or implied by the hand-offs)
+      stages: Object.fromEntries(Object.entries(await this.fields.effectiveValues(claimId)).filter(([k]) => STAGE_KEYS.has(k))), // «توضیحات پرونده» written by the organizations for the requester
       // تاریخ پرداخت — when the payment was recorded (workflow), else the payment-order date field.
       paidDate: (() => { const p = (c.steps ?? []).find((s: any) => s.action === 'MARK_PAID' && s.decidedAt); return p?.decidedAt ? toJalali(p.decidedAt, false) : fv.payment_order_date ?? null; })(),
       // Where the claim is now + every hand-off (desk names only — operator names stay internal).
@@ -462,7 +467,8 @@ export class InquiryService {
       status: c.status,
       insured: {
         fullName: dec(c.insured?.fullName),
-        nationalCodeMasked: nid ? `••••••${nid.slice(-4)}` : null,
+        nationalCode: nid,
+        nationalCodeMasked: nid,
         dateOfDeath: c.insured?.dateOfDeath ? toJalali(c.insured.dateOfDeath, false) : null,
       },
       beneficiary: c.beneficiary
@@ -505,3 +511,12 @@ export class InquiryService {
     return p;
   }
 }
+
+/** Executive-step fields the requester may see (dates and statuses only — never IBANs or heirs' details). */
+const STAGE_KEYS = new Set([
+  'broker_to_insurer_date', 'broker_to_insurer_status', 'death_notice_date', 'death_notice_status', 'execution_stages',
+  'docs_request_date', 'docs_request_status', 'docs_receive_date', 'docs_receive_status',
+  'missing_docs_request_date', 'missing_docs_request_status', 'case_complete', 'case_complete_date', 'case_complete_status',
+  'send_to_hq_date', 'send_to_hq_status', 'council_approve_date', 'council_approve_status',
+  'return_to_branch_date', 'return_to_branch_status', 'payment_order_date', 'payment_order_status', 'payment_order', 'case_notes',
+]);

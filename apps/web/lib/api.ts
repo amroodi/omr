@@ -30,19 +30,19 @@ export const API_BASE = BASE;
 export interface CompanyHit { id: string; name: string; hasLogo: boolean }
 
 export const inquiryApi = {
-  // استعلام سریع: companyId = the بیمه‌گزار company (picked first); nationalCode = DECEASED's کد ملی;
+  // استعلام سریع: nationalCode = DECEASED's کد ملی (any company's case);
   // phone = the CHECKER's own mobile (OTP target, and how «پاسخگوی آنلاین» answers them).
   searchCompanies: async (q: string): Promise<CompanyHit[]> => {
     const res = await fetch(`${BASE}/policyholder-companies/search?q=${encodeURIComponent(q)}`, { headers: { 'x-tenant-slug': TENANT } });
     return res.ok ? res.json() : [];
   },
-  requestClaim: (companyId: string, nationalCode: string, phone: string) =>
-    post<{ ok: boolean; message: string; otpRequired?: boolean }>('/inquiry/request-claim', { companyId, nationalCode, phone }),
-  verifyOtp: (companyId: string, nationalCode: string, phone: string, code: string) =>
-    post<{ token: string; expiresIn: string }>('/inquiry/verify-otp', { companyId, nationalCode, phone, code }),
+  requestClaim: (nationalCode: string, phone: string) =>
+    post<{ ok: boolean; message: string; otpRequired?: boolean }>('/inquiry/request-claim', { nationalCode, phone }),
+  verifyOtp: (nationalCode: string, phone: string, code: string) =>
+    post<{ token: string; expiresIn: string }>('/inquiry/verify-otp', { nationalCode, phone, code }),
   // Direct claim view when OTP is disabled platform-wide (no code).
-  directClaim: (companyId: string, nationalCode: string, phone: string) =>
-    post<{ token: string; expiresIn: string }>('/inquiry/claim-direct', { companyId, nationalCode, phone }),
+  directClaim: (nationalCode: string, phone: string) =>
+    post<{ token: string; expiresIn: string }>('/inquiry/claim-direct', { nationalCode, phone }),
   getCase: (token: string) => get<any>('/inquiry/case', token),
   // «پاسخگوی آنلاین» — leave a question on the looked-up claim (record token from the inquiry).
   message: (token: string, message: string) => post<{ ok: boolean; message: string }>('/inquiry/message', { message }, token),
