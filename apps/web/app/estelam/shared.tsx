@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Spinner } from '../components/ui';
 import { BrandMark } from '../components/brand';
 import { Icon } from '../components/Shell';
+import { inquiryApi } from '../../lib/api';
 
 /**
  * مشاهده سریع و استعلام پرونده — shared pieces of the inquiry pages (/estelam and its five sub-pages).
@@ -41,17 +42,27 @@ export const PANELS = [
   { href: '/estelam/contact', label: 'تماس و ارتباط', icon: 'M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.13.96.36 1.9.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0122 16.92z' },
 ] as const;
 
-/** Reads the inquiry result (and its short-lived token) from sessionStorage. */
+/**
+ * The inquiry result: shown at once from sessionStorage, then re-read from the server while the
+ * inquiry token is still valid, so the page always shows current data (never a copy saved earlier).
+ */
 export function useInquiry() {
   const [r, setR] = useState<any>(null);
   const [token, setToken] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   useEffect(() => {
+    let t: string | null = null;
     try {
       const s = sessionStorage.getItem('inquiryResult'); if (s) setR(JSON.parse(s));
-      setToken(sessionStorage.getItem('inquiryToken'));
+      t = sessionStorage.getItem('inquiryToken'); setToken(t);
     } catch { /* private mode */ }
     setReady(true);
+    if (t) {
+      inquiryApi.getCase(t).then((fresh) => {
+        setR(fresh);
+        try { sessionStorage.setItem('inquiryResult', JSON.stringify(fresh)); } catch { /* ignore */ }
+      }).catch(() => { /* token expired: keep what we have */ });
+    }
   }, []);
   return { r, token, ready };
 }
