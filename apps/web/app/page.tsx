@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import { API_BASE, CompanyHit, inquiryApi } from '../lib/api';
+import { inquiryApi } from '../lib/api';
 import { ErrorBox, Field } from './components/ui';
 import { Icon } from './components/Shell';
 import { Reveal } from './components/reveal';
@@ -124,56 +124,10 @@ function ResendRow({ left, onResend, loading, onBack }: { left: number; onResend
 
 /* ─────────────────────── استعلام سریع (inquiry) ─────────────────────── */
 
-/** Step 1 of the inquiry: find the بیمه‌گزار company (the deceased's employer) by name. */
-function CompanyPicker({ value, onChange }: { value: CompanyHit | null; onChange: (c: CompanyHit | null) => void }) {
-  const [q, setQ] = useState('');
-  const [hits, setHits] = useState<CompanyHit[]>([]);
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    const term = q.trim();
-    if (term.length < 2) { setHits([]); return; }
-    let active = true;
-    const t = setTimeout(() => inquiryApi.searchCompanies(term).then((r) => { if (active) { setHits(r); setOpen(true); } }), 250);
-    return () => { active = false; clearTimeout(t); };
-  }, [q]);
-
-  if (value) {
-    return (
-      <div className="input flex items-center justify-between gap-2" style={{ textAlign: 'right' }}>
-        <span className="flex items-center gap-2 min-w-0">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          {value.hasLogo && <img src={`${API_BASE}/policyholder-companies/${value.id}/logo`} alt="" style={{ width: 22, height: 22, objectFit: 'contain' }} />}
-          <b className="truncate">{value.name}</b>
-        </span>
-        <button type="button" className="text-xs underline shrink-0" onClick={() => { onChange(null); setQ(''); }}>تغییر</button>
-      </div>
-    );
-  }
-  return (
-    <div style={{ position: 'relative' }}>
-      <input className="input" style={{ textAlign: 'center' }} value={q} onChange={(e) => setQ(e.target.value)} onFocus={() => hits.length && setOpen(true)}
-        placeholder="نام شرکت بیمه‌گزار (محل کار متوفی)" aria-autocomplete="list" />
-      {open && q.trim().length >= 2 && (
-        <div className="pcard" style={{ position: 'absolute', insetInline: 0, top: '105%', zIndex: 30, padding: 4, maxHeight: 240, overflowY: 'auto' }}>
-          {hits.length === 0
-            ? <div className="text-xs p-2 text-center" style={{ color: 'var(--muted)' }}>شرکتی با این نام یافت نشد</div>
-            : hits.map((h) => (
-              <button key={h.id} type="button" onClick={() => { onChange(h); setOpen(false); }} className="w-full text-right text-sm p-2 rounded-lg hover:bg-[var(--surface-2)] flex items-center gap-2">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                {h.hasLogo && <img src={`${API_BASE}/policyholder-companies/${h.id}/logo`} alt="" style={{ width: 20, height: 20, objectFit: 'contain' }} />}
-                {h.name}
-              </button>
-            ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
+/** استعلام: the deceased's کد ملی + the requester's mobile (OTP). Any company's case can be looked up. */
 function InquiryForm() {
   const router = useRouter();
   const [step, setStep] = useState<'id' | 'otp'>('id');
-  const [company, setCompany] = useState<CompanyHit | null>(null);
   const [nid, setNid] = useState('');
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState('');
@@ -190,25 +144,23 @@ function InquiryForm() {
   };
   const run = async (fn: () => Promise<void>) => { setError(''); setLoading(true); try { await fn(); } catch (e: any) { setError(e.message || 'خطا'); } finally { setLoading(false); } };
   const request = () => run(async () => {
-    if (!company) throw new Error('ابتدا شرکت بیمه‌گزار را انتخاب کنید');
-    const r = await inquiryApi.requestClaim(company.id, nid, phone);
+    const r = await inquiryApi.requestClaim(nid, phone);
     if (r.otpRequired === false) { // OTP disabled platform-wide → view directly
-      const t = await inquiryApi.directClaim(company.id, nid, phone);
+      const t = await inquiryApi.directClaim(nid, phone);
       goResult(await inquiryApi.getCase(t.token), t.token); return;
     }
     setMsg(r.message); setStep('otp'); start(120);
   });
-  const verify = () => run(async () => { const r = await inquiryApi.verifyOtp(company!.id, nid, phone, code); goResult(await inquiryApi.getCase(r.token), r.token); });
+  const verify = () => run(async () => { const r = await inquiryApi.verifyOtp(nid, phone, code); goResult(await inquiryApi.getCase(r.token), r.token); });
 
   return (
     <div className="space-y-3.5" style={{ maxWidth: 300, width: '100%', margin: '0 auto' }}>
         <ErrorBox message={error} />
         {step === 'id' && (
           <>
-            <CompanyPicker value={company} onChange={setCompany} />
             <input className="input" style={{ textAlign: 'center' }} value={nid} onChange={(e) => setNid(e.target.value)} inputMode="numeric" placeholder="کد ملی ۱۰ رقمی متوفی" />
-            <input className="input" style={{ textAlign: 'center' }} value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="numeric" placeholder="شماره موبایل شما (استعلام‌کننده)" onKeyDown={(e) => e.key === 'Enter' && company && nid && phone && request()} />
-            <button onClick={request} disabled={loading || !company || !nid || !phone} className="btn btn-primary w-full" style={{ padding: '0.8rem' }}>{loading ? 'در حال ارسال…' : 'دریافت کد تایید'}</button>
+            <input className="input" style={{ textAlign: 'center' }} value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="numeric" placeholder="شماره موبایل شما (استعلام‌کننده)" onKeyDown={(e) => e.key === 'Enter' && nid && phone && request()} />
+            <button onClick={request} disabled={loading || !nid || !phone} className="btn btn-primary w-full" style={{ padding: '0.8rem' }}>{loading ? 'در حال ارسال…' : 'دریافت کد تایید'}</button>
             <button type="button" disabled className="w-full text-sm font-semibold" style={{ background: 'var(--surface-2)', color: 'var(--muted)', cursor: 'default', borderRadius: 999, padding: '0.5rem', border: '1px solid var(--border)' }}>آموزش نحوه ورود به سامانه</button>
             <p className="text-sm font-bold text-center pt-1">امور مشتریان کارگزاری دامون: <span dir="ltr" style={{ unicodeBidi: 'isolate' }}>۰۲۱-۵۷۳۸۹۰۰۰</span></p>
           </>

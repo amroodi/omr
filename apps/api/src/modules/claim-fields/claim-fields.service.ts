@@ -80,6 +80,19 @@ export class ClaimFieldsService {
     return { claimId, party, groups };
   }
 
+  /**
+   * Every field value of a claim as a plain map — stored values first, then what the case and its
+   * recorded hand-offs imply. No party check: callers (the OTP-verified inquiry) have already proven access.
+   */
+  async effectiveValues(claimId: string): Promise<Record<string, string>> {
+    const claim = await this.loadClaim(claimId);
+    const [values, facts] = await Promise.all([this.db().claimFieldValue.findMany({ where: { claimId } }), this.claimFacts(claim)]);
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(facts)) if (v) out[k] = v;
+    for (const v of values) if (v.value) out[v.key] = v.value;
+    return out;
+  }
+
   /** Field values the claim record already implies (deceased, dates, company, policy number…). */
   private async claimFacts(claim: any): Promise<Record<string, string | null>> {
     const jd = (d: Date | null) => (d ? toJalali(d, false).replace(/[۰-۹]/g, (x) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(x))) : null);

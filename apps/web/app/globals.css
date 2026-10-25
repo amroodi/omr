@@ -1,4 +1,7 @@
 @import url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@33.003/Vazirmatn-font-face.css');
+/* «Farsi digits» edition: draws 0–9 as ۰–۹ everywhere (dates, numbers, inputs) while the text stays plain
+   digits underneath, so copy/paste and what is sent to the server are unchanged. */
+@import url('https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@33.003/misc/Farsi-Digits/Vazirmatn-FD-font-face.css');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -96,7 +99,7 @@ body {
   margin: 0;
   overflow-x: clip;
   color: var(--text);
-  font-family: 'Vazirmatn', 'IRANYekanX', Tahoma, sans-serif;
+  font-family: 'Vazirmatn FD', 'Vazirmatn', 'IRANYekanX', Tahoma, sans-serif;
   background:
     radial-gradient(1200px 600px at 90% -10%, var(--bg-grad-1), transparent 60%),
     radial-gradient(1000px 500px at -10% 10%, var(--bg-grad-1), transparent 55%),
@@ -1295,3 +1298,27 @@ html[data-wall] .pshell { background-blend-mode: normal; }
 .iv-grow { flex: 1; }
 .iv-stage { overflow: auto; max-height: calc(75 * var(--zvh)); padding: 12px; display: flex; justify-content: center; align-items: flex-start; }
 .iv-img { display: block; max-width: none; height: auto; background: #fff; box-shadow: 0 4px 14px rgba(0,0,0,.35); transition: transform .2s; }
+
+/* Technical text keeps Latin digits (API keys, code samples, URLs shown for copying). */
+code, kbd, pre, samp, .latin-digits { font-family: 'Vazirmatn', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+/* ── «پیگیری آخرین وضعیت» of the public inquiry (Group 872): navy top bar, white page ── */
+.trk2 { position: fixed; inset: 0; z-index: 20; overflow-y: auto; background: #fff; color: var(--text); }
+:root.dark .trk2 { background: var(--bg); }
+.trk2-top { position: sticky; top: 0; z-index: 30; height: 72px; background: #012141; color: #fff; display: flex; align-items: center; gap: 24px; padding: 0 clamp(16px, 4vw, 48px); box-shadow: 0 4px 14px rgba(1,33,65,.35); }
+.trk2-brand { display: inline-flex; align-items: center; gap: 8px; font-weight: 800; font-size: 1.15rem; background: linear-gradient(135deg, #f7931e, #f36c21); padding: 6px 14px; border-radius: 10px; color: #fff; }
+.trk2-nav { margin-inline-start: auto; display: flex; align-items: center; gap: 18px; font-weight: 700; font-size: .9rem; }
+.trk2-nav a { display: inline-flex; align-items: center; gap: 6px; }
+.trk2-nav svg { color: #f7931e; }
+.trk2-login { background: #f7931e; color: #fff; border-radius: 999px; padding: 7px 16px; }
+.trk2-login svg { color: #fff !important; }
+.trk2-main { max-width: 1320px; margin: 0 auto; padding: clamp(16px, 4vw, 48px) clamp(12px, 3vw, 36px) 48px; display: flex; flex-direction: column; gap: 18px; }
+.trk2-live { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: .8rem; color: var(--muted); }
+.trk2-live a { color: var(--brand); font-weight: 700; }
+.trk2-dot { width: 9px; height: 9px; border-radius: 50%; background: #16a34a; box-shadow: 0 0 0 0 rgba(22,163,74,.6); animation: trk2-pulse 1.8s infinite; }
+@keyframes trk2-pulse { 70% { box-shadow: 0 0 0 8px rgba(22,163,74,0); } 100% { box-shadow: 0 0 0 0 rgba(22,163,74,0); } }
+.trk2-actions { display: flex; justify-content: center; }
+.trk2-pdf { display: inline-flex; align-items: center; gap: 8px; background: #16a34a; color: #fff; font-weight: 800; padding: 12px 26px; border-radius: 14px; box-shadow: 0 10px 20px -12px rgba(22,163,74,.9); }
+.trk2-pdf:disabled { opacity: .6; }
+@media (max-width: 640px) { .trk2-brand span { display: none; } .trk2-nav { gap: 10px; font-size: .8rem; } }
+@media (prefers-reduced-motion: reduce) { .trk2-dot { animation: none; } }
