@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { AppHeader } from './components/AppHeader';
+import { SiteFooter } from './components/SiteFooter';
 import { ThemeApplier } from './components/ThemeApplier';
 import { THEME_BOOT_SCRIPT } from '../lib/theme';
 import { SCALE_BOOT_SCRIPT } from '../lib/scale';
@@ -39,9 +40,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ThemeApplier />
         <AppHeader />
         <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
-        <footer className="mx-auto max-w-6xl px-4 py-8 text-center text-xs" style={{ color: 'var(--muted)' }}>
-          طراحي و توليد توسط کارگزاری آتیه اندیشان دامون
-        </footer>
+        <SiteFooter />
       </body>
     </html>
   );
