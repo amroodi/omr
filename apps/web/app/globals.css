@@ -412,28 +412,90 @@ h1, h2, h3 {
 .login-pills .input { border-radius: 999px; padding-top: 0.8rem; padding-bottom: 0.8rem; }
 .login-pills textarea.input { border-radius: 16px; }
 
-/* Sun/Moon pill theme switch (theme-toggle.tsx). Default markup = dark state (knob left, moon).
-   Light state is driven by :root:not(.dark): pill turns orange, knob slides right, sun fades in. */
-.theme-switch-btn {
-  background: none; border: 0; padding: 3px; line-height: 0; cursor: pointer; border-radius: 999px;
-  transition: transform .18s ease, filter .18s ease;
+/* Day/night switch (components/DayNightToggle.tsx). Geometry and timings come in as --dn-* custom
+   properties from the component; the knob's size and offset are set from JS so press (stretch toward
+   the centre, outer edge anchored) and release (slide + spring back to round) are plain transitions,
+   which retarget smoothly on rapid toggles. The two scenes are separate layers that crossfade. */
+.dn {
+  position: relative; display: inline-block; flex: none; padding: 0; border: 0; background: none;
+  line-height: 0; cursor: pointer; border-radius: 999px; touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent; direction: ltr;
 }
-.theme-switch-btn:hover { transform: translateY(-1px); filter: brightness(1.05); }
-.theme-switch-btn:active { transform: translateY(0) scale(.95); }
-.theme-switch-btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; }
-.theme-switch { width: 62px; height: auto; display: block; filter: drop-shadow(0 2px 6px rgba(0,0,0,.22)); }
-.ts-pill { fill: #0B3678; transition: fill .4s ease; }
-.ts-pill-edge { stroke: rgba(255,255,255,.18); stroke-width: 4; }
-.ts-knob { transition: transform .45s cubic-bezier(.34, 1.56, .5, 1); }
-.ts-moon { opacity: 1; transition: opacity .3s ease; }
-.ts-sun { opacity: 0; transition: opacity .3s ease; }
-:root:not(.dark) .ts-pill { fill: url(#ts-grad); }
-:root:not(.dark) .ts-pill-edge { stroke: rgba(255,255,255,.35); }
-:root:not(.dark) .ts-knob { transform: translateX(628.63px); }
-:root:not(.dark) .ts-moon { opacity: 0; }
-:root:not(.dark) .ts-sun { opacity: 1; }
+.dn:focus-visible { outline: 2px solid var(--brand); outline-offset: calc(3px + 2px * var(--dn-s)); }
+.dn:disabled { opacity: .5; cursor: not-allowed; }
+.dn-track {
+  position: relative; display: block; width: var(--dn-w); height: var(--dn-h);
+  border-radius: 999px; overflow: hidden; isolation: isolate;
+  border: max(1px, calc(1px * var(--dn-s))) solid rgba(255,255,255,.55);
+  box-shadow:
+    0 calc(1px * var(--dn-s)) calc(3px * var(--dn-s)) rgba(15,30,60,.18),
+    inset 0 0 0 calc(1px * var(--dn-s)) rgba(255,255,255,.14),
+    inset 0 calc(3px * var(--dn-s)) calc(7px * var(--dn-s)) rgba(10,25,60,.28),
+    inset 0 calc(-1px * var(--dn-s)) calc(2px * var(--dn-s)) rgba(255,255,255,.22);
+  transition: border-color var(--dn-fade) ease;
+}
+.dn.is-night .dn-track { border-color: rgba(170,195,240,.32); }
+/* Glass rim drawn above the scenes, below the knob. */
+.dn-track::after {
+  content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 1;
+  box-shadow: inset 0 calc(2px * var(--dn-s)) calc(4px * var(--dn-s)) rgba(0,0,0,.16),
+              inset 0 calc(-2px * var(--dn-s)) calc(3px * var(--dn-s)) rgba(255,255,255,.12);
+}
+.dn-scene { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.dn-night { opacity: 0; transition: opacity var(--dn-fade) ease; }
+.dn-day { opacity: 1; transition: opacity var(--dn-fade) ease; }
+.dn.is-night .dn-night { opacity: 1; }
+.dn.is-night .dn-day { opacity: 0; }
+.dn-band { animation: dn-band 9s linear infinite; }
+@keyframes dn-band { from { transform: translateX(0); } to { transform: translateX(320px); } }
+.dn-star { transform-box: fill-box; transform-origin: center; animation: dn-twinkle 4s ease-in-out infinite; }
+@keyframes dn-twinkle { 0%, 100% { opacity: .3; transform: scale(.65); } 50% { opacity: 1; transform: scale(1); } }
+/* Loops idle while hidden: off screen, or the scene they belong to isn't showing. */
+.dn.is-paused .dn-band, .dn.is-paused .dn-star,
+.dn.is-night .dn-band, .dn:not(.is-night) .dn-star { animation-play-state: paused; }
+
+.dn-knob {
+  position: absolute; z-index: 2; left: var(--dn-i); top: 50%;
+  width: var(--dn-kw); height: var(--dn-kh); border-radius: 999px;
+  transform: translate(var(--dn-dx), -50%);
+  box-shadow: 0 calc(3px * var(--dn-s)) calc(8px * var(--dn-s)) rgba(20,30,60,.28),
+              0 calc(1px * var(--dn-s)) calc(2px * var(--dn-s)) rgba(20,30,60,.18);
+  /* Release: slide to the other end and spring back to round (slight overshoot, then settle). */
+  transition: transform var(--dn-release) cubic-bezier(.3, 1.42, .5, 1),
+              width var(--dn-release) cubic-bezier(.3, 1.6, .45, 1),
+              height var(--dn-release) cubic-bezier(.3, 1.6, .45, 1);
+}
+.dn.is-pressed .dn-knob {
+  transition: transform var(--dn-press) cubic-bezier(.2, .8, .3, 1),
+              width var(--dn-press) cubic-bezier(.2, .8, .3, 1),
+              height var(--dn-press) cubic-bezier(.2, .8, .3, 1);
+}
+.dn-face { position: absolute; inset: 0; border-radius: inherit; transition: opacity var(--dn-fade) ease; }
+.dn-face-day {
+  background: var(--dn-day-knob);
+  box-shadow: inset 0 calc(2px * var(--dn-s)) calc(3px * var(--dn-s)) rgba(255,255,255,.42),
+              inset 0 calc(-3px * var(--dn-s)) calc(5px * var(--dn-s)) rgba(150,60,0,.25);
+}
+.dn-face-night {
+  opacity: 0; background: linear-gradient(150deg, var(--dn-night-a), var(--dn-night-b));
+  box-shadow: inset 0 calc(2px * var(--dn-s)) calc(3px * var(--dn-s)) rgba(255,255,255,.8),
+              inset 0 calc(-3px * var(--dn-s)) calc(5px * var(--dn-s)) rgba(60,90,140,.22);
+}
+.dn.is-night .dn-face-night { opacity: 1; }
+.dn.is-night .dn-face-day { opacity: 0; }
+/* Icons keep a fixed size at the knob's centre, so stretching never distorts them. */
+.dn-icon {
+  position: absolute; left: 50%; top: 50%; width: var(--dn-icon); height: var(--dn-icon);
+  transform: translate(-50%, -50%); transition: opacity var(--dn-fade) ease; overflow: visible;
+}
+.dn-moon { opacity: 0; }
+.dn.is-night .dn-moon { opacity: 1; }
+.dn.is-night .dn-sun { opacity: 0; }
+.dn.dn-boot { visibility: hidden; }
+.dn.dn-boot *, .dn.dn-boot .dn-track::after { transition: none !important; }
 @media (prefers-reduced-motion: reduce) {
-  .theme-switch-btn, .ts-pill, .ts-pill-edge, .ts-knob, .ts-moon, .ts-sun { transition: none; }
+  .dn-knob, .dn.is-pressed .dn-knob { transition: transform .15s ease, width .15s ease, height .15s ease; }
+  .dn-band, .dn-star { animation: none; }
 }
 
 /* Print (چاپ / ذخیره PDF): drop the app chrome and show only the content, on white. */
