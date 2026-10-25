@@ -92,35 +92,52 @@ export function DayNightToggle({ checked, onChange, label, size = 1, disabled, c
       onClick={() => { setPressed(false); onChange(!checked); }}
     >
       <span className="dn-track" aria-hidden>
-        {/* Day: sky, a slow band of sunlight, two dunes */}
+        {/* Day: a pearl sky in the site's light greys, a soft warm glow, a slow band of light, and
+            three frosted-glass layers, each with a fine lit edge */}
         <svg className="dn-scene dn-day" viewBox="0 0 184 88" preserveAspectRatio="xMidYMid slice">
           <defs>
             <linearGradient id={`${uid}-dsky`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stopColor="#3E8EDF" />
-              <stop offset="0.5" stopColor="#86C1F0" />
-              <stop offset="0.78" stopColor="#D9ECF6" />
-              <stop offset="0.92" stopColor="#F6E7C5" />
+              <stop offset="0" stopColor="#DCE3F0" />
+              <stop offset="0.5" stopColor="#EEF1F8" />
+              <stop offset="0.85" stopColor="#FBF4EA" />
             </linearGradient>
+            <radialGradient id={`${uid}-glow`} cx="0.74" cy="0.3" r="0.55">
+              <stop offset="0" stopColor="#FFA526" stopOpacity="0.42" />
+              <stop offset="0.45" stopColor="#FFC877" stopOpacity="0.18" />
+              <stop offset="1" stopColor="#FFF2E0" stopOpacity="0" />
+            </radialGradient>
             <linearGradient id={`${uid}-band`} x1="0" y1="0" x2="1" y2="0">
               <stop offset="0" stopColor="#fff" stopOpacity="0" />
-              <stop offset="0.5" stopColor="#FFF8E6" stopOpacity="0.32" />
+              <stop offset="0.5" stopColor="#fff" stopOpacity="0.55" />
               <stop offset="1" stopColor="#fff" stopOpacity="0" />
             </linearGradient>
-            <linearGradient id={`${uid}-dune1`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stopColor="#F6DCA4" />
-              <stop offset="1" stopColor="#EAC07A" />
+            <linearGradient id={`${uid}-g1`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stopColor="#C9D3E6" stopOpacity="0.75" />
+              <stop offset="1" stopColor="#B7C3DA" stopOpacity="0.5" />
             </linearGradient>
-            <linearGradient id={`${uid}-dune2`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stopColor="#FBE3AE" />
-              <stop offset="0.45" stopColor="#EDBD6E" />
-              <stop offset="1" stopColor="#D69444" />
+            <linearGradient id={`${uid}-g2`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stopColor="#E9EEF7" stopOpacity="0.85" />
+              <stop offset="1" stopColor="#D2DBEA" stopOpacity="0.75" />
             </linearGradient>
+            <linearGradient id={`${uid}-g3`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stopColor="#FFFFFF" stopOpacity="0.9" />
+              <stop offset="1" stopColor="#F2F4FA" stopOpacity="0.9" />
+            </linearGradient>
+            <filter id={`${uid}-soft`} x="-5%" y="-20%" width="110%" height="140%">
+              <feGaussianBlur stdDeviation="0.9" />
+            </filter>
           </defs>
           <rect width="184" height="88" fill={`url(#${uid}-dsky)`} />
+          <rect width="184" height="88" fill={`url(#${uid}-glow)`} />
+          <circle cx="146" cy="24" r="8" fill="#FFB547" fillOpacity="0.55" filter={`url(#${uid}-soft)`} />
           <g className="dn-band"><rect x="-90" y="-30" width="54" height="150" fill={`url(#${uid}-band)`} transform="rotate(16)" /></g>
-          <path d="M0 58 C 26 49, 52 47, 82 53 C 108 58, 136 62, 184 50 L 184 88 L 0 88 Z" fill={`url(#${uid}-dune1)`} />
-          <path d="M0 73 C 32 62, 66 60, 100 67 C 128 73, 156 70, 184 63 L 184 88 L 0 88 Z" fill={`url(#${uid}-dune2)`} />
-          <path d="M0 73 C 32 62, 66 60, 100 67 C 128 73, 156 70, 184 63" fill="none" stroke="#FFF6DE" strokeOpacity="0.75" strokeWidth="1" />
+          <path d="M0 52 C 30 44, 60 45, 92 51 C 124 57, 152 46, 184 49 L 184 88 L 0 88 Z" fill={`url(#${uid}-g1)`} filter={`url(#${uid}-soft)`} />
+          <path d="M0 52 C 30 44, 60 45, 92 51 C 124 57, 152 46, 184 49" fill="none" stroke="#fff" strokeOpacity="0.7" strokeWidth="0.7" />
+          <path d="M0 64 C 34 56, 70 57, 104 62 C 134 66, 160 59, 184 58 L 184 88 L 0 88 Z" fill={`url(#${uid}-g2)`} />
+          <path d="M0 64 C 34 56, 70 57, 104 62 C 134 66, 160 59, 184 58" fill="none" stroke="#fff" strokeOpacity="0.95" strokeWidth="0.8" />
+          <path d="M0 75 C 38 68, 80 69, 120 73 C 148 76, 168 72, 184 70 L 184 88 L 0 88 Z" fill={`url(#${uid}-g3)`} />
+          <path d="M0 75 C 38 68, 80 69, 120 73 C 148 76, 168 72, 184 70" fill="none" stroke="#fff" strokeWidth="0.9" />
+          <path d="M0 75.8 C 38 68.8, 80 69.8, 120 73.8 C 148 76.8, 168 72.8, 184 70.8" fill="none" stroke="#AEBBD3" strokeOpacity="0.45" strokeWidth="0.6" />
         </svg>
 
         {/* Night: deep sky, twinkling stars, two subdued hills */}
