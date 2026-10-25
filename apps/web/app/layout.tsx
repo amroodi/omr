@@ -17,6 +17,8 @@ export const metadata: Metadata = {
   description: 'سامانه چندسازمانی مدیریت و استعلام امن پرونده‌های بیمه',
   authors: [{ name: 'Milad Amroodi (میلاد امرودی)' }],
   other: { developer: 'Developed by Milad Amroodi (میلاد امرودی)' },
+  // Browser-tab / home-screen icon: the brokerage's emblem (app/favicon.ico is picked up automatically).
+  icons: { icon: [{ url: '/brand/icon-192.png', sizes: '192x192', type: 'image/png' }], apple: '/brand/apple-touch-icon.png' },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
