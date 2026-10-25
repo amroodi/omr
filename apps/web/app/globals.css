@@ -1364,3 +1364,4 @@ code, kbd, pre, samp, .latin-digits { font-family: 'Vazirmatn', ui-monospace, SF
 .auth-bg.is-clear::after { opacity: 0; }
 .auth-bg::after { transition: opacity .35s ease; }
 @media (prefers-reduced-motion: reduce) { .auth-wrap, .auth-unfold { transition: none; animation: none; } }
+.auth-credit { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--border); text-align: center; font-size: .72rem; color: var(--muted); }
