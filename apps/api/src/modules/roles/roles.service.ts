@@ -7,6 +7,13 @@ import { getContext, getTenantIdOrThrow } from '../../common/tenant/tenant-conte
 
 const ALL_PERMISSIONS = new Set<string>(Object.values(PERMISSIONS));
 
+/**
+ * Admin roles (they manage users or roles) are preview-only, so nobody changes or removes the
+ * organization's admin permissions by mistake. Every other role — built-in or custom — is editable.
+ */
+export const isLockedRole = (r: { permissions: string[] }) =>
+  r.permissions.includes(PERMISSIONS.ROLE_MANAGE) || r.permissions.includes(PERMISSIONS.USER_MANAGE);
+
 @Injectable()
 export class RolesService {
   constructor(
@@ -19,11 +26,12 @@ export class RolesService {
     return Object.values(PERMISSIONS).map((key) => ({ key }));
   }
 
-  list() {
-    return this.prisma.scoped.role.findMany({
+  async list() {
+    const roles = await this.prisma.scoped.role.findMany({
       orderBy: { createdAt: 'asc' },
-      select: { id: true, name: true, permissions: true, isSystem: true },
+      select: { id: true, name: true, permissions: true, isSystem: true, _count: { select: { orgUsers: true } } } as any,
     });
+    return (roles as any[]).map((r) => ({ id: r.id, name: r.name, permissions: r.permissions, isSystem: r.isSystem, locked: isLockedRole(r), users: r._count?.orgUsers ?? 0 }));
   }
 
   async create(name: string, permissions: string[]) {
@@ -39,26 +47,29 @@ export class RolesService {
   async update(id: string, data: { name?: string; permissions?: string[] }) {
     const role = await this.prisma.scoped.role.findFirst({ where: { id } });
     if (!role) throw new NotFoundException('نقش یافت نشد');
-    if (role.isSystem) throw new ForbiddenException('نقش‌های سیستمی قابل ویرایش نیستند');
-    if (data.permissions) this.validatePermissions(data.permissions);
+    if (isLockedRole(role)) throw new ForbiddenException('نقش‌های مدیریتی فقط قابل مشاهده‌اند و تغییر نمی‌کنند');
+    if (data.permissions) {
+      this.validatePermissions(data.permissions);
+      if (isLockedRole({ permissions: data.permissions })) throw new BadRequestException('مجوز مدیریت کاربران یا نقش‌ها را نمی‌توان به این نقش داد');
+    }
 
     const updated = await this.prisma.scoped.role.update({
       where: { id },
       data: { ...(data.name ? { name: data.name.trim() } : {}), ...(data.permissions ? { permissions: data.permissions } : {}) },
     });
-    await this.audit.record({ action: AuditAction.EDIT, targetType: 'Role', targetId: id, metadata: data as Record<string, unknown> });
+    await this.audit.record({ action: AuditAction.EDIT, targetType: 'Role', targetId: id, metadata: { before: { name: role.name, permissions: role.permissions }, after: data } });
     return updated;
   }
 
   async remove(id: string) {
     const role = await this.prisma.scoped.role.findFirst({ where: { id }, include: { _count: { select: { orgUsers: true } } } as any });
     if (!role) throw new NotFoundException('نقش یافت نشد');
-    if (role.isSystem) throw new ForbiddenException('نقش‌های سیستمی قابل حذف نیستند');
+    if (isLockedRole(role)) throw new ForbiddenException('نقش‌های مدیریتی قابل حذف نیستند');
     if ((role as any)._count?.orgUsers > 0) {
       throw new BadRequestException('ابتدا کاربران این نقش را به نقش دیگری منتقل کنید');
     }
     await this.prisma.scoped.role.delete({ where: { id } });
-    await this.audit.record({ action: AuditAction.DELETE, targetType: 'Role', targetId: id });
+    await this.audit.record({ action: AuditAction.DELETE, targetType: 'Role', targetId: id, metadata: { name: role.name, permissions: role.permissions } });
     return { ok: true };
   }
 

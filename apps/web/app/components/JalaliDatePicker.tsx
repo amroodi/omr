@@ -1,6 +1,7 @@
 'use client';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toGregorian, toJalaali } from 'jalaali-js';
+import { Overlay } from './ui';
 
 const J_MONTHS = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'];
 const WEEK = ['ش', 'ی', 'د', 'س', 'چ', 'پ', 'ج']; // Saturday-first (RTL grid places index 0 on the right)
@@ -30,6 +31,7 @@ function todayJ() {
  * Jalali (Persian) date picker. Emits/accepts "YYYY/MM/DD" (ASCII) like the forms expect.
  * The date can be typed (Persian or Latin digits) or picked; the header has year + month dropdowns so
  * far-away dates (e.g. a birth date decades back) take two clicks instead of hundreds of «ماه قبل».
+ * Clicking the field opens the calendar in the middle of the screen (over a dimmed backdrop).
  */
 export function JalaliDatePicker({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
   const parsed = (() => {
@@ -39,27 +41,7 @@ export function JalaliDatePicker({ value, onChange, placeholder }: { value: stri
   const t = todayJ();
   const [open, setOpen] = useState(false);
   const [view, setView] = useState({ y: parsed?.jy ?? t.jy, m: parsed?.jm ?? t.jm });
-  const ref = useRef<HTMLDivElement>(null);
-  const popRef = useRef<HTMLDivElement>(null);
-  const [dx, setDx] = useState(0); // horizontal nudge that keeps the popup inside the viewport (narrow screens)
-
-  useEffect(() => {
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as any)) setOpen(false); };
-    document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
-  }, []);
   useEffect(() => { if (open && parsed && parsed.jy >= FIRST_YEAR) setView({ y: parsed.jy, m: parsed.jm }); /* eslint-disable-next-line */ }, [open]);
-
-  useLayoutEffect(() => {
-    if (!open) { setDx(0); return; }
-    const r = popRef.current?.getBoundingClientRect();
-    if (!r) return;
-    const m = 8;
-    setDx((cur) => {
-      const left = r.left - cur; const right = r.right - cur; // position without the current nudge
-      return left < m ? m - left : right > window.innerWidth - m ? window.innerWidth - m - right : 0;
-    });
-  }, [open]);
 
   const nDays = daysInJMonth(view.y, view.m);
   const lead = firstWeekday(view.y, view.m);
@@ -84,24 +66,29 @@ export function JalaliDatePicker({ value, onChange, placeholder }: { value: stri
   const navBtn = { width: 36, height: 36, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontSize: '1.1rem', cursor: 'pointer', flexShrink: 0 } as const;
 
   return (
-    <div ref={ref} style={{ position: 'relative' }}>
+    <div style={{ position: 'relative' }}>
       <input className="input" value={value ? fa(value) : ''} placeholder={placeholder || '۱۴۰۵/۰۷/۰۱'} inputMode="numeric"
-        onChange={(e) => onType(e.target.value)} onFocus={() => setOpen(true)} onClick={() => setOpen(true)}
-        onKeyDown={(e) => { if (e.key === 'Escape' || e.key === 'Enter') setOpen(false); }}
+        onChange={(e) => onType(e.target.value)} onClick={() => setOpen(true)}
+        onKeyDown={(e) => { if (e.key === 'Escape' || e.key === 'Enter') setOpen(false); if (e.key === 'ArrowDown') setOpen(true); }}
         style={{ direction: 'ltr', textAlign: 'right', cursor: 'pointer' }} aria-haspopup="dialog" aria-expanded={open} />
       {open && (
-        <div ref={popRef} className="card" role="dialog" aria-label="انتخاب تاریخ"
-          style={{ position: 'absolute', zIndex: 60, top: 'calc(100% + 6px)', insetInlineStart: 0, width: 'min(360px, calc(100vw - 16px))', padding: 14, boxShadow: 'var(--shadow-lg)', transform: dx ? `translateX(${dx}px)` : undefined }}>
+        <Overlay onClose={() => setOpen(false)}>
+        <div className="card jdp-pop" role="dialog" aria-label="انتخاب تاریخ" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <b className="text-sm">{placeholder || 'انتخاب تاریخ'}</b>
+            <input className="input jdp-type" value={value ? fa(value) : ''} onChange={(e) => onType(e.target.value)} inputMode="numeric" placeholder="۱۴۰۵/۰۷/۰۱" aria-label="تایپ تاریخ" />
+            <button type="button" onClick={() => setOpen(false)} className="pmodal-x" aria-label="بستن">×</button>
+          </div>
           {/* Header: ‹ month ▾ year ▾ › */}
-          <div className="flex items-center gap-2 mb-3">
-            <button type="button" onClick={prev} style={navBtn} aria-label="ماه قبل" title="ماه قبل">›</button>
-            <select value={view.m} onChange={(e) => setView((v) => ({ ...v, m: Number(e.target.value) }))} style={{ ...selectStyle, flex: 1 }} aria-label="ماه">
+          <div className="jdp-head mb-3">
+            <button type="button" onClick={prev} className="jdp-nav" style={navBtn} aria-label="ماه قبل" title="ماه قبل">›</button>
+            <select value={view.m} onChange={(e) => setView((v) => ({ ...v, m: Number(e.target.value) }))} className="jdp-month" style={selectStyle} aria-label="ماه">
               {J_MONTHS.map((name, i) => <option key={name} value={i + 1}>{name}</option>)}
             </select>
-            <select value={view.y} onChange={(e) => setView((v) => ({ ...v, y: Number(e.target.value) }))} style={{ ...selectStyle, width: 96 }} aria-label="سال">
+            <select value={view.y} onChange={(e) => setView((v) => ({ ...v, y: Number(e.target.value) }))} className="jdp-year" style={selectStyle} aria-label="سال">
               {years.map((y) => <option key={y} value={y}>{fa(y)}</option>)}
             </select>
-            <button type="button" onClick={next} style={navBtn} aria-label="ماه بعد" title="ماه بعد">‹</button>
+            <button type="button" onClick={next} className="jdp-nav" style={navBtn} aria-label="ماه بعد" title="ماه بعد">‹</button>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 4, textAlign: 'center' }}>
@@ -122,6 +109,7 @@ export function JalaliDatePicker({ value, onChange, placeholder }: { value: stri
             {value ? <button type="button" onClick={() => { onChange(''); setOpen(false); }} className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }}>پاک کردن</button> : <span />}
           </div>
         </div>
+        </Overlay>
       )}
     </div>
   );

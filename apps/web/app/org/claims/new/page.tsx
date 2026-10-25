@@ -13,6 +13,8 @@ interface Company { id: string; name: string; currentInsurer: { id: string; name
 const toAscii = (s: string) => s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
 const DEATH_TYPES = new Set(['DEATH_ILLNESS', 'DEATH_ACCIDENT']);
 const NO_COMPANY = '__none__';
+/** Amounts on screen: a separator every 3 digits (the raw digits are what's stored and sent). */
+const groupDigits = (raw: string) => raw.replace(/\B(?=(\d{3})+(?!\d))/g, '٬');
 
 function jalaliToIso(input: string): string | null {
   const parts = toAscii(input).split('/').map((p) => parseInt(p, 10));
@@ -182,7 +184,7 @@ export default function NewClaim() {
             <input className="input" readOnly value={age != null ? `${age.toLocaleString('fa-IR')} سال` : '— (پس از ورود تاریخ‌ها)'} style={{ background: 'var(--surface-2)' }} />
           </PField>
           <PField label="مبلغ خسارت برآوردی (ریال)" help="اختیاری؛ مبلغ قطعی پس از ارزیابی ثبت می‌شود.">
-            <input className="input" inputMode="numeric" value={f.claimedAmount} onChange={set('claimedAmount')} style={{ direction: 'ltr', textAlign: 'right' }} />
+            <input className="input" inputMode="numeric" value={groupDigits(f.claimedAmount)} onChange={(e) => setF((s) => ({ ...s, claimedAmount: toAscii(e.target.value).replace(/[^\d]/g, '') }))} placeholder="۰" style={{ direction: 'ltr', textAlign: 'right' }} />
           </PField>
           <PField label="شماره بیمه‌نامه" help={co ? 'اگر خالی بماند از قرارداد شرکت برداشته می‌شود.' : 'اختیاری.'}>
             <input className="input" value={f.policyNumber} onChange={set('policyNumber')} style={{ direction: 'ltr', textAlign: 'right' }} />

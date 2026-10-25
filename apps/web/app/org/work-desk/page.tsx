@@ -52,6 +52,9 @@ function WorkDesk() {
   const [revealed, setRevealed] = useState<string[]>([]); // tile counts stay hidden until the operator clicks the tile
   const [rows, setRows] = useState<QueueRow[]>([]);
   const [qLoading, setQLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  useEffect(() => { setPage(1); }, [rows, pageSize]);
   const [notice, setNotice] = useState('');
   const [docTypes, setDocTypes] = useState<{ code: string; label: string }[]>([]);
   // «پرونده جدید» needs claim:file — resolved after mount to avoid an SSR/client hydration mismatch.
@@ -275,9 +278,10 @@ function WorkDesk() {
                   <table className="table">
                     <thead><tr>{['#', 'کد ملی متوفی', 'نوع', 'بیمه‌گر', 'بیمه‌شده (متوفی)', 'مبلغ (ریال)', 'وضعیت', 'عملیات'].map((h) => <th key={h}>{h}</th>)}</tr></thead>
                     <tbody>
-                      {rows.map((r, i) => (
-                        <tr key={r.id} style={{ cursor: 'pointer' }} onClick={() => router.push(`/org/claims/${r.id}`)}>
-                          <td>{fa(i + 1)}</td>
+                      {/* Rows don't open on click (too many mis-clicks) — only the «مشاهده» / «ارزیابی» buttons do. */}
+                      {rows.slice((page - 1) * pageSize, page * pageSize).map((r, i) => (
+                        <tr key={r.id}>
+                          <td>{fa((page - 1) * pageSize + i + 1)}</td>
                           <td className="font-semibold" style={{ direction: 'ltr', textAlign: 'right' }} title={caseTitle(r)}>{r.deceasedNationalCode || '—'}</td>
                           <td><ClaimTypeBadge type={r.claimType} /></td>
                           <td>{(r.insurerTenantId && insurerMap[r.insurerTenantId]) || '—'}</td>
@@ -287,11 +291,33 @@ function WorkDesk() {
                             {r.finalizedAmount ? <span className="badge badge-success mr-1" style={{ fontSize: '0.6rem' }}>قطعی</span> : null}
                           </td>
                           <td><StatusBadge status={r.status} /></td>
-                          <td><button onClick={(e) => { e.stopPropagation(); router.push(`/org/claims/${r.id}/assess`); }} className="btn btn-solid btn-sm">ارزیابی</button></td>
+                          <td>
+                            <span className="flex items-center gap-1.5">
+                              <button onClick={() => router.push(`/org/claims/${r.id}`)} className="btn btn-ghost btn-sm">مشاهده</button>
+                              <button onClick={() => router.push(`/org/claims/${r.id}/assess`)} className="btn btn-solid btn-sm">ارزیابی</button>
+                            </span>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
+                </div>
+              )}
+              {/* Pagination */}
+              {!qLoading && rows.length > 0 && (
+                <div className="wd-pager">
+                  <span className="flex items-center gap-2">
+                    <span>نمایش در هر صفحه:</span>
+                    <select className="input" style={{ width: 'auto', padding: '4px 10px' }} value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}>
+                      {[10, 20, 50, 100].map((n) => <option key={n} value={n}>{fa(n)}</option>)}
+                    </select>
+                    <span>مجموع: {fa(rows.length)}</span>
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1} className="btn btn-ghost btn-sm">قبلی</button>
+                    <span>صفحه {fa(page)} از {fa(Math.max(1, Math.ceil(rows.length / pageSize)))}</span>
+                    <button onClick={() => setPage((p) => Math.min(Math.ceil(rows.length / pageSize), p + 1))} disabled={page >= Math.ceil(rows.length / pageSize)} className="btn btn-ghost btn-sm">بعدی</button>
+                  </span>
                 </div>
               )}
             </div>

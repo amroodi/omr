@@ -69,8 +69,12 @@ export class UsersService {
   }
 
   async update(id: string, input: UpdateInput) {
-    const user = await this.prisma.scoped.orgUser.findFirst({ where: { id } });
+    const user = await this.prisma.scoped.orgUser.findFirst({ where: { id }, include: { role: { select: { name: true } } } });
     if (!user) throw new NotFoundException('کاربر یافت نشد');
+    if (getContext()?.actorId === id && input.isActive === false) throw new BadRequestException('نمی‌توانید حساب کاربری خودتان را غیرفعال کنید');
+    // A user sits either at a branch or at a central desk, never both.
+    if (input.branchId) input.desk = null;
+    if (input.desk) input.branchId = null;
     if (input.roleId) await this.assertRoleAssignable(input.roleId);
     if (input.branchId) await this.assertBranch(input.branchId);
 
@@ -85,27 +89,24 @@ export class UsersService {
       },
       select: { id: true, username: true, displayName: true, isActive: true },
     });
-    await this.audit.record({ action: AuditAction.EDIT, targetType: 'OrgUser', targetId: id, metadata: input as Record<string, unknown> });
+    // Before → after, so the Super Admin sees exactly what changed.
+    await this.audit.record({
+      action: AuditAction.EDIT, targetType: 'OrgUser', targetId: id,
+      metadata: { username: user.username, before: { displayName: user.displayName, roleId: user.roleId, role: user.role?.name, branchId: user.branchId, desk: user.desk, isActive: user.isActive }, after: input },
+    });
     return updated;
   }
 
-  async remove(id: string) {
-    const ctx = getContext();
-    if (ctx?.actorId === id) throw new BadRequestException('نمی‌توانید حساب کاربری خودتان را حذف کنید');
-    const user = await this.prisma.scoped.orgUser.findFirst({ where: { id }, select: { id: true, username: true, roleId: true } });
-    if (!user) throw new NotFoundException('کاربر یافت نشد');
-    // No removing a user whose role grants permissions the caller itself lacks (no escalation).
-    await this.assertRoleAssignable(user.roleId);
-    await this.prisma.scoped.orgUser.delete({ where: { id } });
-    await this.audit.record({ action: AuditAction.DELETE, targetType: 'OrgUser', targetId: id, metadata: { username: user.username } });
-    return { ok: true };
+  /** Users are never deleted (their actions stay attributable); deactivate them instead. */
+  async remove(_id: string): Promise<never> {
+    throw new ForbiddenException('کاربران حذف نمی‌شوند تا سوابق اقدامات آن‌ها حفظ شود؛ به‌جای حذف، کاربر را غیرفعال کنید.');
   }
 
   async resetPassword(id: string, password: string) {
     const user = await this.prisma.scoped.orgUser.findFirst({ where: { id } });
     if (!user) throw new NotFoundException('کاربر یافت نشد');
     await this.prisma.scoped.orgUser.update({ where: { id }, data: { passwordHash: await this.hash.hashPassword(password) } });
-    await this.audit.record({ action: AuditAction.EDIT, targetType: 'OrgUser', targetId: id, metadata: { passwordReset: true } });
+    await this.audit.record({ action: AuditAction.EDIT, targetType: 'OrgUser', targetId: id, metadata: { username: user.username, passwordReset: true } });
     return { ok: true };
   }
 

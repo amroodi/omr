@@ -1,6 +1,7 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { AuditTrailInterceptor } from './common/audit/audit-trail.interceptor';
 import { JwtModule } from '@nestjs/jwt';
 import { AuditModule } from './common/audit/audit.module';
 import { CryptoModule } from './common/crypto/crypto.module';
@@ -88,6 +89,8 @@ import { UsersModule } from './modules/users/users.module';
     // add authorization on top. Order matters: JwtAuthGuard runs before RolesGuard.
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
+    // Every change request is traceable by the Super Admin (see AuditTrailInterceptor).
+    { provide: APP_INTERCEPTOR, useClass: AuditTrailInterceptor },
   ],
 })
 export class AppModule implements NestModule {
