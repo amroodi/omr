@@ -1,8 +1,8 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ReactNode } from 'react';
-import { BrandMark } from './brand';
+import { ReactNode, useState } from 'react';
+import { BrandLogo } from './brand';
 import { LoginBgSet, RotatingBg } from './RotatingBg';
 
 const LOGINS = [
@@ -30,22 +30,37 @@ export function LoginNav({ onDark }: { onDark?: boolean }) {
   );
 }
 
-/** `bg` sets full-screen background images behind the card that rotate on a timer (light + dark sets). */
+/**
+ * Login card. The logo, title and subtitle sit inside the card. With a `bg` (rotating photos), an arrow
+ * button folds the card away so the whole background can be enjoyed; a round arrow brings it back.
+ */
 export function AuthCard({ title, subtitle, children, bg }: { title: string; subtitle?: string; children: ReactNode; bg?: LoginBgSet }) {
+  const [hidden, setHidden] = useState(false);
   return (
     <div className="min-h-[calc(70*var(--zvh))] flex items-center justify-center">
-      {bg && <RotatingBg set={bg} />}
-      <div className="w-full max-w-sm">
-        <div className="flex flex-col items-center mb-6">
-          <BrandMark size={48} />
-          <h1 className="text-xl font-extrabold mt-3" style={bg ? { textShadow: '0 1px 10px rgba(0,0,0,0.12)' } : undefined}>{title}</h1>
-          {subtitle && <p className="text-sm mt-1 text-center" style={{ color: 'var(--muted)' }}>{subtitle}</p>}
-        </div>
-        <div className={bg ? 'glass p-6 fade-up' : 'card p-6 fade-up'} style={{ boxShadow: 'var(--shadow-lg)', borderRadius: 'var(--radius)' }}>
+      {bg && <RotatingBg set={bg} clear={hidden} />}
+      <div className={`w-full max-w-sm auth-wrap${hidden ? ' is-hidden' : ''}`} aria-hidden={hidden}>
+        <div className={bg ? 'glass p-6 fade-up auth-card' : 'card p-6 fade-up auth-card'} style={{ boxShadow: 'var(--shadow-lg)', borderRadius: 'var(--radius)' }}>
+          {bg && (
+            <button type="button" className="auth-fold" onClick={() => setHidden(true)} title="بستن فرم و دیدن کامل تصویر پس‌زمینه" aria-label="بستن فرم ورود">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M6 9l6 6 6-6" /></svg>
+            </button>
+          )}
+          <div className="flex flex-col items-center text-center mb-5">
+            <BrandLogo height={104} />
+            <h1 className="text-xl font-extrabold mt-3">{title}</h1>
+            {subtitle && <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>{subtitle}</p>}
+          </div>
           {children}
         </div>
         <LoginNav />
       </div>
+      {bg && hidden && (
+        <button type="button" className="auth-unfold" onClick={() => setHidden(false)} title="نمایش فرم ورود" aria-label="نمایش فرم ورود">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M18 15l-6-6-6 6" /></svg>
+          <span>نمایش فرم ورود</span>
+        </button>
+      )}
     </div>
   );
 }

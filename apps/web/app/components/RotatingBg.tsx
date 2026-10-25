@@ -17,7 +17,7 @@ function sizeFor(): number {
  * Only the visible image is loaded at first; the next one is fetched before the switch, so the fade
  * never shows a half-loaded picture. Rotation pauses while the tab is hidden.
  */
-export function RotatingBg({ set }: { set: LoginBgSet }) {
+export function RotatingBg({ set, clear }: { set: LoginBgSet; clear?: boolean }) {
   const [dark, setDark] = useState(false);
   const [size, setSize] = useState(0); // 0 until mounted (no image during the server render)
   const [active, setActive] = useState(0);
@@ -66,7 +66,7 @@ export function RotatingBg({ set }: { set: LoginBgSet }) {
   }, [key, ready]);
 
   return (
-    <div className="auth-bg" aria-hidden>
+    <div className={`auth-bg${clear ? ' is-clear' : ''}`} aria-hidden>
       {urls.map((u, i) => (
         <div key={u} className={`auth-bg-layer${i === active && ready.has(u) ? ' is-on' : ''}`}
           style={ready.has(u) ? { backgroundImage: `url(${u})` } : undefined} />

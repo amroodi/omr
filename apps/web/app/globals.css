@@ -1348,3 +1348,19 @@ code, kbd, pre, samp, .latin-digits { font-family: 'Vazirmatn', ui-monospace, SF
 .jdp-month { flex: 1 1 auto; min-width: 60px; }
 .jdp-year { width: 82px; flex-shrink: 0; }
 @media (max-width: 400px) { .jdp-year { width: 68px; } .jdp-head .jdp-nav { width: 30px !important; height: 32px !important; } }
+
+/* Login card fold: hide the form to see the whole background photo, bring it back with the arrow */
+.auth-card { position: relative; }
+.auth-wrap { transition: opacity .35s ease, transform .35s ease; }
+.auth-wrap.is-hidden { opacity: 0; transform: translateY(40px) scale(.97); pointer-events: none; visibility: hidden; }
+.auth-fold { position: absolute; top: 12px; inset-inline-end: 12px; width: 34px; height: 34px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--surface-2); color: var(--text); border: 1px solid var(--border); transition: transform .15s; }
+.auth-fold:hover { transform: translateY(2px); }
+.auth-unfold { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); z-index: 30; display: inline-flex; align-items: center; gap: 8px;
+  padding: 11px 20px; border-radius: 999px; background: rgba(255,255,255,.88); color: #012141; font-weight: 800; font-size: .88rem; white-space: nowrap;
+  box-shadow: 0 10px 26px -10px rgba(0,0,0,.55); backdrop-filter: blur(6px); animation: auth-up .35s ease both; }
+:root.dark .auth-unfold { background: rgba(16,24,43,.85); color: #fff; }
+@keyframes auth-up { from { opacity: 0; transform: translate(-50%, 16px); } to { opacity: 1; transform: translate(-50%, 0); } }
+.auth-bg.is-clear::after { opacity: 0; }
+.auth-bg::after { transition: opacity .35s ease; }
+@media (prefers-reduced-motion: reduce) { .auth-wrap, .auth-unfold { transition: none; animation: none; } }
