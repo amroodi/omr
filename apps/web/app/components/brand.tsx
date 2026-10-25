@@ -2,7 +2,10 @@
  * The brokerage's emblem (umbrella, twin homas, gear) as the app's brand icon. It sits on a small white
  * rounded tile so the navy gear stays visible on dark bars and in dark mode.
  */
-export function BrandMark({ size = 32 }: { size?: number }) {
+export function BrandMark({ size = 32, bare }: { size?: number; bare?: boolean }) {
+  // `bare`: just the emblem, no tile (the see-through site header)
+  // eslint-disable-next-line @next/next/no-img-element
+  if (bare) return <img src="/brand/damuon-mark.webp" alt="" width={size} height={size} className="brand-bare" style={{ objectFit: 'contain', flexShrink: 0 }} />;
   return (
     <span
       style={{

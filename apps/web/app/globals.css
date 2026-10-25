@@ -1365,3 +1365,9 @@ code, kbd, pre, samp, .latin-digits { font-family: 'Vazirmatn', ui-monospace, SF
 .auth-bg::after { transition: opacity .35s ease; }
 @media (prefers-reduced-motion: reduce) { .auth-wrap, .auth-unfold { transition: none; animation: none; } }
 .auth-credit { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--border); text-align: center; font-size: .72rem; color: var(--muted); }
+
+/* Site header (landing + login pages): mostly see-through so the photos behind it show */
+.app-header { background: color-mix(in srgb, var(--surface) 45%, transparent); backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
+.brand-bare { filter: drop-shadow(0 2px 4px rgba(0,0,0,.18)); }
+:root.dark .brand-bare { filter: drop-shadow(0 0 1px rgba(255,255,255,.75)) drop-shadow(0 0 6px rgba(255,255,255,.25)); }
