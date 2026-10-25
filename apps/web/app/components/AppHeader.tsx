@@ -39,8 +39,7 @@ export function AppHeader() {
 
   return (
     <header
-      className="sticky top-0 z-40 backdrop-blur-md"
-      style={{ background: 'color-mix(in srgb, var(--surface) 82%, transparent)', borderBottom: '1px solid var(--border)' }}
+      className="sticky top-0 z-40 app-header"
     >
       <div className="mx-auto max-w-6xl px-4 h-16 flex items-center gap-3">
         <a href={homeHref} className="flex items-center gap-2.5 min-w-0">
@@ -48,7 +47,7 @@ export function AppHeader() {
             // eslint-disable-next-line @next/next/no-img-element
             <img src={logoUrl} alt="" style={{ height: 32, width: 'auto', maxWidth: 120, borderRadius: 6, objectFit: 'contain' }} />
           ) : (
-            <BrandMark />
+            <BrandMark bare size={40} />
           )}
           <span className="font-extrabold text-lg truncate">{orgBranded && brand ? brand.name : 'دامون'}</span>
           {inCustomer && <span className="text-xs shrink-0 px-2 py-0.5 rounded-lg" style={{ background: 'var(--surface-2)', color: 'var(--muted)' }}>پورتال بیمه‌گزار</span>}
