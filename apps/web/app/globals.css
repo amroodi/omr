@@ -247,6 +247,11 @@ h1, h2, h3 {
   .table tbody tr:last-child td {
     border-bottom: none;
   }
+  /* Grid: a line between every column and a clearer line under every row, so wide case lists read
+     like a sheet. (RTL: the first column is on the right, so each later cell draws its start edge.) */
+  .table thead th, .table tbody td { border-bottom-color: var(--border-strong, var(--border)); }
+  .table thead th + th, .table tbody td + td { border-inline-start: 1px solid var(--border); }
+  .table thead th { border-bottom-width: 2px; }
 
   .alert-error {
     background: var(--danger-soft);
