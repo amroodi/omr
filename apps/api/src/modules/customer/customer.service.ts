@@ -215,7 +215,9 @@ export class CustomerService {
       caseNumber: c.caseNumber,
       status: c.status,
       insuredName: c.insured?.fullName ? this.crypto.decrypt(c.insured.fullName) : null,
-      nationalCodeMasked: nid ? `••••••${nid.slice(-4)}` : null,
+      // The بیمه‌گزار's own cases (they are the insured or the beneficiary): shown in full, not masked.
+      nationalCodeMasked: nid,
+      nationalCode: nid,
       policy: c.policy ?? null,
       stageDate: c.stageDate ? toJalali(c.stageDate, false) : null,
       paidAt: c.paidAt ? toJalali(c.paidAt, false) : null,
