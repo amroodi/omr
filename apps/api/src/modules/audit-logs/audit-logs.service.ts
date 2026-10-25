@@ -85,12 +85,28 @@ export class AuditLogsService {
       }),
     ]);
 
+    // Who and which organization, by name, so the trail reads without looking ids up.
+    const ids = (t: string) => [...new Set(rows.filter((r) => r.actorType === t && r.actorId).map((r) => r.actorId as string))];
+    const tenantIds = [...new Set(rows.map((r) => r.tenantId).filter((x): x is string => !!x))];
+    const [orgUsers, admins, tenants] = await Promise.all([
+      ids('ORG_USER').length ? db.orgUser.findMany({ where: { id: { in: ids('ORG_USER') } }, select: { id: true, displayName: true, username: true } }) : [],
+      ids('SUPER_ADMIN').length ? db.superAdmin.findMany({ where: { id: { in: ids('SUPER_ADMIN') } }, select: { id: true, email: true } }) : [],
+      tenantIds.length ? db.tenant.findMany({ where: { id: { in: tenantIds } }, select: { id: true, name: true } }) : [],
+    ]);
+    const actorName = new Map<string, string>([
+      ...orgUsers.map((u) => [u.id, `${u.displayName || u.username} (${u.username})`] as [string, string]),
+      ...admins.map((a) => [a.id, `مدیر سامانه (${a.email})`] as [string, string]),
+    ]);
+    const tenantName = new Map(tenants.map((t) => [t.id, t.name]));
+
     return {
       page,
       pageSize,
       total,
       items: rows.map((r) => ({
         ...r,
+        actorName: r.actorId ? actorName.get(r.actorId) ?? null : null,
+        tenantName: r.tenantId ? tenantName.get(r.tenantId) ?? null : null,
         metadata: r.metadata ? safeParse(r.metadata) : null,
       })),
     };

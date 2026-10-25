@@ -140,7 +140,7 @@ export default function FileOnBehalf() {
             <Field label="کد ملی بیمه‌شده *"><input className="input" inputMode="numeric" style={{ direction: 'ltr', textAlign: 'right' }} value={f.deceasedNationalCode} onChange={(e) => setF({ ...f, deceasedNationalCode: e.target.value })} /></Field>
             <Field label="تاریخ تولد بیمه‌شده"><JalaliDatePicker value={f.birthDate} onChange={(v) => setF({ ...f, birthDate: v })} placeholder="۱۳۴۵/۰۵/۱۲" /></Field>
             <Field label={`${eventLabel} *`}><JalaliDatePicker value={f.eventDate} onChange={(v) => setF({ ...f, eventDate: v })} placeholder="۱۴۰۵/۰۷/۰۱" /></Field>
-            <Field label="مبلغ خسارت برآوردی (ریال، اختیاری)"><input className="input" inputMode="numeric" value={f.claimedAmount} onChange={(e) => setF({ ...f, claimedAmount: e.target.value })} /></Field>
+            <Field label="مبلغ خسارت برآوردی (ریال، اختیاری)"><input className="input" inputMode="numeric" value={toAscii(f.claimedAmount).replace(/[^\d]/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, '٬')} onChange={(e) => setF({ ...f, claimedAmount: toAscii(e.target.value).replace(/[^\d]/g, '') })} placeholder="۰" style={{ direction: 'ltr', textAlign: 'right' }} /></Field>
           </div>
           <Field label="توضیحات (اختیاری)"><textarea className="input" rows={3} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></Field>
           <button onClick={submit} disabled={busy || !f.deceasedFullName.trim() || !f.deceasedNationalCode.trim() || !f.eventDate} className="btn btn-primary w-full">

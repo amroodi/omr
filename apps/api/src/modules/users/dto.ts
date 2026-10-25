@@ -39,9 +39,11 @@ export class UpdateUserDto {
   @IsUUID()
   roleId?: string;
 
+  // null moves a branch user to a central desk (with `desk`)
   @IsOptional()
+  @ValidateIf((_, v) => v !== null)
   @IsUUID()
-  branchId?: string;
+  branchId?: string | null;
 
   @IsOptional()
   @IsBoolean()

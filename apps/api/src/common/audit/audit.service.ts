@@ -40,6 +40,7 @@ export class AuditService {
 
   async record(input: AuditInput): Promise<void> {
     const ctx = getContext();
+    if (ctx) ctx.audited = true;
     const tenantId = input.tenantId ?? ctx?.tenantId ?? null;
     const now = new Date();
     const db = this.prisma.unscoped();

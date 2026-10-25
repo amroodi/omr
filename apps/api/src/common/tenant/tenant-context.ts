@@ -21,6 +21,8 @@ export interface RequestContext {
   branchScoped?: boolean;
   /** Scopes granted to the current server-to-server API key (actorType 'API'). */
   apiScopes?: string[];
+  /** Set once the request has written its own audit row (the catch-all audit then stays quiet). */
+  audited?: boolean;
 }
 
 /**
