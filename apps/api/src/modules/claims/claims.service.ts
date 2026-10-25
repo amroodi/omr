@@ -55,7 +55,11 @@ interface Desk {
   tenantId: string | null;
   branchId: string | null;
   isAdmin: boolean; // claim:override — may skip desks on the way down (management discretion)
+  /** An insurer's admin (claim:override in an insurer org) also sits at every insurer desk: شعبه, ستاد, شورای فنی. */
+  insurerAdmin?: boolean;
 }
+
+const INSURER_DESKS: Stage[] = ['BRANCH', 'HQ', 'COUNCIL'];
 
 export interface ActInput {
   action: ActionKey;
@@ -304,7 +308,8 @@ export class ClaimsService {
     if (tenant?.kind === 'BROKER') stage = 'BROKER';
     else if (user?.desk === 'HQ' || user?.desk === 'COUNCIL' || user?.desk === 'BRANCH') stage = user.desk;
     else stage = branchId ? 'BRANCH' : 'HQ';
-    return { stage, tenantId: ctx.tenantId, branchId, isAdmin: (ctx.permissions ?? []).includes(PERMISSIONS.CLAIM_OVERRIDE) };
+    const isAdmin = (ctx.permissions ?? []).includes(PERMISSIONS.CLAIM_OVERRIDE);
+    return { stage, tenantId: ctx.tenantId, branchId, isAdmin, insurerAdmin: isAdmin && tenant?.kind === 'INSURER' };
   }
 
   /** Does the caller hold the claim's current desk (right desk, right org, right branch)? */
@@ -321,6 +326,8 @@ export class ClaimsService {
       if (ctx?.actorType === 'CUSTOMER') return claim.policyHolderId === ctx.actorId;
       return ctx?.actorType === 'ORG_USER' && (ctx.permissions ?? []).includes(PERMISSIONS.CLAIM_FILE) && (ctx.tenantId === claim.insurerTenantId || ctx.tenantId === claim.brokerTenantId);
     }
+    // The insurer's admin can evaluate and move a case at any of its own desks (e.g. a branch's cases).
+    if (desk.insurerAdmin && INSURER_DESKS.includes(s)) return desk.tenantId === claim.insurerTenantId;
     if (desk.stage !== s) return false;
     if (s === 'BROKER') return desk.tenantId === claim.brokerTenantId;
     if (desk.tenantId !== claim.insurerTenantId) return false;
@@ -1030,7 +1037,7 @@ export class ClaimsService {
    */
   private canReviewStage(claim: any, stage: ReviewDesk, desk: Desk): boolean {
     if (!(getContext()?.permissions ?? []).includes(PERMISSIONS.DOC_VERIFY)) return false;
-    return claim.currentStage === stage && claim.flowDirection === 'UP' && desk.stage === stage && this.holdsDesk(claim, desk);
+    return claim.currentStage === stage && claim.flowDirection === 'UP' && (desk.stage === stage || !!desk.insurerAdmin) && this.holdsDesk(claim, desk);
   }
 
   /** Review columns shown per document: the desks on this claim's chain (شورای فنی once it was referred). */
@@ -1425,7 +1432,8 @@ export class ClaimsService {
           // requests waiting on my desk: to send/relay (REQUESTED with me) or to confirm receipt (SENT to me)
           ? (desk.stage ? await db.claim.count({ where: { AND: [scope, { physicalRequests: { some: { OR: [{ status: 'REQUESTED', holderStage: desk.stage }, { status: 'SENT', requesterStage: desk.stage }] } } }] } }) : 0)
           : rows.filter((c) => this.holdsDesk(c, desk)).length;
-        tiles.push({ key, label: q.label, count: rows.length, actionable: !!desk.stage && !!q.desk?.includes(desk.stage), mine });
+        const seats = desk.insurerAdmin ? INSURER_DESKS : desk.stage ? [desk.stage] : [];
+        tiles.push({ key, label: q.label, count: rows.length, actionable: seats.some((st) => q.desk?.includes(st)), mine });
       }
     }
 
@@ -1434,7 +1442,7 @@ export class ClaimsService {
     return {
       userName: user?.displayName || user?.username || null,
       role: desk.stage,
-      roleLabel: desk.stage ? STAGE_FA[desk.stage] : '—',
+      roleLabel: desk.insurerAdmin ? 'مدیر بیمه‌گر (همهٔ مراحل)' : desk.stage ? STAGE_FA[desk.stage] : '—',
       tiles,
       summary: { pendingActions, queues: tiles.filter((t) => t.mine > 0).length },
     };
