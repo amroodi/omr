@@ -52,6 +52,7 @@ export function AuthCard({ title, subtitle, children, bg }: { title: string; sub
             {subtitle && <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>{subtitle}</p>}
           </div>
           {children}
+          <div className="auth-credit">طراحي و توليد توسط کارگزاری آتیه اندیشان دامون</div>
         </div>
         <LoginNav />
       </div>
