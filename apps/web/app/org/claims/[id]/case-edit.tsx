@@ -1,9 +1,10 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { client } from '../../../../lib/client';
 import { Icon } from '../../../components/Shell';
 import { JalaliDatePicker } from '../../../components/JalaliDatePicker';
 import { FieldRow, FieldsData, notesTone } from '../../../components/case-ui';
+import { DocUploadTile, OnProgress } from '../../../components/upload';
 
 /**
  * «ویرایش» of a case, after the operator forms (to-ui-editing 1–3): three columns (بیمه‌شده / بیمه‌نامه /
@@ -39,7 +40,6 @@ export function CaseEditForm({ claimId, title, onSaved }: { claimId: string; tit
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [benFile, setBenFile] = useState<{ id: string; fileName: string } | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
 
   const load = async () => {
     const d = await client.get<FieldsData>(`/claims/${claimId}/fields`, 'org');
@@ -76,10 +76,13 @@ export function CaseEditForm({ claimId, title, onSaved }: { claimId: string; tit
   };
   const cancel = () => { const dr: Record<string, string> = {}; all.forEach((f) => { dr[f.key] = f.value ?? ''; }); setDrafts(dr); setErrors({}); setMsg(null); };
 
-  const uploadBen = async (file: File) => {
-    setBusy(true); setMsg(null);
-    try { const fd = new FormData(); fd.append('file', file); await client.postForm(`/claims/${claimId}/documents?docCode=${BENEFICIARY_FILE}`, fd, 'org'); await load(); setMsg({ ok: true, text: 'فایل ذینفع بارگذاری شد' }); }
-    catch (e: any) { setMsg({ ok: false, text: e.message }); } finally { setBusy(false); }
+  // From the upload dialog, which shows the progress and any error itself.
+  const uploadBen = async (file: File, onProgress: OnProgress) => {
+    setMsg(null);
+    const fd = new FormData(); fd.append('file', file);
+    await client.upload(`/claims/${claimId}/documents?docCode=${BENEFICIARY_FILE}`, fd, 'org', onProgress);
+    await load();
+    setMsg({ ok: true, text: 'فایل ذینفع بارگذاری شد' });
   };
 
   const input = (f: FieldRow) => {
@@ -142,8 +145,8 @@ export function CaseEditForm({ claimId, title, onSaved }: { claimId: string; tit
             {col.title === 'اطلاعات فوت' && (
               <div className="ce-field">
                 <label className="ce-label"><span className="ce-dot" />بارگذاری فایل PDF/EXCEL ذینفع</label>
-                <input ref={fileRef} type="file" accept=".pdf,.xlsx,.xls" className="input" disabled={busy}
-                  onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadBen(f); e.currentTarget.value = ''; }} />
+                <div><DocUploadTile label="فایل PDF/EXCEL ذینفع" addText="افزودن فایل ذینفع" required={false} uploaded={!!benFile} disabled={busy} accept=".pdf,.xlsx,.xls" camera={false}
+                  help="فهرست ذینفعان را به صورت فایل PDF یا اکسل (XLSX، XLS) بارگذاری کنید؛ حداکثر ۱۵ مگابایت." onUpload={uploadBen} /></div>
                 {benFile && (
                   <button type="button" className="ce-link" onClick={() => client.download(`/claims/${claimId}/documents/${benFile.id}/file`, 'org', benFile.fileName).catch((e) => setMsg({ ok: false, text: e.message }))}>
                     دانلود فایل فعلی

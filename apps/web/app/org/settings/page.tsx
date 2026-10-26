@@ -1,5 +1,6 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { OnProgress, UploadButton } from '../../components/upload';
 import { client } from '../../../lib/client';
 import { applyTheme } from '../../../lib/theme';
 import { Shell } from '../../components/Shell';
@@ -37,7 +38,6 @@ export default function Settings() {
 function BrandingTab() {
   const [s, setS] = useState<any>(null);
   const [msg, setMsg] = useState<{ t: 'ok' | 'err'; m: string } | null>(null);
-  const logoRef = useRef<HTMLInputElement>(null);
   const load = () => client.get<any>('/tenant/settings', 'org').then(setS).catch((e) => setMsg({ t: 'err', m: e.message }));
   useEffect(() => { load(); }, []);
   const save = async () => {
@@ -45,9 +45,10 @@ function BrandingTab() {
     try { await client.patch('/tenant/settings', { name: s.name, contactHeader: s.contactHeader, noticeDays: Number(s.noticeDays), lateNoticeWarning: s.lateNoticeWarning !== false, ...(s.kind === 'INSURER' ? { hqCeiling: String(s.hqCeiling ?? '').replace(/[^\d]/g, '') || null } : {}) }, 'org'); setMsg({ t: 'ok', m: 'ذخیره شد' }); load(); }
     catch (e: any) { setMsg({ t: 'err', m: e.message }); }
   };
-  const uploadLogo = async (file: File) => {
-    try { const fd = new FormData(); fd.append('file', file); await client.postForm('/tenant/assets/logo', fd, 'org'); setMsg({ t: 'ok', m: 'لوگو بارگذاری شد' }); load(); }
-    catch (e: any) { setMsg({ t: 'err', m: e.message }); }
+  const uploadLogo = async (file: File, onProgress: OnProgress) => {
+    const fd = new FormData(); fd.append('file', file);
+    await client.upload('/tenant/assets/logo', fd, 'org', onProgress);
+    setMsg({ t: 'ok', m: 'لوگو بارگذاری شد' }); load();
   };
   if (!s) return null;
   return (
@@ -66,8 +67,7 @@ function BrandingTab() {
         <span>نمایش هشدار «خارج از مهلت مقرر» روی پرونده‌ها</span>
       </label>
       <div className="flex gap-2 items-center">
-        <input ref={logoRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadLogo(f); }} />
-        <button onClick={() => logoRef.current?.click()} className="btn btn-ghost btn-sm">{s.hasLogo ? 'تغییر لوگو' : 'بارگذاری لوگو'}</button>
+        <UploadButton onUpload={uploadLogo} accept="image/*" maxMB={3} title={s.hasLogo ? 'تغییر لوگو' : 'بارگذاری لوگو'}>{s.hasLogo ? 'تغییر لوگو' : 'بارگذاری لوگو'}</UploadButton>
         {s.hasLogo && <span className="badge badge-success">لوگو تنظیم شده</span>}
       </div>
       <button onClick={save} className="btn btn-primary btn-sm">ذخیره</button>

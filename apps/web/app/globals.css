@@ -1348,6 +1348,70 @@ html[data-wall] .pshell { background-blend-mode: normal; }
 .up-ring-track { fill: none; stroke: var(--surface-2); stroke-width: 3.5; }
 .up-ring-bar { fill: none; stroke: var(--brand); stroke-width: 3.5; stroke-linecap: round; transition: stroke-dashoffset .2s linear; }
 .up-ring-t { font-size: .62rem; font-weight: 800; color: var(--brand); }
+
+/* Upload dialog (components/upload.tsx): dashed drop zone, limits line, per-file progress / refusal notices */
+.upd { max-width: 620px; }
+.upd-sub { font-size: .78rem; color: var(--muted); margin-top: 2px; }
+.upd-drop {
+  border: 3px dashed var(--border-strong); border-radius: 12px; padding: 34px 16px; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 8px; transition: border-color .15s ease, background .15s ease;
+}
+.upd-drop.is-drag { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 7%, transparent); }
+.upd-ico { width: 34px; height: 34px; fill: none; stroke: var(--muted); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.upd-drop.is-drag .upd-ico { stroke: var(--brand); }
+.upd-big { font-size: 1.15rem; font-weight: 600; line-height: 1.7; max-width: 22ch; }
+.upd-or { font-size: .9rem; color: var(--muted); }
+.upd-pick {
+  border: 1.5px solid var(--brand); color: var(--brand); background: var(--surface); border-radius: 6px;
+  padding: 7px 16px; font-size: .86rem; font-weight: 700; cursor: pointer; transition: background .14s ease, color .14s ease;
+}
+.upd-pick:hover { background: var(--brand); color: #fff; }
+.upd-pick:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.upd-hint { font-size: .8rem; color: var(--muted); margin-top: 12px; }
+.upd-list { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+.upd-row { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
+.upd-row.is-done { border-color: color-mix(in srgb, var(--success) 40%, transparent); background: color-mix(in srgb, var(--success) 8%, var(--surface)); }
+.upd-ok { width: 40px; height: 40px; flex: none; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; background: var(--success); }
+.upd-ok svg { width: 20px; height: 20px; fill: none; stroke: #fff; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+.upd-name { font-size: .85rem; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.upd-state { font-size: .74rem; color: var(--muted); }
+.upd-notice {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 11px 14px;
+  background: var(--surface); border: 1px solid var(--border); border-inline-start: 4px solid var(--danger); border-radius: 4px;
+}
+.upd-notice-t { font-size: .88rem; font-weight: 800; }
+.upd-notice-r { font-size: .8rem; margin-top: 2px; }
+.upd-dismiss { background: none; border: 0; padding: 0; color: var(--brand); text-decoration: underline; font-size: .82rem; cursor: pointer; flex: none; }
+
+/* Per-document upload tile (مدارک مورد نیاز): orange «?» + paperclip tile */
+.dut { display: inline-flex; align-items: center; gap: 8px; position: relative; }
+.dut-help-w { position: relative; display: inline-flex; }
+.dut-help {
+  width: 32px; height: 32px; border-radius: 999px; border: 1.5px solid #ff5a1f; color: #ff5a1f; background: var(--surface-2);
+  font-weight: 800; font-size: 1rem; line-height: 1; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+}
+.dut-help:focus-visible, .dut-tile:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.dut-tip {
+  position: absolute; z-index: 30; top: calc(100% + 8px); inset-inline-start: 0; width: min(260px, 70vw);
+  background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-lg);
+  padding: 10px 12px; font-size: .76rem; line-height: 1.8; font-weight: 500; white-space: normal; text-align: start;
+}
+.dut-tile {
+  display: inline-flex; align-items: center; gap: 12px; min-height: 64px; padding: 10px 16px; border-radius: 8px;
+  background: var(--surface); color: var(--text); border: 1px solid var(--border-strong); cursor: pointer; font-size: .88rem;
+  transition: border-color .14s ease, box-shadow .14s ease, transform .1s ease;
+}
+.dut-tile:hover:not(:disabled) { border-color: var(--brand); box-shadow: 0 2px 10px rgba(var(--brand-rgb), .14); }
+.dut-tile:active:not(:disabled) { transform: translateY(1px); }
+.dut-tile:disabled { opacity: .55; cursor: not-allowed; }
+.dut-ico { width: 30px; height: 30px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transform: scaleX(-1); }
+.dut-tile.is-up { border-color: color-mix(in srgb, var(--success) 45%, transparent); }
+.dut-tile.is-up .dut-ico { stroke: var(--success); transform: none; }
+.dut-tile.is-bad { border-color: var(--danger); color: var(--danger); font-weight: 700; }
+.dut-req { color: var(--danger); }
+.dut.is-compact .dut-help { width: 24px; height: 24px; font-size: .8rem; }
+.dut.is-compact .dut-tile { min-height: 38px; padding: 4px 10px; gap: 7px; font-size: .74rem; border-radius: 7px; }
+.dut.is-compact .dut-ico { width: 18px; height: 18px; }
 .cu-final { background: #16a34a !important; }
 .cu-sent { display: inline-flex; align-items: center; gap: 8px; padding: 12px 18px; border-radius: 14px; background: #dcfce7; color: #15803d; font-weight: 700; font-size: .86rem; }
 :root.dark .cu-sent { background: #12301f; color: #4ade80; }

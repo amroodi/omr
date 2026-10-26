@@ -10,6 +10,7 @@ import { ORG_NAV } from '../../../nav';
 import { caseTitle } from '../../../../../lib/caseTitle';
 import { downloadPdf } from '../../../../../lib/pdf';
 import { CaseHero, ClaimDoc, ICONS, NotesPill, PersonCards, phaseText, useCase } from '../../../../components/case-ui';
+import { DocUploadTile, OnProgress } from '../../../../components/upload';
 
 const DESK_FA: Record<string, string> = { BROKER: 'کارگزاری', BRANCH: 'شعبه', HQ: 'ستاد', COUNCIL: 'شورای فنی' };
 const OK = 'M20 6L9 17l-5-5';
@@ -29,8 +30,6 @@ export default function CaseDocumentsPage() {
   const { id } = useParams<{ id: string }>();
   const { claim, fv, checklist, error, setError, reload } = useCase(id);
   const sheet = useRef<HTMLDivElement>(null);
-  const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
-  const [busy, setBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [canFile, setCanFile] = useState(false);
   useEffect(() => { setCanFile(hasPerm('org', 'claim:file')); }, []);
@@ -44,10 +43,12 @@ export default function CaseDocumentsPage() {
     return list.length ? list : ['BROKER', 'BRANCH', 'HQ'];
   })();
 
-  const upload = async (code: string, file: File) => {
-    setBusy(true); setError('');
-    try { const fd = new FormData(); fd.append('file', file); await client.postForm(`/claims/${id}/documents?docCode=${encodeURIComponent(code)}`, fd, 'org'); await reload(); }
-    catch (e: any) { setError(e.message); } finally { setBusy(false); }
+  // From the document's upload dialog (which shows progress and any error itself).
+  const upload = async (code: string, file: File, onProgress: OnProgress) => {
+    setError('');
+    const fd = new FormData(); fd.append('file', file);
+    await client.upload(`/claims/${id}/documents?docCode=${encodeURIComponent(code)}`, fd, 'org', onProgress);
+    await reload();
   };
   const pdf = async () => {
     if (!sheet.current || !claim) return;
@@ -92,11 +93,7 @@ export default function CaseDocumentsPage() {
                       <Mark state={r.doc ? 'ok' : 'no'} title={r.doc ? `بارگذاری شده — ${r.doc.uploadedAt ?? ''}` : 'بارگذاری نشده'} />
                       {r.doc && <button type="button" className="cs-mini no-pdf" title="مشاهدهٔ فایل" onClick={() => client.view(`/claims/${id}/documents/${r.doc!.id}/file`, 'org').catch((e) => setError(e.message))}><Icon path="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8zM12 15a3 3 0 100-6 3 3 0 000 6z" /></button>}
                       {canFile && r.code && (
-                        <>
-                          <input ref={(el) => { fileRefs.current[r.code] = el; }} type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }}
-                            onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(r.code, f); e.currentTarget.value = ''; }} />
-                          <button type="button" className="cs-upload no-pdf" disabled={busy} onClick={() => fileRefs.current[r.code]?.click()}>{r.doc ? 'جایگزینی فایل' : 'بارگذاری فایل'}</button>
-                        </>
+                        <span className="no-pdf"><DocUploadTile compact label={r.label} uploaded={!!r.doc} rejected={!!r.doc?.reviews?.some((x) => x.state === 'REJECTED')} onUpload={(f, onP) => upload(r.code, f, onP)} /></span>
                       )}
                     </span>
                     {desks.map((s) => <span key={s} className="cs-td-desk">{deskCell(r.doc, s)}</span>)}
