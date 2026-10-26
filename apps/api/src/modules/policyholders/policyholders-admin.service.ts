@@ -10,6 +10,8 @@ import { LINE_FA } from './policyholders.service';
 
 /** Arabic ي/ك → Persian ی/ک, ZWNJ/extra spaces folded — the export uses Arabic letters. */
 const fa = (s: string) => s.replace(/ي/g, 'ی').replace(/ك/g, 'ک').replace(/‌/g, ' ').replace(/\s+/g, ' ').trim();
+/** A name typed by hand: Persian letters, but keep its half-spaces (ZWNJ). */
+const faName = (s: string) => s.replace(/ي/g, 'ی').replace(/ك/g, 'ک').replace(/[ \t]+/g, ' ').trim();
 /** "نيرو صنعت سرچشمه کد 7096232" → name + کد بیمه‌گزار. */
 const NAME_CODE = /^(.*?)\s*کد\s*[:：]?\s*([0-9۰-۹]+)\s*$/;
 // No 0/O, 1/l/I — passwords get read out over the phone.
@@ -70,6 +72,7 @@ export class PolicyholdersAdminService {
       lines: [...new Set(r.contracts.filter((c) => c.isActive && c.line).map((c) => c.line as InsuranceLine))],
       contracts: r.contracts.map((c) => ({
         id: c.id, line: c.line, lineLabel: c.line ? LINE_FA[c.line] : null, policyNumber: c.policyNumber,
+        startIso: c.startDate?.toISOString() ?? null, endIso: c.endDate?.toISOString() ?? null,
         insurerTenantId: c.insurerTenantId, insurerName: tName.get(c.insurerTenantId) ?? '—',
         startDate: c.startDate ? toJalali(c.startDate, false) : null, endDate: c.endDate ? toJalali(c.endDate, false) : null,
         isActive: c.isActive, inForce: c.isActive && (!c.startDate || c.startDate <= now) && (!c.endDate || c.endDate >= now),
@@ -82,7 +85,7 @@ export class PolicyholdersAdminService {
     if (broker?.kind !== 'BROKER') throw new BadRequestException('کارگزاری نامعتبر است');
     const code = toAsciiDigits(input.code).trim();
     if (await this.db().policyholderCompany.findFirst({ where: { tenantId: input.brokerTenantId, code } })) throw new BadRequestException('این کد بیمه‌گزار قبلاً ثبت شده است');
-    const c = await this.db().policyholderCompany.create({ data: { tenantId: input.brokerTenantId, name: fa(input.name), code }, select: { id: true } });
+    const c = await this.db().policyholderCompany.create({ data: { tenantId: input.brokerTenantId, name: faName(input.name), code }, select: { id: true } });
     await this.audit.record({ action: AuditAction.CREATE, tenantId: input.brokerTenantId, targetType: 'PolicyholderCompany', targetId: c.id, metadata: { code, by: 'super' } });
     return c;
   }
@@ -95,7 +98,7 @@ export class PolicyholdersAdminService {
     }
     await this.db().policyholderCompany.update({
       where: { id },
-      data: { ...(input.name ? { name: fa(input.name) } : {}), ...(code !== undefined ? { code: code || null } : {}), ...(input.isActive !== undefined ? { isActive: input.isActive } : {}) },
+      data: { ...(input.name ? { name: faName(input.name) } : {}), ...(code !== undefined ? { code: code || null } : {}), ...(input.isActive !== undefined ? { isActive: input.isActive } : {}) },
     });
     await this.audit.record({ action: AuditAction.EDIT, tenantId: co.tenantId, targetType: 'PolicyholderCompany', targetId: id, metadata: { ...input, by: 'super' } });
     return { ok: true };
@@ -128,12 +131,67 @@ export class PolicyholdersAdminService {
     return c;
   }
 
-  async setContractActive(id: string, contractId: string, isActive: boolean) {
+  /**
+   * Permanently delete بیمه‌گزار companies with their بیمه‌نامه‌ها, panel login and representative
+   * accounts. A company that still has claims is skipped (its claims must keep their company) — the
+   * reason comes back so the page can say which ones and why.
+   */
+  async remove(ids: string[]): Promise<{ deleted: number; skipped: { id: string; name: string; reason: string }[] }> {
+    const db = this.db();
+    const companies = await db.policyholderCompany.findMany({ where: { id: { in: [...new Set(ids)] } }, select: { id: true, name: true, tenantId: true } });
+    const skipped: { id: string; name: string; reason: string }[] = [];
+    let deleted = 0;
+    for (const co of companies) {
+      const accounts = (await db.customerAccount.findMany({ where: { companyId: co.id }, select: { id: true } })).map((a) => a.id);
+      const claims = await db.claim.count({ where: { OR: [{ policyholderCompanyId: co.id }, ...(accounts.length ? [{ policyHolderId: { in: accounts } }] : [])] } });
+      if (claims) { skipped.push({ id: co.id, name: co.name, reason: `${claims.toLocaleString('fa-IR')} پروندهٔ خسارت دارد` }); continue; }
+      await db.$transaction([
+        db.notification.deleteMany({ where: { recipientId: { in: accounts } } }),
+        db.inquiryMessage.deleteMany({ where: { companyId: co.id } }),
+        db.customerAccount.deleteMany({ where: { id: { in: accounts } } }),
+        db.policyholderContract.deleteMany({ where: { companyId: co.id } }),
+        db.policyholderCompany.updateMany({ where: { parentId: co.id }, data: { parentId: null } }),
+        db.policyholderCompany.delete({ where: { id: co.id } }),
+      ]);
+      await this.audit.record({ action: AuditAction.DELETE, tenantId: co.tenantId, targetType: 'PolicyholderCompany', targetId: co.id, metadata: { name: co.name, by: 'super' } });
+      deleted++;
+    }
+    return { deleted, skipped };
+  }
+
+  /** «حذف همه»: every company of a brokerage that matches the page's search (empty search = all). */
+  async removeMatching(brokerTenantId: string, q?: string) {
+    const ids = (await this.list(brokerTenantId, q)).map((c) => c.id);
+    return this.remove(ids);
+  }
+
+  /** Edit a بیمه‌نامه: number, line, insurer, dates or active state (only the fields sent change). */
+  async updateContract(id: string, contractId: string, input: {
+    isActive?: boolean; line?: InsuranceLine; policyNumber?: string; insurerTenantId?: string; startDate?: string | null; endDate?: string | null;
+  }) {
     const co = await this.company(id);
     const c = await this.db().policyholderContract.findFirst({ where: { id: contractId, companyId: id } });
     if (!c) throw new NotFoundException('بیمه‌نامه یافت نشد');
-    await this.db().policyholderContract.update({ where: { id: contractId }, data: { isActive } });
-    await this.audit.record({ action: AuditAction.EDIT, tenantId: co.tenantId, targetType: 'PolicyholderContract', targetId: contractId, metadata: { isActive, by: 'super' } });
+    if (input.insurerTenantId && input.insurerTenantId !== c.insurerTenantId) {
+      await this.assertInsurer(input.insurerTenantId);
+      await this.ensurePartnership(co.tenantId, input.insurerTenantId);
+    }
+    const startDate = input.startDate !== undefined ? (input.startDate ? new Date(input.startDate) : null) : c.startDate;
+    const endDate = input.endDate !== undefined ? (input.endDate ? new Date(input.endDate) : null) : c.endDate;
+    if (startDate && endDate && endDate < startDate) throw new BadRequestException('تاریخ پایان قبل از تاریخ شروع است');
+    const number = input.policyNumber !== undefined ? toAsciiDigits(input.policyNumber).trim() : undefined;
+    if (number === '') throw new BadRequestException('شماره بیمه‌نامه الزامی است');
+    await this.db().policyholderContract.update({
+      where: { id: contractId },
+      data: {
+        ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
+        ...(input.line ? { line: input.line } : {}),
+        ...(number !== undefined ? { policyNumber: number } : {}),
+        ...(input.insurerTenantId ? { insurerTenantId: input.insurerTenantId } : {}),
+        startDate, endDate,
+      },
+    });
+    await this.audit.record({ action: AuditAction.EDIT, tenantId: co.tenantId, targetType: 'PolicyholderContract', targetId: contractId, metadata: { ...input, by: 'super' } });
     return { ok: true };
   }
 

@@ -9,7 +9,7 @@ import { JalaliDatePicker } from '../../components/JalaliDatePicker';
 import { UploadButton } from '../../components/upload';
 
 type Line = 'LIFE' | 'ACCIDENT';
-interface Contract { id: string; line: Line | null; lineLabel: string | null; policyNumber: string | null; insurerTenantId: string; insurerName: string; startDate: string | null; endDate: string | null; isActive: boolean; inForce: boolean }
+interface Contract { id: string; line: Line | null; lineLabel: string | null; policyNumber: string | null; startIso?: string | null; endIso?: string | null; insurerTenantId: string; insurerName: string; startDate: string | null; endDate: string | null; isActive: boolean; inForce: boolean }
 interface Company { id: string; name: string; code: string | null; isActive: boolean; brokerTenantId: string; brokerName: string; hasPassword: boolean; passwordSetAt: string | null; lines: Line[]; contracts: Contract[] }
 interface Opt { id: string; name: string; slug: string }
 interface Cred { code: string; name: string; password: string }
@@ -55,6 +55,11 @@ export default function AdminPolicyholders() {
   const [cred, setCred] = useState<Cred | null>(null);
   const [nc, setNc] = useState({ line: 'LIFE' as Line, policyNumber: '', start: '', end: '', insurerTenantId: '' });
   const [newCo, setNewCo] = useState({ name: '', code: '' });
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  // Editing: the open company's name / code / status, and one بیمه‌نامه row at a time.
+  const [editCo, setEditCo] = useState<{ id: string; name: string; code: string; isActive: boolean } | null>(null);
+  const [editK, setEditK] = useState<{ id: string; line: Line; policyNumber: string; insurerTenantId: string; start: string; end: string; isActive: boolean } | null>(null);
+  const [busyDel, setBusyDel] = useState(false);
 
   useEffect(() => {
     if (!getToken('super')) { router.push('/admin/login'); return; }
@@ -69,7 +74,25 @@ export default function AdminPolicyholders() {
   const load = () => {
     if (!broker) return;
     const p = new URLSearchParams({ brokerTenantId: broker }); if (q.trim()) p.set('q', q.trim());
-    client.get<Company[]>(`/admin/policyholders?${p}`, 'super').then(setRows).catch((e) => setError(e.message));
+    client.get<Company[]>(`/admin/policyholders?${p}`, 'super').then((r) => { setRows(r); setPicked(new Set()); }).catch((e) => setError(e.message));
+  };
+
+  /** Delete one, the picked ones, or every company in the current results — after a confirmation. */
+  const del = async (what: 'one' | 'picked' | 'all', c?: Company) => {
+    const n = what === 'one' ? 1 : what === 'picked' ? picked.size : rows?.length ?? 0;
+    const label = what === 'one' ? `«${c!.name}»` : what === 'picked' ? `${faN(n)} بیمه‌گزار انتخاب‌شده` : `همهٔ ${faN(n)} بیمه‌گزار ${q.trim() ? 'نتیجهٔ جستجو' : 'این کارگزاری'}`;
+    if (!n) return;
+    const warn = `${label} برای همیشه حذف شود؟\nبیمه‌نامه‌ها، رمز عبور و نمایندگان آن‌ها هم حذف می‌شوند و قابل بازگشت نیست.\nبیمه‌گزارانی که پروندهٔ خسارت دارند حذف نمی‌شوند.`;
+    if (!window.confirm(warn)) return;
+    if (what === 'all' && window.prompt(`برای تأیید، تعداد (${n}) را وارد کنید:`)?.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).trim() !== String(n)) return;
+    setBusyDel(true); setError(''); setMsg('');
+    try {
+      const r = what === 'one' ? await client.del<{ deleted: number; skipped: { name: string; reason: string }[] }>(`/admin/policyholders/${c!.id}`, 'super')
+        : await client.post<{ deleted: number; skipped: { name: string; reason: string }[] }>('/admin/policyholders/delete',
+          what === 'picked' ? { ids: [...picked] } : { all: true, brokerTenantId: broker, q: q.trim() || undefined }, 'super');
+      setMsg(`${faN(r.deleted)} بیمه‌گزار حذف شد.${r.skipped.length ? ` حذف نشد: ${r.skipped.map((x) => `«${x.name}» (${x.reason})`).join('، ')}` : ''}`);
+      load();
+    } catch (e: any) { setError(e.message); } finally { setBusyDel(false); }
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [broker]);
 
@@ -97,6 +120,19 @@ export default function AdminPolicyholders() {
     setNc({ ...nc, policyNumber: '', start: '', end: '' });
   }, 'بیمه‌نامهٔ جدید افزوده شد');
   const toggleContract = (c: Company, k: Contract) => act(() => client.patch(`/admin/policyholders/${c.id}/contracts/${k.id}`, { isActive: !k.isActive }, 'super'));
+  const saveCompany = () => editCo && act(async () => {
+    await client.patch(`/admin/policyholders/${editCo.id}`, { name: editCo.name.trim(), code: toAscii(editCo.code.trim()), isActive: editCo.isActive }, 'super');
+    setEditCo(null);
+  }, 'مشخصات بیمه‌گزار ذخیره شد');
+  const saveContract = (c: Company) => editK && act(async () => {
+    const startDate = editK.start ? jToIso(editK.start) : null;
+    const endDate = editK.end ? jToIso(editK.end) : null;
+    if ((editK.start && !startDate) || (editK.end && !endDate)) throw new Error('تاریخ نامعتبر است (نمونه: ۱۴۰۵/۰۹/۰۱)');
+    await client.patch(`/admin/policyholders/${c.id}/contracts/${editK.id}`, {
+      line: editK.line, policyNumber: toAscii(editK.policyNumber.trim()), insurerTenantId: editK.insurerTenantId, startDate, endDate, isActive: editK.isActive,
+    }, 'super');
+    setEditK(null);
+  }, 'بیمه‌نامه ذخیره شد');
   const createCompany = () => act(async () => {
     const r = await client.post<{ id: string }>('/admin/policyholders', { brokerTenantId: broker, name: newCo.name.trim(), code: toAscii(newCo.code.trim()) }, 'super');
     setNewCo({ name: '', code: '' });
@@ -175,38 +211,82 @@ export default function AdminPolicyholders() {
           <input className="input" style={{ maxWidth: 320 }} placeholder="جستجو: نام، کد بیمه‌گزار یا شماره بیمه‌نامه" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && load()} />
           <button className="btn btn-ghost btn-sm" onClick={load}>جستجو</button>
           {rows && <span className="text-sm mr-auto" style={{ color: 'var(--muted)' }}>{faN(rows.length)} بیمه‌گزار</span>}
+          {picked.size > 0 && (
+            <button className="btn btn-sm" style={{ background: 'var(--danger)', color: '#fff' }} disabled={busyDel} onClick={() => del('picked')}>حذف انتخاب‌شده‌ها ({faN(picked.size)})</button>
+          )}
+          {rows && rows.length > 0 && (
+            <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} disabled={busyDel} onClick={() => del('all')}>{q.trim() ? `حذف همهٔ نتایج (${faN(rows.length)})` : `حذف همه (${faN(rows.length)})`}</button>
+          )}
         </div>
         {!rows ? <div className="p-10 flex justify-center"><Spinner /></div> : (
           <div className="overflow-x-auto">
             <table className="table">
-              <thead><tr>{['کد بیمه‌گزار', 'نام بیمه‌گزار', 'رشته‌ها', 'بیمه‌نامهٔ جاری', 'ورود', ''].map((h) => <th key={h}>{h}</th>)}</tr></thead>
+              <thead><tr>
+                <th style={{ width: 40 }}><input type="checkbox" aria-label="انتخاب همه" checked={rows.length > 0 && rows.every((c) => picked.has(c.id))}
+                  onChange={(e) => setPicked(e.target.checked ? new Set(rows.map((c) => c.id)) : new Set())} /></th>
+                {['کد بیمه‌گزار', 'نام بیمه‌گزار', 'رشته‌ها', 'بیمه‌نامهٔ جاری', 'ورود', ''].map((h) => <th key={h}>{h}</th>)}
+              </tr></thead>
               <tbody>
-                {rows.length === 0 ? <tr><td colSpan={6} className="text-center py-8" style={{ color: 'var(--muted)' }}>بیمه‌گزاری یافت نشد</td></tr> : rows.map((c) => {
+                {rows.length === 0 ? <tr><td colSpan={7} className="text-center py-8" style={{ color: 'var(--muted)' }}>بیمه‌گزاری یافت نشد</td></tr> : rows.map((c) => {
                   const current = c.contracts.filter((k) => k.inForce);
                   return [
-                    <tr key={c.id} style={{ opacity: c.isActive ? 1 : 0.55 }}>
+                    <tr key={c.id} style={{ opacity: c.isActive ? 1 : 0.55 }} className={picked.has(c.id) ? 'is-picked' : undefined}>
+                      <td><input type="checkbox" aria-label={`انتخاب ${c.name}`} checked={picked.has(c.id)}
+                        onChange={() => setPicked((cur) => { const n = new Set(cur); if (n.has(c.id)) n.delete(c.id); else n.add(c.id); return n; })} /></td>
                       <td className="latin-digits">{c.code || '—'}</td>
                       <td className="font-semibold">{c.name}</td>
                       <td>{c.lines.length ? c.lines.map((l) => <span key={l} className={`badge ${l === 'LIFE' ? 'badge-success' : 'badge-warning'} ml-1`}>{LINE_FA[l]}</span>) : '—'}</td>
                       <td className="text-xs">{current.length ? current.map((k) => `${k.lineLabel ?? ''} ${k.policyNumber ?? ''}`).join(' — ') : <span style={{ color: 'var(--danger)' }}>بیمه‌نامهٔ جاری ندارد</span>}</td>
                       <td className="text-xs">{c.hasPassword ? <span className="badge badge-success">دارد</span> : <span className="badge badge-danger">ندارد</span>}</td>
                       <td style={{ whiteSpace: 'nowrap' }}>
-                        <button className="btn btn-ghost btn-sm" onClick={() => setOpen(open === c.id ? null : c.id)}>{open === c.id ? 'بستن' : 'بیمه‌نامه‌ها'}</button>
+                        <button className="btn btn-ghost btn-sm" onClick={() => { setOpen(open === c.id ? null : c.id); setEditCo(null); setEditK(null); }}>{open === c.id ? 'بستن' : 'ویرایش / بیمه‌نامه‌ها'}</button>
                         <button className="btn btn-ghost btn-sm" disabled={!c.code} onClick={() => resetPw(c)}>{c.hasPassword ? 'رمز تازه' : 'ساخت رمز'}</button>
+                        <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} disabled={busyDel} onClick={() => del('one', c)}>حذف</button>
                       </td>
                     </tr>,
                     open === c.id && (
                       <tr key={`${c.id}-x`}>
-                        <td colSpan={6} style={{ background: 'var(--surface-2)' }}>
+                        <td colSpan={7} style={{ background: 'var(--surface-2)' }}>
+                          {/* The company itself: name, کد بیمه‌گزار (its login), active */}
+                          {editCo?.id === c.id ? (
+                            <div className="grid sm:grid-cols-[2fr_1fr_auto_auto_auto] gap-2 items-end mb-3">
+                              <label className="text-xs">نام بیمه‌گزار<input className="input mt-1" value={editCo.name} onChange={(e) => setEditCo({ ...editCo, name: e.target.value })} /></label>
+                              <label className="text-xs">کد بیمه‌گزار (نام کاربری ورود)<input className="input mt-1 latin-digits" style={{ direction: 'ltr', textAlign: 'right' }} value={editCo.code} onChange={(e) => setEditCo({ ...editCo, code: e.target.value })} /></label>
+                              <label className="text-xs flex items-center gap-1.5 pb-2"><input type="checkbox" checked={editCo.isActive} onChange={(e) => setEditCo({ ...editCo, isActive: e.target.checked })} /> فعال</label>
+                              <button className="btn btn-primary btn-sm" disabled={editCo.name.trim().length < 2} onClick={saveCompany}>ذخیره</button>
+                              <button className="btn btn-ghost btn-sm" onClick={() => setEditCo(null)}>انصراف</button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 flex-wrap mb-3 text-sm">
+                              <b>{c.name}</b><span style={{ color: 'var(--muted)' }}>— کد بیمه‌گزار <span className="latin-digits">{c.code || '—'}</span>{c.isActive ? '' : ' — غیرفعال'}</span>
+                              <button className="btn btn-ghost btn-sm" onClick={() => setEditCo({ id: c.id, name: c.name, code: c.code ?? '', isActive: c.isActive })}>ویرایش نام و کد</button>
+                            </div>
+                          )}
                           <table className="table" style={{ background: 'var(--surface)' }}>
                             <thead><tr>{['رشته', 'شماره بیمه‌نامه', 'بیمه‌گر', 'شروع', 'پایان', 'وضعیت', ''].map((h) => <th key={h}>{h}</th>)}</tr></thead>
                             <tbody>
-                              {c.contracts.map((k) => (
+                              {c.contracts.map((k) => editK?.id === k.id ? (
+                                <tr key={k.id}>
+                                  <td><select className="input" value={editK.line} onChange={(e) => setEditK({ ...editK, line: e.target.value as Line })}><option value="LIFE">عمر</option><option value="ACCIDENT">حوادث</option></select></td>
+                                  <td><input className="input latin-digits" style={{ direction: 'ltr', textAlign: 'right', minWidth: 110 }} value={editK.policyNumber} onChange={(e) => setEditK({ ...editK, policyNumber: e.target.value })} /></td>
+                                  <td><select className="input" value={editK.insurerTenantId} onChange={(e) => setEditK({ ...editK, insurerTenantId: e.target.value })}>{opts?.insurers.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}</select></td>
+                                  <td style={{ minWidth: 150 }}><JalaliDatePicker value={editK.start} onChange={(v) => setEditK({ ...editK, start: v })} placeholder="شروع" /></td>
+                                  <td style={{ minWidth: 150 }}><JalaliDatePicker value={editK.end} onChange={(v) => setEditK({ ...editK, end: v })} placeholder="پایان" /></td>
+                                  <td><label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={editK.isActive} onChange={(e) => setEditK({ ...editK, isActive: e.target.checked })} /> فعال</label></td>
+                                  <td style={{ whiteSpace: 'nowrap' }}>
+                                    <button className="btn btn-primary btn-sm" disabled={!editK.policyNumber.trim()} onClick={() => saveContract(c)}>ذخیره</button>
+                                    <button className="btn btn-ghost btn-sm" onClick={() => setEditK(null)}>انصراف</button>
+                                  </td>
+                                </tr>
+                              ) : (
                                 <tr key={k.id} style={{ opacity: k.isActive ? 1 : 0.5 }}>
                                   <td>{k.lineLabel ?? '—'}</td><td className="latin-digits">{k.policyNumber ?? '—'}</td><td>{k.insurerName}</td>
                                   <td>{k.startDate ?? '—'}</td><td>{k.endDate ?? '—'}</td>
                                   <td>{!k.isActive ? 'غیرفعال' : k.inForce ? <span className="badge badge-success">جاری</span> : 'خارج از دوره'}</td>
-                                  <td><button className="btn btn-ghost btn-sm" onClick={() => toggleContract(c, k)}>{k.isActive ? 'غیرفعال‌سازی' : 'فعال‌سازی'}</button></td>
+                                  <td style={{ whiteSpace: 'nowrap' }}>
+                                    <button className="btn btn-ghost btn-sm" onClick={() => setEditK({ id: k.id, line: k.line ?? 'LIFE', policyNumber: k.policyNumber ?? '', insurerTenantId: k.insurerTenantId, start: k.startDate ?? '', end: k.endDate ?? '', isActive: k.isActive })}>ویرایش</button>
+                                    <button className="btn btn-ghost btn-sm" onClick={() => toggleContract(c, k)}>{k.isActive ? 'غیرفعال‌سازی' : 'فعال‌سازی'}</button>
+                                  </td>
                                 </tr>
                               ))}
                             </tbody>

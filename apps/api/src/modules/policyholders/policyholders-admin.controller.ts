@@ -1,7 +1,7 @@
-import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { InsuranceLine } from '@prisma/client';
-import { IsBoolean, IsEnum, IsISO8601, IsOptional, IsString, IsUUID, Length, ValidateIf } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsEnum, IsISO8601, IsOptional, IsString, IsUUID, Length, ValidateIf } from 'class-validator';
 import { SuperAdminOnly } from '../../common/rbac/decorators';
 import { PolicyholdersAdminService } from './policyholders-admin.service';
 
@@ -25,8 +25,20 @@ class AdminContractDto {
   @IsOptional() @ValidateIf((_, v) => v !== null && v !== '') @IsISO8601() startDate?: string | null;
   @IsOptional() @ValidateIf((_, v) => v !== null && v !== '') @IsISO8601() endDate?: string | null;
 }
-class AdminContractActiveDto {
-  @IsBoolean() isActive!: boolean;
+class AdminContractEditDto {
+  @IsOptional() @IsBoolean() isActive?: boolean;
+  @IsOptional() @IsEnum(InsuranceLine) line?: InsuranceLine;
+  @IsOptional() @IsString() @Length(1, 60) policyNumber?: string;
+  @IsOptional() @IsUUID() insurerTenantId?: string;
+  @IsOptional() @ValidateIf((_, v) => v !== null && v !== '') @IsISO8601() startDate?: string | null;
+  @IsOptional() @ValidateIf((_, v) => v !== null && v !== '') @IsISO8601() endDate?: string | null;
+}
+/** Delete the listed companies (`ids`), or — with `all` — every company of `brokerTenantId` matching `q`. */
+class AdminDeleteDto {
+  @IsOptional() @IsArray() @ArrayMaxSize(5000) @IsUUID('all', { each: true }) ids?: string[];
+  @IsOptional() @IsBoolean() all?: boolean;
+  @IsOptional() @IsUUID() brokerTenantId?: string;
+  @IsOptional() @IsString() @Length(0, 100) q?: string;
 }
 
 /** Super admin: every brokerage's بیمه‌گزار companies, their panel logins and yearly بیمه‌نامه‌ها. */
@@ -55,6 +67,22 @@ export class PolicyholdersAdminController {
     return this.svc.update(id, dto);
   }
 
+  @Delete(':id')
+  remove(@Param('id') id: string) {
+    return this.svc.remove([id]);
+  }
+
+  /** Batch («حذف انتخاب‌شده‌ها») or bulk («حذف همهٔ نتایج») delete. */
+  @Post('delete')
+  removeMany(@Body() dto: AdminDeleteDto) {
+    if (dto.all) {
+      if (!dto.brokerTenantId) throw new BadRequestException('کارگزاری را انتخاب کنید');
+      return this.svc.removeMatching(dto.brokerTenantId, dto.q);
+    }
+    if (!dto.ids?.length) throw new BadRequestException('هیچ بیمه‌گزاری انتخاب نشده است');
+    return this.svc.remove(dto.ids);
+  }
+
   @Post(':id/password')
   password(@Param('id') id: string, @Body() dto: AdminPasswordDto) {
     return this.svc.setPassword(id, dto.password);
@@ -66,8 +94,8 @@ export class PolicyholdersAdminController {
   }
 
   @Patch(':id/contracts/:contractId')
-  contractActive(@Param('id') id: string, @Param('contractId') contractId: string, @Body() dto: AdminContractActiveDto) {
-    return this.svc.setContractActive(id, contractId, dto.isActive);
+  editContract(@Param('id') id: string, @Param('contractId') contractId: string, @Body() dto: AdminContractEditDto) {
+    return this.svc.updateContract(id, contractId, dto);
   }
 
   /** The insurer's yearly export (sheets «عمر جاری» / «حوادث جاری»). */
