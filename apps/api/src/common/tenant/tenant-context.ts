@@ -17,6 +17,8 @@ export interface RequestContext {
   customerNidHash?: string;
   /** For the customer realm, company login (کد بیمه‌گزار + password): the بیمه‌گزار company. */
   customerCompanyId?: string;
+  /** For the customer realm, the brokerage's own «broker» login: acts for every بیمه‌گزار of the brokerage. */
+  customerBrokerPanel?: boolean;
   /** Org user's branch, when branch-bound. */
   branchId?: string;
   /** When true, org queries must be restricted to `branchId` (branch admin / staff). */
@@ -49,16 +51,18 @@ export function getTenantIdOrThrow(): string {
  * Is this claim the calling بیمه‌گزار's own? Filed by them — or, for a company login, filed for their
  * company (including claims the brokerage filed on the company's behalf).
  */
-export function customerOwnsClaim(claim: { policyHolderId?: string | null; policyholderCompanyId?: string | null }): boolean {
+export function customerOwnsClaim(claim: { policyHolderId?: string | null; policyholderCompanyId?: string | null; brokerTenantId?: string | null }): boolean {
   const ctx = getContext();
   if (ctx?.actorType !== 'CUSTOMER' || !ctx.actorId) return false;
+  if (ctx.customerBrokerPanel) return !!ctx.tenantId && claim.brokerTenantId === ctx.tenantId;
   if (claim.policyHolderId === ctx.actorId) return true;
   return !!ctx.customerCompanyId && claim.policyholderCompanyId === ctx.customerCompanyId;
 }
 
 /** Prisma filter for the calling بیمه‌گزار's own claims (see customerOwnsClaim). */
-export function customerClaimWhere(): { OR: ({ policyHolderId: string } | { policyholderCompanyId: string })[] } {
+export function customerClaimWhere(): { OR: ({ policyHolderId: string } | { policyholderCompanyId: string } | { brokerTenantId: string })[] } {
   const ctx = getContext();
+  if (ctx?.customerBrokerPanel) return { OR: [{ brokerTenantId: ctx.tenantId ?? '__none__' }] };
   const or: ({ policyHolderId: string } | { policyholderCompanyId: string })[] = [{ policyHolderId: ctx?.actorId ?? '__none__' }];
   if (ctx?.customerCompanyId) or.push({ policyholderCompanyId: ctx.customerCompanyId });
   return { OR: or };

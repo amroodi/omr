@@ -187,7 +187,13 @@ export class ClaimsService {
         if (acc?.companyId !== companyId) throw new BadRequestException('نماینده انتخاب‌شده متعلق به این شرکت نیست');
       }
     }
-    if (ctx?.actorType === 'CUSTOMER') {
+    if (ctx?.actorType === 'CUSTOMER' && ctx.customerBrokerPanel) {
+      // The brokerage's «broker» login files for a company of its own brokerage.
+      const co = input.policyholderCompanyId ? await db.policyholderCompany.findFirst({ where: { id: input.policyholderCompanyId, tenantId: ctx.tenantId }, select: { id: true } }) : null;
+      if (!co) throw new BadRequestException('بیمه‌گزار را انتخاب کنید');
+      companyId = co.id;
+      input.insurerTenantId = undefined;
+    } else if (ctx?.actorType === 'CUSTOMER') {
       const acc = await db.customerAccount.findUnique({ where: { id: ctx.actorId }, select: { companyId: true } });
       if (!acc?.companyId) throw new BadRequestException('حساب شما هنوز به شرکت بیمه‌گزار متصل نشده است؛ لطفاً با کارگزاری تماس بگیرید.');
       companyId = acc.companyId;
@@ -561,6 +567,40 @@ export class ClaimsService {
     });
   }
 
+  /**
+   * «تکمیل دستی پرونده»: when the brokerage fills an outcome field by hand from «ویرایش», the case itself
+   * follows — paid / rejected close it (the open step is closed as a manual entry, so the timeline shows
+   * it), and an approval or payment order marks it approved. Cases moved by the hierarchy are untouched
+   * by this unless such a field is typed; nothing here changes how the desks' own actions work.
+   */
+  async applyManualOutcome(claimId: string, key: string, value: string | null) {
+    const v = (value ?? '').trim();
+    const outcome = key === 'payment_order_status' && v === 'پرداخت شد' ? 'PAID'
+      : key === 'council_approve_status' && v === 'رد شد' ? 'REJECTED'
+      : (key === 'council_approve_status' && v === 'پرونده تایید شد') || (key === 'payment_order_status' && v === 'حواله پرداخت ثبت شد') ? 'APPROVED'
+      : null;
+    if (!outcome) return;
+    const db = this.db();
+    const claim = await db.claim.findUnique({ where: { id: claimId } });
+    if (!claim || claim.deletedAt || !(await this.fields.manualMode(claim))) return;
+    if (claim.status === outcome || claim.status === 'PAID' || claim.status === 'REJECTED') return;
+    const note = 'ثبت دستی توسط کارگزاری (تکمیل دستی پرونده)';
+    if (outcome === 'APPROVED') {
+      await db.claim.update({ where: { id: claimId }, data: { status: ClaimStatus.APPROVED } });
+    } else {
+      const step = await db.claimStep.findFirst({ where: { claimId, state: 'PENDING' }, orderBy: { order: 'desc' } });
+      const status = outcome === 'PAID' ? ClaimStatus.PAID : ClaimStatus.REJECTED;
+      if (step) await this.move(claim, step, { action: outcome === 'PAID' ? 'MARK_PAID' : 'REJECT_FINAL', closeState: outcome === 'PAID' ? 'ACKED' : 'REJECTED', note, to: null, status });
+      else await db.claim.update({ where: { id: claimId }, data: { status, currentStage: null, flowDirection: null, flowPurpose: null } });
+      await this.notifyPolicyHolder(claim.policyHolderId, outcome === 'PAID' ? 'پرداخت خسارت' : 'رد پرونده خسارت',
+        outcome === 'PAID' ? `خسارت پروندهٔ ${claim.claimNumber} پرداخت شد.` : `پروندهٔ ${claim.claimNumber} رد شد.`);
+    }
+    await this.audit.record({
+      action: outcome === 'PAID' ? AuditAction.CLAIM_PAY : outcome === 'REJECTED' ? AuditAction.CLAIM_REJECT : AuditAction.CLAIM_APPROVE,
+      tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { manual: true, key, value: v },
+    });
+  }
+
   /** Tell whoever now holds the claim: the بیمه‌گزار, or the holding org's inbox. */
   private async notifyHolder(claim: any, to: Stage, title: string, body: string) {
     if (to === 'POLICYHOLDER') return this.notifyPolicyHolder(claim.policyHolderId, title, body);
@@ -832,6 +872,40 @@ export class ClaimsService {
     return expired.length;
   }
 
+  // ── Super admin: cases brought in by «ورود دسته‌ای» (imported = true) ──
+  /** Imported cases, newest first, optionally of one org and matching a claim / policy number or name. */
+  async listImported(tenantId?: string, q?: string) {
+    const term = (q ?? '').trim();
+    const rows = await this.db().claim.findMany({
+      where: {
+        imported: true,
+        ...(tenantId ? { OR: [{ insurerTenantId: tenantId }, { brokerTenantId: tenantId }] } : {}),
+        ...(term ? { AND: [{ OR: [{ claimNumber: { contains: term, mode: 'insensitive' } }, { policyNumber: { contains: term } }, { employerName: { contains: term, mode: 'insensitive' } }] }] } : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 2000,
+    });
+    const tIds = [...new Set(rows.flatMap((r) => [r.insurerTenantId, r.brokerTenantId].filter((x): x is string => !!x)))];
+    const tenants = tIds.length ? await this.db().tenant.findMany({ where: { id: { in: tIds } }, select: { id: true, name: true } }) : [];
+    const tName = new Map(tenants.map((t) => [t.id, t.name]));
+    return rows.map((r) => ({
+      id: r.id, claimNumber: r.claimNumber, policyNumber: r.policyNumber, status: r.status, legacyStatus: r.legacyStatus,
+      deceasedName: r.deceasedFullName ? this.crypto.decrypt(r.deceasedFullName) : null, employerName: r.employerName,
+      insurerName: tName.get(r.insurerTenantId) ?? '—', brokerName: r.brokerTenantId ? tName.get(r.brokerTenantId) ?? '—' : '—',
+      eventDate: r.eventDate ? toJalali(r.eventDate, false) : null, createdAt: toJalali(r.createdAt), deleted: !!r.deletedAt,
+    }));
+  }
+
+  /** Permanently delete imported cases (only ones with imported = true; anything else is ignored). */
+  async purgeImported(ids: string[]) {
+    const rows = await this.db().claim.findMany({ where: { id: { in: [...new Set(ids)] }, imported: true }, select: { id: true, claimNumber: true, insurerTenantId: true } });
+    for (const r of rows) {
+      await this.hardDelete(r.id);
+      await this.audit.record({ action: AuditAction.DELETE, tenantId: r.insurerTenantId, targetType: 'Claim', targetId: r.id, metadata: { claimNumber: r.claimNumber, imported: true, by: 'super', permanent: true } });
+    }
+    return { deleted: rows.length, ignored: ids.length - rows.length };
+  }
+
   /** Irreversibly delete a claim and ALL its children (+ document files). No DB cascade exists. */
   private async hardDelete(claimId: string) {
     const u = this.prisma.unscoped();
@@ -1022,7 +1096,8 @@ export class ClaimsService {
       claimType: claim.claimType,
       complete: items.length > 0 && items.every((i) => i.uploaded),
       items,
-      otherDocuments: present(docs.filter((d) => !d.docCode || !reqCodes.has(d.docCode))),
+      // Each «سایر مدارک» file stands on its own (a batch upload is many documents, not versions of one).
+      otherDocuments: docs.filter((d) => !d.docCode || !reqCodes.has(d.docCode)).flatMap((d) => present([d])),
     };
   }
 

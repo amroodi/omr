@@ -43,6 +43,18 @@ export class ClaimFieldsService {
     return null;
   }
 
+  /**
+   * «تکمیل دستی پرونده»: the brokerage's own staff (the claim's معرف) may fill every field — the
+   * insurer-side stage fields too — when super admin hasn't locked it for the brokerage. Insurer
+   * staff never get this; their rights stay exactly as the field catalog says.
+   */
+  async manualMode(claim: { brokerTenantId: string | null }): Promise<boolean> {
+    const ctx = getContext();
+    if (ctx?.actorType !== 'ORG_USER' || !ctx.tenantId || ctx.tenantId !== claim.brokerTenantId) return false;
+    const t = await this.db().tenant.findUnique({ where: { id: ctx.tenantId }, select: { kind: true, manualCompletion: true } });
+    return t?.kind === 'BROKER' && t.manualCompletion;
+  }
+
   private party(claim: any): ClaimPartyType {
     const p = this.callerParty(claim);
     if (!p) throw new ForbiddenException('دسترسی به این پرونده ندارید');
@@ -53,6 +65,7 @@ export class ClaimFieldsService {
   async listForClaim(claimId: string) {
     const claim = await this.loadClaim(claimId);
     const party = this.party(claim);
+    const manual = await this.manualMode(claim);
     const defs = await this.db().claimFieldDef.findMany({ where: { tenantId: claim.insurerTenantId, isActive: true }, orderBy: { order: 'asc' } });
     const values = await this.db().claimFieldValue.findMany({ where: { claimId } });
     const vmap = new Map(values.map((v) => [v.key, v]));
@@ -74,10 +87,10 @@ export class ClaimFieldsService {
         source: fb ? 'CLAIM' : v?.source ?? null,
         confidence: v?.confidence ?? null,
         confirmed: !!v?.confirmedAt,
-        canEdit: d.editableBy.includes(party),
+        canEdit: manual || d.editableBy.includes(party),
       });
     }
-    return { claimId, party, groups };
+    return { claimId, party, manual, groups };
   }
 
   /**
@@ -147,7 +160,7 @@ export class ClaimFieldsService {
     const party = this.party(claim);
     const def = await this.db().claimFieldDef.findFirst({ where: { tenantId: claim.insurerTenantId, key } });
     if (!def) throw new NotFoundException('فیلد تعریف نشده است');
-    if (!def.editableBy.includes(party)) throw new ForbiddenException('اجازه ویرایش این فیلد را ندارید');
+    if (!def.editableBy.includes(party) && !(await this.manualMode(claim))) throw new ForbiddenException('اجازه ویرایش این فیلد را ندارید');
 
     const maxAmount = key === 'payable_amount' ? await this.sumInsuredCeiling(claimId) : undefined;
     const check = validateField(def.type, value, { options: def.options, maxAmount });

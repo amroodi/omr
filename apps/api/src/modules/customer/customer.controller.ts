@@ -60,8 +60,15 @@ export class CustomerController {
   /** «داشبورد»: the company's policies (عمر / حوادث, every year) and the totals of one of them. */
   @UseGuards(JwtAuthGuard)
   @Get('dashboard')
-  dashboard(@Query('contractId') contractId?: string) {
-    return this.customer.dashboard(contractId);
+  dashboard(@Query('contractId') contractId?: string, @Query('companyId') companyId?: string) {
+    return this.customer.dashboard(contractId, companyId);
+  }
+
+  /** «broker» login: the brokerage's بیمه‌گزار companies. */
+  @UseGuards(JwtAuthGuard)
+  @Get('broker/companies')
+  brokerCompanies(@Query('q') q?: string) {
+    return this.customer.brokerCompanies(q);
   }
 
   @Public()
@@ -169,6 +176,7 @@ export class CustomerController {
       eventDate: dto.eventDate,
       description: dto.description,
       contractId: dto.contractId,
+      policyholderCompanyId: dto.companyId,
       deceasedFullName: dto.deceasedFullName,
       deceasedNationalCode: dto.deceasedNationalCode,
     });

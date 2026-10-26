@@ -48,17 +48,29 @@ export default function CustomerNewClaim() {
   const [policies, setPolicies] = useState<PolicyRow[] | null>(null);
   const [broker, setBroker] = useState('');
   const [policyId, setPolicyId] = useState('');
+  // «broker» login: which company this claim is for (from ?company=…)
+  const [brokerFor, setBrokerFor] = useState<{ id: string; name: string } | null | undefined>(undefined);
+  const [isBroker, setIsBroker] = useState(false);
   const [f, setF] = useState({ claimType: 'DEATH_ILLNESS', eventDate: '', birthDate: '', deceasedFullName: '', deceasedNationalCode: '', description: '' });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!getToken('customer')) { router.push('/customer/login'); return; }
-    client.get<{ company: { name: string } | null }>('/customer/me', 'customer').then((m) => setCompany(m.company)).catch(() => setCompany(null));
+    const params = new URLSearchParams(window.location.search);
+    const companyParam = params.get('company') ?? '';
     // The بیمه‌نامه chosen on the dashboard (?policy=…, else the remembered one), else the one in force.
-    let want = new URLSearchParams(window.location.search).get('policy') ?? '';
-    try { want = want || localStorage.getItem(POLICY_KEY) || ''; } catch { /* ignore */ }
-    client.get<{ contracts: PolicyRow[]; selectedId: string | null; brokerName: string }>('/customer/dashboard', 'customer').then((d) => {
+    let want = params.get('policy') ?? '';
+    try { want = want || (companyParam ? '' : localStorage.getItem(POLICY_KEY) || ''); } catch { /* ignore */ }
+    client.get<{ company: { name: string } | null; brokerPanel?: boolean }>('/customer/me', 'customer').then(async (m) => {
+      if (!m.brokerPanel) { setCompany(m.company); setBrokerFor(null); return; }
+      // The broker files for a company it picked on its home list.
+      setIsBroker(true);
+      const list = companyParam ? await client.get<{ id: string; name: string }[]>('/customer/broker/companies', 'customer').catch(() => []) : [];
+      const co = list.find((c) => c.id === companyParam) ?? null;
+      setBrokerFor(co); setCompany(co ? { name: co.name } : null);
+    }).catch(() => setCompany(null));
+    client.get<{ contracts: PolicyRow[]; selectedId: string | null; brokerName: string }>(`/customer/dashboard${companyParam ? `?companyId=${encodeURIComponent(companyParam)}` : ''}`, 'customer').then((d) => {
       setPolicies(d.contracts); setBroker(d.brokerName);
       const pick = d.contracts.find((c) => c.id === want) ?? d.contracts.find((c) => c.id === d.selectedId) ?? d.contracts[0];
       if (pick) choosePolicy(pick);
@@ -97,6 +109,7 @@ export default function CustomerNewClaim() {
       const payload: Record<string, string> = {
         claimType: f.claimType,
         ...(policyId ? { contractId: policyId } : {}),
+        ...(brokerFor ? { companyId: brokerFor.id } : {}),
         deceasedFullName: f.deceasedFullName.trim(),
         deceasedNationalCode: toAscii(f.deceasedNationalCode).trim(),
       };
@@ -121,7 +134,9 @@ export default function CustomerNewClaim() {
           <div className="text-xs mt-1 font-normal">
             {company
               ? <>پرونده برای «{company.name}» ذیل بیمه‌نامهٔ انتخاب‌شده ثبت می‌شود و کارگزاری آن را به بیمه‌گر همان بیمه‌نامه ارسال می‌کند.</>
-              : company === null ? <>حساب شما هنوز به شرکت بیمه‌گزار متصل نشده است؛ برای ثبت پرونده با کارگزاری تماس بگیرید.</> : null}
+              : company === null ? (isBroker
+                ? <>ابتدا بیمه‌گزار را از <a href="/customer" className="underline">فهرست بیمه‌گزاران</a> انتخاب کنید و «ثبت پرونده» را بزنید.</>
+                : <>حساب شما هنوز به شرکت بیمه‌گزار متصل نشده است؛ برای ثبت پرونده با کارگزاری تماس بگیرید.</>) : null}
           </div>
         </div>
 

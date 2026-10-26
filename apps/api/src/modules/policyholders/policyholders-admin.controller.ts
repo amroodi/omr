@@ -9,6 +9,17 @@ class AdminCompanyDto {
   @IsUUID() brokerTenantId!: string;
   @IsString() @Length(2, 160) name!: string;
   @IsString() @Length(1, 40) code!: string;
+  // Optional first بیمه‌نامه
+  @IsOptional() @IsUUID() insurerTenantId?: string;
+  @IsOptional() @IsEnum(InsuranceLine) line?: InsuranceLine;
+  @IsOptional() @IsString() @Length(0, 60) policyNumber?: string;
+  @IsOptional() @ValidateIf((_, v) => v !== null && v !== '') @IsISO8601() startDate?: string | null;
+  @IsOptional() @ValidateIf((_, v) => v !== null && v !== '') @IsISO8601() endDate?: string | null;
+}
+class BrokerSettingsDto {
+  @IsUUID() brokerTenantId!: string;
+  @IsOptional() @IsBoolean() manualCompletion?: boolean;
+  @IsOptional() @IsString() @Length(8, 200) brokerPassword?: string;
 }
 class AdminCompanyEditDto {
   @IsOptional() @IsString() @Length(2, 160) name?: string;
@@ -50,6 +61,12 @@ export class PolicyholdersAdminController {
   @Get('options')
   options() {
     return this.svc.options();
+  }
+
+  /** «تکمیل دستی پرونده» switch and the «broker» login password of a brokerage. */
+  @Post('broker-settings')
+  brokerSettings(@Body() dto: BrokerSettingsDto) {
+    return this.svc.brokerSettings(dto.brokerTenantId, dto);
   }
 
   @Get()

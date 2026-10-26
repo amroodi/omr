@@ -136,6 +136,13 @@ export function CaseEditForm({ claimId, title, onSaved }: { claimId: string; tit
   return (
     <div className="ce-wrap">
       <h2 className="ce-title">ویرایش: {title}</h2>
+      {data?.manual && (
+        <div className="alert-success mb-4 text-sm">
+          تکمیل دستی پرونده فعال است: همهٔ فیلدها، از جمله وضعیت‌های ستاد، شورای فنی و حوالهٔ پرداخت، را می‌توانید خودتان پر کنید.
+          با ثبت «وضعیت حواله پرداخت: پرداخت شد» پرونده پرداخت‌شده و با «وضعیت تایید شورای فنی: رد شد» ردشده بسته می‌شود؛ «پرونده تایید شد» یا «حواله پرداخت ثبت شد» آن را تاییدشده می‌کند.
+          گردش کار عادی سلسله‌مراتب هم‌زمان برقرار است.
+        </div>
+      )}
 
       <div className="ce-cols">
         {COLUMNS.map((col) => (

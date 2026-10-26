@@ -94,6 +94,11 @@ export class CustomerFileClaimDto {
   @Length(8, 12)
   deceasedNationalCode!: string;
 
+  // «broker» login only: the company the claim is filed for.
+  @IsOptional()
+  @IsUUID()
+  companyId?: string;
+
   // The بیمه‌نامه (عمر or حوادث contract of their company) the claim is filed under.
   @IsOptional()
   @IsUUID()

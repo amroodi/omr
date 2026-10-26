@@ -8,6 +8,7 @@ import { Faq } from '../components/Faq';
 import { CUSTOMER_NAV, POLICY_KEY, PolicyRow } from './nav';
 import { BigIcon, CLAIM_TYPE_LABELS, ErrorBox, Spinner, StatusBadge } from '../components/ui';
 import { caseTitle } from '../../lib/caseTitle';
+import { BrokerHome } from './broker-home';
 
 interface MyClaim { id: string; claimNumber: string; policyNumber?: string | null; status: string; claimType: string; deceasedName: string | null; lateNotice: boolean; needsAction: boolean; currentStageLabel?: string | null; eventDate?: string | null }
 interface Dashboard {
@@ -74,7 +75,18 @@ function ClaimRow({ c }: { c: MyClaim }) {
  * the company's عمر / حوادث policies of any year, with its dates and status), four summary cards for
  * that policy, the action launcher, and the standing notice.
  */
-export default function CustomerDashboard() {
+export default function CustomerHome() {
+  const router = useRouter();
+  const [me, setMe] = useState<{ brokerPanel?: boolean; mustChangePassword?: boolean } | null>(null);
+  useEffect(() => {
+    if (!getToken('customer')) { router.push('/customer/login'); return; }
+    client.get<{ brokerPanel?: boolean; mustChangePassword?: boolean }>('/customer/me', 'customer').then(setMe).catch(() => setMe({}));
+  }, [router]);
+  if (!me) return <Shell title="اعلام و پیگیری خسارت عمر و حوادث" nav={CUSTOMER_NAV} realm="customer"><div className="pcard p-10 flex justify-center"><Spinner /></div></Shell>;
+  return me.brokerPanel ? <BrokerHome /> : <CompanyDashboard mustChangePassword={!!me.mustChangePassword} />;
+}
+
+function CompanyDashboard({ mustChangePassword }: { mustChangePassword: boolean }) {
   const router = useRouter();
   const [dash, setDash] = useState<Dashboard | null>(null);
   const [policyId, setPolicyId] = useState<string>('');
@@ -119,6 +131,12 @@ export default function CustomerDashboard() {
     <Shell title="اعلام و پیگیری خسارت عمر و حوادث" sectionLabel="خسارت عمر و حادثه" nav={CUSTOMER_NAV} realm="customer"
       action={<button type="button" className="cu-intro-btn" onClick={() => open('intro')}>معرفی امکانات سامانه</button>}>
       <ErrorBox message={error} />
+      {mustChangePassword && (
+        <div className="alert-error mb-4 flex items-center justify-between gap-3 flex-wrap">
+          <span>شما با رمز عبور پیش‌فرض وارد شده‌اید؛ برای امنیت حساب، همین حالا رمز عبور خود را تغییر دهید.</span>
+          <Link href="/customer/password" className="cu-more">تغییر کلمه عبور</Link>
+        </div>
+      )}
       {!dash ? <div className="pcard p-10 flex justify-center"><Spinner /></div> : (
         <div className="space-y-5">
           {/* مشخصات بیمه نامه */}

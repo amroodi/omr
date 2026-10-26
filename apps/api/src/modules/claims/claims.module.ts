@@ -4,10 +4,11 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { PolicyholdersModule } from '../policyholders/policyholders.module';
 import { ClaimsController } from './claims.controller';
 import { ClaimsService } from './claims.service';
+import { ImportedClaimsAdminController } from './imported-claims-admin.controller';
 
 @Module({
   imports: [ClaimFieldsModule, NotificationsModule, PolicyholdersModule],
-  controllers: [ClaimsController],
+  controllers: [ClaimsController, ImportedClaimsAdminController],
   providers: [ClaimsService],
   exports: [ClaimsService],
 })

@@ -28,7 +28,9 @@ export default function ClaimDetail() {
   const [perms, setPerms] = useState({ del: false, exp: false });
   useEffect(() => { setPerms({ del: hasPerm('org', 'claim:delete'), exp: hasPerm('org', 'export:list') }); }, []);
   const [lateWarn, setLateWarn] = useState(true); // org's "show late-notice warning" setting
-  useEffect(() => { client.get<{ lateNoticeWarning?: boolean }>('/tenant/branding', 'org').then((b) => setLateWarn(b.lateNoticeWarning !== false)).catch(() => {}); }, []);
+  // «ویرایش» (the hand-filled field editor) belongs to the brokerage; an insurer's panel doesn't have it.
+  const [isInsurer, setIsInsurer] = useState(false);
+  useEffect(() => { client.get<{ lateNoticeWarning?: boolean; kind?: string }>('/tenant/branding', 'org').then((b) => { setLateWarn(b.lateNoticeWarning !== false); setIsInsurer(b.kind === 'INSURER'); }).catch(() => {}); }, []);
 
   const removeClaim = async () => {
     if (!claim) return;
@@ -54,7 +56,7 @@ export default function ClaimDetail() {
           <div className="flex items-center justify-between gap-2 flex-wrap no-print">
             <div className="inline-flex rounded-xl p-1 text-sm" style={{ background: 'var(--surface-2)' }}>
               <button onClick={() => setMode('preview')} className={`btn btn-sm ${mode === 'preview' ? 'btn-primary' : 'btn-ghost'}`}>پیش‌نمایش</button>
-              <button onClick={() => setMode('edit')} className={`btn btn-sm ${mode === 'edit' ? 'btn-primary' : 'btn-ghost'}`}>ویرایش</button>
+              {!isInsurer && <button onClick={() => setMode('edit')} className={`btn btn-sm ${mode === 'edit' ? 'btn-primary' : 'btn-ghost'}`}>ویرایش</button>}
               <Link href={`/org/claims/${id}/assess`} className="btn btn-sm btn-ghost" title="ارزیابی و تایید مدارک در صفحهٔ دوستونه"><Icon path={ICON_ASSESS} /> ارزیابی پرونده</Link>
             </div>
             {mode === 'preview' && perms.exp && (
@@ -62,7 +64,7 @@ export default function ClaimDetail() {
             )}
           </div>
 
-          {mode === 'preview' ? (
+          {mode === 'preview' || isInsurer ? (
             <>
               <div className="cs-sheet">
                 <CaseHero title="مشخصات بیمه‌نامه" claim={claim} notes={fv.case_notes || phaseText(claim)} />
