@@ -181,7 +181,7 @@ export default function CustomerDashboard() {
           <div className="pcard p-6">
             <div className="flex flex-wrap items-stretch justify-around gap-4">
               <Diamond href={`/customer/claims/new${policyId ? `?policy=${policyId}` : ''}`} title="اعلام خسارت" sub="ثبت پروندهٔ خسارت جدید" icon={IC.clip} />
-              <Diamond onClick={() => open('all')} active={view === 'all'} title="پیگیری خسارت" sub="مشاهدهٔ جزئیات پرونده‌های اعلام‌شده" icon={IC.tray} />
+              <Diamond href="/customer/claims" title="پیگیری خسارت" sub="مشاهدهٔ جزئیات پرونده‌های اعلام‌شده" icon={IC.tray} />
               <Diamond onClick={() => open('action')} active={view === 'action'} title="نیازمند اقدام" sub={action.length ? `${fa(action.length)} پرونده منتظر شماست` : 'رفع نقص مدارک'} icon={IC.alert} />
               <Diamond onClick={() => open('search')} active={view === 'search'} title="جستجوی پرونده" sub="با کد ملی، نام یا شماره پرونده" icon={IC.search} />
               <Diamond onClick={() => open('faq')} active={view === 'faq'} title="سوالات متداول" sub="پاسخ پرسش‌های رایج" icon={IC.mail} />

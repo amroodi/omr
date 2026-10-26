@@ -144,12 +144,20 @@ export class CustomerService {
   async me() {
     const ctx = getContext();
     if (ctx?.actorType !== 'CUSTOMER' || !ctx.actorId) throw new ForbiddenException('فقط برای بیمه‌گزار');
-    const acc = await this.prisma.unscoped().customerAccount.findUnique({ where: { id: ctx.actorId }, include: { company: true } });
+    const acc = await this.prisma.unscoped().customerAccount.findUnique({
+      where: { id: ctx.actorId }, include: { company: { include: { contracts: { where: { isActive: true } } } }, tenant: { select: { name: true } } },
+    });
     if (!acc) throw new NotFoundException('حساب یافت نشد');
     const c = acc.company;
+    const now = new Date();
+    const inForce = (c?.contracts ?? []).filter((k) => (!k.startDate || k.startDate <= now) && (!k.endDate || k.endDate >= now))
+      .sort((a, b) => (b.startDate?.getTime() ?? 0) - (a.startDate?.getTime() ?? 0))[0];
     return {
       fullName: acc.fullName ? this.crypto.decrypt(acc.fullName) : null,
       companyLogin: !!ctx.customerCompanyId,
+      brokerName: acc.tenant.name,
+      // «۱۴۰۴/۰۹/۰۱ لغایت ۱۴۰۵/۰۹/۰۱» — the policy year in force today (sidebar, under the logo)
+      policyPeriod: inForce ? `${inForce.startDate ? toJalali(inForce.startDate, false) : '…'} لغایت ${inForce.endDate ? toJalali(inForce.endDate, false) : '…'}` : null,
       company: c ? { id: c.id, name: c.name, code: c.code, hasLogo: !!c.logoKey, phone: c.phone, email: c.email, address: c.address, website: c.website, contactName: c.contactName } : null,
     };
   }

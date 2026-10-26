@@ -51,15 +51,19 @@ export function Shell({
   const pathname = usePathname();
   const router = useRouter();
   const [showPw, setShowPw] = useState(false);
+  const railKey = realm === 'customer' ? 'navRail.customer' : 'navRail';
   const [mounted, setMounted] = useState(false);
   const [rail, setRail] = useState(true); // desktop: collapsed icon rail by default
   const [open, setOpen] = useState(false); // mobile: off-canvas drawer
   const [brand, setBrand] = useState<{ name: string; hasLogo: boolean; slug: string; logoSrc?: string | null } | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
+  // بیمه‌گزار panel: the brokerage and the policy year in force, under the logo (like the insurer's portal).
+  const [card, setCard] = useState<{ broker: string; period: string | null } | null>(null);
 
   useEffect(() => {
     setMounted(true);
-    try { setRail(localStorage.getItem('navRail') !== '0'); } catch {}
+    // Staff panels start as an icon rail; the بیمه‌گزار panel starts with the menu open (its own setting).
+    try { const v = localStorage.getItem(railKey); setRail(v === null ? realm !== 'customer' : v !== '0'); } catch {}
   }, []);
   useEffect(() => { setOpen(false); }, [pathname]);
   useEffect(() => {
@@ -71,10 +75,11 @@ export function Shell({
     if (realm !== 'customer') client.get<{ name: string | null }>('/auth/me', realm).then((m) => { if (active) setUserName(m.name); }).catch(() => {});
     if (realm === 'customer') {
       // The بیمه‌گزار panel shows the represented company's own name + logo (falls back to the brokerage's).
-      client.get<{ company: { id: string; name: string; hasLogo: boolean } | null }>('/customer/me', 'customer')
+      client.get<{ company: { id: string; name: string; hasLogo: boolean } | null; brokerName?: string; policyPeriod?: string | null }>('/customer/me', 'customer')
         .then((m) => {
           if (!active) return;
           setUserName(m.company?.name ?? null);
+          if (m.brokerName) setCard({ broker: m.brokerName, period: m.policyPeriod ?? null });
           if (!m.company) return tenantBrand();
           setBrand({ name: m.company.name, hasLogo: m.company.hasLogo, slug: getTenantSlug(), logoSrc: m.company.hasLogo ? `${client.base}/policyholder-companies/${m.company.id}/logo` : null });
         })
@@ -83,7 +88,7 @@ export function Shell({
     return () => { active = false; };
   }, [realm]);
 
-  const toggleRail = () => setRail((r) => { const n = !r; try { localStorage.setItem('navRail', n ? '1' : '0'); } catch {} return n; });
+  const toggleRail = () => setRail((r) => { const n = !r; try { localStorage.setItem(railKey, n ? '1' : '0'); } catch {} return n; });
   const visibleNav = nav.filter((n) => !n.perm || (mounted && hasPerm(realm, n.perm)));
   const homeHref = realm === 'customer' ? '/customer' : realm === 'super' ? '/admin' : '/org/work-desk';
   // «بازگشت»: one step back when the user arrived from inside the site, otherwise to the panel home.
@@ -150,7 +155,9 @@ export function Shell({
             <img src={logoUrl || '/brand/damuon-mark.webp'} alt="" className="psidebar-mark" />
           </Link>
           <div className="psidebar-name">{brand?.name || 'دامون'}</div>
-          {subtitle && <div className="psidebar-sub">{subtitle}</div>}
+          {card ? (
+            <div className="psidebar-sub psidebar-card">{card.broker}{card.period && <><br />{card.period}</>}</div>
+          ) : subtitle && <div className="psidebar-sub">{subtitle}</div>}
         </div>
 
         <button className="psidebar-toggle" onClick={toggleRail}>
@@ -186,7 +193,7 @@ export function Shell({
         </nav>
 
         <div className="psidebar-foot">
-          {!nav.some((n) => n.special === 'password') && (
+          {!nav.some((n) => n.special === 'password' || n.href.endsWith('/password')) && (
             <button onClick={() => setShowPw(true)} className="pnav-item" title="تغییر رمز عبور">
               <span className="ico"><Icon path={PW_ICON} /></span>
               <span className="lbl">تغییر رمز عبور</span>
