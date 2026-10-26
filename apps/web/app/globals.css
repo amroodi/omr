@@ -588,6 +588,12 @@ html:has(.pshell) { overflow: hidden; }
 .pbreadcrumb { font-size: 0.82rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pbreadcrumb a { color: var(--brand); font-weight: 600; }
 .ptopbar-spacer { flex: 1; }
+/* «نام کاربر : …» centred in the bar, and the organisation's logo at its far (left) end */
+.ptopbar-user { font-size: .9rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 32vw; }
+.ptopbar-user b { color: var(--text); font-weight: 700; }
+.ptopbar-logo { height: 38px; width: auto; max-width: 120px; object-fit: contain; flex: none; }
+@media (max-width: 900px) { .ptopbar-user { display: none; } }
+@media (max-width: 640px) { .ptopbar-logo { display: none; } }
 .ptopbar-action { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 /* Phones: the title truncates instead of pushing the bell/theme switch off-screen, the breadcrumb
    hides, and page-specific buttons drop to their own row under the title. */
@@ -1558,3 +1564,9 @@ code, kbd, pre, samp, .latin-digits { font-family: 'Vazirmatn', ui-monospace, SF
   text-align: center; font-weight: 800; font-size: .86rem; line-height: 1.9;
 }
 .cu-intro { list-style: disc; padding-inline-start: 22px; font-size: .9rem; line-height: 2.1; }
+
+/* Work desk list: Excel export button and picked rows */
+.wd-xls { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: 8px; border: 1px solid color-mix(in srgb, #16a34a 45%, transparent); color: #15803d; background: color-mix(in srgb, #16a34a 8%, var(--surface)); font-size: .78rem; font-weight: 700; }
+.wd-xls svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.wd-xls:disabled { opacity: .5; }
+.table tr.is-picked td { background: color-mix(in srgb, var(--brand) 8%, transparent); }

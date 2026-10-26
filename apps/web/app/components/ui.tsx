@@ -162,7 +162,7 @@ export function InfoBar({ children }: { children: ReactNode }) {
   return <div className="pinfo-bar">{children}</div>;
 }
 
-const STATUS_MAP: Record<string, { label: string; cls: string }> = {
+export const STATUS_MAP: Record<string, { label: string; cls: string }> = {
   PAID: { label: 'پرداخت شده', cls: 'badge-success' },
   REVIEWING: { label: 'در حال بررسی', cls: 'badge-warning' },
   UNPAYABLE: { label: 'غیرقابل پرداخت', cls: 'badge-danger' },
