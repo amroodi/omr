@@ -55,6 +55,7 @@ export function Shell({
   const [rail, setRail] = useState(true); // desktop: collapsed icon rail by default
   const [open, setOpen] = useState(false); // mobile: off-canvas drawer
   const [brand, setBrand] = useState<{ name: string; hasLogo: boolean; slug: string; logoSrc?: string | null } | null>(null);
+  const [userName, setUserName] = useState<string | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -66,11 +67,14 @@ export function Shell({
     const tenantBrand = () => client.get<any>('/tenant/branding')
       .then((b) => { if (active) setBrand({ name: b.name, hasLogo: !!b.logoUrl, slug: getTenantSlug() }); })
       .catch(() => { if (active) setBrand(null); });
+    // «نام کاربر» in the top bar: the operator (org / super) or the بیمه‌گزار company.
+    if (realm !== 'customer') client.get<{ name: string | null }>('/auth/me', realm).then((m) => { if (active) setUserName(m.name); }).catch(() => {});
     if (realm === 'customer') {
       // The بیمه‌گزار panel shows the represented company's own name + logo (falls back to the brokerage's).
       client.get<{ company: { id: string; name: string; hasLogo: boolean } | null }>('/customer/me', 'customer')
         .then((m) => {
           if (!active) return;
+          setUserName(m.company?.name ?? null);
           if (!m.company) return tenantBrand();
           setBrand({ name: m.company.name, hasLogo: m.company.hasLogo, slug: getTenantSlug(), logoSrc: m.company.hasLogo ? `${client.base}/policyholder-companies/${m.company.id}/logo` : null });
         })
@@ -121,10 +125,15 @@ export function Shell({
             <Link href={homeHref}>صفحه اصلی</Link>{breadcrumb ? ` / ${breadcrumb}` : ''}
           </span>
           <span className="ptopbar-spacer" />
+          {userName && <span className="ptopbar-user" title={userName}>نام کاربر : <b>{userName}</b></span>}
+          <span className="ptopbar-spacer" />
           {action && <span className="no-print ptopbar-action">{action}</span>}
           <span className="no-print"><NotificationBell realm={realm} /></span>
           <span className="no-print"><WallpaperPicker /></span>
           <span className="no-print"><ThemeToggle /></span>
+          {/* The organisation's logo at the far end of the bar (like the insurer's own portal) */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={logoUrl || '/brand/damuon-mark.webp'} alt={brand?.name ?? ''} className="ptopbar-logo no-print" />
         </header>
 
         <div className="pshell-content">

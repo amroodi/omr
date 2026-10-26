@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { client, getToken, hasPerm } from '../../../lib/client';
 import { Shell, Icon } from '../../components/Shell';
 import { ORG_NAV } from '../nav';
-import { ClaimTypeBadge, CLAIM_TYPE_LABELS, ErrorBox, FancyLoader, NoticeModal, Overlay, StatusBadge } from '../../components/ui';
+import { ClaimTypeBadge, CLAIM_TYPE_LABELS, ErrorBox, FancyLoader, NoticeModal, Overlay, STATUS_MAP, StatusBadge } from '../../components/ui';
 import { JalaliDatePicker } from '../../components/JalaliDatePicker';
 import { RangeSlider } from '../../components/RangeSlider';
 import { toGregorian } from 'jalaali-js';
@@ -81,6 +81,25 @@ function WorkDesk() {
   }, []);
 
   const insurerMap = useMemo(() => Object.fromEntries(insurers.map((i) => [i.id, i.name])), [insurers]);
+
+  // Row selection + «خروجی اکسل» of the open list (the selected rows, or all of them when none is picked).
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [exporting, setExporting] = useState(false);
+  useEffect(() => { setPicked(new Set()); }, [rows]);
+  const pageRows = rows.slice((page - 1) * pageSize, page * pageSize);
+  const exportExcel = async () => {
+    if (!active) return;
+    const list = picked.size ? rows.filter((r) => picked.has(r.id)) : rows;
+    setExporting(true);
+    try {
+      await client.downloadPost('/exports/table.xlsx', {
+        title: `میز کار — ${active.label}`,
+        headers: ['ردیف', 'شماره پرونده', 'شماره بیمه‌نامه', 'کد ملی متوفی', 'نوع', 'بیمه‌گر', 'بیمه‌شده (متوفی)', 'مبلغ (ریال)', 'وضعیت'],
+        rows: list.map((r, i) => [String(i + 1), r.claimNumber, r.policyNumber ?? '', r.deceasedNationalCode ?? '', CLAIM_TYPE_LABELS[r.claimType] ?? r.claimType,
+          (r.insurerTenantId && insurerMap[r.insurerTenantId]) || '', r.deceasedName ?? '', String(Number(r.payableAmount || r.claimedAmount || 0)), STATUS_MAP[r.status]?.label ?? r.status]),
+      }, 'org', 'work-desk.xlsx');
+    } catch (e: any) { setError(e.message); } finally { setExporting(false); }
+  };
 
   // ── Personalization: which tiles to show and in what order (per operator, stored locally) ──
   const [prefs, setPrefs] = useState<{ hidden: string[]; order: string[] }>({ hidden: [], order: [] });
@@ -265,9 +284,16 @@ function WorkDesk() {
           {/* Queue list for the selected tile */}
           {active && (
             <div className="pcard mt-5 overflow-hidden">
-              <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: 'var(--border)' }}>
+              <div className="flex items-center justify-between gap-2 p-4 border-b flex-wrap" style={{ borderColor: 'var(--border)' }}>
                 <h3 className="font-extrabold">{active.label} <span style={{ color: 'var(--muted)' }}>({fa(active.count)})</span></h3>
-                <button onClick={() => setActive(null)} className="btn btn-ghost btn-sm">بستن</button>
+                <span className="flex items-center gap-2">
+                  {picked.size > 0 && <span className="text-xs" style={{ color: 'var(--muted)' }}>{fa(picked.size)} انتخاب‌شده</span>}
+                  <button onClick={exportExcel} disabled={!rows.length || exporting} className="wd-xls" title={picked.size ? 'خروجی اکسل ردیف‌های انتخاب‌شده' : 'خروجی اکسل همهٔ ردیف‌های این برگه'} aria-label="خروجی اکسل">
+                    <svg viewBox="0 0 24 24" aria-hidden><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6M8.5 12.5l4 5M12.5 12.5l-4 5" /></svg>
+                    <span>{exporting ? '…' : 'اکسل'}</span>
+                  </button>
+                  <button onClick={() => setActive(null)} className="btn btn-ghost btn-sm">بستن</button>
+                </span>
               </div>
               {qLoading ? (
                 <div className="p-12 flex justify-center"><FancyLoader label="در حال دریافت صف…" /></div>
@@ -276,11 +302,19 @@ function WorkDesk() {
               ) : (
                 <div className="overflow-x-auto">
                   <table className="table">
-                    <thead><tr>{['#', 'کد ملی متوفی', 'نوع', 'بیمه‌گر', 'بیمه‌شده (متوفی)', 'مبلغ (ریال)', 'وضعیت', 'عملیات'].map((h) => <th key={h}>{h}</th>)}</tr></thead>
+                    <thead><tr>
+                      <th style={{ width: 44 }}>
+                        <input type="checkbox" aria-label="انتخاب همهٔ ردیف‌های این صفحه" checked={pageRows.length > 0 && pageRows.every((r) => picked.has(r.id))}
+                          onChange={(e) => setPicked((cur) => { const n = new Set(cur); pageRows.forEach((r) => (e.target.checked ? n.add(r.id) : n.delete(r.id))); return n; })} />
+                      </th>
+                      {['#', 'کد ملی متوفی', 'نوع', 'بیمه‌گر', 'بیمه‌شده (متوفی)', 'مبلغ (ریال)', 'وضعیت', 'عملیات'].map((h) => <th key={h}>{h}</th>)}
+                    </tr></thead>
                     <tbody>
                       {/* Rows don't open on click (too many mis-clicks) — only the «مشاهده» / «ارزیابی» buttons do. */}
-                      {rows.slice((page - 1) * pageSize, page * pageSize).map((r, i) => (
-                        <tr key={r.id}>
+                      {pageRows.map((r, i) => (
+                        <tr key={r.id} className={picked.has(r.id) ? 'is-picked' : undefined}>
+                          <td><input type="checkbox" aria-label={`انتخاب ردیف ${fa((page - 1) * pageSize + i + 1)}`} checked={picked.has(r.id)}
+                            onChange={() => setPicked((cur) => { const n = new Set(cur); if (n.has(r.id)) n.delete(r.id); else n.add(r.id); return n; })} /></td>
                           <td>{fa((page - 1) * pageSize + i + 1)}</td>
                           <td className="font-semibold" style={{ direction: 'ltr', textAlign: 'right' }} title={caseTitle(r)}>{r.deceasedNationalCode || '—'}</td>
                           <td><ClaimTypeBadge type={r.claimType} /></td>

@@ -18,6 +18,21 @@ export interface TokenResult {
 
 @Injectable()
 export class AuthService {
+  /** Display name of the signed-in org user / super admin (the panel's top bar). */
+  async me(actorType?: string, actorId?: string): Promise<{ name: string | null }> {
+    if (!actorId) return { name: null };
+    const db = this.prisma.unscoped();
+    if (actorType === 'ORG_USER') {
+      const u = await db.orgUser.findUnique({ where: { id: actorId }, select: { displayName: true, username: true } });
+      return { name: u?.displayName || u?.username || null };
+    }
+    if (actorType === 'SUPER_ADMIN') {
+      const a = await db.superAdmin.findUnique({ where: { id: actorId }, select: { email: true } });
+      return { name: a?.email ?? null };
+    }
+    return { name: null };
+  }
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly hash: HashService,
