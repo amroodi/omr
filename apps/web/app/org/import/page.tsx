@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { client } from '../../../lib/client';
 import { Shell } from '../../components/Shell';
 import { ErrorBox } from '../../components/ui';
+import { UploadButton } from '../../components/upload';
 import { ORG_NAV } from '../nav';
 
 interface Row {
@@ -78,7 +79,12 @@ export default function ImportPage() {
           </div>
           <div>
             <label className="text-sm font-semibold block mb-1">فایل</label>
-            <input type="file" accept=".csv,.xlsx" onChange={(e) => { setFile(e.target.files?.[0] || null); setPreview(null); setCommitted(null); }} className="input" />
+            <div className="flex items-center gap-2 flex-wrap">
+              <UploadButton accept=".csv,.xlsx" maxMB={5} title="انتخاب فایل ورود اطلاعات"
+                note="فایل فقط انتخاب می‌شود؛ ارسال با «پیش‌نمایش و اعتبارسنجی» و «ثبت ردیف‌های معتبر» انجام می‌شود."
+                onUpload={(f) => { setFile(f); setPreview(null); setCommitted(null); }}>{file ? 'تغییر فایل' : 'انتخاب فایل'}</UploadButton>
+              <span className="text-sm truncate" style={{ color: file ? 'var(--text)' : 'var(--muted)' }}>{file ? <bdi>{file.name}</bdi> : 'فایلی انتخاب نشده'}</span>
+            </div>
           </div>
         </div>
 

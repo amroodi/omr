@@ -4,6 +4,7 @@ import { toGregorian } from 'jalaali-js';
 import { client } from '../../lib/client';
 import { JalaliDatePicker } from './JalaliDatePicker';
 import { Overlay } from './ui';
+import { UploadButton } from './upload';
 
 /** Shape of `workflow` on GET /claims/:id (see apps/api/src/modules/claims/workflow.ts). */
 export interface WorkflowAction {
@@ -261,7 +262,11 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact }: 
                     <input className="input" placeholder="شمارهٔ نامه" value={letter.number} onChange={(e) => setLetter({ ...letter, number: e.target.value })} />
                     <JalaliDatePicker value={letter.date} onChange={(v) => setLetter({ ...letter, date: v })} placeholder="تاریخ نامه" />
                     <input className="input sm:col-span-2" placeholder="موضوع" value={letter.subject} onChange={(e) => setLetter({ ...letter, subject: e.target.value })} />
-                    <input className="sm:col-span-2 text-xs" type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => setLetterFile(e.target.files?.[0] ?? null)} />
+                    <div className="sm:col-span-2 flex items-center gap-2 flex-wrap">
+                      <UploadButton accept=".pdf,.jpg,.jpeg,.png" maxMB={15} title="فایل نامه" camera
+                        note="فایل همراه با «تایید و ارسال» بارگذاری می‌شود." onUpload={(f) => setLetterFile(f)}>{letterFile ? 'تغییر فایل نامه' : 'پیوست فایل نامه'}</UploadButton>
+                      {letterFile && <span className="text-xs truncate"><bdi>{letterFile.name}</bdi> <button type="button" className="underline" style={{ color: 'var(--danger)' }} onClick={() => setLetterFile(null)}>حذف</button></span>}
+                    </div>
                   </div>
                 </details>
               )}

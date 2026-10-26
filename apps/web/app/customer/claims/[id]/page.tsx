@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { client, getToken } from '../../../../lib/client';
@@ -9,31 +9,15 @@ import { CUSTOMER_NAV } from '../../nav';
 import { WorkflowPanel } from '../../../components/WorkflowPanel';
 import { caseTitle } from '../../../../lib/caseTitle';
 import { CaseHero, ChecklistItem, ClaimDoc, ICONS, STATUS_FA, useCase } from '../../../components/case-ui';
+import { DocUploadTile, OnProgress } from '../../../components/upload';
 
 const DESK_FA: Record<string, string> = { BROKER: 'کارگزاری', BRANCH: 'شعبه', HQ: 'مدیریت ستاد', COUNCIL: 'شورای فنی' };
-const UP = 'M12 15V3m0 0L7.5 7.5M12 3l4.5 4.5M4 15v4a2 2 0 002 2h12a2 2 0 002-2v-4';
 const OK = 'M20 6L9 17l-5-5';
 const NO = 'M18 6L6 18M6 6l12 12';
-const REUPLOAD = 'M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15';
-const CAM = 'M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2zM12 17a4 4 0 100-8 4 4 0 000 8z';
 const RESULT_KEY = (id: string) => `submitResult:${id}`;
 
-/** Upload state of one checklist row while a file is going up (the ring), or the outcome right after. */
+/** Upload state of one checklist row while a file is going up, or the outcome right after. */
 type UpState = { pct: number; eta: number | null } | { done: true } | { error: string };
-
-/** Telegram-style ring: fills as the file goes up, with the percent (and seconds left) in the middle. */
-function ProgressRing({ pct, eta }: { pct: number; eta: number | null }) {
-  const r = 16; const c = 2 * Math.PI * r;
-  return (
-    <span className="up-ring" title={eta != null ? `حدود ${eta.toLocaleString('fa-IR')} ثانیه تا پایان` : 'در حال بارگذاری…'} aria-label={`در حال بارگذاری ${Math.round(pct * 100)}٪`}>
-      <svg viewBox="0 0 40 40" width="40" height="40" aria-hidden>
-        <circle cx="20" cy="20" r={r} className="up-ring-track" />
-        <circle cx="20" cy="20" r={r} className="up-ring-bar" strokeDasharray={c} strokeDashoffset={c * (1 - pct)} />
-      </svg>
-      <span className="up-ring-t">{eta != null && pct < 1 ? `${eta.toLocaleString('fa-IR')}″` : `${Math.round(pct * 100).toLocaleString('fa-IR')}٪`}</span>
-    </span>
-  );
-}
 
 /** Plain-language status of one required document, from its upload and every desk's decision. */
 function docStory(it: ChecklistItem): { tone: 'ok' | 'bad' | 'wait' | 'none'; text: string } {
@@ -61,8 +45,6 @@ export default function CustomerClaim() {
   const [lateWarn, setLateWarn] = useState(true);
   const [up, setUp] = useState<Record<string, UpState>>({});
   const [sending, setSending] = useState(false);
-  const fileRefs = useRef<Record<string, HTMLInputElement | null>>({});
-  const camRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   useEffect(() => {
     if (!getToken('customer')) { router.push('/customer/login'); return; }
@@ -71,17 +53,20 @@ export default function CustomerClaim() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const upload = async (code: string, file: File) => {
+  // Called by the document's upload dialog: progress goes both to the dialog/tile ring and to `up`
+  // (so «ثبت نهایی» knows an upload is still running); a failure is re-thrown for the dialog to show.
+  const upload = async (code: string, file: File, onProgress: OnProgress) => {
     setError('');
     setUp((u) => ({ ...u, [code]: { pct: 0, eta: null } }));
     try {
       const fd = new FormData(); fd.append('file', file);
       await client.upload(`/customer/claims/${id}/documents?docCode=${encodeURIComponent(code)}`, fd, 'customer',
-        (pct, eta) => setUp((u) => ({ ...u, [code]: { pct, eta } })));
+        (pct, eta) => { onProgress(pct, eta); setUp((u) => ({ ...u, [code]: { pct, eta } })); });
       setUp((u) => ({ ...u, [code]: { done: true } }));
       await reload();
     } catch (e: any) {
       setUp((u) => ({ ...u, [code]: { error: e.message } }));
+      throw e;
     }
   };
   const viewDoc = (docId: string) => client.view(`/customer/claims/${id}/documents/${docId}/file`, 'customer').catch((e) => setError(e.message));
@@ -159,29 +144,14 @@ export default function CustomerClaim() {
                   const older = it.documents.slice(1);
                   return (
                     <div key={it.code} className={`doc-row cu-doc tone-${story.tone}`}>
-                      <div className="flex items-start justify-between gap-3">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="text-sm min-w-0">
                           <div className="font-bold">{it.label}</div>
                           <div className="cu-story">{story.text}</div>
                         </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <input ref={(el) => { fileRefs.current[it.code] = el; }} type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }}
-                            onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(it.code, f); e.currentTarget.value = ''; }} />
-                          <input ref={(el) => { camRefs.current[it.code] = el; }} type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
-                            onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(it.code, f); e.currentTarget.value = ''; }} />
-                          {st && 'pct' in st ? (
-                            <ProgressRing pct={st.pct} eta={st.eta} />
-                          ) : it.uploaded ? (
-                            <>
-                              <span className={`icon-btn cu-check${story.tone === 'bad' ? ' is-bad' : ''}`} title={story.tone === 'bad' ? 'رد شده' : 'بارگذاری شد'} aria-label="بارگذاری شد"><Icon path={story.tone === 'bad' ? NO : OK} /></span>
-                              <button type="button" onClick={() => fileRefs.current[it.code]?.click()} className={`icon-btn${story.tone === 'bad' ? ' cu-urgent' : ''}`} title="بارگذاری مجدد (جایگزینی فایل)" aria-label="بارگذاری مجدد"><Icon path={REUPLOAD} /></button>
-                            </>
-                          ) : (
-                            <>
-                              <button type="button" onClick={() => camRefs.current[it.code]?.click()} className="icon-btn sm:hidden" title="گرفتن عکس با دوربین" aria-label="دوربین"><Icon path={CAM} /></button>
-                              <button type="button" onClick={() => fileRefs.current[it.code]?.click()} className="icon-btn" title="بارگذاری" aria-label="بارگذاری"><Icon path={UP} /></button>
-                            </>
-                          )}
+                        <div className="shrink-0">
+                          <DocUploadTile label={it.label} uploaded={it.uploaded} rejected={story.tone === 'bad'}
+                            onUpload={(f, onP) => upload(it.code, f, onP)} />
                         </div>
                       </div>
                       {st && 'error' in st && <div className="cu-err">بارگذاری انجام نشد: {st.error}</div>}

@@ -1,5 +1,6 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { OnProgress, UploadButton } from '../../components/upload';
 import { toGregorian } from 'jalaali-js';
 import { client } from '../../../lib/client';
 import { Shell } from '../../components/Shell';
@@ -120,12 +121,16 @@ function CompanyCard({ c, companies, insurers, open, onToggle, reload, setMsg, s
   const [edit, setEdit] = useState({ name: c.name, parentId: c.parentId ?? '', phone: c.phone ?? '', email: c.email ?? '', address: c.address ?? '', website: c.website ?? '', contactName: c.contactName ?? '' });
   const [k, setK] = useState({ insurerTenantId: '', policyNumber: '', start: '', end: '', note: '' });
   const [logoVer, setLogoVer] = useState(0);
-  const logoRef = useRef<HTMLInputElement>(null);
   const act = async (fn: () => Promise<any>, ok: string) => { setMsg(null); try { await fn(); setMsg({ t: 'ok', m: ok }); reload(); } catch (e: any) { setMsg({ t: 'err', m: e.message }); } };
 
   const save = () => act(() => client.patch(`/policyholder-companies/${c.id}`, { ...edit, parentId: edit.parentId || null }, 'org'), 'ذخیره شد');
   const toggleActive = () => act(() => client.patch(`/policyholder-companies/${c.id}`, { isActive: !c.isActive }, 'org'), c.isActive ? 'شرکت غیرفعال شد' : 'شرکت فعال شد');
-  const uploadLogo = (file: File) => act(async () => { const fd = new FormData(); fd.append('file', file); await client.postForm(`/policyholder-companies/${c.id}/logo`, fd, 'org'); setLogoVer((v) => v + 1); }, 'لوگو بارگذاری شد');
+  const uploadLogo = async (file: File, onProgress: OnProgress) => {
+    setMsg(null);
+    const fd = new FormData(); fd.append('file', file);
+    await client.upload(`/policyholder-companies/${c.id}/logo`, fd, 'org', onProgress);
+    setLogoVer((v) => v + 1); setMsg({ t: 'ok', m: 'لوگو بارگذاری شد' }); reload();
+  };
   const addContract = () => act(async () => {
     const startDate = k.start ? jalaliToIso(k.start) : null; const endDate = k.end ? jalaliToIso(k.end) : null;
     if ((k.start && !startDate) || (k.end && !endDate)) throw new Error('تاریخ نامعتبر است (نمونه: ۱۴۰۵/۰۱/۰۱)');
@@ -212,8 +217,7 @@ function CompanyCard({ c, companies, insurers, open, onToggle, reload, setMsg, s
             </div>
             <div className="flex flex-wrap gap-2 mt-2">
               <button onClick={save} className="btn btn-primary btn-sm">ذخیرهٔ مشخصات</button>
-              <input ref={logoRef} type="file" accept="image/png,image/jpeg,image/webp" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadLogo(f); e.currentTarget.value = ''; }} />
-              <button onClick={() => logoRef.current?.click()} className="btn btn-ghost btn-sm">{c.hasLogo ? 'تغییر لوگو' : 'بارگذاری لوگو'}</button>
+              <UploadButton onUpload={uploadLogo} accept=".png,.jpg,.jpeg,.webp" maxMB={2} title={c.hasLogo ? 'تغییر لوگو' : 'بارگذاری لوگو'} subtitle={c.name}>{c.hasLogo ? 'تغییر لوگو' : 'بارگذاری لوگو'}</UploadButton>
               <button onClick={toggleActive} className="btn btn-ghost btn-sm" style={{ color: c.isActive ? 'var(--danger)' : 'var(--success)' }}>{c.isActive ? 'غیرفعال‌سازی شرکت' : 'فعال‌سازی شرکت'}</button>
             </div>
           </div>
