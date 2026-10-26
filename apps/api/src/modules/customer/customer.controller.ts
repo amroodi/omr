@@ -33,7 +33,7 @@ import { ClaimsService } from '../claims/claims.service';
 import { PhysicalDto } from '../claims/dto';
 import { CustomerAuthService } from './customer-auth.service';
 import { CustomerService } from './customer.service';
-import { CustomerFileClaimDto, CustomerRequestOtpDto, CustomerSignupDto, CustomerSignupVerifyDto, CustomerVerifyOtpDto } from './dto';
+import { CustomerChangePasswordDto, CustomerCompanyLoginDto, CustomerFileClaimDto, CustomerRequestOtpDto, CustomerSignupDto, CustomerSignupVerifyDto, CustomerVerifyOtpDto } from './dto';
 
 @Controller('customer')
 export class CustomerController {
@@ -42,6 +42,27 @@ export class CustomerController {
     private readonly customer: CustomerService,
     private readonly claims: ClaimsService,
   ) {}
+
+  /** بیمه‌گزار panel login: کد بیمه‌گزار + password (one login per company). */
+  @Public()
+  @UseGuards(TenantResolverGuard)
+  @Post('login/company')
+  companyLogin(@Body() dto: CustomerCompanyLoginDto) {
+    return this.auth.companyLogin(dto.code, dto.password);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('password')
+  changePassword(@Body() dto: CustomerChangePasswordDto) {
+    return this.auth.changeCompanyPassword(dto.current, dto.next);
+  }
+
+  /** «داشبورد»: the company's policies (عمر / حوادث, every year) and the totals of one of them. */
+  @UseGuards(JwtAuthGuard)
+  @Get('dashboard')
+  dashboard(@Query('contractId') contractId?: string) {
+    return this.customer.dashboard(contractId);
+  }
 
   @Public()
   @UseGuards(TenantResolverGuard)
@@ -147,6 +168,7 @@ export class CustomerController {
       claimType: dto.claimType,
       eventDate: dto.eventDate,
       description: dto.description,
+      contractId: dto.contractId,
       deceasedFullName: dto.deceasedFullName,
       deceasedNationalCode: dto.deceasedNationalCode,
     });

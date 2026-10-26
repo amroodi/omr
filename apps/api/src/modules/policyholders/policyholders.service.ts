@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { AuditAction } from '@prisma/client';
+import { AuditAction, ClaimType, InsuranceLine } from '@prisma/client';
 import { AuditService } from '../../common/audit/audit.service';
 import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
 import { toJalali } from '../../common/jalali/jalali.util';
@@ -8,6 +8,13 @@ import { StorageService } from '../../common/storage/storage.service';
 import { getContext, getTenantIdOrThrow } from '../../common/tenant/tenant-context';
 
 const LOGO_MIME = new Set(['image/png', 'image/jpeg', 'image/webp']);
+
+/** Which claim types each policy line covers: عمر pays on death (any cause) and illness disability; حوادث on accidents. */
+export const LINE_CLAIM_TYPES: Record<InsuranceLine, ClaimType[]> = {
+  LIFE: ['DEATH_ILLNESS', 'DEATH_ACCIDENT', 'DISABILITY_ILLNESS'],
+  ACCIDENT: ['DEATH_ACCIDENT', 'DISABILITY_ACCIDENT', 'MEDICAL_ACCIDENT'],
+};
+export const LINE_FA: Record<InsuranceLine, string> = { LIFE: 'عمر', ACCIDENT: 'حوادث' };
 
 export interface CompanyInput {
   name?: string;
@@ -22,6 +29,7 @@ export interface CompanyInput {
 
 export interface ContractInput {
   insurerTenantId?: string;
+  line?: InsuranceLine | null;
   policyNumber?: string | null;
   startDate?: string | null;
   endDate?: string | null;
@@ -60,11 +68,12 @@ export class PolicyholdersService {
     return rows.map((r) => {
       const current = this.pickContract(r.contracts, now);
       return {
-        id: r.id, name: r.name, parentId: r.parentId, phone: r.phone, email: r.email, address: r.address, website: r.website,
+        id: r.id, name: r.name, code: r.code, hasPassword: !!r.passwordHash, parentId: r.parentId, phone: r.phone, email: r.email, address: r.address, website: r.website,
         contactName: r.contactName, isActive: r.isActive, hasLogo: !!r.logoKey, accounts: r._count.accounts,
         currentInsurer: current ? { id: current.insurerTenantId, name: iMap.get(current.insurerTenantId) ?? '—' } : null,
         contracts: r.contracts.map((c) => ({
           id: c.id, insurerTenantId: c.insurerTenantId, insurerName: iMap.get(c.insurerTenantId) ?? '—', policyNumber: c.policyNumber,
+          line: c.line, lineLabel: c.line ? LINE_FA[c.line] : null,
           startDate: c.startDate ? toJalali(c.startDate, false) : null, endDate: c.endDate ? toJalali(c.endDate, false) : null,
           startIso: c.startDate?.toISOString() ?? null, endIso: c.endDate?.toISOString() ?? null,
           isActive: c.isActive, note: c.note, isCurrent: current?.id === c.id,
@@ -120,7 +129,7 @@ export class PolicyholdersService {
     await this.assertPartner(input.insurerTenantId);
     const range = this.range(input);
     const c = await this.db().policyholderContract.create({
-      data: { companyId, insurerTenantId: input.insurerTenantId, policyNumber: input.policyNumber?.trim() || null, note: input.note?.trim() || null, ...range },
+      data: { companyId, insurerTenantId: input.insurerTenantId, line: input.line ?? null, policyNumber: input.policyNumber?.trim() || null, note: input.note?.trim() || null, ...range },
       select: { id: true },
     });
     await this.audit.record({ action: AuditAction.CREATE, targetType: 'PolicyholderContract', targetId: c.id, metadata: { companyId, insurerTenantId: input.insurerTenantId } });
@@ -136,6 +145,7 @@ export class PolicyholdersService {
       where: { id: contractId },
       data: {
         ...(input.insurerTenantId ? { insurerTenantId: input.insurerTenantId } : {}),
+        ...(input.line !== undefined ? { line: input.line } : {}),
         ...(input.policyNumber !== undefined ? { policyNumber: input.policyNumber?.trim() || null } : {}),
         ...(input.note !== undefined ? { note: input.note?.trim() || null } : {}),
         ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
@@ -256,10 +266,27 @@ export class PolicyholdersService {
     return { id: c.id, name: c.name, hasLogo: !!c.logoKey, phone: c.phone, email: c.email, address: c.address, website: c.website, contactName: c.contactName };
   }
 
-  /** The insurer contract that covered `date` (latest start wins); used to route a new claim. */
-  async resolveContract(companyId: string, date: Date | null) {
+  /**
+   * The insurer contract that covered `date` (latest start wins); used to route a new claim. With a
+   * claim type, contracts of a line that doesn't cover it are skipped (unlined contracts always fit).
+   */
+  async resolveContract(companyId: string, date: Date | null, claimType: ClaimType | null = null) {
     const contracts = await this.db().policyholderContract.findMany({ where: { companyId, isActive: true } });
-    return this.pickContract(contracts, date ?? new Date());
+    const fits = contracts.filter((c) => !claimType || !c.line || LINE_CLAIM_TYPES[c.line].includes(claimType));
+    return this.pickContract(fits, date ?? new Date());
+  }
+
+  /** A بیمه‌نامه the بیمه‌گزار chose for a new claim: theirs, active, of a fitting line, covering the date. */
+  async contractForClaim(companyId: string, contractId: string, claimType: ClaimType | null, date: Date | null) {
+    const c = await this.db().policyholderContract.findFirst({ where: { id: contractId, companyId, isActive: true } });
+    if (!c) throw new BadRequestException('بیمه‌نامهٔ انتخاب‌شده یافت نشد');
+    if (claimType && c.line && !LINE_CLAIM_TYPES[c.line].includes(claimType)) {
+      throw new BadRequestException(`نوع خسارت انتخاب‌شده در بیمه‌نامهٔ ${LINE_FA[c.line]} پوشش داده نمی‌شود`);
+    }
+    if (date && ((c.startDate && date < c.startDate) || (c.endDate && date > c.endDate))) {
+      throw new BadRequestException(`تاریخ وقوع در دورهٔ این بیمه‌نامه (${c.startDate ? toJalali(c.startDate, false) : '…'} تا ${c.endDate ? toJalali(c.endDate, false) : '…'}) نیست؛ بیمه‌نامهٔ همان سال را انتخاب کنید.`);
+    }
+    return c;
   }
 
   private pickContract<T extends { startDate: Date | null; endDate: Date | null; isActive: boolean }>(contracts: T[], at: Date): T | null {

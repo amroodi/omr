@@ -1,12 +1,10 @@
 'use client';
 import Link from 'next/link';
-import { LogoTile } from './LogoTile';
 import { usePathname, useRouter } from 'next/navigation';
 import { ReactNode, useEffect, useState } from 'react';
 import { clearToken, client, getTenantSlug, hasPerm, Realm } from '../../lib/client';
 import { ChangePasswordModal } from './ChangePasswordModal';
 import { NotificationBell } from './NotificationBell';
-import { BrandMark } from './brand';
 import { ThemeToggle } from '../theme-toggle';
 import { WallpaperPicker } from './WallpaperPicker';
 
@@ -137,10 +135,10 @@ export function Shell({
       {/* ── Navy sidebar (right, collapsible) ── */}
       <aside className={`psidebar no-print ${rail ? 'is-rail' : ''} ${open ? 'is-open' : ''}`}>
         <div className="psidebar-logo">
-          <Link href={homeHref} className={`circle${logoUrl ? ' has-logo' : ''}`} aria-label="خانه">
-            {logoUrl
-              ? <LogoTile src={logoUrl} round style={{ width: '100%', height: '100%' }} />
-              : <BrandMark size={rail ? 30 : 74} />}
+          {/* Just the logo itself — no tile or circle behind it */}
+          <Link href={homeHref} className="circle" aria-label="خانه">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={logoUrl || '/brand/damuon-mark.webp'} alt="" className="psidebar-mark" />
           </Link>
           <div className="psidebar-name">{brand?.name || 'دامون'}</div>
           {subtitle && <div className="psidebar-sub">{subtitle}</div>}

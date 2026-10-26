@@ -27,6 +27,7 @@ export function ProgressRing({ pct, eta, size = 40 }: { pct: number; eta: number
 function acceptLabel(accept: string) {
   return accept.split(',').map((a) => a.trim()).filter(Boolean)
     .map((a) => (a === 'image/*' ? 'تصویر' : a.startsWith('.') ? a.slice(1).toUpperCase() : (a.split('/')[1] || a).toUpperCase()))
+    .map((v) => (v === 'DOC' || v === 'DOCX' ? 'Word' : v === 'JPEG' ? 'JPG' : v === 'XLS' || v === 'XLSX' ? 'Excel' : v))
     .filter((v, i, all) => all.indexOf(v) === i).join('، ');
 }
 function accepts(accept: string, f: File) {
@@ -178,7 +179,7 @@ const CHECK = 'M20 6L9 17l-5-5';
  * paperclip becomes the progress ring (with the time left); once uploaded it reads «جایگزینی فایل».
  */
 export function DocUploadTile({
-  label, onUpload, uploaded = false, rejected = false, required = true, help, accept = '.pdf,.jpg,.jpeg,.png', maxMB = 15,
+  label, onUpload, uploaded = false, rejected = false, required = true, help, accept = '.pdf,.doc,.docx,.jpg,.jpeg,.png', maxMB = 15,
   camera = true, disabled = false, compact = false, addText = 'افزودن تصویر مدارک',
 }: {
   label: string; onUpload: UploadFn; uploaded?: boolean; rejected?: boolean; required?: boolean; help?: string;
@@ -204,7 +205,7 @@ export function DocUploadTile({
   };
 
   const text = uploaded ? (rejected ? 'جایگزینی مدرک ردشده' : 'جایگزینی فایل') : addText;
-  const helpText = help || `فایل PDF یا تصویر واضح (JPG، PNG) از «${label}» را بارگذاری کنید؛ حداکثر ${faN(maxMB)} مگابایت. روی گوشی می‌توانید مستقیم با دوربین عکس بگیرید.`;
+  const helpText = help || `فایل PDF، Word یا تصویر واضح (JPG، PNG) از «${label}» را بارگذاری کنید؛ حداکثر ${faN(maxMB)} مگابایت. روی گوشی می‌توانید مستقیم با دوربین عکس بگیرید.`;
   return (
     <span className={`dut${compact ? ' is-compact' : ''}`}>
       <span className="dut-help-w" ref={tipRef}>

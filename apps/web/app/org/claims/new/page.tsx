@@ -181,7 +181,7 @@ export default function NewClaim() {
             <JalaliDatePicker value={f.eventDate} onChange={(v) => setF((s) => ({ ...s, eventDate: v }))} placeholder="۱۴۰۵/۰۷/۰۱" />
           </PField>
           <PField label={isDeath ? 'سن متوفی (هنگام فوت)' : 'سن بیمه‌شده (هنگام حادثه)'}>
-            <input className="input" readOnly value={age != null ? `${age.toLocaleString('fa-IR')} سال` : '— (پس از ورود تاریخ‌ها)'} style={{ background: 'var(--surface-2)' }} />
+            <input className="input" readOnly value={age != null ? `${age.toLocaleString('fa-IR')} سال` : ''} placeholder="(پس از ورود تاریخ‌ها)" style={{ background: 'var(--surface-2)' }} />
           </PField>
           <PField label="مبلغ خسارت برآوردی (ریال)" help="اختیاری؛ مبلغ قطعی پس از ارزیابی ثبت می‌شود.">
             <input className="input" inputMode="numeric" value={groupDigits(f.claimedAmount)} onChange={(e) => setF((s) => ({ ...s, claimedAmount: toAscii(e.target.value).replace(/[^\d]/g, '') }))} placeholder="۰" style={{ direction: 'ltr', textAlign: 'right' }} />

@@ -5,7 +5,7 @@ import { AuditService } from '../../common/audit/audit.service';
 import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { StorageService } from '../../common/storage/storage.service';
-import { getContext } from '../../common/tenant/tenant-context';
+import { customerClaimWhere, customerOwnsClaim, getContext } from '../../common/tenant/tenant-context';
 import { toJalali } from '../../common/jalali/jalali.util';
 import { OcrService } from '../../integrations/ocr/ocr.service';
 import { ClaimFieldsService } from '../claim-fields/claim-fields.service';
@@ -14,7 +14,15 @@ import { PolicyholdersService } from '../policyholders/policyholders.service';
 import { PERMISSIONS } from '../../common/rbac/permissions';
 import { above, actionsFor, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, physicalActionsFor, PhysicalActionKey, physicalBelow, PhysicalState, Purpose, ReviewDesk, Stage, STAGE_FA, WorkflowAction } from './workflow';
 
-const CLAIM_DOC_MIME = new Set(['application/pdf', 'image/jpeg', 'image/png']);
+const CLAIM_DOC_MIME = new Set([
+  'application/pdf', 'image/jpeg', 'image/png',
+  'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // Word
+]);
+const CLAIM_DOC_EXT = /\.(pdf|jpe?g|png|docx?)$/i;
+/** PDF, image or Word. Some browsers send Word files as application/octet-stream, so the extension decides then. */
+const claimDocOk = (f: Express.Multer.File) =>
+  CLAIM_DOC_MIME.has(f.mimetype) || (f.mimetype === 'application/octet-stream' && CLAIM_DOC_EXT.test(f.originalname ?? ''));
+const CLAIM_DOC_TYPES_FA = 'فقط PDF، Word (DOC، DOCX)، JPG و PNG مجاز است';
 // «فایل ذینفع» (list of heirs/beneficiaries and their shares) may also be an Excel sheet.
 export const BENEFICIARY_FILE_CODE = 'BENEFICIARY_FILE';
 const EXCEL_MIME = new Set(['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']);
@@ -39,6 +47,8 @@ interface FileClaimInput {
   claimType?: ClaimType;
   eventDate?: string; // ISO date of the death/accident
   policyNumber?: string;
+  /** بیمه‌گزار panel: the company's بیمه‌نامه (PolicyholderContract) the claim is filed under. */
+  contractId?: string;
   claimedAmount?: string;
   description?: string; // free-text details (used when بیمه‌گزار files, can't know amount/policy)
   deceasedFullName: string;
@@ -183,8 +193,14 @@ export class ClaimsService {
       companyId = acc.companyId;
       input.insurerTenantId = undefined;
     }
+    if (companyId && input.contractId) {
+      // The بیمه‌نامه the بیمه‌گزار picked: it must be theirs, fit the claim type, and cover the date.
+      const contract = await this.policyholders.contractForClaim(companyId, input.contractId, input.claimType ?? null, eventDate);
+      input.insurerTenantId = contract.insurerTenantId;
+      input.policyNumber = contract.policyNumber ?? input.policyNumber ?? undefined;
+    }
     if (companyId && !input.insurerTenantId) {
-      const contract = await this.policyholders.resolveContract(companyId, eventDate);
+      const contract = await this.policyholders.resolveContract(companyId, eventDate, input.claimType ?? null);
       if (!contract) throw new BadRequestException('برای این تاریخ فوت، قرارداد فعالی میان کارگزاری و بیمه‌گر برای شرکت شما ثبت نشده است؛ لطفاً با کارگزاری تماس بگیرید.');
       input.insurerTenantId = contract.insurerTenantId;
       input.policyNumber = input.policyNumber ?? contract.policyNumber ?? undefined;
@@ -323,7 +339,7 @@ export class ClaimsService {
     const ctx = getContext();
     if (s === 'POLICYHOLDER') {
       // The بیمه‌گزار — or a participant org acting on their behalf (filing staff with claim:file).
-      if (ctx?.actorType === 'CUSTOMER') return claim.policyHolderId === ctx.actorId;
+      if (ctx?.actorType === 'CUSTOMER') return customerOwnsClaim(claim);
       return ctx?.actorType === 'ORG_USER' && (ctx.permissions ?? []).includes(PERMISSIONS.CLAIM_FILE) && (ctx.tenantId === claim.insurerTenantId || ctx.tenantId === claim.brokerTenantId);
     }
     // The insurer's admin can evaluate and move a case at any of its own desks (e.g. a branch's cases).
@@ -694,7 +710,7 @@ export class ClaimsService {
     if (!input.number?.trim() && !file?.buffer?.length) throw new BadRequestException('شمارهٔ نامه یا فایل نامه الزامی است');
     let stored: { storageKey: string; fileName: string; mimeType: string; sizeBytes: number } | null = null;
     if (file?.buffer?.length) {
-      if (!CLAIM_DOC_MIME.has(file.mimetype)) throw new BadRequestException('فقط PDF، JPG و PNG مجاز است');
+      if (!claimDocOk(file)) throw new BadRequestException(CLAIM_DOC_TYPES_FA);
       stored = { storageKey: await this.storage.save(claim.insurerTenantId, file.buffer), fileName: file.originalname, mimeType: file.mimetype, sizeBytes: file.size };
     }
     const ctx = getContext();
@@ -748,7 +764,7 @@ export class ClaimsService {
     const u = this.prisma.unscoped();
     const claim = await u.claim.findUnique({
       where: { id: claimId },
-      select: { id: true, claimNumber: true, insurerTenantId: true, brokerTenantId: true, policyHolderId: true, deletedAt: true },
+      select: { id: true, claimNumber: true, insurerTenantId: true, brokerTenantId: true, policyHolderId: true, policyholderCompanyId: true, deletedAt: true },
     });
     if (!claim) throw new NotFoundException('پرونده یافت نشد');
     this.assertParticipant(claim);
@@ -771,7 +787,7 @@ export class ClaimsService {
     const u = this.prisma.unscoped();
     const claim = await u.claim.findUnique({
       where: { id: claimId },
-      select: { id: true, claimNumber: true, insurerTenantId: true, brokerTenantId: true, policyHolderId: true, deletedAt: true },
+      select: { id: true, claimNumber: true, insurerTenantId: true, brokerTenantId: true, policyHolderId: true, policyholderCompanyId: true, deletedAt: true },
     });
     if (!claim) throw new NotFoundException('پرونده یافت نشد');
     this.assertParticipant(claim);
@@ -794,7 +810,7 @@ export class ClaimsService {
     const ctx = getContext();
     const where =
       ctx?.actorType === 'CUSTOMER'
-        ? { policyHolderId: ctx.actorId, deletedAt: { not: null } }
+        ? { ...customerClaimWhere(), deletedAt: { not: null } }
         : { OR: [{ insurerTenantId: ctx?.tenantId }, { brokerTenantId: ctx?.tenantId }], deletedAt: { not: null } };
     const claims = await this.db().claim.findMany({ where, orderBy: { deletedAt: 'desc' } });
     const now = Date.now();
@@ -1132,8 +1148,8 @@ export class ClaimsService {
   async uploadDocument(claimId: string, file: Express.Multer.File, docCode: string) {
     if (!file?.buffer?.length) throw new BadRequestException('فایلی دریافت نشد');
     const excelOk = docCode?.trim() === BENEFICIARY_FILE_CODE && EXCEL_MIME.has(file.mimetype);
-    if (!CLAIM_DOC_MIME.has(file.mimetype) && !excelOk) {
-      throw new BadRequestException(docCode?.trim() === BENEFICIARY_FILE_CODE ? 'فقط PDF یا اکسل مجاز است' : 'فقط PDF، JPG و PNG مجاز است');
+    if (!claimDocOk(file) && !excelOk) {
+      throw new BadRequestException(docCode?.trim() === BENEFICIARY_FILE_CODE ? 'فقط PDF، Word یا اکسل مجاز است' : CLAIM_DOC_TYPES_FA);
     }
     const db = this.db();
     const claim = await db.claim.findUnique({ where: { id: claimId } });
@@ -1342,7 +1358,7 @@ export class ClaimsService {
     const db = this.db();
     const where: Prisma.ClaimWhereInput =
       ctx?.actorType === 'CUSTOMER'
-        ? { policyHolderId: ctx.actorId, deletedAt: null }
+        ? { ...customerClaimWhere(), deletedAt: null }
         : this.wdScope(ctx?.tenantId);
     // Search (بیمه‌گزار panel «جستجو»): a 10-digit term matches the deceased's کد ملی exactly (blind
     // index); anything else matches the claim number or the deceased's name.
@@ -1373,7 +1389,7 @@ export class ClaimsService {
     const ctx = getContext();
     const desk = await this.myDesk();
     const where: Prisma.ClaimWhereInput = ctx?.actorType === 'CUSTOMER'
-      ? { policyHolderId: ctx.actorId, deletedAt: null, currentStage: 'POLICYHOLDER' }
+      ? { ...customerClaimWhere(), deletedAt: null, currentStage: 'POLICYHOLDER' }
       : { AND: [this.wdScope(ctx?.tenantId), this.deskWhere(desk)] };
     const claims = await this.db().claim.findMany({ where, orderBy: { updatedAt: 'desc' } });
     return claims.filter((c) => this.holdsDesk(c, desk)).map((c) => this.present(c));
@@ -1551,7 +1567,7 @@ export class ClaimsService {
   private assertParticipant(claim: any) {
     const ctx = getContext();
     if (ctx?.actorType === 'SUPER_ADMIN') return;
-    if (ctx?.actorType === 'CUSTOMER' && claim.policyHolderId === ctx.actorId) return;
+    if (ctx?.actorType === 'CUSTOMER' && customerOwnsClaim(claim)) return;
     if (ctx?.actorType === 'ORG_USER' && (ctx.tenantId === claim.insurerTenantId || ctx.tenantId === claim.brokerTenantId)) return;
     throw new ForbiddenException('دسترسی به این پرونده ندارید');
   }
