@@ -87,6 +87,9 @@ export default function AdminDashboard() {
           <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>تامین و مدیریت سازمان‌های سکو</p>
         </div>
         <div className="flex gap-2">
+          <button onClick={() => router.push('/admin/policyholders')} className="btn btn-primary btn-sm">
+            <Icon path="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" /> بیمه‌گزاران
+          </button>
           <button onClick={() => router.push('/admin/audit')} className="btn btn-primary btn-sm">
             <Icon path="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 104 0 2 2 0 00-4 0zM9 12h6M9 16h6" /> رویدادهای سامانه
           </button>

@@ -10,9 +10,9 @@ import { ORG_NAV } from '../nav';
 import { NetworkTab } from './network';
 
 interface Acc { id: string; fullName: string | null; nationalCode: string | null; nationalCodeMasked: string | null; phone: string | null; phoneMasked: string | null; canViewPii: boolean; signupStatus: string; isActive: boolean; createdAt: string | null; lastLoginAt: string | null; company: { id: string; name: string } | null }
-interface Contract { id: string; insurerTenantId: string; insurerName: string; policyNumber: string | null; startDate: string | null; endDate: string | null; isActive: boolean; note: string | null; isCurrent: boolean }
+interface Contract { id: string; insurerTenantId: string; insurerName: string; line: 'LIFE' | 'ACCIDENT' | null; lineLabel: string | null; policyNumber: string | null; startDate: string | null; endDate: string | null; isActive: boolean; note: string | null; isCurrent: boolean }
 interface Company {
-  id: string; name: string; parentId: string | null; phone: string | null; email: string | null; address: string | null; website: string | null; contactName: string | null;
+  id: string; name: string; code: string | null; hasPassword: boolean; parentId: string | null; phone: string | null; email: string | null; address: string | null; website: string | null; contactName: string | null;
   isActive: boolean; hasLogo: boolean; accounts: number; currentInsurer: { id: string; name: string } | null; contracts: Contract[];
 }
 interface Msg { id: string; claimId: string; claimNumber: string; companyName: string | null; phone: string; message: string; createdAt: string; handled: boolean }
@@ -119,7 +119,7 @@ function CompanyCard({ c, companies, insurers, open, onToggle, reload, setMsg, s
   setMsg: (m: { t: 'ok' | 'err'; m: string } | null) => void; sub?: boolean;
 }) {
   const [edit, setEdit] = useState({ name: c.name, parentId: c.parentId ?? '', phone: c.phone ?? '', email: c.email ?? '', address: c.address ?? '', website: c.website ?? '', contactName: c.contactName ?? '' });
-  const [k, setK] = useState({ insurerTenantId: '', policyNumber: '', start: '', end: '', note: '' });
+  const [k, setK] = useState({ insurerTenantId: '', line: '', policyNumber: '', start: '', end: '', note: '' });
   const [logoVer, setLogoVer] = useState(0);
   const act = async (fn: () => Promise<any>, ok: string) => { setMsg(null); try { await fn(); setMsg({ t: 'ok', m: ok }); reload(); } catch (e: any) { setMsg({ t: 'err', m: e.message }); } };
 
@@ -134,8 +134,8 @@ function CompanyCard({ c, companies, insurers, open, onToggle, reload, setMsg, s
   const addContract = () => act(async () => {
     const startDate = k.start ? jalaliToIso(k.start) : null; const endDate = k.end ? jalaliToIso(k.end) : null;
     if ((k.start && !startDate) || (k.end && !endDate)) throw new Error('تاریخ نامعتبر است (نمونه: ۱۴۰۵/۰۱/۰۱)');
-    await client.post(`/policyholder-companies/${c.id}/contracts`, { insurerTenantId: k.insurerTenantId, policyNumber: k.policyNumber || null, startDate, endDate, note: k.note || null }, 'org');
-    setK({ insurerTenantId: '', policyNumber: '', start: '', end: '', note: '' });
+    await client.post(`/policyholder-companies/${c.id}/contracts`, { insurerTenantId: k.insurerTenantId, line: k.line || null, policyNumber: k.policyNumber || null, startDate, endDate, note: k.note || null }, 'org');
+    setK({ insurerTenantId: '', line: '', policyNumber: '', start: '', end: '', note: '' });
   }, 'قرارداد ثبت شد؛ پرونده‌های جدید این شرکت بر اساس آن به بیمه‌گر ارسال می‌شوند.');
   const toggleContract = (ct: Contract) => act(() => client.patch(`/policyholder-companies/${c.id}/contracts/${ct.id}`, { isActive: !ct.isActive }, 'org'), ct.isActive ? 'قرارداد غیرفعال شد' : 'قرارداد فعال شد');
 
@@ -148,7 +148,7 @@ function CompanyCard({ c, companies, insurers, open, onToggle, reload, setMsg, s
             : <span className="rounded-lg flex items-center justify-center font-bold" style={{ width: 36, height: 36, background: 'var(--surface-2)', color: 'var(--muted)' }}>{c.name.slice(0, 1)}</span>}
           <span className="min-w-0">
             <span className="font-bold block truncate">{sub ? '↳ ' : ''}{c.name}</span>
-            <span className="text-xs" style={{ color: 'var(--muted)' }}>{c.accounts.toLocaleString('fa-IR')} نماینده{c.contactName ? ` · ${c.contactName}` : ''}</span>
+            <span className="text-xs" style={{ color: 'var(--muted)' }}>{c.code ? `کد بیمه‌گزار ${c.code} · ` : ''}{c.accounts.toLocaleString('fa-IR')} نماینده{c.contactName ? ` · ${c.contactName}` : ''}</span>
           </span>
         </span>
         <span className="flex items-center gap-2 flex-wrap justify-end">
@@ -167,11 +167,12 @@ function CompanyCard({ c, companies, insurers, open, onToggle, reload, setMsg, s
             {c.contracts.length > 0 && (
               <div className="overflow-x-auto mb-3">
                 <table className="table">
-                  <thead><tr>{['بیمه‌گر', 'شماره بیمه‌نامه', 'از', 'تا', 'وضعیت', ''].map((h) => <th key={h}>{h}</th>)}</tr></thead>
+                  <thead><tr>{['بیمه‌گر', 'رشته', 'شماره بیمه‌نامه', 'از', 'تا', 'وضعیت', ''].map((h) => <th key={h}>{h}</th>)}</tr></thead>
                   <tbody>
                     {c.contracts.map((ct) => (
                       <tr key={ct.id}>
                         <td className="font-semibold">{ct.insurerName}{ct.isCurrent && <span className="badge badge-success mr-1">فعلی</span>}</td>
+                        <td>{ct.lineLabel || '—'}</td>
                         <td>{ct.policyNumber || '—'}</td>
                         <td>{ct.startDate || 'نامحدود'}</td>
                         <td>{ct.endDate || 'نامحدود'}</td>
@@ -183,11 +184,16 @@ function CompanyCard({ c, companies, insurers, open, onToggle, reload, setMsg, s
                 </table>
               </div>
             )}
-            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-2 items-end">
+            <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-2 items-end">
               <Field label="بیمه‌گر *">
                 <select className="input" value={k.insurerTenantId} onChange={(e) => setK({ ...k, insurerTenantId: e.target.value })}>
                   <option value="">— انتخاب —</option>
                   {insurers.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+                </select>
+              </Field>
+              <Field label="رشته">
+                <select className="input" value={k.line} onChange={(e) => setK({ ...k, line: e.target.value })}>
+                  <option value="">—</option><option value="LIFE">عمر</option><option value="ACCIDENT">حوادث</option>
                 </select>
               </Field>
               <Field label="شماره بیمه‌نامه"><input className="input" value={k.policyNumber} onChange={(e) => setK({ ...k, policyNumber: e.target.value })} /></Field>

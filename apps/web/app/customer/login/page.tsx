@@ -5,104 +5,60 @@ import { client, setTenantSlug, setToken } from '../../../lib/client';
 import { AuthCard } from '../../components/auth-card';
 import { ErrorBox, Field } from '../../components/ui';
 
+/**
+ * ورود بیمه‌گزار: «کد بیمه‌گزار» + password — one login per company for both its عمر and حوادث
+ * policies. (The person login by کد ملی + mobile is off for now; it returns for بیمه‌شده later.)
+ */
 export default function CustomerLogin() {
   const router = useRouter();
-  const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [tenant, setTenant] = useState('damuon');
-  const [nationalCode, setNid] = useState('');
-  const [phone, setPhone] = useState('');
+  const [orgs, setOrgs] = useState<{ slug: string; name: string }[]>([]);
   const [code, setCode] = useState('');
-  const [step, setStep] = useState<'id' | 'otp'>('id');
+  const [password, setPassword] = useState('');
+  const [show, setShow] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  // signup
-  const [orgs, setOrgs] = useState<{ slug: string; name: string }[]>([]);
-  const [fullName, setFullName] = useState('');
-  const [signupDone, setSignupDone] = useState('');
-  const [signupStep, setSignupStep] = useState<'form' | 'otp'>('form');
-  const [signupCode, setSignupCode] = useState('');
 
   useEffect(() => { client.get<{ slug: string; name: string }[]>('/customer/orgs').then(setOrgs).catch(() => {}); }, []);
 
-  const wrap = async (fn: () => Promise<void>) => {
+  const login = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     setError(''); setLoading(true);
-    try { await fn(); } catch (e: any) { setError(e.message); } finally { setLoading(false); }
+    try {
+      setTenantSlug(tenant);
+      const r = await client.post<{ token: string }>('/customer/login/company', { code: code.trim(), password });
+      setToken('customer', r.token);
+      router.push('/customer');
+    } catch (err: any) { setError(err.message); } finally { setLoading(false); }
   };
-  const request = () => wrap(async () => {
-    setTenantSlug(tenant);
-    const r = await client.post<{ otpRequired?: boolean }>('/customer/login/request-otp', { nationalCode, phone });
-    if (r.otpRequired === false) { // OTP disabled platform-wide → log in directly
-      const t = await client.post<{ token: string }>('/customer/login/direct', { nationalCode, phone });
-      setToken('customer', t.token); router.push('/customer'); return;
-    }
-    setStep('otp');
-  });
-  const verify = () => wrap(async () => {
-    const r = await client.post<{ token: string }>('/customer/login/verify-otp', { nationalCode, phone, code });
-    setToken('customer', r.token); router.push('/customer');
-  });
-  const signupRequestOtp = () => wrap(async () => {
-    const r = await client.post<{ otpRequired?: boolean }>('/customer/signup/request-otp', { tenantSlug: tenant, nationalCode, phone });
-    if (r.otpRequired === false) { // OTP disabled → submit the signup request directly
-      const d = await client.post<{ message: string }>('/customer/signup/direct', { tenantSlug: tenant, nationalCode, phone, fullName });
-      setSignupDone(d.message || 'درخواست ثبت‌نام ارسال شد.'); return;
-    }
-    setSignupStep('otp');
-  });
-  const signupVerify = () => wrap(async () => {
-    const r = await client.post<{ message: string }>('/customer/signup/verify-otp', { tenantSlug: tenant, nationalCode, phone, fullName, code: signupCode });
-    setSignupDone(r.message || 'درخواست ثبت‌نام ارسال شد.');
-  });
-
-  const subtitle = mode === 'login' ? 'پیگیری پرونده‌های خسارت و بارگذاری مدارک' : 'ثبت‌نام بیمه‌گزار جدید — پس از تایید سازمان فعال می‌شود';
 
   return (
-    <AuthCard title={mode === 'login' ? 'ورود بیمه‌گزار' : 'ثبت‌نام بیمه‌گزار'} subtitle={subtitle} bg={{ light: ['cust-day-1', 'cust-day-2'], dark: ['cust-night-1'] }}>
-      <div className="space-y-4">
+    <AuthCard title="ورود بیمه‌گزار" subtitle="اعلام و پیگیری خسارت عمر و حوادث" bg={{ light: ['cust-day-1', 'cust-day-2'], dark: ['cust-night-1'] }}>
+      <form className="space-y-4" onSubmit={login}>
         <ErrorBox message={error} />
-
-        {mode === 'signup' && signupDone ? (
-          <>
-            <div className="alert-success">{signupDone}</div>
-            <button onClick={() => { setMode('login'); setSignupDone(''); setSignupStep('form'); setStep('id'); }} className="btn btn-primary w-full">بازگشت به ورود</button>
-          </>
-        ) : mode === 'signup' && signupStep === 'otp' ? (
-          <>
-            <p className="text-sm" style={{ color: 'var(--muted)' }}>کد تایید به شماره {phone} ارسال شد.</p>
-            <Field label="کد تایید"><input value={signupCode} onChange={(e) => setSignupCode(e.target.value)} className="input text-center tracking-[0.5em] text-lg" inputMode="numeric" placeholder="––––––" /></Field>
-            <button onClick={signupVerify} disabled={loading || signupCode.length < 4} className="btn btn-primary w-full">{loading ? '…' : 'تایید و ثبت درخواست'}</button>
-            <button onClick={() => { setSignupStep('form'); setError(''); }} className="btn btn-ghost btn-sm w-full">بازگشت</button>
-          </>
-        ) : mode === 'signup' ? (
-          <>
-            <Field label="سازمان">
-              <select value={tenant} onChange={(e) => setTenant(e.target.value)} className="input">
-                {orgs.length === 0 && <option value={tenant}>{tenant}</option>}
-                {orgs.map((o) => <option key={o.slug} value={o.slug}>{o.name}</option>)}
-              </select>
-            </Field>
-            <Field label="نام و نام خانوادگی"><input value={fullName} onChange={(e) => setFullName(e.target.value)} className="input" /></Field>
-            <Field label="کد ملی"><input value={nationalCode} onChange={(e) => setNid(e.target.value)} className="input" inputMode="numeric" style={{ direction: 'ltr', textAlign: 'right' }} /></Field>
-            <Field label="موبایل"><input value={phone} onChange={(e) => setPhone(e.target.value)} className="input" inputMode="numeric" placeholder="۰۹۱۲…" style={{ direction: 'ltr', textAlign: 'right' }} /></Field>
-            <button onClick={signupRequestOtp} disabled={loading || !nationalCode || !phone} className="btn btn-primary w-full">{loading ? '…' : 'ارسال کد تایید'}</button>
-            <button onClick={() => { setMode('login'); setError(''); }} className="btn btn-ghost btn-sm w-full">حساب دارید؟ ورود</button>
-          </>
-        ) : step === 'id' ? (
-          <>
-            <Field label="شناسه سازمان"><input value={tenant} onChange={(e) => setTenant(e.target.value)} className="input" style={{ direction: 'ltr', textAlign: 'left' }} /></Field>
-            <Field label="کد ملی"><input value={nationalCode} onChange={(e) => setNid(e.target.value)} className="input" inputMode="numeric" style={{ direction: 'ltr', textAlign: 'right' }} /></Field>
-            <Field label="موبایل ثبت‌شده"><input value={phone} onChange={(e) => setPhone(e.target.value)} className="input" inputMode="numeric" placeholder="۰۹۱۲…" style={{ direction: 'ltr', textAlign: 'right' }} /></Field>
-            <button onClick={request} disabled={loading || !nationalCode || !phone} className="btn btn-primary w-full">{loading ? '…' : 'ارسال کد'}</button>
-            <button onClick={() => { setMode('signup'); setError(''); }} className="btn btn-ghost btn-sm w-full">حساب ندارید؟ ثبت‌نام بیمه‌گزار</button>
-          </>
-        ) : (
-          <>
-            <Field label="کد تایید"><input value={code} onChange={(e) => setCode(e.target.value)} className="input text-center tracking-[0.5em] text-lg" inputMode="numeric" placeholder="––––––" /></Field>
-            <button onClick={verify} disabled={loading || code.length < 4} className="btn btn-primary w-full">{loading ? '…' : 'ورود'}</button>
-            <button onClick={() => setStep('id')} className="btn btn-ghost btn-sm w-full">بازگشت</button>
-          </>
+        {orgs.length > 1 && (
+          <Field label="کارگزاری">
+            <select value={tenant} onChange={(e) => setTenant(e.target.value)} className="input">
+              {orgs.map((o) => <option key={o.slug} value={o.slug}>{o.name}</option>)}
+            </select>
+          </Field>
         )}
-      </div>
+        <Field label="کد بیمه‌گزار">
+          <input value={code} onChange={(e) => setCode(e.target.value)} className="input latin-digits" inputMode="numeric" autoComplete="username"
+            placeholder="مثلاً ۷۰۹۶۲۳۲" style={{ direction: 'ltr', textAlign: 'right' }} autoFocus />
+        </Field>
+        <Field label="رمز عبور">
+          <div className="relative">
+            <input value={password} onChange={(e) => setPassword(e.target.value)} className="input" type={show ? 'text' : 'password'} autoComplete="current-password"
+              style={{ direction: 'ltr', textAlign: 'right', paddingLeft: 64 }} />
+            <button type="button" onClick={() => setShow((v) => !v)} className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-bold" style={{ color: 'var(--brand)' }}>
+              {show ? 'پنهان' : 'نمایش'}
+            </button>
+          </div>
+        </Field>
+        <button type="submit" disabled={loading || !code.trim() || !password} className="btn btn-primary w-full">{loading ? '…' : 'ورود'}</button>
+        <p className="text-xs text-center" style={{ color: 'var(--muted)' }}>کد بیمه‌گزار و رمز عبور را از کارگزاری دریافت کنید.</p>
+      </form>
     </AuthCard>
   );
 }

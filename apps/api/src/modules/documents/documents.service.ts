@@ -8,7 +8,7 @@ import { getContext, getTenantIdOrThrow } from '../../common/tenant/tenant-conte
 import { branchWhere } from '../../common/tenant/branch-scope';
 import { OcrService } from '../../integrations/ocr/ocr.service';
 
-const ALLOWED_MIME = new Set(['application/pdf', 'image/jpeg', 'image/png']);
+const ALLOWED_MIME = new Set(['application/pdf', 'image/jpeg', 'image/png', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']);
 
 @Injectable()
 export class DocumentsService {
@@ -28,7 +28,7 @@ export class DocumentsService {
   ): Promise<Record<string, unknown>> {
     if (!file?.buffer?.length) throw new BadRequestException('فایلی دریافت نشد');
     if (!ALLOWED_MIME.has(file.mimetype)) {
-      throw new BadRequestException('فقط فایل‌های PDF، JPG و PNG مجاز است');
+      throw new BadRequestException('فقط فایل‌های PDF، Word، JPG و PNG مجاز است');
     }
     const tenantId = getTenantIdOrThrow();
     // Confirm the case belongs to this tenant (and the caller's branch).

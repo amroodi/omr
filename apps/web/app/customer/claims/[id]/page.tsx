@@ -144,12 +144,12 @@ export default function CustomerClaim() {
                   const older = it.documents.slice(1);
                   return (
                     <div key={it.code} className={`doc-row cu-doc tone-${story.tone}`}>
-                      <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="cu-doc-head">
                         <div className="text-sm min-w-0">
                           <div className="font-bold">{it.label}</div>
                           <div className="cu-story">{story.text}</div>
                         </div>
-                        <div className="shrink-0">
+                        <div className="cu-doc-up">
                           <DocUploadTile label={it.label} uploaded={it.uploaded} rejected={story.tone === 'bad'}
                             onUpload={(f, onP) => upload(it.code, f, onP)} />
                         </div>

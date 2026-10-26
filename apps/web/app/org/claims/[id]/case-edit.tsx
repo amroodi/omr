@@ -145,8 +145,8 @@ export function CaseEditForm({ claimId, title, onSaved }: { claimId: string; tit
             {col.title === 'اطلاعات فوت' && (
               <div className="ce-field">
                 <label className="ce-label"><span className="ce-dot" />بارگذاری فایل PDF/EXCEL ذینفع</label>
-                <div><DocUploadTile label="فایل PDF/EXCEL ذینفع" addText="افزودن فایل ذینفع" required={false} uploaded={!!benFile} disabled={busy} accept=".pdf,.xlsx,.xls" camera={false}
-                  help="فهرست ذینفعان را به صورت فایل PDF یا اکسل (XLSX، XLS) بارگذاری کنید؛ حداکثر ۱۵ مگابایت." onUpload={uploadBen} /></div>
+                <div><DocUploadTile label="فایل PDF/EXCEL ذینفع" addText="افزودن فایل ذینفع" required={false} uploaded={!!benFile} disabled={busy} accept=".pdf,.doc,.docx,.xlsx,.xls" camera={false}
+                  help="فهرست ذینفعان را به صورت فایل PDF، Word یا اکسل بارگذاری کنید؛ حداکثر ۱۵ مگابایت." onUpload={uploadBen} /></div>
                 {benFile && (
                   <button type="button" className="ce-link" onClick={() => client.download(`/claims/${claimId}/documents/${benFile.id}/file`, 'org', benFile.fileName).catch((e) => setMsg({ ok: false, text: e.message }))}>
                     دانلود فایل فعلی

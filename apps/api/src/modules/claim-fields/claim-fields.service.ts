@@ -4,7 +4,7 @@ import { AuditService } from '../../common/audit/audit.service';
 import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
 import { toJalali } from '../../common/jalali/jalali.util';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { getContext } from '../../common/tenant/tenant-context';
+import { customerOwnsClaim, getContext } from '../../common/tenant/tenant-context';
 import { validateField } from '../../common/validation/field-validation';
 
 export interface OcrDraftField {
@@ -34,7 +34,7 @@ export class ClaimFieldsService {
   /** The party (authority) the caller acts as on this claim. */
   private callerParty(claim: any): ClaimPartyType | null {
     const ctx = getContext();
-    if (ctx?.actorType === 'CUSTOMER' && claim.policyHolderId === ctx.actorId) return 'POLICYHOLDER';
+    if (ctx?.actorType === 'CUSTOMER' && customerOwnsClaim(claim)) return 'POLICYHOLDER';
     if (ctx?.actorType === 'ORG_USER') {
       if (ctx.tenantId === claim.insurerTenantId) return 'INSURER_LEVEL';
       if (ctx.tenantId === claim.brokerTenantId) return 'MOAREF';

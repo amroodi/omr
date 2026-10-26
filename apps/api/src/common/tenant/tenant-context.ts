@@ -15,6 +15,8 @@ export interface RequestContext {
   scopedPhone?: string;
   /** For the customer realm: the customer's blind-index key to match their own cases. */
   customerNidHash?: string;
+  /** For the customer realm, company login (کد بیمه‌گزار + password): the بیمه‌گزار company. */
+  customerCompanyId?: string;
   /** Org user's branch, when branch-bound. */
   branchId?: string;
   /** When true, org queries must be restricted to `branchId` (branch admin / staff). */
@@ -41,4 +43,23 @@ export function getTenantIdOrThrow(): string {
     throw new Error('No tenant in request context — TenantGuard must run before data access.');
   }
   return ctx.tenantId;
+}
+
+/**
+ * Is this claim the calling بیمه‌گزار's own? Filed by them — or, for a company login, filed for their
+ * company (including claims the brokerage filed on the company's behalf).
+ */
+export function customerOwnsClaim(claim: { policyHolderId?: string | null; policyholderCompanyId?: string | null }): boolean {
+  const ctx = getContext();
+  if (ctx?.actorType !== 'CUSTOMER' || !ctx.actorId) return false;
+  if (claim.policyHolderId === ctx.actorId) return true;
+  return !!ctx.customerCompanyId && claim.policyholderCompanyId === ctx.customerCompanyId;
+}
+
+/** Prisma filter for the calling بیمه‌گزار's own claims (see customerOwnsClaim). */
+export function customerClaimWhere(): { OR: ({ policyHolderId: string } | { policyholderCompanyId: string })[] } {
+  const ctx = getContext();
+  const or: ({ policyHolderId: string } | { policyholderCompanyId: string })[] = [{ policyHolderId: ctx?.actorId ?? '__none__' }];
+  if (ctx?.customerCompanyId) or.push({ policyholderCompanyId: ctx.customerCompanyId });
+  return { OR: or };
 }

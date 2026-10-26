@@ -606,13 +606,13 @@ html:has(.pshell) { overflow: hidden; }
 .psidebar.is-rail { width: var(--rail-w); }
 .psidebar-logo { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 16px 12px 14px; border-bottom: 1px solid var(--sidebar-border); }
 .psidebar-logo .circle {
-  width: 118px; height: 118px; border-radius: 50%; background: #fff; display: flex; align-items: center; justify-content: center;
-  overflow: hidden; box-shadow: 0 6px 16px rgba(0,0,0,0.25); transition: width 0.22s ease, height 0.22s ease;
+  width: 118px; height: 118px; display: flex; align-items: center; justify-content: center;
+  background: none; transition: width 0.22s ease, height 0.22s ease;
 }
 .psidebar.is-rail .psidebar-logo { padding: 10px 6px; }
-.psidebar.is-rail .psidebar-logo .circle { width: 40px; height: 40px; box-shadow: none; }
-.psidebar-logo .circle img { max-width: 80%; max-height: 80%; object-fit: contain; }
-.psidebar-logo .circle.has-logo { background: transparent; }
+.psidebar.is-rail .psidebar-logo .circle { width: 40px; height: 40px; }
+/* The logo alone on the navy sidebar: a fine light outline keeps its dark parts readable. */
+.psidebar-mark { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 0 1px rgba(255,255,255,.8)) drop-shadow(0 2px 6px rgba(0,0,0,.25)); }
 .psidebar-name { font-size: 0.8rem; font-weight: 700; text-align: center; line-height: 1.5; }
 .psidebar-sub { font-size: 0.72rem; color: var(--sidebar-muted); text-align: center; direction: ltr; }
 .psidebar.is-rail .psidebar-name, .psidebar.is-rail .psidebar-sub { display: none; }
@@ -1318,6 +1318,14 @@ html[data-wall] .pshell { background-blend-mode: normal; }
 @media print { .psidebar, .ptopbar, .rp-builder, .rp-wrap > .pcard:first-child, .rp-actions { display: none !important; } }
 
 /* ── بیمه‌گزار case page: precise document trail, upload ring, final submit + result page ── */
+.cu-doc { border: 1px solid var(--border); background: var(--surface); }
+/* Every document row is the same two-column grid: text on the right, a fixed-width upload control on
+   the left — so the tiles line up in one column however long the document's name is. */
+.cu-doc-head { display: grid; grid-template-columns: minmax(0, 1fr) 264px; gap: 10px 18px; align-items: center; }
+.cu-doc-up { display: flex; justify-content: flex-end; }
+.cu-doc-up .dut { width: 100%; }
+.cu-doc-up .dut-tile { flex: 1; min-width: 0; }
+@media (max-width: 640px) { .cu-doc-head { grid-template-columns: minmax(0, 1fr); } }
 .cu-doc.tone-ok { border-color: #86efac; }
 .cu-doc.tone-bad { border-color: #fca5a5; }
 .cu-story { font-size: .8rem; margin-top: 2px; color: var(--muted); }
@@ -1507,3 +1515,46 @@ code, kbd, pre, samp, .latin-digits { font-family: 'Vazirmatn', ui-monospace, SF
   border-bottom: 1px solid rgba(255,255,255,.22); box-shadow: inset 0 1px 0 rgba(255,255,255,.12); }
 .brand-bare { filter: drop-shadow(0 2px 4px rgba(0,0,0,.18)); }
 :root.dark .brand-bare { filter: drop-shadow(0 0 1px rgba(255,255,255,.75)) drop-shadow(0 0 6px rgba(255,255,255,.25)); }
+
+/* ── بیمه‌گزار panel home (customer/page.tsx), after the insurer's reference portal ── */
+:root { --cu-ink: #2b3f6b; }
+:root.dark { --cu-ink: #9db4dc; }
+.cu-intro-btn { background: var(--brand); color: #fff; font-weight: 700; font-size: .85rem; border-radius: 6px; padding: 7px 16px; white-space: nowrap; }
+.cu-intro-btn:hover { filter: brightness(1.06); }
+.cu-spec { border-radius: 28px; padding: 22px 24px 20px; display: flex; flex-direction: column; gap: 14px; }
+.cu-spec-h { display: flex; align-items: center; gap: 14px; font-weight: 800; font-size: 1rem; }
+.cu-spec-h::after { content: ''; flex: 1; height: 2px; background: var(--cu-ink); opacity: .8; border-radius: 2px; }
+.cu-spec-note { font-size: .86rem; color: var(--muted); }
+.cu-spec-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 24px; align-items: center; }
+.cu-select {
+  display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 4px 16px; border-radius: 999px;
+  border: 1.5px solid var(--border-strong); background: var(--surface); transition: border-color .15s ease, box-shadow .15s ease; min-width: 0;
+}
+.cu-select:focus-within { border-color: var(--cu-ink); box-shadow: 0 0 0 3px color-mix(in srgb, var(--cu-ink) 15%, transparent); }
+.cu-select select { flex: 1; min-width: 0; background: transparent; border: 0; outline: 0; font-size: .86rem; color: var(--text); padding: 10px 0; cursor: pointer; text-overflow: ellipsis; }
+.cu-select.is-static { font-size: .88rem; color: var(--text); }
+.cu-select-ico { display: inline-flex; flex: none; }
+.cu-spec-facts { display: flex; flex-wrap: wrap; gap: 8px 26px; font-size: .88rem; white-space: nowrap; }
+.cu-spec-facts > span { display: inline-flex; align-items: center; gap: 6px; }
+.cu-dot { width: 18px; height: 18px; border-radius: 999px; background: var(--muted); display: inline-block; }
+.cu-dot.is-on { background: #16a34a; }
+@media (max-width: 900px) { .cu-spec-row { grid-template-columns: minmax(0, 1fr); } }
+
+.cu-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px; }
+@media (max-width: 1100px) { .cu-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .cu-cards { grid-template-columns: minmax(0, 1fr); } }
+.cu-card { border-radius: 28px; padding: 22px 24px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; min-height: 230px; }
+.cu-card > div { min-width: 0; }
+.cu-card-t { font-weight: 800; font-size: .95rem; }
+.cu-card-v { font-weight: 800; font-size: 1.05rem; margin-top: 18px; overflow-wrap: anywhere; }
+.cu-card-k { font-size: .86rem; margin-top: 16px; color: var(--muted); }
+.cu-card-s { font-size: .88rem; margin-top: 8px; }
+.cu-card-ico { color: var(--cu-ink); flex: none; }
+.cu-tag { font-size: .74rem; font-weight: 600; color: var(--muted); }
+.cu-tag.is-on { color: #16a34a; }
+
+.cu-notice {
+  background: color-mix(in srgb, var(--cu-ink) 22%, var(--surface)); border-radius: 999px; padding: 12px 24px;
+  text-align: center; font-weight: 800; font-size: .86rem; line-height: 1.9;
+}
+.cu-intro { list-style: disc; padding-inline-start: 22px; font-size: .9rem; line-height: 2.1; }

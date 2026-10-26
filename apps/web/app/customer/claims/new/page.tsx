@@ -6,7 +6,7 @@ import { client, getToken } from '../../../../lib/client';
 import { CLAIM_TYPE_LABELS, ErrorBox } from '../../../components/ui';
 import { JalaliDatePicker } from '../../../components/JalaliDatePicker';
 import { Shell } from '../../../components/Shell';
-import { CUSTOMER_NAV } from '../../nav';
+import { CUSTOMER_NAV, POLICY_KEY, PolicyRow } from '../../nav';
 
 const toAscii = (s: string) => s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
 // Death claims ask for the date of death; accident disability / medical claims for the accident date.
@@ -45,6 +45,9 @@ function PField({ label, help, children }: { label: string; help?: string; child
 export default function CustomerNewClaim() {
   const router = useRouter();
   const [company, setCompany] = useState<{ name: string } | null | undefined>(undefined);
+  const [policies, setPolicies] = useState<PolicyRow[] | null>(null);
+  const [broker, setBroker] = useState('');
+  const [policyId, setPolicyId] = useState('');
   const [f, setF] = useState({ claimType: 'DEATH_ILLNESS', eventDate: '', birthDate: '', deceasedFullName: '', deceasedNationalCode: '', description: '' });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -52,8 +55,35 @@ export default function CustomerNewClaim() {
   useEffect(() => {
     if (!getToken('customer')) { router.push('/customer/login'); return; }
     client.get<{ company: { name: string } | null }>('/customer/me', 'customer').then((m) => setCompany(m.company)).catch(() => setCompany(null));
+    // The بیمه‌نامه chosen on the dashboard (?policy=…, else the remembered one), else the one in force.
+    let want = new URLSearchParams(window.location.search).get('policy') ?? '';
+    try { want = want || localStorage.getItem(POLICY_KEY) || ''; } catch { /* ignore */ }
+    client.get<{ contracts: PolicyRow[]; selectedId: string | null; brokerName: string }>('/customer/dashboard', 'customer').then((d) => {
+      setPolicies(d.contracts); setBroker(d.brokerName);
+      const pick = d.contracts.find((c) => c.id === want) ?? d.contracts.find((c) => c.id === d.selectedId) ?? d.contracts[0];
+      if (pick) choosePolicy(pick);
+    }).catch(() => setPolicies([]));
     // eslint-disable-next-line
   }, []);
+
+  const policy = policies?.find((p) => p.id === policyId) ?? null;
+  const types = policy?.claimTypes ?? Object.keys(CLAIM_TYPE_LABELS);
+  /** Select a بیمه‌نامه; keep the claim type only if that policy's line covers it. */
+  const choosePolicy = (p: PolicyRow) => {
+    setPolicyId(p.id);
+    setF((cur) => (p.claimTypes && !p.claimTypes.includes(cur.claimType) ? { ...cur, claimType: p.claimTypes[0] } : cur));
+  };
+  /** A date outside the chosen policy year → switch to the same line's policy that covers it, if any. */
+  const onEventDate = (v: string) => {
+    setF((cur) => ({ ...cur, eventDate: v }));
+    const iso = jalaliToIso(v);
+    if (!iso || !policy || !policies) return;
+    const t = new Date(iso).getTime();
+    const covers = (p: PolicyRow) => (!p.startIso || new Date(p.startIso).getTime() <= t) && (!p.endIso || new Date(p.endIso).getTime() >= t);
+    if (covers(policy)) return;
+    const other = policies.find((p) => p.line === policy.line && covers(p));
+    if (other) choosePolicy(other);
+  };
 
   const submit = async () => {
     setError('');
@@ -66,6 +96,7 @@ export default function CustomerNewClaim() {
     try {
       const payload: Record<string, string> = {
         claimType: f.claimType,
+        ...(policyId ? { contractId: policyId } : {}),
         deceasedFullName: f.deceasedFullName.trim(),
         deceasedNationalCode: toAscii(f.deceasedNationalCode).trim(),
       };
@@ -89,7 +120,7 @@ export default function CustomerNewClaim() {
           پس از ثبت پرونده، مدارک موردنیاز را در صفحهٔ پرونده بارگذاری کنید. لطفاً مشخصات بیمه‌شدهٔ متوفی و نوع پرونده را با دقت وارد نمایید.
           <div className="text-xs mt-1 font-normal">
             {company
-              ? <>پرونده برای «{company.name}» ثبت می‌شود و کارگزاری آن را بر اساس قرارداد بیمه‌ای شرکت شما به بیمه‌گر مربوط ارسال می‌کند.</>
+              ? <>پرونده برای «{company.name}» ذیل بیمه‌نامهٔ انتخاب‌شده ثبت می‌شود و کارگزاری آن را به بیمه‌گر همان بیمه‌نامه ارسال می‌کند.</>
               : company === null ? <>حساب شما هنوز به شرکت بیمه‌گزار متصل نشده است؛ برای ثبت پرونده با کارگزاری تماس بگیرید.</> : null}
           </div>
         </div>
@@ -97,9 +128,20 @@ export default function CustomerNewClaim() {
         <ErrorBox message={error} />
 
         <div className="grid md:grid-cols-2 gap-5 mt-4">
-          <PField label="نوع پرونده *" help="علت فوت یا نوع خسارت را مشخص کنید.">
+          <div className="md:col-span-2">
+            <PField label="بیمه‌نامه *" help="بیمه‌نامهٔ عمر یا حوادث شرکت که خسارت ذیل آن اعلام می‌شود؛ بیمه‌نامهٔ همان سالی را انتخاب کنید که حادثه یا فوت در آن رخ داده است.">
+              <select className="input" value={policyId} onChange={(e) => { const p = policies?.find((x) => x.id === e.target.value); if (p) choosePolicy(p); }} disabled={!policies?.length}>
+                {!policies ? <option>در حال دریافت…</option> : policies.length === 0 ? <option>بیمه‌نامه‌ای ثبت نشده است</option> : policies.map((p) => (
+                  <option key={p.id} value={p.id}>{p.lineLabel ? `${p.lineLabel} — ` : ''}شماره {p.policyNumber ?? '—'} — {p.startDate ?? '…'} تا {p.endDate ?? '…'}{p.inForce ? ' (جاری)' : ''}</option>
+                ))}
+              </select>
+            </PField>
+            {policy && <div className="text-xs mt-1" style={{ color: 'var(--muted)' }}>بیمه‌گر: {policy.insurerName} — کارگزار: {broker}</div>}
+          </div>
+
+          <PField label="نوع پرونده *" help="علت فوت یا نوع خسارت را مشخص کنید؛ فقط خسارت‌هایی که بیمه‌نامهٔ انتخاب‌شده پوشش می‌دهد فهرست شده‌اند.">
             <select className="input" value={f.claimType} onChange={(e) => setF({ ...f, claimType: e.target.value })}>
-              {Object.entries(CLAIM_TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              {types.map((v) => <option key={v} value={v}>{CLAIM_TYPE_LABELS[v] ?? v}</option>)}
             </select>
           </PField>
 
@@ -116,11 +158,11 @@ export default function CustomerNewClaim() {
           </PField>
 
           <PField label={`${eventLabel} (شمسی) *`} help={isDeath ? 'تاریخ فوت بیمه‌شده به تقویم شمسی؛ بیمه‌گر بر اساس قرارداد معتبر در این تاریخ تعیین می‌شود.' : 'تاریخ وقوع حادثه به تقویم شمسی.'}>
-            <JalaliDatePicker value={f.eventDate} onChange={(v) => setF({ ...f, eventDate: v })} placeholder="۱۴۰۵/۰۷/۰۱" />
+            <JalaliDatePicker value={f.eventDate} onChange={onEventDate} placeholder="۱۴۰۵/۰۷/۰۱" />
           </PField>
 
           <PField label={isDeath ? 'سن متوفی (هنگام فوت)' : 'سن بیمه‌شده (هنگام حادثه)'} help="از روی تاریخ تولد و تاریخ فوت محاسبه می‌شود.">
-            <input className="input" readOnly value={age != null ? `${age.toLocaleString('fa-IR')} سال` : '— (پس از ورود تاریخ‌ها)'} style={{ background: 'var(--surface-2)' }} />
+            <input className="input" readOnly value={age != null ? `${age.toLocaleString('fa-IR')} سال` : ''} placeholder="(پس از ورود تاریخ‌ها)" style={{ background: 'var(--surface-2)' }} />
           </PField>
         </div>
 
@@ -130,7 +172,7 @@ export default function CustomerNewClaim() {
         </div>
 
         <div className="flex justify-center mt-8">
-          <button onClick={submit} disabled={busy || !f.deceasedFullName || !f.deceasedNationalCode || !f.eventDate || company === null} className="btn btn-solid btn-solid-lg">
+          <button onClick={submit} disabled={busy || !f.deceasedFullName || !f.deceasedNationalCode || !f.eventDate || company === null || (policies !== null && policies.length > 0 && !policyId)} className="btn btn-solid btn-solid-lg">
             {busy ? 'در حال ثبت…' : 'ثبت پرونده و ادامه به بارگذاری مدارک'}
           </button>
         </div>

@@ -49,6 +49,28 @@ export class CustomerSignupVerifyDto extends CustomerSignupDto {
   code!: string;
 }
 
+/** بیمه‌گزار panel login: «کد بیمه‌گزار» + password. */
+export class CustomerCompanyLoginDto {
+  @ToAsciiDigits()
+  @IsString()
+  @Length(1, 40)
+  code!: string;
+
+  @IsString()
+  @Length(1, 200)
+  password!: string;
+}
+
+export class CustomerChangePasswordDto {
+  @IsString()
+  @Length(1, 200)
+  current!: string;
+
+  @IsString()
+  @Length(8, 200)
+  next!: string;
+}
+
 /** A بیمه‌گزار files their own claim; channel/معرف/policyHolder are derived from their session. */
 export class CustomerFileClaimDto {
   // The insurer is NOT chosen by the بیمه‌گزار — it comes from the brokerage's contract for their company.
@@ -71,6 +93,11 @@ export class CustomerFileClaimDto {
   @IsString()
   @Length(8, 12)
   deceasedNationalCode!: string;
+
+  // The بیمه‌نامه (عمر or حوادث contract of their company) the claim is filed under.
+  @IsOptional()
+  @IsUUID()
+  contractId?: string;
 
   // بیمه‌گزار can't know the exact amount/policy number; free-text details instead.
   @IsOptional()

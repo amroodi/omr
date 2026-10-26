@@ -17,7 +17,9 @@ export function ChangePasswordModal({ realm = 'super', onClose }: { realm?: Real
     if (next !== confirm) return setMsg({ t: 'err', m: 'رمز جدید و تکرار آن یکسان نیستند' });
     setBusy(true);
     try {
-      await client.post('/auth/change-password', { currentPassword: cur, newPassword: next }, realm);
+      // بیمه‌گزار panel: the company login's password; staff and super admin: their own account.
+      if (realm === 'customer') await client.post('/customer/password', { current: cur, next }, realm);
+      else await client.post('/auth/change-password', { currentPassword: cur, newPassword: next }, realm);
       setMsg({ t: 'ok', m: 'رمز عبور با موفقیت تغییر کرد' });
       setCur(''); setNext(''); setConfirm('');
       setTimeout(onClose, 1200);

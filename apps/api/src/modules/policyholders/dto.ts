@@ -1,4 +1,5 @@
-import { IsBoolean, IsEmail, IsISO8601, IsOptional, IsString, IsUUID, Length, ValidateIf } from 'class-validator';
+import { InsuranceLine } from '@prisma/client';
+import { IsBoolean, IsEmail, IsEnum, IsISO8601, IsOptional, IsString, IsUUID, Length, ValidateIf } from 'class-validator';
 
 export class CompanyDto {
   @IsOptional()
@@ -45,6 +46,11 @@ export class ContractDto {
   @IsOptional()
   @IsUUID()
   insurerTenantId?: string;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsEnum(InsuranceLine)
+  line?: InsuranceLine | null;
 
   @IsOptional()
   @IsString()

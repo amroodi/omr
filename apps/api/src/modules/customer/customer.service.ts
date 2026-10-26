@@ -3,7 +3,8 @@ import { AuditAction, CustomerSignupStatus } from '@prisma/client';
 import { AuditService } from '../../common/audit/audit.service';
 import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { getContext, getTenantIdOrThrow } from '../../common/tenant/tenant-context';
+import { customerClaimWhere, getContext, getTenantIdOrThrow } from '../../common/tenant/tenant-context';
+import { LINE_CLAIM_TYPES, LINE_FA } from '../policyholders/policyholders.service';
 import { toAsciiDigits, toJalali } from '../../common/jalali/jalali.util';
 import { NotificationsService } from '../notifications/notifications.service';
 
@@ -148,7 +149,59 @@ export class CustomerService {
     const c = acc.company;
     return {
       fullName: acc.fullName ? this.crypto.decrypt(acc.fullName) : null,
-      company: c ? { id: c.id, name: c.name, hasLogo: !!c.logoKey, phone: c.phone, email: c.email, address: c.address, website: c.website, contactName: c.contactName } : null,
+      companyLogin: !!ctx.customerCompanyId,
+      company: c ? { id: c.id, name: c.name, code: c.code, hasLogo: !!c.logoKey, phone: c.phone, email: c.email, address: c.address, website: c.website, contactName: c.contactName } : null,
+    };
+  }
+
+  /**
+   * The بیمه‌گزار panel home: the company's بیمه‌نامه‌ها (عمر and حوادث, every policy year — newest
+   * first, the one in force today pre-selected) and, for the chosen one, its claim totals.
+   */
+  async dashboard(contractId?: string) {
+    const ctx = getContext();
+    if (ctx?.actorType !== 'CUSTOMER' || !ctx.actorId) throw new ForbiddenException('فقط برای بیمه‌گزار');
+    const db = this.prisma.unscoped();
+    const acc = await db.customerAccount.findUnique({ where: { id: ctx.actorId }, include: { company: { include: { contracts: true } }, tenant: { select: { name: true } } } });
+    if (!acc) throw new NotFoundException('حساب یافت نشد');
+    const co = acc.company;
+    const contracts = (co?.contracts ?? []).filter((k) => k.isActive)
+      .sort((a, b) => (b.startDate?.getTime() ?? 0) - (a.startDate?.getTime() ?? 0) || (a.line === 'LIFE' ? 0 : 1) - (b.line === 'LIFE' ? 0 : 1));
+    const insurerIds = [...new Set(contracts.map((k) => k.insurerTenantId))];
+    const insurers = insurerIds.length ? await db.tenant.findMany({ where: { id: { in: insurerIds } }, select: { id: true, name: true } }) : [];
+    const iName = new Map(insurers.map((i) => [i.id, i.name]));
+    const now = new Date();
+    const inForce = (k: { startDate: Date | null; endDate: Date | null }) => (!k.startDate || k.startDate <= now) && (!k.endDate || k.endDate >= now);
+    const selected = contracts.find((k) => k.id === contractId) ?? contracts.find(inForce) ?? contracts[0] ?? null;
+
+    let stats = { total: 0, open: 0, waiting: 0, approvedCount: 0, approvedAmount: '0' };
+    if (selected) {
+      const claims = await db.claim.findMany({
+        where: { ...customerClaimWhere(), deletedAt: null, insurerTenantId: selected.insurerTenantId, policyNumber: selected.policyNumber },
+        select: { status: true, currentStage: true, claimedAmount: true, finalizedAmount: true },
+      });
+      const approved = claims.filter((c) => c.status === 'APPROVED' || c.status === 'PAID');
+      const sum = approved.reduce((t, c) => t + BigInt(Math.round(Number(c.finalizedAmount ?? c.claimedAmount ?? 0))), 0n);
+      stats = {
+        total: claims.length,
+        open: claims.filter((c) => !['APPROVED', 'PAID', 'REJECTED'].includes(c.status)).length,
+        waiting: claims.filter((c) => c.currentStage === 'POLICYHOLDER').length,
+        approvedCount: approved.length,
+        approvedAmount: sum.toString(),
+      };
+    }
+    return {
+      company: co ? { id: co.id, name: co.name, code: co.code, hasLogo: !!co.logoKey } : null,
+      brokerName: acc.tenant.name,
+      contracts: contracts.map((k) => ({
+        id: k.id, line: k.line, lineLabel: k.line ? LINE_FA[k.line] : null, policyNumber: k.policyNumber,
+        insurerName: iName.get(k.insurerTenantId) ?? '—',
+        startDate: k.startDate ? toJalali(k.startDate, false) : null, endDate: k.endDate ? toJalali(k.endDate, false) : null,
+        startIso: k.startDate?.toISOString() ?? null, endIso: k.endDate?.toISOString() ?? null,
+        inForce: inForce(k), claimTypes: k.line ? LINE_CLAIM_TYPES[k.line] : null,
+      })),
+      selectedId: selected?.id ?? null,
+      stats,
     };
   }
 
