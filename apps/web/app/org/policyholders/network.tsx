@@ -8,7 +8,7 @@ import { Overlay } from '../../components/ui';
 import { appZoom } from '../../../lib/scale';
 
 interface Contract { id: string; insurerTenantId: string; insurerName: string; policyNumber: string | null; startDate: string | null; endDate: string | null; isActive: boolean; isCurrent: boolean }
-interface Company { id: string; name: string; parentId: string | null; isActive: boolean; hasLogo: boolean; accounts: number; currentInsurer: { id: string; name: string } | null; contracts: Contract[] }
+interface Company { id: string; name: string; code: string | null; parentId: string | null; isActive: boolean; hasLogo: boolean; accounts: number; currentInsurer: { id: string; name: string } | null; contracts: Contract[] }
 interface Insurer { id: string; name: string; slug: string; hasLogo: boolean; color: string; companies: number }
 interface Network { broker: { name: string; slug: string; hasLogo: boolean }; companies: Company[]; insurers: Insurer[]; available: { id: string; name: string }[] }
 interface Line { key: string; d: string; color: string; dashed?: boolean; width: number; dim: boolean }
@@ -34,6 +34,8 @@ export function NetworkTab({ setMsg, onChanged }: { setMsg: (m: { t: 'ok' | 'err
   const [addIns, setAddIns] = useState('');
   const [lines, setLines] = useState<Line[]>([]);
   const [stacked, setStacked] = useState(false);
+  const [coQ, setCoQ] = useState('');
+  const [showAll, setShowAll] = useState(false);
   const boardRef = useRef<HTMLDivElement>(null);
   const nodes = useRef<Record<string, HTMLElement | null>>({});
   const canPartner = hasPerm('org', 'tenant:settings');
@@ -67,7 +69,7 @@ export function NetworkTab({ setMsg, onChanged }: { setMsg: (m: { t: 'ok' | 'err
     const out: Line[] = [];
     const selCompany = sel?.kind === 'company' ? net.companies.find((c) => c.id === sel.id) : null;
     for (const c of net.companies) {
-      const n = rect(`c:${c.id}`); if (!n) continue;
+      const n = rect(`c:${c.id}`); if (!n || !n.r) continue; // not drawn (filtered out of the map)
       const ins = c.currentInsurer?.id;
       const dim = !!sel && !(sel.kind === 'company' ? sel.id === c.id : sel.id === ins);
       const d = isStacked ? curve(n.cx, n.bt, hub.cx, hub.t) : curve(n.l, n.cy, hub.r, hub.cy); // RTL: companies on the right
@@ -81,7 +83,7 @@ export function NetworkTab({ setMsg, onChanged }: { setMsg: (m: { t: 'ok' | 'err
     }
     setLines(out);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [net, sel]);
+  }, [net, sel, coQ, showAll]);
   useLayoutEffect(() => { draw(); }, [draw]);
   useEffect(() => {
     const board = boardRef.current; if (!board) return;
@@ -109,6 +111,11 @@ export function NetworkTab({ setMsg, onChanged }: { setMsg: (m: { t: 'ok' | 'err
   }, `«${connect.company.name}» از طریق کارگزاری به «${connect.insurer.name}» متصل شد.`);
 
   if (!net) return <div className="card p-8 text-center"><Spinner /></div>;
+  // Many companies (the insurer's yearly list): search them, and draw a dozen unless asked for all.
+  const MAP_MAX = 12;
+  const term = coQ.trim().replace(/ي/g, 'ی').replace(/ك/g, 'ک');
+  const matching = term ? net.companies.filter((c) => c.name.includes(term) || (c.code ?? '').includes(term)) : net.companies;
+  const shown = showAll || term ? matching : matching.slice(0, MAP_MAX);
   const selCompany = sel?.kind === 'company' ? net.companies.find((c) => c.id === sel.id) : null;
   const selInsurer = sel?.kind === 'insurer' ? net.insurers.find((i) => i.id === sel.id) : null;
   const brokerLogo = net.broker.hasLogo ? `${client.base}/tenant/assets/logo?tenant=${net.broker.slug}` : null;
@@ -154,8 +161,12 @@ export function NetworkTab({ setMsg, onChanged }: { setMsg: (m: { t: 'ok' | 'err
           {/* RIGHT (first in RTL): بیمه‌گزارها */}
           <div className="space-y-2">
             <div className="text-xs font-bold text-center" style={{ color: 'var(--muted)' }}>بیمه‌گزارها ({fa(net.companies.length)})</div>
+            {net.companies.length > MAP_MAX && (
+              <input className="input" value={coQ} onChange={(e) => setCoQ(e.target.value)} placeholder="جستجوی نام یا کد بیمه‌گزار" />
+            )}
             {net.companies.length === 0 && <div className="text-xs text-center p-3" style={{ color: 'var(--muted)' }}>بیمه‌گزاری ثبت نشده است</div>}
-            {net.companies.map((c) => {
+            {term && matching.length === 0 && <div className="text-xs text-center p-3" style={{ color: 'var(--muted)' }}>بیمه‌گزاری با این نام یا کد نیست</div>}
+            {shown.map((c) => {
               const on = sel?.kind === 'company' && sel.id === c.id;
               const faded = !!sel && !on && !(sel.kind === 'insurer' && c.currentInsurer?.id === sel.id);
               return (
@@ -166,7 +177,7 @@ export function NetworkTab({ setMsg, onChanged }: { setMsg: (m: { t: 'ok' | 'err
                   {c.hasLogo ? <img src={`${client.base}/policyholder-companies/${c.id}/logo`} alt="" style={{ width: 28, height: 28, objectFit: 'contain', flexShrink: 0 }} />
                     : <span className="rounded-lg flex items-center justify-center text-xs font-bold shrink-0" style={{ width: 28, height: 28, background: 'var(--surface-2)' }}>{c.name.slice(0, 1)}</span>}
                   <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-bold truncate">{c.name}{c.parentId && <span className="text-[10px] font-normal mr-1 px-1.5 rounded" style={{ background: 'var(--surface-2)', color: 'var(--muted)' }}>زیرمجموعه</span>}</span>
+                    <span className="block text-sm font-bold truncate">{c.name}{c.code && <span className="text-[10px] font-normal mr-1" style={{ color: 'var(--muted)' }}>کد {c.code}</span>}{c.parentId && <span className="text-[10px] font-normal mr-1 px-1.5 rounded" style={{ background: 'var(--surface-2)', color: 'var(--muted)' }}>زیرمجموعه</span>}</span>
                     <span className="block text-[11px] truncate" style={{ color: c.currentInsurer ? colorOf(c.currentInsurer.id) : 'var(--warning)' }}>
                       {c.currentInsurer ? `← ${c.currentInsurer.name}` : 'به بیمه‌گری متصل نیست'}
                     </span>
@@ -174,6 +185,11 @@ export function NetworkTab({ setMsg, onChanged }: { setMsg: (m: { t: 'ok' | 'err
                 </button>
               );
             })}
+            {!term && matching.length > MAP_MAX && (
+              <button type="button" className="btn btn-ghost btn-sm w-full" onClick={() => setShowAll((v) => !v)}>
+                {showAll ? `نمایش ${fa(MAP_MAX)} بیمه‌گزار اول` : `نمایش همهٔ ${fa(matching.length)} بیمه‌گزار`}
+              </button>
+            )}
           </div>
 
           {/* CENTRE: کارگزاری (the intermediary) */}

@@ -35,23 +35,30 @@ const tabStyle = (on: boolean) => (on ? { background: 'var(--brand)', color: '#f
 const EMPTY_CO = { name: '', parentId: '', phone: '', email: '', address: '', website: '', contactName: '' };
 
 export default function Policyholders() {
-  const [tab, setTab] = useState<Tab>('map');
+  const [tab, setTab] = useState<Tab | null>(null);
+  // The connection map is the کارگزاری's view; an insurer (بیمه‌گر) panel doesn't get it at all.
+  const [isBroker, setIsBroker] = useState<boolean | null>(null);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [msg, setMsg] = useState<{ t: 'ok' | 'err'; m: string } | null>(null);
   const loadCompanies = () => client.get<Company[]>('/policyholder-companies', 'org').then(setCompanies).catch((e) => setMsg({ t: 'err', m: e.message }));
   useEffect(() => {
     const t = new URLSearchParams(window.location.search).get('tab');
-    if (t === 'messages' || t === 'accounts' || t === 'companies') setTab(t);
+    client.get<{ kind?: string }>('/tenant/branding', 'org').then((b) => {
+      const broker = b.kind !== 'INSURER';
+      setIsBroker(broker);
+      setTab(t === 'messages' || t === 'accounts' || t === 'companies' ? t : broker ? 'map' : 'companies');
+    }).catch(() => { setIsBroker(true); setTab(t === 'messages' || t === 'accounts' || t === 'companies' ? t : 'map'); }); // the API itself refuses the map to an insurer
     loadCompanies();
   }, []);
+  const tabs = TABS.filter(([k]) => k !== 'map' || isBroker);
 
   return (
     <Shell title="بیمه‌گزاران" subtitle="شرکت‌های بیمه‌گزار، اتصال هر شرکت به بیمه‌گر طبق قرارداد، و نمایندگان آن‌ها" nav={ORG_NAV} realm="org">
       <div className="flex flex-wrap gap-2 mb-4">
-        {TABS.map(([k, l]) => <button key={k} onClick={() => setTab(k)} className="btn btn-sm" style={tabStyle(tab === k)}>{l}</button>)}
+        {isBroker !== null && tabs.map(([k, l]) => <button key={k} onClick={() => setTab(k)} className="btn btn-sm" style={tabStyle(tab === k)}>{l}</button>)}
       </div>
       {msg && <div className={`${msg.t === 'ok' ? 'alert-success' : 'alert-error'} mb-3`}>{msg.m}</div>}
-      {tab === 'map' && <NetworkTab setMsg={setMsg} onChanged={loadCompanies} />}
+      {tab === 'map' && isBroker && <NetworkTab setMsg={setMsg} onChanged={loadCompanies} />}
       {tab === 'companies' && <CompaniesTab companies={companies} reload={loadCompanies} setMsg={setMsg} />}
       {tab === 'accounts' && <AccountsTab companies={companies} setMsg={setMsg} />}
       {tab === 'messages' && <MessagesTab setMsg={setMsg} />}

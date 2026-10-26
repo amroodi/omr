@@ -203,6 +203,8 @@ export class PolicyholdersService {
   async network() {
     const tenantId = getTenantIdOrThrow();
     const db = this.db();
+    const me = await db.tenant.findUnique({ where: { id: tenantId }, select: { kind: true } });
+    if (me?.kind !== 'BROKER') throw new BadRequestException('نقشهٔ اتصال‌ها فقط در پنل کارگزاری است');
     const [broker, companies, parts, allInsurers] = await Promise.all([
       db.tenant.findUnique({ where: { id: tenantId }, select: { name: true, slug: true, logoKey: true } }),
       this.list(),
