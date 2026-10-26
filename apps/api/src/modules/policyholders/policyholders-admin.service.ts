@@ -1,6 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditAction, InsuranceLine } from '@prisma/client';
-import { randomInt } from 'crypto';
 import * as ExcelJS from 'exceljs';
 import { AuditService } from '../../common/audit/audit.service';
 import { HashService } from '../../common/crypto/hash.service';
@@ -14,8 +13,8 @@ const fa = (s: string) => s.replace(/ي/g, 'ی').replace(/ك/g, 'ک').replace(/�
 const faName = (s: string) => s.replace(/ي/g, 'ی').replace(/ك/g, 'ک').replace(/[ \t]+/g, ' ').trim();
 /** "نيرو صنعت سرچشمه کد 7096232" → name + کد بیمه‌گزار. */
 const NAME_CODE = /^(.*?)\s*کد\s*[:：]?\s*([0-9۰-۹]+)\s*$/;
-// No 0/O, 1/l/I — passwords get read out over the phone.
-const PW_ALPHABET = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+/** Every new بیمه‌گزار login starts with this password; the panel asks them to change it. */
+export const DEFAULT_POLICYHOLDER_PASSWORD = 'Aa123456';
 
 export interface ImportResult {
   sheets: { name: string; line: InsuranceLine; rows: number }[];
@@ -48,7 +47,34 @@ export class PolicyholdersAdminService {
   /** Brokerages (that own companies) and insurers, for the page's pickers. */
   async options() {
     const tenants = await this.db().tenant.findMany({ where: { isActive: true }, orderBy: { name: 'asc' }, select: { id: true, name: true, slug: true, kind: true } });
-    return { brokers: tenants.filter((t) => t.kind === 'BROKER'), insurers: tenants.filter((t) => t.kind === 'INSURER') };
+    const flags = await this.db().tenant.findMany({ where: { kind: 'BROKER' }, select: { id: true, manualCompletion: true, brokerPanelPasswordHash: true } });
+    const f = new Map(flags.map((x) => [x.id, x]));
+    return {
+      brokers: tenants.filter((t) => t.kind === 'BROKER').map((t) => ({ ...t, manualCompletion: f.get(t.id)?.manualCompletion ?? true, hasBrokerPassword: !!f.get(t.id)?.brokerPanelPasswordHash })),
+      insurers: tenants.filter((t) => t.kind === 'INSURER'),
+    };
+  }
+
+  /**
+   * Per-brokerage switches: «تکمیل دستی پرونده» (staff may complete a case by hand from «ویرایش») and the
+   * password of the «broker» login on the بیمه‌گزار panel.
+   */
+  async brokerSettings(brokerTenantId: string, input: { manualCompletion?: boolean; brokerPassword?: string }) {
+    const t = await this.db().tenant.findUnique({ where: { id: brokerTenantId }, select: { kind: true } });
+    if (t?.kind !== 'BROKER') throw new BadRequestException('کارگزاری نامعتبر است');
+    if (input.brokerPassword !== undefined && input.brokerPassword.length < 8) throw new BadRequestException('رمز عبور باید دست‌کم ۸ نویسه باشد');
+    await this.db().tenant.update({
+      where: { id: brokerTenantId },
+      data: {
+        ...(input.manualCompletion !== undefined ? { manualCompletion: input.manualCompletion } : {}),
+        ...(input.brokerPassword ? { brokerPanelPasswordHash: await this.hash.hashPassword(input.brokerPassword) } : {}),
+      },
+    });
+    await this.audit.record({
+      action: AuditAction.EDIT, tenantId: brokerTenantId, targetType: 'BrokerPanelSettings',
+      metadata: { manualCompletion: input.manualCompletion, brokerPassword: input.brokerPassword ? 'changed' : undefined, by: 'super' },
+    });
+    return { ok: true };
   }
 
   async list(brokerTenantId?: string, q?: string) {
@@ -68,7 +94,7 @@ export class PolicyholdersAdminService {
     const now = new Date();
     return rows.map((r) => ({
       id: r.id, name: r.name, code: r.code, isActive: r.isActive, brokerTenantId: r.tenantId, brokerName: tName.get(r.tenantId) ?? '—',
-      hasPassword: !!r.passwordHash, passwordSetAt: r.passwordSetAt ? toJalali(r.passwordSetAt) : null,
+      hasPassword: !!r.passwordHash, mustChangePassword: r.mustChangePassword, passwordSetAt: r.passwordSetAt ? toJalali(r.passwordSetAt) : null,
       lines: [...new Set(r.contracts.filter((c) => c.isActive && c.line).map((c) => c.line as InsuranceLine))],
       contracts: r.contracts.map((c) => ({
         id: c.id, line: c.line, lineLabel: c.line ? LINE_FA[c.line] : null, policyNumber: c.policyNumber,
@@ -80,12 +106,19 @@ export class PolicyholdersAdminService {
     }));
   }
 
-  async create(input: { brokerTenantId: string; name: string; code: string }) {
+  async create(input: { brokerTenantId: string; name: string; code: string; insurerTenantId?: string; line?: InsuranceLine; policyNumber?: string; startDate?: string | null; endDate?: string | null }) {
     const broker = await this.db().tenant.findUnique({ where: { id: input.brokerTenantId }, select: { kind: true } });
     if (broker?.kind !== 'BROKER') throw new BadRequestException('کارگزاری نامعتبر است');
     const code = toAsciiDigits(input.code).trim();
     if (await this.db().policyholderCompany.findFirst({ where: { tenantId: input.brokerTenantId, code } })) throw new BadRequestException('این کد بیمه‌گزار قبلاً ثبت شده است');
-    const c = await this.db().policyholderCompany.create({ data: { tenantId: input.brokerTenantId, name: faName(input.name), code }, select: { id: true } });
+    const c = await this.db().policyholderCompany.create({
+      data: { tenantId: input.brokerTenantId, name: faName(input.name), code, passwordHash: await this.hash.hashPassword(DEFAULT_POLICYHOLDER_PASSWORD), passwordSetAt: new Date(), mustChangePassword: true },
+      select: { id: true },
+    });
+    // Optional first بیمه‌نامه (number / dates may be added later).
+    if (input.policyNumber?.trim() && input.insurerTenantId) {
+      await this.addContract(c.id, { insurerTenantId: input.insurerTenantId, line: input.line ?? 'LIFE', policyNumber: input.policyNumber, startDate: input.startDate, endDate: input.endDate });
+    }
     await this.audit.record({ action: AuditAction.CREATE, tenantId: input.brokerTenantId, targetType: 'PolicyholderCompany', targetId: c.id, metadata: { code, by: 'super' } });
     return c;
   }
@@ -108,9 +141,9 @@ export class PolicyholdersAdminService {
   async setPassword(id: string, password?: string) {
     const co = await this.company(id);
     if (!co.code) throw new BadRequestException('ابتدا کد بیمه‌گزار را ثبت کنید');
-    const pw = password?.trim() || this.newPassword();
+    const pw = password?.trim() || DEFAULT_POLICYHOLDER_PASSWORD;
     if (pw.length < 8) throw new BadRequestException('رمز عبور باید دست‌کم ۸ نویسه باشد');
-    await this.db().policyholderCompany.update({ where: { id }, data: { passwordHash: await this.hash.hashPassword(pw), passwordSetAt: new Date() } });
+    await this.db().policyholderCompany.update({ where: { id }, data: { passwordHash: await this.hash.hashPassword(pw), passwordSetAt: new Date(), mustChangePassword: pw === DEFAULT_POLICYHOLDER_PASSWORD } });
     await this.audit.record({ action: AuditAction.EDIT, tenantId: co.tenantId, targetType: 'PolicyholderPassword', targetId: id, metadata: { by: 'super' } });
     return { code: co.code, name: co.name, password: pw };
   }
@@ -265,8 +298,8 @@ export class PolicyholdersAdminService {
           co = { id: created.id, name: r.name, hasPassword: false };
         }
         if (!co.hasPassword) {
-          const password = this.newPassword();
-          await db.policyholderCompany.update({ where: { id: co.id }, data: { passwordHash: await this.hash.hashPassword(password), passwordSetAt: new Date() } });
+          const password = DEFAULT_POLICYHOLDER_PASSWORD;
+          await db.policyholderCompany.update({ where: { id: co.id }, data: { passwordHash: await this.hash.hashPassword(password), passwordSetAt: new Date(), mustChangePassword: true } });
           out.credentials.push({ code: r.code, name: r.name, password });
           co.hasPassword = true;
         }
@@ -311,11 +344,6 @@ export class PolicyholdersAdminService {
     });
   }
 
-  private newPassword() {
-    let s = '';
-    for (let i = 0; i < 10; i++) s += PW_ALPHABET[randomInt(PW_ALPHABET.length)];
-    return s;
-  }
 
   private text(v: ExcelJS.CellValue): string {
     if (v == null) return '';

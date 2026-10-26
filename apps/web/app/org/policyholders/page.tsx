@@ -72,6 +72,7 @@ function CompaniesTab({ companies, reload, setMsg }: { companies: Company[]; rel
   const [busy, setBusy] = useState(false);
   const [openId, setOpenId] = useState<string | null>(null);
   const [insurers, setInsurers] = useState<{ id: string; name: string }[]>([]);
+  const [q, setQ] = useState('');
   useEffect(() => { client.get<{ id: string; name: string }[]>('/claims/insurers', 'org').then(setInsurers).catch(() => {}); }, []);
 
   const create = async () => {
@@ -83,8 +84,11 @@ function CompaniesTab({ companies, reload, setMsg }: { companies: Company[]; rel
     } catch (e: any) { setMsg({ t: 'err', m: e.message }); } finally { setBusy(false); }
   };
 
-  const roots = companies.filter((c) => !c.parentId || !companies.some((p) => p.id === c.parentId));
-  const childrenOf = (id: string) => companies.filter((c) => c.parentId === id);
+  // Search by name, کد بیمه‌گزار or policy number; a match shows as its own card (no tree while searching).
+  const term = q.trim().replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).replace(/ي/g, 'ی').replace(/ك/g, 'ک');
+  const matches = term ? companies.filter((c) => c.name.includes(term) || (c.code ?? '').includes(term) || c.contracts.some((k) => (k.policyNumber ?? '') === term)) : companies;
+  const roots = term ? matches : companies.filter((c) => !c.parentId || !companies.some((p) => p.id === c.parentId));
+  const childrenOf = (id: string) => (term ? [] : companies.filter((c) => c.parentId === id));
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] lg:grid-cols-[320px_minmax(0,1fr)] gap-5">
@@ -105,7 +109,12 @@ function CompaniesTab({ companies, reload, setMsg }: { companies: Company[]; rel
       </div>
 
       <div className="space-y-3">
+        <div className="card p-3 flex items-center gap-2 flex-wrap">
+          <input className="input flex-1 min-w-[220px]" value={q} onChange={(e) => setQ(e.target.value)} placeholder="جستجوی بیمه‌گزار: نام، کد بیمه‌گزار یا شماره بیمه‌نامه" />
+          <span className="text-sm" style={{ color: 'var(--muted)' }}>{term ? `${matches.length.toLocaleString('fa-IR')} از ` : ''}{companies.length.toLocaleString('fa-IR')} بیمه‌گزار</span>
+        </div>
         {companies.length === 0 && <div className="card p-8 text-center text-sm" style={{ color: 'var(--muted)' }}>هنوز شرکتی ثبت نشده است.</div>}
+        {term && matches.length === 0 && <div className="card p-6 text-center text-sm" style={{ color: 'var(--muted)' }}>بیمه‌گزاری با این مشخصات پیدا نشد.</div>}
         {roots.map((c) => (
           <div key={c.id} className="space-y-2">
             <CompanyCard c={c} companies={companies} insurers={insurers} open={openId === c.id} onToggle={() => setOpenId(openId === c.id ? null : c.id)} reload={reload} setMsg={setMsg} />
@@ -154,8 +163,8 @@ function CompanyCard({ c, companies, insurers, open, onToggle, reload, setMsg, s
           {c.hasLogo ? <img src={`${client.base}/policyholder-companies/${c.id}/logo?v=${logoVer}`} alt="" style={{ width: 36, height: 36, objectFit: 'contain' }} />
             : <span className="rounded-lg flex items-center justify-center font-bold" style={{ width: 36, height: 36, background: 'var(--surface-2)', color: 'var(--muted)' }}>{c.name.slice(0, 1)}</span>}
           <span className="min-w-0">
-            <span className="font-bold block truncate">{sub ? '↳ ' : ''}{c.name}</span>
-            <span className="text-xs" style={{ color: 'var(--muted)' }}>{c.code ? `کد بیمه‌گزار ${c.code} · ` : ''}{c.accounts.toLocaleString('fa-IR')} نماینده{c.contactName ? ` · ${c.contactName}` : ''}</span>
+            <span className="font-bold block truncate">{sub ? '↳ ' : ''}{c.name}{c.code && <span className="badge badge-neutral mr-2 latin-digits" title="کد بیمه‌گزار (نام کاربری ورود)">کد {c.code}</span>}</span>
+            <span className="text-xs" style={{ color: 'var(--muted)' }}>{c.accounts.toLocaleString('fa-IR')} نماینده{c.contactName ? ` · ${c.contactName}` : ''}</span>
           </span>
         </span>
         <span className="flex items-center gap-2 flex-wrap justify-end">

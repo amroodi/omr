@@ -1,7 +1,7 @@
 'use client';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import { client, setTenantSlug, setToken } from '../../../lib/client';
+import { useState } from 'react';
+import { client, getTenantSlug, setTenantSlug, setToken } from '../../../lib/client';
 import { AuthCard } from '../../components/auth-card';
 import { ErrorBox, Field } from '../../components/ui';
 
@@ -11,21 +11,17 @@ import { ErrorBox, Field } from '../../components/ui';
  */
 export default function CustomerLogin() {
   const router = useRouter();
-  const [tenant, setTenant] = useState('damuon');
-  const [orgs, setOrgs] = useState<{ slug: string; name: string }[]>([]);
   const [code, setCode] = useState('');
   const [password, setPassword] = useState('');
   const [show, setShow] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => { client.get<{ slug: string; name: string }[]>('/customer/orgs').then(setOrgs).catch(() => {}); }, []);
-
   const login = async (e?: React.FormEvent) => {
     e?.preventDefault();
     setError(''); setLoading(true);
     try {
-      setTenantSlug(tenant);
+      setTenantSlug(process.env.NEXT_PUBLIC_TENANT_SLUG || getTenantSlug()); // the brokerage this site belongs to
       const r = await client.post<{ token: string }>('/customer/login/company', { code: code.trim(), password });
       setToken('customer', r.token);
       router.push('/customer');
@@ -36,15 +32,8 @@ export default function CustomerLogin() {
     <AuthCard title="ورود بیمه‌گزار" subtitle="اعلام و پیگیری خسارت عمر و حوادث" bg={{ light: ['cust-day-1', 'cust-day-2'], dark: ['cust-night-1'] }}>
       <form className="space-y-4" onSubmit={login}>
         <ErrorBox message={error} />
-        {orgs.length > 1 && (
-          <Field label="کارگزاری">
-            <select value={tenant} onChange={(e) => setTenant(e.target.value)} className="input">
-              {orgs.map((o) => <option key={o.slug} value={o.slug}>{o.name}</option>)}
-            </select>
-          </Field>
-        )}
         <Field label="کد بیمه‌گزار">
-          <input value={code} onChange={(e) => setCode(e.target.value)} className="input latin-digits" inputMode="numeric" autoComplete="username"
+          <input value={code} onChange={(e) => setCode(e.target.value)} className="input latin-digits" autoComplete="username" autoCapitalize="off"
             placeholder="مثلاً ۷۰۹۶۲۳۲" style={{ direction: 'ltr', textAlign: 'right' }} autoFocus />
         </Field>
         <Field label="رمز عبور">

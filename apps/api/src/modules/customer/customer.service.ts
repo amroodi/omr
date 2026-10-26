@@ -155,6 +155,8 @@ export class CustomerService {
     return {
       fullName: acc.fullName ? this.crypto.decrypt(acc.fullName) : null,
       companyLogin: !!ctx.customerCompanyId,
+      brokerPanel: !!ctx.customerBrokerPanel,
+      mustChangePassword: !!c?.mustChangePassword,
       brokerName: acc.tenant.name,
       // «۱۴۰۴/۰۹/۰۱ لغایت ۱۴۰۵/۰۹/۰۱» — the policy year in force today (sidebar, under the logo)
       policyPeriod: inForce ? `${inForce.startDate ? toJalali(inForce.startDate, false) : '…'} لغایت ${inForce.endDate ? toJalali(inForce.endDate, false) : '…'}` : null,
@@ -166,13 +168,16 @@ export class CustomerService {
    * The بیمه‌گزار panel home: the company's بیمه‌نامه‌ها (عمر and حوادث, every policy year — newest
    * first, the one in force today pre-selected) and, for the chosen one, its claim totals.
    */
-  async dashboard(contractId?: string) {
+  async dashboard(contractId?: string, companyId?: string) {
     const ctx = getContext();
     if (ctx?.actorType !== 'CUSTOMER' || !ctx.actorId) throw new ForbiddenException('فقط برای بیمه‌گزار');
     const db = this.prisma.unscoped();
     const acc = await db.customerAccount.findUnique({ where: { id: ctx.actorId }, include: { company: { include: { contracts: true } }, tenant: { select: { name: true } } } });
     if (!acc) throw new NotFoundException('حساب یافت نشد');
-    const co = acc.company;
+    // The «broker» login looks at whichever company of its brokerage it picked.
+    const co = ctx.customerBrokerPanel
+      ? (companyId ? await db.policyholderCompany.findFirst({ where: { id: companyId, tenantId: ctx.tenantId }, include: { contracts: true } }) : null)
+      : acc.company;
     const contracts = (co?.contracts ?? []).filter((k) => k.isActive)
       .sort((a, b) => (b.startDate?.getTime() ?? 0) - (a.startDate?.getTime() ?? 0) || (a.line === 'LIFE' ? 0 : 1) - (b.line === 'LIFE' ? 0 : 1));
     const insurerIds = [...new Set(contracts.map((k) => k.insurerTenantId))];
@@ -185,7 +190,7 @@ export class CustomerService {
     let stats = { total: 0, open: 0, waiting: 0, approvedCount: 0, approvedAmount: '0' };
     if (selected) {
       const claims = await db.claim.findMany({
-        where: { ...customerClaimWhere(), deletedAt: null, insurerTenantId: selected.insurerTenantId, policyNumber: selected.policyNumber },
+        where: { ...customerClaimWhere(), ...(ctx.customerBrokerPanel && co ? { policyholderCompanyId: co.id } : {}), deletedAt: null, insurerTenantId: selected.insurerTenantId, policyNumber: selected.policyNumber },
         select: { status: true, currentStage: true, claimedAmount: true, finalizedAmount: true },
       });
       const approved = claims.filter((c) => c.status === 'APPROVED' || c.status === 'PAID');
@@ -211,6 +216,33 @@ export class CustomerService {
       selectedId: selected?.id ?? null,
       stats,
     };
+  }
+
+  /** «broker» login: every بیمه‌گزار company of the brokerage (search by name / code / policy number). */
+  async brokerCompanies(q?: string) {
+    const ctx = getContext();
+    if (!ctx?.customerBrokerPanel || !ctx.tenantId) throw new ForbiddenException('فقط برای ورود کارگزاری');
+    const term = toAsciiDigits((q ?? '').trim()).replace(/ي/g, 'ی').replace(/ك/g, 'ک');
+    const db = this.prisma.unscoped();
+    const rows = await db.policyholderCompany.findMany({
+      where: {
+        tenantId: ctx.tenantId, isActive: true,
+        ...(term ? { OR: [{ name: { contains: term, mode: 'insensitive' } }, { code: { contains: term } }, { contracts: { some: { policyNumber: term } } }] } : {}),
+      },
+      orderBy: { name: 'asc' },
+      include: { contracts: { where: { isActive: true } } },
+      take: 500,
+    });
+    const counts = await db.claim.groupBy({ by: ['policyholderCompanyId'], where: { brokerTenantId: ctx.tenantId, deletedAt: null, policyholderCompanyId: { in: rows.map((r) => r.id) } }, _count: true });
+    const cMap = new Map(counts.map((c) => [c.policyholderCompanyId, c._count]));
+    const now = new Date();
+    return rows.map((r) => ({
+      id: r.id, name: r.name, code: r.code,
+      claims: cMap.get(r.id) ?? 0,
+      policies: r.contracts
+        .filter((k) => (!k.startDate || k.startDate <= now) && (!k.endDate || k.endDate >= now))
+        .map((k) => ({ line: k.line ? LINE_FA[k.line] : null, policyNumber: k.policyNumber })),
+    }));
   }
 
   async listAccounts(status?: CustomerSignupStatus) {

@@ -44,6 +44,7 @@ export class CustomerAuthService {
     if (!this.rateLimit.hit(`custpw:ip:${ip}`, 30, 600)) throw new TooManyRequestsException('تعداد تلاش‌ها زیاد است؛ چند دقیقه بعد دوباره تلاش کنید.');
     if (!this.rateLimit.hit(`custpw:code:${tenantId}:${key}`, 10, 600)) throw new TooManyRequestsException('تعداد تلاش‌ها زیاد است؛ چند دقیقه بعد دوباره تلاش کنید.');
     const db = this.prisma.unscoped();
+    if (key.toLowerCase() === 'broker') return this.brokerLogin(tenantId, password);
     const co = await db.policyholderCompany.findFirst({ where: { tenantId, code: key } });
     const ok = !!co?.isActive && !!co.passwordHash && (await this.hash.verifyPassword(co.passwordHash, password));
     if (!co || !ok) {
@@ -55,6 +56,31 @@ export class CustomerAuthService {
     const expiresIn = this.config.get<string>('JWT_SESSION_TTL', '8h');
     const token = await this.jwt.signAsync({ kind: 'customer', sub: account.id, tenantId, nidHash: account.nationalCodeHash, companyId: co.id }, { expiresIn });
     await this.audit.record({ action: AuditAction.LOGIN, tenantId, actorType: 'CUSTOMER', actorId: account.id, metadata: { realm: 'company', companyId: co.id } });
+    return { token, expiresIn };
+  }
+
+  /**
+   * The brokerage's own login on the بیمه‌گزار panel: username «broker» (typed in the کد بیمه‌گزار box),
+   * password set by super admin. It sees every company of the brokerage and files / uploads for any.
+   */
+  private async brokerLogin(tenantId: string, password: string) {
+    const db = this.prisma.unscoped();
+    const t = await db.tenant.findUnique({ where: { id: tenantId }, select: { kind: true, isActive: true, brokerPanelPasswordHash: true, name: true } });
+    const ok = t?.kind === 'BROKER' && t.isActive && !!t.brokerPanelPasswordHash && (await this.hash.verifyPassword(t.brokerPanelPasswordHash, password));
+    if (!ok) {
+      await this.audit.record({ action: AuditAction.LOGIN_FAILED, tenantId, actorType: 'CUSTOMER', metadata: { realm: 'broker-panel' } });
+      throw new ForbiddenException('کد بیمه‌گزار یا رمز عبور نادرست است.');
+    }
+    const nationalCodeHash = this.crypto.blindIndex(`broker:${tenantId}`)!;
+    const account = (await db.customerAccount.findFirst({ where: { tenantId, nationalCodeHash }, select: { id: true } }))
+      ?? (await db.customerAccount.create({
+        data: { tenantId, nationalCodeHash, nationalCode: this.crypto.encrypt('broker')!, fullName: this.crypto.encrypt(t!.name), signupStatus: 'ACTIVE', isActive: true },
+        select: { id: true },
+      }));
+    await db.customerAccount.update({ where: { id: account.id }, data: { lastLoginAt: new Date() } });
+    const expiresIn = this.config.get<string>('JWT_SESSION_TTL', '8h');
+    const token = await this.jwt.signAsync({ kind: 'customer', sub: account.id, tenantId, nidHash: nationalCodeHash, brokerPanel: true }, { expiresIn });
+    await this.audit.record({ action: AuditAction.LOGIN, tenantId, actorType: 'CUSTOMER', actorId: account.id, metadata: { realm: 'broker-panel' } });
     return { token, expiresIn };
   }
 
@@ -77,12 +103,14 @@ export class CustomerAuthService {
   /** A company login changes its own password (needs the current one). */
   async changeCompanyPassword(current: string, next: string) {
     const ctx = getContext();
+    if (ctx?.customerBrokerPanel) throw new ForbiddenException('رمز ورود کارگزاری را مدیر سامانه تغییر می‌دهد.');
     if (ctx?.actorType !== 'CUSTOMER' || !ctx.customerCompanyId) throw new ForbiddenException('فقط برای ورود با کد بیمه‌گزار');
     if (!next || next.length < 8) throw new BadRequestException('رمز عبور جدید باید دست‌کم ۸ نویسه باشد.');
     const db = this.prisma.unscoped();
     const co = await db.policyholderCompany.findUnique({ where: { id: ctx.customerCompanyId } });
     if (!co?.passwordHash || !(await this.hash.verifyPassword(co.passwordHash, current))) throw new ForbiddenException('رمز عبور فعلی نادرست است.');
-    await db.policyholderCompany.update({ where: { id: co.id }, data: { passwordHash: await this.hash.hashPassword(next), passwordSetAt: new Date() } });
+    if (next === current) throw new BadRequestException('رمز عبور جدید باید با رمز فعلی فرق داشته باشد.');
+    await db.policyholderCompany.update({ where: { id: co.id }, data: { passwordHash: await this.hash.hashPassword(next), passwordSetAt: new Date(), mustChangePassword: false } });
     await this.audit.record({ action: AuditAction.EDIT, tenantId: co.tenantId, actorType: 'CUSTOMER', actorId: ctx.actorId, targetType: 'PolicyholderPassword', targetId: co.id });
     return { ok: true };
   }

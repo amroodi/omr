@@ -10,8 +10,8 @@ import { UploadButton } from '../../components/upload';
 
 type Line = 'LIFE' | 'ACCIDENT';
 interface Contract { id: string; line: Line | null; lineLabel: string | null; policyNumber: string | null; startIso?: string | null; endIso?: string | null; insurerTenantId: string; insurerName: string; startDate: string | null; endDate: string | null; isActive: boolean; inForce: boolean }
-interface Company { id: string; name: string; code: string | null; isActive: boolean; brokerTenantId: string; brokerName: string; hasPassword: boolean; passwordSetAt: string | null; lines: Line[]; contracts: Contract[] }
-interface Opt { id: string; name: string; slug: string }
+interface Company { id: string; name: string; code: string | null; isActive: boolean; brokerTenantId: string; brokerName: string; hasPassword: boolean; mustChangePassword?: boolean; passwordSetAt: string | null; lines: Line[]; contracts: Contract[] }
+interface Opt { id: string; name: string; slug: string; manualCompletion?: boolean; hasBrokerPassword?: boolean }
 interface Cred { code: string; name: string; password: string }
 interface ImportResult {
   sheets: { name: string; line: Line; rows: number }[]; companiesCreated: number; companiesUpdated: number;
@@ -54,7 +54,8 @@ export default function AdminPolicyholders() {
   const [open, setOpen] = useState<string | null>(null);
   const [cred, setCred] = useState<Cred | null>(null);
   const [nc, setNc] = useState({ line: 'LIFE' as Line, policyNumber: '', start: '', end: '', insurerTenantId: '' });
-  const [newCo, setNewCo] = useState({ name: '', code: '' });
+  const [newCo, setNewCo] = useState({ name: '', code: '', line: 'LIFE' as Line, policyNumber: '', start: '', end: '' });
+  const [brokerPw, setBrokerPw] = useState('');
   const [picked, setPicked] = useState<Set<string>>(new Set());
   // Editing: the open company's name / code / status, and one بیمه‌نامه row at a time.
   const [editCo, setEditCo] = useState<{ id: string; name: string; code: string; isActive: boolean } | null>(null);
@@ -109,7 +110,7 @@ export default function AdminPolicyholders() {
   };
 
   const resetPw = (c: Company) => act(async () => {
-    if (!confirm(`رمز عبور تازه برای «${c.name}» ساخته شود؟ رمز قبلی دیگر کار نمی‌کند.`)) return;
+    if (!confirm(`رمز عبور «${c.name}» به رمز پیش‌فرض (Aa123456) برگردد؟ رمز فعلی دیگر کار نمی‌کند.`)) return;
     setCred(await client.post<Cred>(`/admin/policyholders/${c.id}/password`, {}, 'super'));
   });
   const addContract = (c: Company) => act(async () => {
@@ -134,10 +135,22 @@ export default function AdminPolicyholders() {
     setEditK(null);
   }, 'بیمه‌نامه ذخیره شد');
   const createCompany = () => act(async () => {
-    const r = await client.post<{ id: string }>('/admin/policyholders', { brokerTenantId: broker, name: newCo.name.trim(), code: toAscii(newCo.code.trim()) }, 'super');
-    setNewCo({ name: '', code: '' });
-    setCred(await client.post<Cred>(`/admin/policyholders/${r.id}/password`, {}, 'super'));
-  }, 'بیمه‌گزار افزوده شد');
+    const startDate = newCo.start ? jToIso(newCo.start) : null;
+    const endDate = newCo.end ? jToIso(newCo.end) : null;
+    if ((newCo.start && !startDate) || (newCo.end && !endDate)) throw new Error('تاریخ نامعتبر است (نمونه: ۱۴۰۵/۰۹/۰۱)');
+    await client.post<{ id: string }>('/admin/policyholders', {
+      brokerTenantId: broker, name: newCo.name.trim(), code: toAscii(newCo.code.trim()),
+      // optional first بیمه‌نامه
+      ...(newCo.policyNumber.trim() ? { insurerTenantId: insurer, line: newCo.line, policyNumber: toAscii(newCo.policyNumber.trim()), startDate, endDate } : {}),
+    }, 'super');
+    setNewCo({ name: '', code: '', line: 'LIFE', policyNumber: '', start: '', end: '' });
+  }, 'بیمه‌گزار افزوده شد — رمز عبور پیش‌فرض: Aa123456 (پس از ورود، خودش تغییر می‌دهد)');
+  const brokerOpt = opts?.brokers.find((b) => b.id === broker);
+  const reloadOpts = () => client.get<{ brokers: Opt[]; insurers: Opt[] }>('/admin/policyholders/options', 'super').then(setOpts).catch(() => {});
+  const setManual = (on: boolean) => act(async () => { await client.post('/admin/policyholders/broker-settings', { brokerTenantId: broker, manualCompletion: on }, 'super'); await reloadOpts(); },
+    on ? 'تکمیل دستی پرونده برای این کارگزاری باز شد' : 'تکمیل دستی پرونده برای این کارگزاری قفل شد');
+  const saveBrokerPw = () => act(async () => { await client.post('/admin/policyholders/broker-settings', { brokerTenantId: broker, brokerPassword: brokerPw }, 'super'); setBrokerPw(''); await reloadOpts(); },
+    'رمز ورود «broker» ذخیره شد');
 
   return (
     <div className="space-y-4">
@@ -200,10 +213,44 @@ export default function AdminPolicyholders() {
         {msg && <div className="alert-success">{msg}</div>}
       </div>
 
-      <div className="card p-4 grid sm:grid-cols-[1fr_1fr_auto] gap-2 items-end">
-        <label className="text-sm">نام بیمه‌گزار جدید<input className="input mt-1" value={newCo.name} onChange={(e) => setNewCo({ ...newCo, name: e.target.value })} /></label>
-        <label className="text-sm">کد بیمه‌گزار<input className="input mt-1 latin-digits" style={{ direction: 'ltr', textAlign: 'right' }} value={newCo.code} onChange={(e) => setNewCo({ ...newCo, code: e.target.value })} /></label>
-        <button className="btn btn-ghost" disabled={newCo.name.trim().length < 2 || !newCo.code.trim()} onClick={createCompany}>افزودن بیمه‌گزار</button>
+      {/* Brokerage switches: manual completion, and the «broker» login of the بیمه‌گزار panel */}
+      {brokerOpt && (
+        <div className="card p-4 grid md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <div className="font-bold text-sm">تکمیل دستی پرونده</div>
+            <p className="text-xs" style={{ color: 'var(--muted)' }}>اگر باز باشد، کاربران «{brokerOpt.name}» از تب «ویرایش» هر پرونده می‌توانند همهٔ فیلدها (حتی وضعیت ستاد، شورای فنی و حوالهٔ پرداخت) را دستی پر کنند و پرونده را تا پرداخت ببندند. گردش کار سلسله‌مراتبی هم‌زمان کار می‌کند.</p>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="checkbox" checked={brokerOpt.manualCompletion !== false} onChange={(e) => setManual(e.target.checked)} />
+              {brokerOpt.manualCompletion !== false ? 'باز است' : 'قفل است'}
+            </label>
+          </div>
+          <div className="space-y-2">
+            <div className="font-bold text-sm">ورود کارگزاری در پنل بیمه‌گزار</div>
+            <p className="text-xs" style={{ color: 'var(--muted)' }}>در صفحهٔ ورود بیمه‌گزار، به‌جای کد بیمه‌گزار «broker» و این رمز را وارد کنید؛ همهٔ بیمه‌گزاران این کارگزاری را می‌بینید و برایشان پرونده ثبت می‌کنید. {brokerOpt.hasBrokerPassword ? 'رمز تعیین شده است.' : 'هنوز رمزی تعیین نشده و این ورود غیرفعال است.'}</p>
+            <div className="flex gap-2">
+              <input className="input" type="text" autoComplete="off" style={{ direction: 'ltr', textAlign: 'right' }} placeholder="رمز جدید (دست‌کم ۸ نویسه)" value={brokerPw} onChange={(e) => setBrokerPw(e.target.value)} />
+              <button className="btn btn-primary btn-sm" disabled={brokerPw.length < 8} onClick={saveBrokerPw}>{brokerOpt.hasBrokerPassword ? 'تغییر رمز' : 'تعیین رمز'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="card p-4 space-y-3">
+        <div className="font-bold text-sm">افزودن بیمه‌گزار</div>
+        <div className="grid sm:grid-cols-2 gap-2">
+          <label className="text-sm">نام بیمه‌گزار جدید *<input className="input mt-1" value={newCo.name} onChange={(e) => setNewCo({ ...newCo, name: e.target.value })} /></label>
+          <label className="text-sm">کد بیمه‌گزار *<input className="input mt-1 latin-digits" style={{ direction: 'ltr', textAlign: 'right' }} value={newCo.code} onChange={(e) => setNewCo({ ...newCo, code: e.target.value })} /></label>
+        </div>
+        <div className="grid sm:grid-cols-4 gap-2 items-end">
+          <label className="text-xs">رشته (اختیاری)<select className="input mt-1" value={newCo.line} onChange={(e) => setNewCo({ ...newCo, line: e.target.value as Line })}><option value="LIFE">عمر</option><option value="ACCIDENT">حوادث</option></select></label>
+          <label className="text-xs">شماره بیمه‌نامه (اختیاری)<input className="input mt-1 latin-digits" style={{ direction: 'ltr', textAlign: 'right' }} value={newCo.policyNumber} onChange={(e) => setNewCo({ ...newCo, policyNumber: e.target.value })} /></label>
+          <div className="text-xs">تاریخ شروع (اختیاری)<div className="mt-1"><JalaliDatePicker value={newCo.start} onChange={(v) => setNewCo({ ...newCo, start: v })} placeholder="شروع" /></div></div>
+          <div className="text-xs">تاریخ پایان (اختیاری)<div className="mt-1"><JalaliDatePicker value={newCo.end} onChange={(v) => setNewCo({ ...newCo, end: v })} placeholder="پایان" /></div></div>
+        </div>
+        <div className="flex items-center gap-3 flex-wrap">
+          <button className="btn btn-primary btn-sm" disabled={newCo.name.trim().length < 2 || !newCo.code.trim()} onClick={createCompany}>افزودن بیمه‌گزار</button>
+          <span className="text-xs" style={{ color: 'var(--muted)' }}>رمز عبور پیش‌فرض همهٔ بیمه‌گزاران «Aa123456» است؛ پس از ورود، در پنل خودشان تغییرش می‌دهند. شماره بیمه‌نامه و تاریخ‌ها را می‌توانید بعداً هم اضافه کنید.</span>
+        </div>
       </div>
 
       <div className="card">
@@ -237,10 +284,10 @@ export default function AdminPolicyholders() {
                       <td className="font-semibold">{c.name}</td>
                       <td>{c.lines.length ? c.lines.map((l) => <span key={l} className={`badge ${l === 'LIFE' ? 'badge-success' : 'badge-warning'} ml-1`}>{LINE_FA[l]}</span>) : '—'}</td>
                       <td className="text-xs">{current.length ? current.map((k) => `${k.lineLabel ?? ''} ${k.policyNumber ?? ''}`).join(' — ') : <span style={{ color: 'var(--danger)' }}>بیمه‌نامهٔ جاری ندارد</span>}</td>
-                      <td className="text-xs">{c.hasPassword ? <span className="badge badge-success">دارد</span> : <span className="badge badge-danger">ندارد</span>}</td>
+                      <td className="text-xs">{!c.hasPassword ? <span className="badge badge-danger">ندارد</span> : c.mustChangePassword ? <span className="badge badge-warning">رمز پیش‌فرض</span> : <span className="badge badge-success">تغییر داده</span>}</td>
                       <td style={{ whiteSpace: 'nowrap' }}>
                         <button className="btn btn-ghost btn-sm" onClick={() => { setOpen(open === c.id ? null : c.id); setEditCo(null); setEditK(null); }}>{open === c.id ? 'بستن' : 'ویرایش / بیمه‌نامه‌ها'}</button>
-                        <button className="btn btn-ghost btn-sm" disabled={!c.code} onClick={() => resetPw(c)}>{c.hasPassword ? 'رمز تازه' : 'ساخت رمز'}</button>
+                        <button className="btn btn-ghost btn-sm" disabled={!c.code} onClick={() => resetPw(c)}>رمز پیش‌فرض</button>
                         <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} disabled={busyDel} onClick={() => del('one', c)}>حذف</button>
                       </td>
                     </tr>,

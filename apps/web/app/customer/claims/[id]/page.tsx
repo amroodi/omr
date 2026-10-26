@@ -9,7 +9,7 @@ import { CUSTOMER_NAV } from '../../nav';
 import { WorkflowPanel } from '../../../components/WorkflowPanel';
 import { caseTitle } from '../../../../lib/caseTitle';
 import { CaseHero, ChecklistItem, ClaimDoc, ICONS, STATUS_FA, useCase } from '../../../components/case-ui';
-import { DocUploadTile, OnProgress } from '../../../components/upload';
+import { DocUploadTile, OnProgress, UploadButton } from '../../../components/upload';
 
 const DESK_FA: Record<string, string> = { BROKER: 'کارگزاری', BRANCH: 'شعبه', HQ: 'مدیریت ستاد', COUNCIL: 'شورای فنی' };
 const OK = 'M20 6L9 17l-5-5';
@@ -45,11 +45,13 @@ export default function CustomerClaim() {
   const [lateWarn, setLateWarn] = useState(true);
   const [up, setUp] = useState<Record<string, UpState>>({});
   const [sending, setSending] = useState(false);
+  const [isBroker, setIsBroker] = useState(false); // the brokerage's «broker» login (batch upload)
 
   useEffect(() => {
     if (!getToken('customer')) { router.push('/customer/login'); return; }
     client.get<{ id: string; name: string }[]>('/customer/insurers', 'customer').then((a) => setInsurers(Object.fromEntries(a.map((i) => [i.id, i.name])))).catch(() => {});
     client.get<{ lateNoticeWarning?: boolean }>('/tenant/branding', 'customer').then((b) => setLateWarn(b.lateNoticeWarning !== false)).catch(() => {});
+    client.get<{ brokerPanel?: boolean }>('/customer/me', 'customer').then((m) => setIsBroker(!!m.brokerPanel)).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -188,6 +190,36 @@ export default function CustomerClaim() {
                 })}
               </div>
             </div>
+
+            {/* «broker» login: drop any number of files at once — they're kept as «سایر مدارک», no matter
+                which required item they belong to; each file uploads (or is refused) on its own. */}
+            {isBroker && (
+              <div className="pcard p-6 space-y-3">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <h3 className="font-extrabold">بارگذاری گروهی مدارک</h3>
+                  <UploadButton multiple camera accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" maxMB={15} className="cu-go"
+                    title="بارگذاری گروهی مدارک" subtitle="چند فایل را با هم بکشید یا انتخاب کنید"
+                    note="لازم نیست هر فایل با یکی از مدارک مورد نیاز جور باشد؛ همه با عنوان «سایر مدارک» ذخیره می‌شوند و کارگزاری و بیمه‌گر آن‌ها را می‌بینند. فایلی که قالبش مجاز نیست جدا اعلام می‌شود و بقیه بارگذاری می‌شوند."
+                    onUpload={async (file, onP) => {
+                      const fd = new FormData(); fd.append('file', file);
+                      await client.upload(`/customer/claims/${id}/documents?docCode=OTHER`, fd, 'customer', onP);
+                      await reload();
+                    }}>انتخاب چند فایل</UploadButton>
+                </div>
+                {(checklist?.otherDocuments ?? []).length === 0
+                  ? <p className="text-sm" style={{ color: 'var(--muted)' }}>هنوز فایلی به‌صورت گروهی بارگذاری نشده است.</p>
+                  : (
+                    <ul className="space-y-1.5">
+                      {(checklist?.otherDocuments ?? []).map((d) => (
+                        <li key={d.id} className="flex items-center justify-between gap-2 text-sm">
+                          <span className="truncate"><bdi>{d.fileName}</bdi>{d.uploadedAt ? <span style={{ color: 'var(--muted)' }}> — {d.uploadedAt}</span> : null}</span>
+                          <button type="button" className="cu-view" onClick={() => viewDoc(d.id)}>مشاهده</button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+              </div>
+            )}
 
             <div className="cs-actions">
               <Link href={`/customer/claims/${id}/workflow`} className="cs-act"><Icon path={ICONS.list} /> روند پرونده</Link>

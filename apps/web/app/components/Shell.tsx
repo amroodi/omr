@@ -75,10 +75,10 @@ export function Shell({
     if (realm !== 'customer') client.get<{ name: string | null }>('/auth/me', realm).then((m) => { if (active) setUserName(m.name); }).catch(() => {});
     if (realm === 'customer') {
       // The بیمه‌گزار panel shows the represented company's own name + logo (falls back to the brokerage's).
-      client.get<{ company: { id: string; name: string; hasLogo: boolean } | null; brokerName?: string; policyPeriod?: string | null }>('/customer/me', 'customer')
+      client.get<{ company: { id: string; name: string; hasLogo: boolean } | null; brokerName?: string; policyPeriod?: string | null; brokerPanel?: boolean }>('/customer/me', 'customer')
         .then((m) => {
           if (!active) return;
-          setUserName(m.company?.name ?? null);
+          setUserName(m.company?.name ?? (m.brokerPanel ? `کارگزاری — ${m.brokerName ?? ''}` : null));
           if (m.brokerName) setCard({ broker: m.brokerName, period: m.policyPeriod ?? null });
           if (!m.company) return tenantBrand();
           setBrand({ name: m.company.name, hasLogo: m.company.hasLogo, slug: getTenantSlug(), logoSrc: m.company.hasLogo ? `${client.base}/policyholder-companies/${m.company.id}/logo` : null });

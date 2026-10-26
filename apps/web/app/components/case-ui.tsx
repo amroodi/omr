@@ -18,7 +18,7 @@ export interface ClaimDoc { id: string; fileName: string; status: string; status
 export interface ChecklistItem { code: string; label: string; uploaded: boolean; latestStatus: string | null; documents: ClaimDoc[] }
 export interface Checklist { claimType: string; complete: boolean; items: ChecklistItem[]; otherDocuments?: ClaimDoc[] }
 export interface FieldRow { key: string; label: string; type: string; options: string[]; required: boolean; value: string | null; source: string | null; confirmed: boolean; canEdit: boolean }
-export interface FieldsData { party: string; groups: Record<string, FieldRow[]> }
+export interface FieldsData { party: string; manual?: boolean; groups: Record<string, FieldRow[]> }
 export interface CaseClaim {
   id: string; claimNumber: string; policyNumber?: string | null; status: string; claimType: string; insurerTenantId?: string;
   deceasedName: string | null; deceasedNationalCode?: string | null; deceasedBirthDate?: string | null; deceasedAge?: number | null;

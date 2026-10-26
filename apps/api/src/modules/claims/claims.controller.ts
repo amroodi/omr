@@ -148,8 +148,10 @@ export class ClaimsController {
 
   @Permissions(PERMISSIONS.CLAIM_PROCESS)
   @Put(':id/fields/:key')
-  setField(@Param('id') id: string, @Param('key') key: string, @Body() body: { value: string }) {
-    return this.fields.setValue(id, key, body?.value ?? '');
+  async setField(@Param('id') id: string, @Param('key') key: string, @Body() body: { value: string }) {
+    const saved = await this.fields.setValue(id, key, body?.value ?? '');
+    await this.claims.applyManualOutcome(id, key, saved.value); // «تکمیل دستی»: the case follows the typed outcome
+    return saved;
   }
 
   @Permissions(PERMISSIONS.CLAIM_PROCESS)

@@ -10,7 +10,7 @@ import { CUSTOMER_NAV, POLICY_KEY, PolicyRow } from '../nav';
 interface MyClaim {
   id: string; claimNumber: string; policyNumber?: string | null; status: string; claimType: string; deceasedName: string | null;
   needsAction: boolean; currentStageLabel?: string | null; eventDate?: string | null; createdAt?: string | null;
-  claimedAmount?: string; payableAmount?: string; finalizedAmount?: string | null;
+  claimedAmount?: string; payableAmount?: string; finalizedAmount?: string | null; policyholderCompanyId?: string | null;
 }
 type GroupBy = 'status' | 'type' | 'stage' | 'month';
 const GROUPS: [GroupBy, string][] = [
@@ -38,21 +38,25 @@ export default function CustomerTrack() {
   const [groupBy, setGroupBy] = useState<GroupBy>('status');
   const [tab, setTab] = useState<'all' | 'action'>('all');
   const [error, setError] = useState('');
+  // «broker» login: ?company=… narrows to one بیمه‌گزار
+  const [companyId, setCompanyId] = useState('');
 
   useEffect(() => {
     if (!getToken('customer')) { router.push('/customer/login'); return; }
+    const co = new URLSearchParams(window.location.search).get('company') ?? '';
+    setCompanyId(co);
     client.get<MyClaim[]>('/customer/claims', 'customer').then(setClaims).catch((e) => setError(e.message));
-    client.get<{ contracts: PolicyRow[]; selectedId: string | null; brokerName: string }>('/customer/dashboard', 'customer').then((d) => {
+    client.get<{ contracts: PolicyRow[]; selectedId: string | null; brokerName: string }>(`/customer/dashboard${co ? `?companyId=${encodeURIComponent(co)}` : ''}`, 'customer').then((d) => {
       setPolicies(d.contracts); setBroker(d.brokerName);
       let want = '';
-      try { want = localStorage.getItem(POLICY_KEY) ?? ''; } catch { /* ignore */ }
+      try { want = co ? '' : localStorage.getItem(POLICY_KEY) ?? ''; } catch { /* ignore */ }
       setPolicyId(d.contracts.some((c) => c.id === want) ? want : d.selectedId ?? 'all');
     }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const policy = policies.find((p) => p.id === policyId) ?? null;
-  const inPolicy = useMemo(() => (claims ?? []).filter((c) => !policy || c.policyNumber === policy.policyNumber), [claims, policy]);
+  const inPolicy = useMemo(() => (claims ?? []).filter((c) => (!companyId || c.policyholderCompanyId === companyId) && (!policy || c.policyNumber === policy.policyNumber)), [claims, policy, companyId]);
   const action = inPolicy.filter((c) => c.needsAction || c.status === 'RETURNED_INCOMPLETE');
   const shown = tab === 'action' ? action : inPolicy;
 
@@ -75,7 +79,7 @@ export default function CustomerTrack() {
 
   return (
     <Shell title="پیگیری خسارت" breadcrumb="پیگیری خسارت" nav={CUSTOMER_NAV} realm="customer"
-      action={<Link href={`/customer/claims/new${policy ? `?policy=${policy.id}` : ''}`} className="cu-intro-btn">+ ثبت پرونده خسارت</Link>}>
+      action={<Link href={`/customer/claims/new?${new URLSearchParams({ ...(policy ? { policy: policy.id } : {}), ...(companyId ? { company: companyId } : {}) })}`} className="cu-intro-btn">+ ثبت پرونده خسارت</Link>}>
       <ErrorBox message={error} />
       <div className="pcard cu-track">
         <div className="cu-track-head">

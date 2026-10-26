@@ -55,6 +55,7 @@ export class JwtAuthGuard implements CanActivate {
       ctx.actorType = 'CUSTOMER';
       ctx.customerNidHash = payload.nidHash;
       ctx.customerCompanyId = payload.companyId ?? undefined;
+      ctx.customerBrokerPanel = payload.brokerPanel === true;
       ctx.permissions = ['case:read'];
     } else if (payload.kind === 'super') {
       ctx.actorType = 'SUPER_ADMIN';
