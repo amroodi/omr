@@ -29,7 +29,7 @@ export function NotificationBell({ realm }: { realm: Realm }) {
   const openItem = async (it: Note) => {
     try { if (!it.readAt) { await client.post(`/notifications/${it.id}/read`, {}, realm); loadCount(); } } catch { /* ignore */ }
     setOpen(false);
-    if (it.link) router.push(it.link);
+    if (it.link) { if (/\/claims\//.test(it.link)) window.open(it.link, '_blank', 'noopener'); else router.push(it.link); }
   };
   const markAll = async () => { try { await client.post('/notifications/read-all', {}, realm); setItems((x) => x.map((i) => ({ ...i, readAt: 'x' }))); setCount(0); } catch { /* ignore */ } };
 

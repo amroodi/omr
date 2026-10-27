@@ -275,7 +275,6 @@ function WorkDesk() {
                 ) : (
                   <div className="wd-tile-count" style={{ color: 'var(--muted)', opacity: 0.6 }} title="برای مشاهدهٔ تعداد کلیک کنید">···</div>
                 )}
-                {t.actionable && <div style={{ fontSize: '0.62rem', color: 'var(--brand)', fontWeight: 700, marginTop: 2 }}>قابل اقدام شما</div>}
               </div>
             ))}
           </div>
@@ -327,8 +326,8 @@ function WorkDesk() {
                           <td><StatusBadge status={r.status} /></td>
                           <td>
                             <span className="flex items-center gap-1.5">
-                              <button onClick={() => router.push(`/org/claims/${r.id}`)} className="btn btn-ghost btn-sm">مشاهده</button>
-                              <button onClick={() => router.push(`/org/claims/${r.id}/assess`)} className="btn btn-solid btn-sm">ارزیابی</button>
+                              <a href={`/org/claims/${r.id}`} target="_blank" rel="noopener" className="btn btn-ghost btn-sm" title="باز شدن در زبانهٔ جدید">مشاهده</a>
+                              <a href={`/org/claims/${r.id}/assess`} target="_blank" rel="noopener" className="btn btn-solid btn-sm" title="باز شدن در زبانهٔ جدید">ارزیابی</a>
                             </span>
                           </td>
                         </tr>

@@ -393,7 +393,7 @@ export class InquiryService {
       payableAmount: fv.payable_amount ?? (c.claimedAmount != null ? c.claimedAmount.toString() : null),
       causeOfDeath: fv.cause_of_death ?? c.causeOfDeath ?? null,
       eventDate: c.eventDate ? toJalali(c.eventDate, false) : null,
-      createdAt: c.createdAt && !c.imported ? toJalali(c.createdAt, false) : null, // imported: only the import date
+      createdAt: c.createdAt && !(c.imported && (c.status === 'PAID' || c.status === 'REJECTED')) ? toJalali(c.createdAt, false) : null, // completed imported: only the import date
       description: c.description ?? null,
       caseNotes: fv.case_notes ?? null,
       // «پیگیری آخرین وضعیت»: dates/statuses of every executive step (typed, or implied by the hand-offs)
@@ -426,7 +426,29 @@ export class InquiryService {
       // «ویرایش» first: a hand-completed case tells its typed story (status + history), else the hierarchy's.
       story,
       imported: !!c.imported,
+      // «بررسی وضعیت مدارک»: each required document — uploaded or not, and every desk's decision
+      // (none for a hand-completed case). No files or names, only statuses.
+      documents: await this.documentStatus(c, manual),
     };
+  }
+
+  /** Read-only document checklist of a claim for the inquiry («بررسی وضعیت مدارک»). */
+  private async documentStatus(c: { id: string; insurerTenantId: string; claimType: any }, manual: boolean) {
+    const db = this.prisma.unscoped();
+    const [reqs, docs] = await Promise.all([
+      db.requiredDocument.findMany({ where: { tenantId: c.insurerTenantId, isActive: true, appliesToTypes: { has: c.claimType } }, orderBy: { order: 'asc' } }),
+      db.document.findMany({ where: { claimId: c.id }, orderBy: { createdAt: 'desc' }, select: { id: true, docCode: true, createdAt: true, verificationStatus: true } }),
+    ]);
+    const reviews = docs.length && !manual ? await db.documentReview.findMany({ where: { documentId: { in: docs.map((d) => d.id) } } }) : [];
+    const latest = new Map<string, (typeof docs)[number]>();
+    for (const d of docs) if (d.docCode && !latest.has(d.docCode)) latest.set(d.docCode, d);
+    return reqs.map((r) => {
+      const d = latest.get(r.code);
+      return {
+        label: r.label, uploaded: !!d, uploadedAt: d ? toJalali(d.createdAt) : null, verified: d?.verificationStatus === 'VERIFIED',
+        reviews: d ? reviews.filter((x) => x.documentId === d.id).map((x) => ({ stage: x.stage, state: x.state, at: x.updatedAt ? toJalali(x.updatedAt) : null })) : [],
+      };
+    });
   }
 
   private async companyOfFiler(policyHolderId: string | null): Promise<string | null> {

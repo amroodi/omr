@@ -50,8 +50,8 @@ export function BrokerHome() {
                     <td className="text-xs">{c.policies.length ? c.policies.map((p) => `${p.line ?? ''} ${p.policyNumber ?? ''}`).join(' — ') : '—'}</td>
                     <td>{faN(c.claims)}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>
-                      <Link href={`/customer/claims/new?company=${c.id}`} className="cu-more">ثبت پرونده</Link>{' '}
-                      <Link href={`/customer/claims?company=${c.id}`} className="cu-more" style={{ background: 'var(--cu-ink)' }}>پرونده‌ها</Link>
+                      <Link href={`/customer/claims/new?company=${c.id}`} target="_blank" rel="noopener" className="cu-more">ثبت پرونده</Link>{' '}
+                      <Link href={`/customer/claims?company=${c.id}`} target="_blank" rel="noopener" className="cu-more" style={{ background: 'var(--cu-ink)' }}>پرونده‌ها</Link>
                     </td>
                   </tr>
                 ))}

@@ -122,7 +122,7 @@ export default function CustomerTrack() {
                     <tbody>
                       {g.rows.map((c) => (
                         <tr key={c.id} className={c.status === 'PAID' ? 'is-paid' : c.status === 'REJECTED' ? 'is-rejected' : undefined}>
-                          <td><Link href={`/customer/claims/${c.id}/workflow`} className="cu-more">جزئیات بیشتر</Link></td>
+                          <td><Link href={`/customer/claims/${c.id}/workflow`} target="_blank" rel="noopener" className="cu-more">جزئیات بیشتر</Link></td>
                           <td className="latin-digits" style={{ whiteSpace: 'nowrap' }}>{c.claimNumber}</td>
                           <td>{c.deceasedName ?? '—'}</td>
                           <td>{CLAIM_TYPE_LABELS[c.claimType] ?? c.claimType}</td>

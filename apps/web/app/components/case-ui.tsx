@@ -127,8 +127,8 @@ export function CaseHero({ title, claim, notes, notesLabel = 'توضیحات پ�
 }) {
   const router = useRouter();
   const list = chips ?? [
-    // An imported (historical) case's filing date is only the day it was brought in — not shown.
-    ...(claim.imported ? [] : [{ label: 'تاریخ ثبت اولیه', value: dateOnly(claim.createdAt) || '—', icon: CAL }]),
+    // A completed imported (historical) case's filing date is only the day it was brought in — not shown.
+    ...(claim.imported && (claim.status === 'PAID' || claim.status === 'REJECTED') ? [] : [{ label: 'تاریخ ثبت اولیه', value: dateOnly(claim.createdAt) || '—', icon: CAL }]),
     { label: 'تاریخ پرداخت', value: claim.paidDate || '—', icon: CAL },
   ];
   return (

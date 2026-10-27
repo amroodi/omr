@@ -162,9 +162,9 @@ export class ClaimFieldsService {
    * Which story the workflow views tell, and its timeline («تاریخچه وضعیت پرونده»):
    *  - hand-completed (something typed in «ویرایش»): «وضعیت پرونده» and the stage values as typed, in order;
    *  - otherwise the hierarchy: filing, then every desk's hand-off with its Tehran date and time.
-   * Imported (historical) cases don't list a filing date — it's only the date they were brought in.
+   * Completed imported (historical) cases don't list a filing date — it's only the date they were brought in.
    */
-  async statusStory(claim: { id: string; insurerTenantId: string; createdAt: Date; imported?: boolean }) {
+  async statusStory(claim: { id: string; insurerTenantId: string; createdAt: Date; imported?: boolean; status?: string }) {
     const manual = await this.isManual(claim.id);
     if (manual) {
       const [rows, stage] = await Promise.all([
@@ -175,7 +175,7 @@ export class ClaimFieldsService {
     }
     const steps = await this.db().claimStep.findMany({ where: { claimId: claim.id, decidedAt: { not: null } }, orderBy: { order: 'asc' } });
     const history = [
-      ...(claim.imported ? [] : [{ at: toJalali(claim.createdAt, true, true), title: 'ثبت پرونده', detail: null as string | null }]),
+      ...(claim.imported && (claim.status === 'PAID' || claim.status === 'REJECTED') ? [] : [{ at: toJalali(claim.createdAt, true, true), title: 'ثبت پرونده', detail: null as string | null }]),
       ...steps.map((s) => ({
         at: toJalali(s.decidedAt!, true, true),
         title: `${s.stage ? STAGE_FA[s.stage as Stage] : 'مرحله'}: ${STEP_ACTION_FA[s.action ?? ''] ?? STEP_STATE_FA[s.state] ?? s.state}`,

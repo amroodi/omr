@@ -32,7 +32,7 @@ function Result({ r }: { r: any }) {
           </div>
           {(co?.name || r.companyName) && <div className="est-hero-sub">{co?.name || r.companyName}</div>}
           <div className="est-dates">
-            {!r.imported && <div><div className="est-date-l">تاریخ ثبت اولیه</div><div className="est-date-v"><Icon path={CAL} /> {r.createdAt || '—'}</div></div>}
+            {!(r.imported && (r.status === 'PAID' || r.status === 'REJECTED')) && <div><div className="est-date-l">تاریخ ثبت اولیه</div><div className="est-date-v"><Icon path={CAL} /> {r.createdAt || '—'}</div></div>}
             <div><div className="est-date-l">تاریخ پرداخت</div><div className="est-date-v"><Icon path={CAL} /> {r.paidDate || '—'}</div></div>
           </div>
         </div>
