@@ -6,12 +6,13 @@ import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { StorageService } from '../../common/storage/storage.service';
 import { customerClaimWhere, customerOwnsClaim, getContext } from '../../common/tenant/tenant-context';
-import { toJalali } from '../../common/jalali/jalali.util';
+import { toJalali, toPersianDigits } from '../../common/jalali/jalali.util';
 import { OcrService } from '../../integrations/ocr/ocr.service';
 import { ClaimFieldsService } from '../claim-fields/claim-fields.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PolicyholdersService } from '../policyholders/policyholders.service';
 import { PERMISSIONS } from '../../common/rbac/permissions';
+import { nextClaimNumber } from './claim-number';
 import { above, actionsFor, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, physicalActionsFor, PhysicalActionKey, physicalBelow, PhysicalState, Purpose, ReviewDesk, Stage, STAGE_FA, WorkflowAction } from './workflow';
 
 const CLAIM_DOC_MIME = new Set([
@@ -255,7 +256,7 @@ export class ClaimsService {
     const firstStage: Stage = byPolicyHolder ? 'POLICYHOLDER' : input.channel === 'BROKER' ? 'BROKER' : 'BRANCH';
 
     const nid = input.deceasedNationalCode;
-    const claimNumber = await this.newClaimNumber();
+    const claimNumber = await nextClaimNumber(db as any, input.policyNumber); // «سال/شماره بیمه‌نامه/n»
     const claim = await db.claim.create({
       data: {
         claimNumber,
@@ -937,6 +938,14 @@ export class ClaimsService {
     await this.enrichParties(claim, result);
     result.workflow = await this.workflowView(claim);
     result.policyholderCompany = await this.policyholders.contact(claim.policyholderCompanyId);
+    // «ویرایش» first: a hand-completed case tells its typed story; otherwise the hierarchy's.
+    result.story = await this.fields.statusStory(claim);
+    if (result.story.manual) {
+      // Hand-completed: the typed «وضعیت پرونده» and payment date, not the hierarchy's position / hand-off.
+      const pay = await this.db().claimFieldValue.findUnique({ where: { claimId_key: { claimId, key: 'payment_order_date' } }, select: { value: true } });
+      result.currentStageLabel = result.story.caseStage;
+      result.paidDate = pay?.value ? toPersianDigits(pay.value) : null;
+    }
     return result;
   }
 
@@ -1651,17 +1660,6 @@ export class ClaimsService {
     return getContext()?.actorId ?? null;
   }
 
-  /** Short, human-readable, sequential claim number, e.g. CLM-00042. Collision-safe. */
-  private async newClaimNumber(): Promise<string> {
-    const db = this.db();
-    let seq = (await db.claim.count()) + 1;
-    for (;;) {
-      const num = `CLM-${String(seq).padStart(5, '0')}`;
-      const exists = await db.claim.findUnique({ where: { claimNumber: num }, select: { id: true } });
-      if (!exists) return num;
-      seq++;
-    }
-  }
 
   private async reload(claimId: string) {
     const claim = await this.db().claim.findUnique({ where: { id: claimId }, include: { steps: { orderBy: { order: 'asc' } }, deficiencies: true, letters: { orderBy: { createdAt: 'asc' } } } });
@@ -1689,6 +1687,7 @@ export class ClaimsService {
       deceasedBirthDate: c.deceasedBirthDate ? toJalali(c.deceasedBirthDate, false) : null,
       deceasedAge: ageAt(c.deceasedBirthDate, c.eventDate),
       policyholderCompanyId: c.policyholderCompanyId ?? null,
+      imported: !!c.imported, // brought in from Excel («ورود دسته‌ای») — its filing date is only the import date
       noticeDeadline: c.noticeDeadline ? toJalali(c.noticeDeadline, false) : null,
       lateNotice: c.lateNotice,
       createdAt: c.createdAt ? toJalali(c.createdAt) : null,

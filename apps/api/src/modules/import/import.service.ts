@@ -6,6 +6,7 @@ import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { getTenantIdOrThrow } from '../../common/tenant/tenant-context';
 import { toAsciiDigits, fromJalali } from '../../common/jalali/jalali.util';
+import { nextClaimNumber } from '../claims/claim-number';
 
 // Accepts either English or Persian headers, mapped to canonical keys. Covers both the slim
 // phone-book layout and the full legacy claim-register export. Persian names tolerate the
@@ -198,7 +199,8 @@ export class ImportService {
 
     const amount = this.parseAmount(r.data.deathCapital) ?? this.parseAmount(r.data.payableAmount) ?? '0';
     const legacyData = Object.fromEntries(Object.entries(r.raw).filter(([k]) => !PII_HEADERS.has(k.trim())));
-    const claimNumber = await this.nextClaimNumber(db);
+    // «سال/شماره بیمه‌نامه/n» — a historical case takes the year of the death (or today when unknown)
+    const claimNumber = await nextClaimNumber(db as any, r.data.policyNumber || null, eventDate ?? new Date());
 
     const claim = await db.claim.create({
       data: {
@@ -289,16 +291,6 @@ export class ImportService {
     return pairs
       .filter(([, v]) => v != null && String(v).trim().length > 0)
       .map(([key, v]) => ({ key, value: String(v).trim() }));
-  }
-
-  private async nextClaimNumber(db: { claim: { count: () => Promise<number>; findUnique: (a: any) => Promise<any> } }): Promise<string> {
-    let seq = (await db.claim.count()) + 1;
-    for (;;) {
-      const num = `CLM-${String(seq).padStart(5, '0')}`;
-      const exists = await db.claim.findUnique({ where: { claimNumber: num }, select: { id: true } });
-      if (!exists) return num;
-      seq++;
-    }
   }
 
   // ─────────────────────────── parsing / classification ───────────────────────────

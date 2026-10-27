@@ -15,7 +15,7 @@ import { HashService } from '../../common/crypto/hash.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { RateLimitService } from '../../common/rate-limit/rate-limit.service';
 import { getContext, getTenantIdOrThrow } from '../../common/tenant/tenant-context';
-import { toJalali } from '../../common/jalali/jalali.util';
+import { toJalali, toPersianDigits } from '../../common/jalali/jalali.util';
 import { SmsService } from '../auth/sms.service';
 import { RequestOtpDto, VerifyOtpDto } from './dto';
 import { chainOf, Stage, STAGE_FA } from '../claims/workflow';
@@ -370,6 +370,10 @@ export class InquiryService {
     const nid = dec(c.deceasedNationalCode);
     const broker = c.brokerTenantId ? await this.prisma.unscoped().tenant.findUnique({ where: { id: c.brokerTenantId }, select: { name: true, contactHeader: true } }) : null;
     const iban = fv.beneficiary_iban?.replace(/\s/g, '') ?? null;
+    // «ویرایش» first: a hand-completed case shows only what the operator typed (its «وضعیت پرونده», its
+    // payment date, its own history) — none of the hierarchy's position or hand-offs.
+    const story = await this.fields.statusStory(c);
+    const manual = story.manual;
     return {
       kind: 'claim',
       claimNumber: c.claimNumber,
@@ -389,25 +393,26 @@ export class InquiryService {
       payableAmount: fv.payable_amount ?? (c.claimedAmount != null ? c.claimedAmount.toString() : null),
       causeOfDeath: fv.cause_of_death ?? c.causeOfDeath ?? null,
       eventDate: c.eventDate ? toJalali(c.eventDate, false) : null,
-      createdAt: c.createdAt ? toJalali(c.createdAt, false) : null,
+      createdAt: c.createdAt && !c.imported ? toJalali(c.createdAt, false) : null, // imported: only the import date
       description: c.description ?? null,
       caseNotes: fv.case_notes ?? null,
       // «پیگیری آخرین وضعیت»: dates/statuses of every executive step (typed, or implied by the hand-offs)
       stages: Object.fromEntries(Object.entries(await this.fields.effectiveValues(claimId)).filter(([k]) => STAGE_KEYS.has(k))), // «توضیحات پرونده» written by the organizations for the requester
       // تاریخ پرداخت — when the payment was recorded (workflow), else the payment-order date field.
-      paidDate: (() => { const p = (c.steps ?? []).find((s: any) => s.action === 'MARK_PAID' && s.decidedAt); return p?.decidedAt ? toJalali(p.decidedAt, false) : fv.payment_order_date ?? null; })(),
+      paidDate: manual ? (fv.payment_order_date ? toPersianDigits(fv.payment_order_date) : null)
+        : (() => { const p = (c.steps ?? []).find((s: any) => s.action === 'MARK_PAID' && s.decidedAt); return p?.decidedAt ? toJalali(p.decidedAt, false) : fv.payment_order_date ?? null; })(),
       // Where the claim is now + every hand-off (desk names only — operator names stay internal).
-      currentStageLabel: c.currentStage ? STAGE_FA[c.currentStage as Stage] : null,
+      currentStageLabel: manual ? story.caseStage : c.currentStage ? STAGE_FA[c.currentStage as Stage] : null,
       physicalAtLabel: STAGE_FA[(c.physicalAt as Stage | null) ?? 'POLICYHOLDER'], // where the original documents are
-      steps: (c.steps ?? []).map((s: any) => ({
+      steps: (manual ? [] : c.steps ?? []).map((s: any) => ({
         order: s.order, partyType: s.partyType, stage: s.stage ?? null, stageLabel: s.stage ? STAGE_FA[s.stage as Stage] : null,
         direction: s.direction, purpose: s.purpose ?? null, state: s.state, action: s.action ?? null, decidedAt: s.decidedAt ? toJalali(s.decidedAt) : null,
       })),
       deficiencies: (c.deficiencies ?? []).map((d: any) => ({ items: this.safeParse(d.items), resolvedAt: d.resolvedAt ? toJalali(d.resolvedAt, false) : null })),
       chain: chainOf(c).map((st) => ({ stage: st, label: STAGE_FA[st] })),
-      currentStage: c.currentStage ?? null,
-      flowDirection: c.flowDirection ?? null,
-      flowPurpose: c.flowPurpose ?? null,
+      currentStage: manual ? null : c.currentStage ?? null,
+      flowDirection: manual ? null : c.flowDirection ?? null,
+      flowPurpose: manual ? null : c.flowPurpose ?? null,
       // ذینفع‌ها — who receives the payment (IBAN masked; names as entered by the organization).
       beneficiaries: {
         type: fv.beneficiary_type ?? c.beneficiaryType ?? null,
@@ -418,6 +423,9 @@ export class InquiryService {
       company: await this.policyholders.contact(c.policyholderCompanyId ?? (await this.companyOfFiler(c.policyHolderId))),
       broker: broker ? { name: broker.name, contact: broker.contactHeader } : null,
       canMessage: !!getContext()?.scopedPhone,
+      // «ویرایش» first: a hand-completed case tells its typed story (status + history), else the hierarchy's.
+      story,
+      imported: !!c.imported,
     };
   }
 

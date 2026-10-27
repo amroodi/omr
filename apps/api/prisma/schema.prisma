@@ -657,6 +657,19 @@ model ClaimFieldDef {
   @@index([tenantId])
 }
 
+// Every value typed into a claim's stage fields from «ویرایش», in order — the case's own status history
+// («تاریخچه وضعیت پرونده») when the brokerage completes it by hand instead of through the hierarchy.
+model ClaimFieldLog {
+  id        String   @id @default(uuid())
+  claimId   String
+  key       String
+  value     String?
+  byId      String?
+  createdAt DateTime @default(now())
+
+  @@index([claimId, createdAt])
+}
+
 model ClaimFieldValue {
   id            String      @id @default(uuid())
   claimId       String

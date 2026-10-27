@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { client, Realm } from '../../lib/client';
 import { Icon } from './Shell';
-import { CLAIM_TYPE_LABELS } from './ui';
+import { CLAIM_TYPE_LABELS, Overlay } from './ui';
 import type { Workflow, TimelineStep } from './WorkflowPanel';
 
 /**
@@ -32,7 +32,15 @@ export interface CaseClaim {
   steps?: TimelineStep[];
   deficiencies?: { items: string[]; resolvedAt: string | null }[];
   workflow?: Workflow;
+  /** Brought in from Excel («ورود دسته‌ای»): its filing date is only the import date, so it isn't shown. */
+  imported?: boolean;
+  /**
+   * Which story the workflow views tell: hand-completed from «ویرایش» (`manual`: the typed «وضعیت پرونده»
+   * and the typed values' history) or the hierarchy (its hand-offs). «ویرایش» always has priority.
+   */
+  story?: CaseStory;
 }
+export interface CaseStory { manual: boolean; caseStage: string | null; history: { at: string; title: string; detail: string | null }[] }
 
 export const DEATH_TYPES = new Set(['DEATH_ILLNESS', 'DEATH_ACCIDENT']);
 export const STATUS_FA: Record<string, string> = {
@@ -70,6 +78,7 @@ export function useCase(id: string, realm: Realm = 'org') {
 
 /** Plain-language position of the case, used when no «توضیحات پرونده» was written. */
 export function phaseText(c: CaseClaim): string {
+  if (c.story?.manual && c.story.caseStage) return c.story.caseStage; // typed in «ویرایش»
   if (c.status === 'PAID') return 'پرداخت شده';
   if (c.status === 'REJECTED') return 'غیر قابل پرداخت';
   if (c.flowPurpose === 'PAYMENT') return 'در مسیر پرداخت';
@@ -118,7 +127,8 @@ export function CaseHero({ title, claim, notes, notesLabel = 'توضیحات پ�
 }) {
   const router = useRouter();
   const list = chips ?? [
-    { label: 'تاریخ ثبت اولیه', value: dateOnly(claim.createdAt) || '—', icon: CAL },
+    // An imported (historical) case's filing date is only the day it was brought in — not shown.
+    ...(claim.imported ? [] : [{ label: 'تاریخ ثبت اولیه', value: dateOnly(claim.createdAt) || '—', icon: CAL }]),
     { label: 'تاریخ پرداخت', value: claim.paidDate || '—', icon: CAL },
   ];
   return (
@@ -173,7 +183,9 @@ export function InfoRow({ label, value, tone }: { label: string; value: ReactNod
 export function CaseSummary({ claim, fv }: { claim: CaseClaim; fv: Record<string, string> }) {
   const isDeath = DEATH_TYPES.has(claim.claimType);
   const name = claim.deceasedName || fv.full_name;
-  const statusText = `${STATUS_FA[claim.status] ?? claim.status}${claim.currentStageLabel ? ` — ${claim.currentStageLabel}` : ''}`;
+  const statusText = claim.story?.manual
+    ? (claim.story.caseStage || STATUS_FA[claim.status] || claim.status) // typed in «ویرایش»
+    : `${STATUS_FA[claim.status] ?? claim.status}${claim.currentStageLabel ? ` — ${claim.currentStageLabel}` : ''}`;
   const d = (k: string) => (fv[k] ? faD(fv[k]) : null);
   return (
     <div className="cs-cols">
@@ -213,18 +225,22 @@ export function PersonCards({ claim, fv }: { claim: CaseClaim; fv: Record<string
 }
 
 /** Each executive step of the case: its date field and its status field (WORKFLOW_STAGE fields). */
-const WF_STEPS: { label: string; date?: string; status?: string; extra?: string }[] = [
-  { label: 'اعلام کارگزاری به بیمه‌گر', date: 'broker_to_insurer_date', status: 'broker_to_insurer_status' },
+const WF_STEPS: { label: string; date?: string; status?: string; amount?: boolean }[] = [
+  // In the order things happen: the death is reported first, then the brokerage reports it to the insurer.
   { label: 'اعلام فوت', date: 'death_notice_date', status: 'death_notice_status' },
+  { label: 'اعلام کارگزاری به بیمه‌گر', date: 'broker_to_insurer_date', status: 'broker_to_insurer_status' },
   { label: 'مراحل اجرایی', status: 'execution_stages' },
   { label: 'درخواست مدارک', date: 'docs_request_date', status: 'docs_request_status' },
   { label: 'دریافت مدارک', date: 'docs_receive_date', status: 'docs_receive_status' },
   { label: 'درخواست کسری مدارک', date: 'missing_docs_request_date', status: 'missing_docs_request_status' },
-  { label: 'تکمیل پرونده', date: 'case_complete_date', status: 'case_complete_status', extra: 'case_complete' },
+  { label: 'تکمیل پرونده', date: 'case_complete_date', status: 'case_complete' },
+  { label: 'وضعیت تکمیل پرونده', status: 'case_complete_status' },
   { label: 'ارسال به ستاد', date: 'send_to_hq_date', status: 'send_to_hq_status' },
   { label: 'تایید شورای فنی و سایر', date: 'council_approve_date', status: 'council_approve_status' },
   { label: 'برگشت به شعبه', date: 'return_to_branch_date', status: 'return_to_branch_status' },
-  { label: 'حواله پرداخت', date: 'payment_order_date', status: 'payment_order_status', extra: 'payment_order' },
+  { label: 'حواله پرداخت', date: 'payment_order_date', status: 'payment_order_status' },
+  { label: 'مبلغ حواله پرداخت', status: 'payment_order', amount: true },
+  { label: 'وضعیت پرونده', status: 'case_stage' },
 ];
 /** Group 874's table: every executive step with its date and status, then «توضیحات پرونده». */
 export function WorkflowStepsTable({ claim, fv }: { claim: CaseClaim; fv: Record<string, string> }) {
@@ -238,8 +254,8 @@ export function WorkflowStepsTable({ claim, fv }: { claim: CaseClaim; fv: Record
               <div className="cs-table-b">
                 {WF_STEPS.map((s) => {
                   const date = s.date ? fv[s.date] : '';
-                  const status = [s.extra && s.extra !== 'payment_order' ? fv[s.extra] : '', s.status ? fv[s.status] : '', s.extra === 'payment_order' && fv.payment_order ? `حواله: ${fv.payment_order}` : '']
-                    .filter(Boolean).join(' — ');
+                  const raw = s.status ? fv[s.status] : '';
+                  const status = raw && s.amount ? (fmtAmount(raw) ?? raw) : raw;
                   const done = !!(date || status);
                   return (
                     <div key={s.label} className="cs-tr cs-grid-wf">
@@ -258,4 +274,51 @@ export function WorkflowStepsTable({ claim, fv }: { claim: CaseClaim; fv: Record
               </div>
             </section>
   );
+}
+
+
+/**
+ * «تاریخچه وضعیت پرونده»: a button that opens the case's status history with Tehran date and time —
+ * the values typed in «ویرایش» for a hand-completed case, otherwise the hierarchy's hand-offs.
+ */
+export function StatusHistoryButton({ story, className = 'cu-outline' }: { story?: CaseStory; className?: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" className={className} onClick={() => setOpen(true)} disabled={!story}>تاریخچه وضعیت پرونده</button>
+      {open && story && (
+        <Overlay onClose={() => setOpen(false)}>
+          <div className="pmodal" style={{ maxWidth: 760 }} onClick={(e) => e.stopPropagation()}>
+            <div className="pmodal-head"><span className="pmodal-title">تاریخچه وضعیت پرونده</span><button className="pmodal-x" onClick={() => setOpen(false)} aria-label="بستن">×</button></div>
+            <div className="pmodal-body">
+              {story.history.length === 0 ? <p className="text-sm" style={{ color: 'var(--muted)' }}>هنوز وضعیتی ثبت نشده است.</p> : (
+                <ul className="cs-hist">
+                  {story.history.map((h, i) => (
+                    <li key={i}>
+                      <span className="cs-hist-main"><span className="cs-hist-at">{h.at}</span> - {h.title}{story.manual && h.detail ? `: ${h.detail}` : ''}</span>
+                      {!story.manual && h.detail && <span className="cs-hist-note">- {h.detail}</span>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div className="flex border-t" style={{ borderColor: 'var(--border)' }}>
+              <button type="button" onClick={() => setOpen(false)} className="flex-1 py-3 font-bold" style={{ color: 'var(--brand)' }}>متوجه شدم</button>
+            </div>
+          </div>
+        </Overlay>
+      )}
+    </>
+  );
+}
+
+/** The typed history of a hand-completed case, as a simple list (where the hierarchy's route would be). */
+export function ManualStoryList({ story }: { story: CaseStory }) {
+  return story.history.length === 0
+    ? <p className="text-sm p-3" style={{ color: 'var(--muted)' }}>هنوز وضعیتی در «ویرایش» ثبت نشده است.</p>
+    : (
+      <ul className="cs-hist p-3">
+        {story.history.map((h, i) => <li key={i}><span className="cs-hist-main"><span className="cs-hist-at">{h.at}</span> - {h.title}: {h.detail}</span></li>)}
+      </ul>
+    );
 }

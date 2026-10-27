@@ -35,7 +35,8 @@ export default function CaseDocumentsPage() {
   useEffect(() => { setCanFile(hasPerm('org', 'claim:file')); }, []);
 
   // Desk columns: the review desks that appear on this case's documents (کارگزاری, شعبه, ستاد, شورای فنی).
-  const desks = (() => {
+  const manual = !!claim?.story?.manual; // completed by hand in «ویرایش» — its typed data has priority
+  const desks = manual ? [] : (() => {
     const seen = new Set<string>();
     checklist?.items.forEach((it) => it.documents[0]?.reviews?.forEach((r) => seen.add(r.stage)));
     const order = ['BROKER', 'BRANCH', 'HQ', 'COUNCIL'];
@@ -107,7 +108,27 @@ export default function CaseDocumentsPage() {
               </div>
             </section>
 
-            {/* مسیر گردش کار — every hand-off of the case with ✓ (sent on / approved) or ✕ (returned / rejected) */}
+            {/* مسیر گردش کار — every hand-off of the case with ✓ (sent on / approved) or ✕ (returned / rejected);
+                for a hand-completed case, the statuses typed in «ویرایش» instead */}
+            {manual && claim.story ? (
+              <section className="cs-table">
+                <div className="cs-table-h cs-grid-route">
+                  <span className="cs-th-main"><span className="cs-ico sm"><Icon path={ICONS.route} /></span>وضعیت پرونده (ثبت‌شده در ویرایش)</span>
+                  <span>وضعیت</span>
+                  <span>تاریخ و ساعت ثبت</span>
+                </div>
+                <div className="cs-table-b">
+                  {claim.story.history.length === 0 && <div className="cs-tr"><span className="cs-td-main">هنوز وضعیتی ثبت نشده است.</span></div>}
+                  {claim.story.history.map((h, i) => (
+                    <div key={i} className="cs-tr cs-grid-route">
+                      <span className="cs-td-main">{faN(i + 1)}. {h.title}</span>
+                      <span className="cs-td-status"><span className="min-w-0">{h.detail || '—'}</span><Mark state="ok" title={h.detail || ''} /></span>
+                      <span className="cs-td-date">{h.at}</span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : (
             <section className="cs-table">
               <div className="cs-table-h cs-grid-route">
                 <span className="cs-th-main"><span className="cs-ico sm"><Icon path={ICONS.route} /></span>مسیر گردش کار</span>
@@ -132,6 +153,7 @@ export default function CaseDocumentsPage() {
                 })}
               </div>
             </section>
+            )}
 
             {claim.deficiencies && claim.deficiencies.length > 0 && (
               <section className="cs-table">

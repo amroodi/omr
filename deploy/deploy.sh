@@ -29,8 +29,8 @@ set -a; source "$API_ENV"; set +a          # DATABASE_URL (+ optional PUBLIC_* f
 PUBLIC_API_BASE="${OVERRIDE_API_BASE:-${PUBLIC_API_BASE:-https://omr.damuon.com/api/v1}}"
 PUBLIC_TENANT_SLUG="${OVERRIDE_TENANT_SLUG:-${PUBLIC_TENANT_SLUG:-damuon}}"
 
-echo "==> Prisma: generate client + apply migrations + sync system-role permissions"
-( cd apps/api && npx prisma generate && npx prisma migrate deploy && npx ts-node prisma/sync-roles.ts )
+echo "==> Prisma: generate client + apply migrations + sync system-role permissions + case numbers"
+( cd apps/api && npx prisma generate && npx prisma migrate deploy && npx ts-node prisma/sync-roles.ts && npx ts-node prisma/renumber-claims.ts )
 
 echo "==> Building API"
 npm --workspace apps/api run build

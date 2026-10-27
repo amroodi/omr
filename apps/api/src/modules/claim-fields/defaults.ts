@@ -4,6 +4,12 @@ const MOAREF: ClaimPartyType = 'MOAREF';
 const INS: ClaimPartyType = 'INSURER_LEVEL';
 const BOTH: ClaimPartyType[] = ['MOAREF', 'INSURER_LEVEL'];
 
+/** «وضعیت پرونده» — where a hand-completed case is (typed by the operator in «ویرایش»). */
+export const CASE_STAGE_OPTIONS = [
+  'نزد بیمه‌گزار', 'نزد کارگزاری', 'نزد شعبه', 'نزد مدیریت ستاد', 'نزد شورای فنی',
+  'در انتظار پرداخت', 'پرداخت شده', 'رد شده', 'بسته شده',
+];
+
 export interface FieldDefSeed {
   key: string;
   label: string;
@@ -43,8 +49,8 @@ export const DEFAULT_CLAIM_FIELDS: FieldDefSeed[] = [
   // وضعیت fields are SELECT with common presets; the UI also lets the user type a custom value.
   { key: 'broker_to_insurer_date', label: 'تاریخ اعلام کارگزاری به بیمه‌گر', type: 'DATE', group: 'WORKFLOW_STAGE', editableBy: [MOAREF], order: 30 },
   { key: 'broker_to_insurer_status', label: 'وضعیت اعلام کارگزاری به بیمه‌گر', type: 'SELECT', group: 'WORKFLOW_STAGE', editableBy: [MOAREF], options: ['نامه اعلام فوت و ارسال مدارک ارسال شد', 'نامه اعلام فوت ارسال شد', 'در حال پیگیری', 'انجام شد'], order: 31 },
-  { key: 'death_notice_date', label: 'تاریخ اعلام فوت', type: 'DATE', group: 'WORKFLOW_STAGE', editableBy: [MOAREF], order: 32 },
-  { key: 'death_notice_status', label: 'وضعیت اعلام فوت', type: 'SELECT', group: 'WORKFLOW_STAGE', editableBy: [MOAREF], options: ['نامه اعلام فوت ارسال شد', 'نامه ارسال مدارک ارسال شد', 'در حال پیگیری', 'انجام شد'], order: 33 },
+  { key: 'death_notice_date', label: 'تاریخ اعلام فوت', type: 'DATE', group: 'WORKFLOW_STAGE', editableBy: [MOAREF], order: 28 },
+  { key: 'death_notice_status', label: 'وضعیت اعلام فوت', type: 'SELECT', group: 'WORKFLOW_STAGE', editableBy: [MOAREF], options: ['نامه اعلام فوت ارسال شد', 'نامه ارسال مدارک ارسال شد', 'در حال پیگیری', 'انجام شد'], order: 29 },
   { key: 'execution_stages', label: 'مراحل اجرایی', type: 'TEXT', group: 'WORKFLOW_STAGE', editableBy: BOTH, order: 34 },
 
   // ── Workflow stages: document handling ──
@@ -69,5 +75,7 @@ export const DEFAULT_CLAIM_FIELDS: FieldDefSeed[] = [
   { key: 'payment_order_status', label: 'وضعیت حواله پرداخت', type: 'SELECT', group: 'WORKFLOW_STAGE', editableBy: [INS], options: ['حواله پرداخت ثبت شد', 'پرداخت شد', 'در انتظار پرداخت'], order: 57 },
   { key: 'payment_order', label: 'حواله پرداخت', type: 'TEXT', group: 'WORKFLOW_STAGE', editableBy: [INS], order: 58 },
 
+  // Where the case is now, typed by the operator when completing it by hand (drives «وضعیت پرونده» everywhere).
+  { key: 'case_stage', label: 'وضعیت پرونده', type: 'SELECT', group: 'WORKFLOW_STAGE', editableBy: BOTH, options: CASE_STAGE_OPTIONS, order: 59 },
   { key: 'case_notes', label: 'توضیحات پرونده', type: 'TEXT', group: 'WORKFLOW_STAGE', editableBy: BOTH, order: 60 },
 ];

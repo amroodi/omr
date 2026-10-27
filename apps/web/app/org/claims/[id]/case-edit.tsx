@@ -17,7 +17,7 @@ const COLUMNS: { title: string; keys: string[] }[] = [
   { title: 'اطلاعات فوت', keys: ['death_kind', 'death_date', 'cause_of_death', 'beneficiary_type', 'beneficiaries', 'beneficiary_iban'] },
 ];
 const STEPS = [
-  'death_notice_date', 'death_notice_status', 'broker_to_insurer_date',
+  'case_stage', 'death_notice_date', 'death_notice_status', 'broker_to_insurer_date',
   'broker_to_insurer_status', 'docs_request_date', 'docs_request_status',
   'docs_receive_date', 'docs_receive_status', 'missing_docs_request_date',
   'missing_docs_request_status', 'case_complete', 'case_complete_date',
