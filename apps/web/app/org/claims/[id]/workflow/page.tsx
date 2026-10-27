@@ -7,7 +7,7 @@ import { ErrorBox, FancyLoader } from '../../../../components/ui';
 import { ORG_NAV } from '../../../nav';
 import { caseTitle } from '../../../../../lib/caseTitle';
 import { downloadPdf } from '../../../../../lib/pdf';
-import { CaseHero, ICONS, PersonCards, phaseText, useCase, WorkflowStepsTable } from '../../../../components/case-ui';
+import { CaseHero, ICONS, PersonCards, phaseText, StatusHistoryButton, useCase, WorkflowStepsTable } from '../../../../components/case-ui';
 
 
 /** «مراحل و وضعیت گردش کار» (Group 874): every executive step with its date and status, as a table. */
@@ -37,6 +37,7 @@ export default function CaseWorkflowPage() {
           <div className="cs-actions no-print">
             <button type="button" className="cs-act" onClick={pdf} disabled={saving}><Icon path={ICONS.pdf} /> {saving ? 'در حال ساخت PDF…' : 'دانلود PDF'}</button>
             <Link href={`/org/claims/${id}/documents`} className="cs-act is-alt"><Icon path={ICONS.doc} /> بررسی وضعیت مدارک</Link>
+            <StatusHistoryButton story={claim.story} className="cs-act is-alt" />
           </div>
         </>
       )}

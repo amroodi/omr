@@ -2,10 +2,34 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { AuditAction, ClaimPartyType, FieldSource } from '@prisma/client';
 import { AuditService } from '../../common/audit/audit.service';
 import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
-import { toJalali } from '../../common/jalali/jalali.util';
+import { fromJalali, toJalali } from '../../common/jalali/jalali.util';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { customerOwnsClaim, getContext } from '../../common/tenant/tenant-context';
 import { validateField } from '../../common/validation/field-validation';
+import { Stage, STAGE_FA } from '../claims/workflow';
+
+/** What each hand-off did, for «تاریخچه وضعیت پرونده» of a case moved by the hierarchy. */
+const STEP_ACTION_FA: Record<string, string> = {
+  SUBMIT: 'ارسال پرونده', FORWARD: 'تایید و ارسال به مرحلهٔ بعد', REFER_COUNCIL: 'ارجاع به شورای فنی', PAY_ORDER: 'دستور پرداخت',
+  RETURN: 'عودت برای رفع نقص', RETURN_DIRECT: 'عودت مستقیم به بیمه‌گزار', DOWN_FORWARD: 'ارسال به مرحلهٔ پایین‌تر',
+  DOWN_DIRECT: 'ارسال مستقیم به بیمه‌گزار', MARK_PAID: 'پرداخت خسارت', REJECT_FINAL: 'رد نهایی پرونده',
+};
+const STEP_STATE_FA: Record<string, string> = {
+  FORWARDED: 'تایید و ارسال', ESCALATED: 'ارجاع به سطح بالاتر', APPROVED: 'تایید شد', RETURNED_INCOMPLETE: 'عودت برای رفع نقص', REJECTED: 'رد شد', ACKED: 'دریافت و ارسال',
+};
+
+/**
+ * The executive-stage fields («مراحل اجرایی» dates and statuses, «وضعیت پرونده», «حواله پرداخت»). Once an
+ * operator has typed any of them for a case, the case is hand-completed: every workflow view shows only
+ * what was typed, and nothing is filled in from the hierarchy's own hand-offs.
+ */
+export const MANUAL_FLOW_KEYS = new Set([
+  'death_notice_date', 'death_notice_status', 'broker_to_insurer_date', 'broker_to_insurer_status',
+  'docs_request_date', 'docs_request_status', 'docs_receive_date', 'docs_receive_status',
+  'missing_docs_request_date', 'missing_docs_request_status', 'case_complete', 'case_complete_date', 'case_complete_status',
+  'send_to_hq_date', 'send_to_hq_status', 'return_to_branch_date', 'return_to_branch_status',
+  'council_approve_date', 'council_approve_status', 'payment_order_date', 'payment_order_status', 'payment_order', 'case_stage',
+]);
 
 export interface OcrDraftField {
   key: string;
@@ -107,6 +131,66 @@ export class ClaimFieldsService {
   }
 
   /** Field values the claim record already implies (deceased, dates, company, policy number…). */
+  /**
+   * Hand-completed? — some stage field holds a typed value (a confirmed one; an unconfirmed OCR guess
+   * doesn't count). Then «ویرایش» has priority over the hierarchy in every view of the case.
+   */
+  async isManual(claimId: string): Promise<boolean> {
+    const n = await this.db().claimFieldValue.count({
+      where: { claimId, key: { in: [...MANUAL_FLOW_KEYS] }, value: { not: null }, NOT: { value: '' }, source: { not: 'OCR' } },
+    });
+    return n > 0;
+  }
+
+  /**
+   * «تاریخچه وضعیت پرونده» of a hand-completed case: every stage value typed in «ویرایش», oldest first,
+   * with the field's label and Tehran date/time.
+   */
+  async manualHistory(claim: { id: string; insurerTenantId: string }) {
+    const [logs, defs] = await Promise.all([
+      this.db().claimFieldLog.findMany({ where: { claimId: claim.id, key: { in: [...MANUAL_FLOW_KEYS] } }, orderBy: { createdAt: 'asc' } }),
+      this.db().claimFieldDef.findMany({ where: { tenantId: claim.insurerTenantId }, select: { key: true, label: true, type: true } }),
+    ]);
+    const d = new Map(defs.map((x) => [x.key, x]));
+    return logs.filter((l) => l.value).map((l) => ({
+      at: toJalali(l.createdAt, true, true), key: l.key, label: d.get(l.key)?.label ?? l.key,
+      value: d.get(l.key)?.type === 'DATE' ? toJalali(this.isoOfJalali(l.value!) ?? l.createdAt, false) : l.value!,
+    }));
+  }
+
+  /**
+   * Which story the workflow views tell, and its timeline («تاریخچه وضعیت پرونده»):
+   *  - hand-completed (something typed in «ویرایش»): «وضعیت پرونده» and the stage values as typed, in order;
+   *  - otherwise the hierarchy: filing, then every desk's hand-off with its Tehran date and time.
+   * Imported (historical) cases don't list a filing date — it's only the date they were brought in.
+   */
+  async statusStory(claim: { id: string; insurerTenantId: string; createdAt: Date; imported?: boolean }) {
+    const manual = await this.isManual(claim.id);
+    if (manual) {
+      const [rows, stage] = await Promise.all([
+        this.manualHistory(claim),
+        this.db().claimFieldValue.findUnique({ where: { claimId_key: { claimId: claim.id, key: 'case_stage' } }, select: { value: true } }),
+      ]);
+      return { manual, caseStage: stage?.value || null, history: rows.map((r) => ({ at: r.at, title: r.label, detail: r.value })) };
+    }
+    const steps = await this.db().claimStep.findMany({ where: { claimId: claim.id, decidedAt: { not: null } }, orderBy: { order: 'asc' } });
+    const history = [
+      ...(claim.imported ? [] : [{ at: toJalali(claim.createdAt, true, true), title: 'ثبت پرونده', detail: null as string | null }]),
+      ...steps.map((s) => ({
+        at: toJalali(s.decidedAt!, true, true),
+        title: `${s.stage ? STAGE_FA[s.stage as Stage] : 'مرحله'}: ${STEP_ACTION_FA[s.action ?? ''] ?? STEP_STATE_FA[s.state] ?? s.state}`,
+        detail: s.note ?? null,
+      })),
+    ];
+    return { manual, caseStage: null, history };
+  }
+
+  /** A typed Jalali date "1405/08/05" back to a Date (for display only; null when it isn't one). */
+  private isoOfJalali(v: string): Date | null {
+    const m = v.replace(/[۰-۹]/g, (x) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(x))).match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+    return m ? fromJalali(`${m[1]}/${m[2]}/${m[3]}`) : null;
+  }
+
   private async claimFacts(claim: any): Promise<Record<string, string | null>> {
     const jd = (d: Date | null) => (d ? toJalali(d, false).replace(/[۰-۹]/g, (x) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(x))) : null);
     const company = claim.policyholderCompanyId
@@ -126,7 +210,8 @@ export class ClaimFieldsService {
     const toBranch = first((s) => s.stage === 'HQ' && s.direction === 'DOWN' && s.purpose === 'PAYMENT');
     const paid = first((s) => s.action === 'MARK_PAID');
     const at = (s: { decidedAt: Date | null } | null) => (s?.decidedAt ? jd(s.decidedAt) : null);
-    const flow: Record<string, string | null> = {
+    const manual = await this.isManual(claim.id);
+    const hierarchy: Record<string, string | null> = {
       broker_to_insurer_date: at(brokerFwd),
       broker_to_insurer_status: brokerFwd ? 'پرونده و مدارک به بیمه‌گر ارسال شد' : null,
       missing_docs_request_date: at(returned),
@@ -141,6 +226,8 @@ export class ClaimFieldsService {
       payment_order_status: paid ? 'پرداخت شد' : payOrder ? 'حواله پرداخت ثبت شد' : null,
       case_notes: claim.status === 'PAID' ? 'پرداخت شده' : claim.status === 'REJECTED' ? 'غیر قابل پرداخت' : null,
     };
+    // A hand-completed case shows only what the operator typed (no dates/statuses from the hand-offs).
+    const flow: Record<string, string | null> = manual ? { case_notes: hierarchy.case_notes } : hierarchy;
     return {
       ...flow,
       full_name: claim.deceasedFullName ? this.crypto.decrypt(claim.deceasedFullName) : null,
@@ -175,6 +262,9 @@ export class ClaimFieldsService {
       create: { claimId, key, value, source, confirmedById: actor, confirmedAt: new Date(), updatedById: actor },
     });
     await this.syncPolicyNumber(claimId, key, saved.value);
+    if (MANUAL_FLOW_KEYS.has(key) && (existing?.value ?? '') !== (saved.value ?? '')) {
+      await this.db().claimFieldLog.create({ data: { claimId, key, value: saved.value, byId: actor } });
+    }
     await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'ClaimField', targetId: claimId, metadata: { key, source } });
     return { key, value: saved.value, source: saved.source, confirmed: true };
   }

@@ -1628,3 +1628,11 @@ code, kbd, pre, samp, .latin-digits { font-family: 'Vazirmatn', ui-monospace, SF
 .cu-kv:nth-of-type(even) { background: var(--surface-2); }
 .cu-process-foot { font-size: .82rem; color: var(--muted); }
 @media (max-width: 560px) { .cu-kv { grid-template-columns: minmax(0, 1fr); gap: 2px; } }
+
+/* «تاریخچه وضعیت پرونده» list (case-ui StatusHistoryButton / ManualStoryList) */
+.cs-hist { list-style: none; margin: 0; padding: 0; }
+.cs-hist li { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 4px; border-bottom: 1px solid var(--border-strong); font-size: .88rem; }
+.cs-hist-main { color: #16a34a; font-weight: 700; }
+.cs-hist-at { color: #2563eb; font-weight: 700; }
+.cs-hist-note { color: var(--text); font-weight: 700; }
+.cu-kv-btns { display: flex; justify-content: flex-start; background: var(--surface-2); }

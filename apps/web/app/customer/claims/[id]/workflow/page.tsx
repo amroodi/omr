@@ -8,7 +8,7 @@ import { ACTION_FA, STATE_FA, WorkflowPanel, TimelineStep } from '../../../../co
 import { CLAIM_TYPE_LABELS } from '../../../../components/ui';
 import { CUSTOMER_NAV } from '../../../nav';
 import { caseTitle } from '../../../../../lib/caseTitle';
-import { CaseClaim, CaseHero, PersonCards, phaseText, STATUS_FA, useCase, WorkflowStepsTable } from '../../../../components/case-ui';
+import { CaseClaim, CaseHero, DEATH_TYPES, PersonCards, phaseText, STATUS_FA, StatusHistoryButton, useCase, WorkflowStepsTable } from '../../../../components/case-ui';
 
 const rial = (v?: string | number | null) => (v == null || v === '' ? '—' : `${Number(v).toLocaleString('fa-IR')} ریال`);
 
@@ -31,8 +31,10 @@ function ResultBox({ c }: { c: CaseClaim & { payableAmount?: string; paidDate?: 
 }
 
 /** «فرایند رسیدگی پرونده»: a vertical timeline — filing, then every hand-off, then payment. */
-function ProcessTimeline({ c }: { c: CaseClaim & { steps?: TimelineStep[]; paidDate?: string | null; createdAt?: string | null } }) {
-  const steps = (c.steps ?? []).filter((s) => s.state !== 'PENDING' || s.order === Math.max(...(c.steps ?? []).map((x) => x.order)));
+function ProcessTimeline({ c, fv }: { c: CaseClaim & { steps?: TimelineStep[]; paidDate?: string | null; createdAt?: string | null }; fv: Record<string, string> }) {
+  // A hand-completed case («ویرایش») tells only what was typed; otherwise the hierarchy's hand-offs.
+  const manual = !!c.story?.manual;
+  const steps = manual ? [] : (c.steps ?? []).filter((s) => s.state !== 'PENDING' || s.order === Math.max(...(c.steps ?? []).map((x) => x.order)));
   return (
     <section className="cu-process">
       <h3>فرایند رسیدگی پرونده</h3>
@@ -41,10 +43,19 @@ function ProcessTimeline({ c }: { c: CaseClaim & { steps?: TimelineStep[]; paidD
           <div className="cu-node-t">ثبت پرونده :</div>
           <div className="cu-kv"><b>شماره پرونده :</b><span className="latin-digits">{c.claimNumber}</span></div>
           <div className="cu-kv"><b>نوع خسارت :</b><span>{CLAIM_TYPE_LABELS[c.claimType] ?? c.claimType}</span></div>
-          <div className="cu-kv"><b>تاریخ ثبت پرونده :</b><span>{c.createdAt ?? '—'}</span></div>
-          <div className="cu-kv"><b>تاریخ وقوع :</b><span>{c.eventDate ?? '—'}</span></div>
+          {!c.imported && <div className="cu-kv"><b>تاریخ ثبت پرونده :</b><span>{c.createdAt ?? '—'}</span></div>}
+          <div className="cu-kv"><b>{DEATH_TYPES.has(c.claimType) ? 'تاریخ فوت' : 'تاریخ وقوع'} :</b><span>{c.eventDate ?? '—'}</span></div>
+          {DEATH_TYPES.has(c.claimType) && <div className="cu-kv"><b>علت فوت :</b><span>{fv.cause_of_death || fv.death_kind || '—'}</span></div>}
           <div className="cu-kv"><b>مبلغ برآوردی :</b><span>{rial(c.claimedAmount)}</span></div>
+          <div className="cu-kv cu-kv-btns"><StatusHistoryButton story={c.story} /></div>
         </li>
+        {manual && (c.story?.history ?? []).map((h, i) => (
+          <li key={`m${i}`} className="is-done">
+            <div className="cu-node-t">{h.title} :</div>
+            <div className="cu-kv"><b>وضعیت :</b><span>{h.detail || '—'}</span></div>
+            <div className="cu-kv"><b>تاریخ و ساعت ثبت :</b><span>{h.at}</span></div>
+          </li>
+        ))}
         {steps.map((s) => {
           const pending = s.state === 'PENDING';
           const back = s.action === 'RETURN' || s.action === 'RETURN_DIRECT' || s.state === 'REJECTED' || s.state === 'RETURNED_INCOMPLETE';
@@ -60,7 +71,7 @@ function ProcessTimeline({ c }: { c: CaseClaim & { steps?: TimelineStep[]; paidD
             </li>
           );
         })}
-        {c.status === 'PAID' && (
+        {c.status === 'PAID' && !manual && (
           <li className="is-done">
             <div className="cu-node-t">پرداخت خسارت :</div>
             <div className="cu-kv"><b>وضعیت :</b><span>دستور پرداخت صادر شد</span></div>
@@ -69,7 +80,7 @@ function ProcessTimeline({ c }: { c: CaseClaim & { steps?: TimelineStep[]; paidD
           </li>
         )}
       </ol>
-      <p className="cu-process-foot">وضعیت فعلی: {STATUS_FA[c.status] ?? c.status}</p>
+      <p className="cu-process-foot">وضعیت فعلی: {manual ? (c.story?.caseStage || STATUS_FA[c.status] || c.status) : (STATUS_FA[c.status] ?? c.status)}</p>
     </section>
   );
 }
@@ -96,7 +107,7 @@ export default function CustomerCaseWorkflow() {
           </div>
           <div className="pcard p-6 space-y-5">
             <ResultBox c={claim as any} />
-            <ProcessTimeline c={claim as any} />
+            <ProcessTimeline c={claim as any} fv={fv} />
             {/* sending the documents on is «ثبت نهایی» on the case page (it shows the outcome page) */}
             {claim.workflow && (claim.workflow.actions.some((a) => a.key !== 'SUBMIT') || (claim.workflow.physical?.actions.length ?? 0) > 0) && (
               <WorkflowPanel claimId={id} workflow={{ ...claim.workflow, actions: claim.workflow.actions.filter((a) => a.key !== 'SUBMIT') }} realm="customer" onDone={reload} />

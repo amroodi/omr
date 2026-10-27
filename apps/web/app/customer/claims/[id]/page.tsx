@@ -20,9 +20,11 @@ const RESULT_KEY = (id: string) => `submitResult:${id}`;
 type UpState = { pct: number; eta: number | null } | { done: true } | { error: string };
 
 /** Plain-language status of one required document, from its upload and every desk's decision. */
-function docStory(it: ChecklistItem): { tone: 'ok' | 'bad' | 'wait' | 'none'; text: string } {
+function docStory(it: ChecklistItem, manual = false): { tone: 'ok' | 'bad' | 'wait' | 'none'; text: string } {
   const d = it.documents[0];
   if (!d) return { tone: 'none', text: 'هنوز بارگذاری نشده است' };
+  // A hand-completed case («ویرایش») has no desk-by-desk review to tell.
+  if (manual) return { tone: 'ok', text: 'بارگذاری شد' };
   const rv = d.reviews ?? [];
   const rejected = rv.find((r) => r.state === 'REJECTED');
   if (rejected) return { tone: 'bad', text: `${DESK_FA[rejected.stage] || rejected.stage} این مدرک را رد کرد؛ لطفاً مدرک صحیح را دوباره بارگذاری کنید` };
@@ -140,7 +142,7 @@ export default function CustomerClaim() {
               </div>
               <div className="space-y-2.5">
                 {checklist?.items.map((it) => {
-                  const story = docStory(it);
+                  const story = docStory(it, !!claim.story?.manual);
                   const st = up[it.code];
                   const d = it.documents[0] as ClaimDoc | undefined;
                   const older = it.documents.slice(1);
@@ -162,7 +164,7 @@ export default function CustomerClaim() {
                       {d && (
                         <div className="cu-trail">
                           <span className="cu-step is-ok"><Icon path={OK} />بارگذاری{d.uploadedAt ? ` — ${d.uploadedAt}` : ''}{d.version > 1 ? ` (نسخهٔ ${d.version.toLocaleString('fa-IR')})` : ''}</span>
-                          {(d.reviews ?? []).map((r) => (
+                          {(claim.story?.manual ? [] : d.reviews ?? []).map((r) => (
                             <span key={r.stage} className={`cu-step is-${r.state === 'APPROVED' ? 'ok' : r.state === 'REJECTED' ? 'no' : 'wait'}`} title={r.note ? `دلیل: ${r.note}` : undefined}>
                               <Icon path={r.state === 'APPROVED' ? OK : r.state === 'REJECTED' ? NO : 'M12 22a10 10 0 100-20 10 10 0 000 20zM12 7v5l3 2'} />
                               {DESK_FA[r.stage] || r.stage}: {r.state === 'APPROVED' ? 'تایید شد' : r.state === 'REJECTED' ? 'رد شد' : 'در انتظار بررسی'}{r.changedAt && r.state !== 'PENDING' ? ` — ${r.changedAt}` : ''}
@@ -228,7 +230,9 @@ export default function CustomerClaim() {
                   <Icon path={OK} /> {sending ? 'در حال ثبت…' : 'ثبت نهایی'}
                 </button>
               ) : (
-                <span className="cu-sent"><Icon path={OK} /> {claim.workflow?.currentStage
+                <span className="cu-sent"><Icon path={OK} /> {claim.story?.manual
+                  ? <>وضعیت پرونده: {claim.story.caseStage || (STATUS_FA[claim.status] ?? claim.status)}</>
+                  : claim.workflow?.currentStage
                   ? <>مدارک ثبت نهایی شده و پرونده نزد «{claim.workflow.currentStageLabel}» است.</>
                   : <>پرونده بسته شده است ({STATUS_FA[claim.status] ?? claim.status}).</>}</span>
               )}

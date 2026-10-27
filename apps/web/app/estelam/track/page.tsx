@@ -6,7 +6,7 @@ import { downloadPdf } from '../../../lib/pdf';
 import { BrandMark } from '../../components/brand';
 import { Icon } from '../../components/Shell';
 import { Spinner } from '../../components/ui';
-import { CaseClaim, CaseHero, ICONS, PersonCards, phaseText, WorkflowStepsTable } from '../../components/case-ui';
+import { CaseClaim, CaseHero, ICONS, PersonCards, phaseText, StatusHistoryButton, WorkflowStepsTable } from '../../components/case-ui';
 
 const REFRESH_MS = 30_000;
 
@@ -18,6 +18,7 @@ function asCase(r: any): CaseClaim {
     noticeDeadline: null, lateNotice: false, claimedAmount: '0',
     currentStageLabel: r.currentStageLabel, flowDirection: r.flowDirection, flowPurpose: r.flowPurpose,
     policyholderCompany: r.company?.name || r.companyName ? { name: r.company?.name || r.companyName, phone: null } : null,
+    imported: !!r.imported, story: r.story,
   };
 }
 
@@ -96,10 +97,11 @@ export default function EstelamTrack() {
             <div className="trk2-live no-pdf" aria-live="polite">
               {expired
                 ? <>زمان این استعلام به پایان رسیده است؛ برای دیدن آخرین وضعیت <Link href="/">دوباره استعلام کنید</Link>.</>
-                : <><span className="trk2-dot" />پیگیری زنده — هر ۳۰ ثانیه به‌روز می‌شود{updatedAt ? ` (آخرین به‌روزرسانی: ${updatedAt.toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })})` : ''}</>}
+                : <><span className="trk2-dot" />پیگیری زنده — هر ۳۰ ثانیه به‌روز می‌شود{updatedAt ? ` (آخرین به‌روزرسانی: ${updatedAt.toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Asia/Tehran' })})` : ''}</>}
             </div>
             <div className="trk2-actions no-pdf">
               <button type="button" className="trk2-pdf" onClick={pdf} disabled={saving}><Icon path={ICONS.pdf} /> {saving ? 'در حال ساخت…' : 'دانلود PDF'}</button>
+              <StatusHistoryButton story={r?.story} className="trk2-pdf" />
             </div>
           </>
         )}

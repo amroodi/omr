@@ -53,11 +53,17 @@ export function JalaliDatePicker({ value, onChange, placeholder }: { value: stri
   const isToday = (d: number) => t.jy === view.y && t.jm === view.m && t.jd === d;
   const years = Array.from({ length: t.jy + 2 - FIRST_YEAR + 1 }, (_, i) => t.jy + 2 - i); // newest first
 
-  // Typing: keep digits + slashes; auto-insert slashes after the year and month.
+  // Typing: only digits count; the slashes are put in automatically — «14050805» or «1405/08/05» both
+  // become «1405/08/05», and a slash appears as soon as the year (4 digits) or month (2 more) is typed.
+  // Deleting works normally (no slash is re-added while the text is getting shorter).
   const onType = (raw: string) => {
-    let s = asc(raw).replace(/[^\d/]/g, '');
-    if (/^\d{5,}$/.test(s)) s = `${s.slice(0, 4)}/${s.slice(4, 6)}${s.length > 6 ? `/${s.slice(6, 8)}` : ''}`;
-    onChange(s.slice(0, 10));
+    const d = asc(raw).replace(/\D/g, '').slice(0, 8);
+    let s = d.slice(0, 4);
+    if (d.length > 4) s += `/${d.slice(4, 6)}`;
+    if (d.length > 6) s += `/${d.slice(6, 8)}`;
+    const growing = asc(raw).length > (value || '').length;
+    if (growing && (d.length === 4 || d.length === 6)) s += '/';
+    onChange(s);
   };
   // When a typed date becomes complete, move the calendar to it.
   useEffect(() => { if (parsed && parsed.jy >= FIRST_YEAR && parsed.jy <= t.jy + 2) setView({ y: parsed.jy, m: parsed.jm }); /* eslint-disable-next-line */ }, [value]);
