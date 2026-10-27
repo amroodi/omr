@@ -43,7 +43,7 @@ function ProcessTimeline({ c, fv }: { c: CaseClaim & { steps?: TimelineStep[]; p
           <div className="cu-node-t">ثبت پرونده :</div>
           <div className="cu-kv"><b>شماره پرونده :</b><span className="latin-digits">{c.claimNumber}</span></div>
           <div className="cu-kv"><b>نوع خسارت :</b><span>{CLAIM_TYPE_LABELS[c.claimType] ?? c.claimType}</span></div>
-          {!c.imported && <div className="cu-kv"><b>تاریخ ثبت پرونده :</b><span>{c.createdAt ?? '—'}</span></div>}
+          {!(c.imported && (c.status === 'PAID' || c.status === 'REJECTED')) && <div className="cu-kv"><b>تاریخ ثبت پرونده :</b><span>{c.createdAt ?? '—'}</span></div>}
           <div className="cu-kv"><b>{DEATH_TYPES.has(c.claimType) ? 'تاریخ فوت' : 'تاریخ وقوع'} :</b><span>{c.eventDate ?? '—'}</span></div>
           {DEATH_TYPES.has(c.claimType) && <div className="cu-kv"><b>علت فوت :</b><span>{fv.cause_of_death || fv.death_kind || '—'}</span></div>}
           <div className="cu-kv"><b>مبلغ برآوردی :</b><span>{rial(c.claimedAmount)}</span></div>

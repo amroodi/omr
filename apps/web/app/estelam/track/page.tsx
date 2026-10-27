@@ -102,6 +102,7 @@ export default function EstelamTrack() {
             <div className="trk2-actions no-pdf">
               <button type="button" className="trk2-pdf" onClick={pdf} disabled={saving}><Icon path={ICONS.pdf} /> {saving ? 'در حال ساخت…' : 'دانلود PDF'}</button>
               <StatusHistoryButton story={r?.story} className="trk2-pdf" />
+              <Link href="/estelam/documents" className="trk2-pdf"><Icon path={ICONS.doc} /> بررسی وضعیت مدارک</Link>
             </div>
           </>
         )}

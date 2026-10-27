@@ -10,7 +10,7 @@ import { ORG_NAV } from '../../../nav';
 import { caseTitle } from '../../../../../lib/caseTitle';
 import { downloadPdf } from '../../../../../lib/pdf';
 import { CaseHero, ClaimDoc, ICONS, NotesPill, PersonCards, phaseText, useCase } from '../../../../components/case-ui';
-import { DocUploadTile, OnProgress } from '../../../../components/upload';
+import { OnProgress, UploadButton } from '../../../../components/upload';
 
 const DESK_FA: Record<string, string> = { BROKER: 'کارگزاری', BRANCH: 'شعبه', HQ: 'ستاد', COUNCIL: 'شورای فنی' };
 const OK = 'M20 6L9 17l-5-5';
@@ -94,7 +94,12 @@ export default function CaseDocumentsPage() {
                       <Mark state={r.doc ? 'ok' : 'no'} title={r.doc ? `بارگذاری شده — ${r.doc.uploadedAt ?? ''}` : 'بارگذاری نشده'} />
                       {r.doc && <button type="button" className="cs-mini no-pdf" title="مشاهدهٔ فایل" onClick={() => client.view(`/claims/${id}/documents/${r.doc!.id}/file`, 'org').catch((e) => setError(e.message))}><Icon path="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8zM12 15a3 3 0 100-6 3 3 0 000 6z" /></button>}
                       {canFile && r.code && (
-                        <span className="no-pdf"><DocUploadTile compact label={r.label} uploaded={!!r.doc} rejected={!!r.doc?.reviews?.some((x) => x.state === 'REJECTED')} onUpload={(f, onP) => upload(r.code, f, onP)} /></span>
+                        // This page keeps its own design (Group 875): the small orange «بارگذاری فایل» button —
+                        // it opens the same upload window (progress, PDF / Word / images).
+                        <UploadButton className="cs-upload no-pdf" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" maxMB={15} camera
+                          title={r.doc ? 'جایگزینی فایل' : 'بارگذاری فایل'} subtitle={r.label} onUpload={(f, onP) => upload(r.code, f, onP)}>
+                          {r.doc ? 'جایگزینی فایل' : 'بارگذاری فایل'}
+                        </UploadButton>
                       )}
                     </span>
                     {desks.map((s) => <span key={s} className="cs-td-desk">{deskCell(r.doc, s)}</span>)}

@@ -350,7 +350,7 @@ function MessagesTab({ setMsg }: { setMsg: (m: { t: 'ok' | 'err'; m: string } | 
       {rows.map((m) => (
         <div key={m.id} className="card p-4" style={{ opacity: m.handled ? 0.6 : 1 }}>
           <div className="flex items-center justify-between gap-2 flex-wrap text-sm">
-            <span className="font-bold">پرونده <a href={`/org/claims/${m.claimId}`} style={{ color: 'var(--brand)' }}>{m.claimNumber}</a>{m.companyName ? ` — ${m.companyName}` : ''}</span>
+            <span className="font-bold">پرونده <a href={`/org/claims/${m.claimId}`} target="_blank" rel="noopener" style={{ color: 'var(--brand)' }}>{m.claimNumber}</a>{m.companyName ? ` — ${m.companyName}` : ''}</span>
             <span style={{ color: 'var(--muted)' }}>{m.createdAt}</span>
           </div>
           <p className="text-sm mt-2 whitespace-pre-wrap">{m.message}</p>

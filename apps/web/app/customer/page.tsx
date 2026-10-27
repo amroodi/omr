@@ -57,7 +57,7 @@ function Diamond({ title, sub, icon, href, onClick, active }: { title: string; s
 
 function ClaimRow({ c }: { c: MyClaim }) {
   return (
-    <Link href={`/customer/claims/${c.id}`} className="pcard p-4 flex items-center justify-between gap-3 card-hover">
+    <Link href={`/customer/claims/${c.id}`} target="_blank" rel="noopener" className="pcard p-4 flex items-center justify-between gap-3 card-hover">
       <div className="min-w-0">
         <div className="font-bold">{caseTitle(c)} <span className="font-normal" style={{ color: 'var(--muted)' }}>— {CLAIM_TYPE_LABELS[c.claimType] || c.claimType}</span></div>
         <div className="text-sm mt-0.5" style={{ color: 'var(--muted)' }}>{c.deceasedName}{c.currentStageLabel ? ` · در اختیار: ${c.currentStageLabel}` : ''}</div>

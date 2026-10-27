@@ -39,6 +39,8 @@ const HEADER_MAP: Record<string, string> = {
   'علت فوت': 'causeOfDeath',
   'نوع ذینفع': 'beneficiaryType',
   'وضعیت پرونده': 'caseStatus',
+  فوت: 'causeOfDeathAlt', // a second «علت فوت» column in the register export
+  'تاریخ پرداخت': 'paidDateCol', // in the export this often holds the birth date (years like 1329) — see importedFieldValues
   'تاریخ تولد': 'birthDate',
   'تاریخ شروع بیمه نامه': 'policyStart',
   'تاریخ شروع بیمه‌نامه': 'policyStart',
@@ -66,6 +68,20 @@ export interface ParsedRow {
   data: Record<string, string>;
   raw: Record<string, string>; // original-header → value (used to build legacyData)
   errors: string[];
+}
+
+/**
+ * «تاریخ پرداخت» of the register export is often the deceased's birth date (the column is mislabelled
+ * in the source system). A payment can't come before the death, so a date before «تاریخ فوت» — or,
+ * with no death date, a year before 1380 — is a birth date; otherwise it's the payment date.
+ */
+function paidColIsBirth(d: Record<string, string>): boolean {
+  const norm = (v?: string) => toAsciiDigits(String(v ?? '')).trim().replace(/-/g, '/').split('/').map((x, i) => (i ? x.padStart(2, '0') : x)).join('/');
+  const paid = norm(d.paidDateCol);
+  if (!/^\d{4}\//.test(paid)) return false;
+  const death = norm(d.deathDate);
+  if (/^\d{4}\//.test(death)) return paid < death;
+  return Number(paid.slice(0, 4)) < 1380;
 }
 
 @Injectable()
@@ -213,6 +229,8 @@ export class ImportService {
         deceasedNationalCodeHash: nidHash,
         claimType,
         eventDate,
+        // «تاریخ تولد», or the export's mislabelled «تاریخ پرداخت» when it can only be a birth date
+        deceasedBirthDate: this.parseDate(r.data.birthDate) ?? (paidColIsBirth(r.data) ? this.parseDate(r.data.paidDateCol) : null),
         policyNumber: r.data.policyNumber || null,
         claimedAmount: amount,
         status: r.claimStatus!,
@@ -220,7 +238,7 @@ export class ImportService {
         legacyStatus: r.data.caseStatus || null,
         beneficiaryType: r.data.beneficiaryType || null,
         employerName: r.data.employerName || null,
-        causeOfDeath: r.data.causeOfDeath || null,
+        causeOfDeath: r.data.causeOfDeath || r.data.causeOfDeathAlt || null,
         legacyData: legacyData as Prisma.InputJsonValue,
         participants: {
           create: [
@@ -248,6 +266,7 @@ export class ImportService {
     const d = r.data;
     const raw = r.raw;
     const date = (v?: string | null) => (v ? toAsciiDigits(String(v)).trim() : '');
+    const paidIsBirth = paidColIsBirth(d);
     // Workflow-stage columns aren't in HEADER_MAP; read them straight from the raw headers.
     const rawGet = (...headers: string[]): string | null => {
       for (const h of headers) if (raw[h] != null && String(raw[h]).trim()) return String(raw[h]).trim();
@@ -257,10 +276,10 @@ export class ImportService {
       // ── claim / policy / beneficiary ──
       ['full_name', d.fullName],
       ['national_code', d.nationalCode],
-      ['birth_date', date(d.birthDate)],
+      ['birth_date', date(d.birthDate) || (paidIsBirth ? date(d.paidDateCol) : '')],
       ['company_name', d.employerName],
       ['death_date', date(d.deathDate)],
-      ['cause_of_death', d.causeOfDeath],
+      ['cause_of_death', d.causeOfDeath || d.causeOfDeathAlt],
       ['policy_number', d.policyNumber],
       ['policy_start_date', date(d.policyStart)],
       ['death_capital', this.parseAmount(d.deathCapital)],
@@ -272,6 +291,8 @@ export class ImportService {
       ['death_notice_status', rawGet('وضعیت اعلام فوت')],
       ['broker_to_insurer_date', date(rawGet('تاریخ اعلام کارگزاری به بیمه‌گر', 'تاریخ اعلام کارگزاری به بیمه گر'))],
       ['broker_to_insurer_status', rawGet('وضعیت اعلام کارگزاری به بیمه‌گر', 'وضعیت اعلام کارگزاری به بیمه گر')],
+      ['docs_receive_date', date(rawGet('تاریخ دریافت مدارک', 'تاریخ ارسال مدارک'))],
+      ['docs_receive_status', rawGet('وضعیت دریافت مدارک', 'وضعیت ارسال مدارک')],
       ['docs_request_date', date(rawGet('تاریخ درخواست مدارک'))],
       ['docs_request_status', rawGet('وضعیت درخواست مدارک')],
       ['missing_docs_request_date', date(rawGet('تاریخ درخواست کسری مدارک'))],
@@ -282,11 +303,14 @@ export class ImportService {
       ['council_approve_status', rawGet('وضعیت تایید شورای فنی و سایر', 'وضعیت تایید شورای فنی')],
       ['return_to_branch_date', date(rawGet('تاریخ برگشت به شعبه'))],
       ['return_to_branch_status', rawGet('وضعیت برگشت به شعبه')],
+      ['case_complete', rawGet('تکمیل پرونده')],
       ['case_complete_date', date(rawGet('تاریخ تکمیل پرونده'))],
       ['case_complete_status', rawGet('وضعیت تکمیل پرونده')],
       ['payment_order', rawGet('حواله پرداخت')],
-      ['payment_order_date', date(rawGet('تاریخ حواله پرداخت'))],
+      ['payment_order_date', date(rawGet('تاریخ حواله پرداخت')) || (!paidIsBirth ? date(d.paidDateCol) : '')],
       ['payment_order_status', rawGet('وضعیت حواله پرداخت')],
+      // «وضعیت پرونده» of the register is the case's own status (shown as وضعیت پرونده everywhere)
+      ['case_stage', d.caseStatus],
     ];
     return pairs
       .filter(([, v]) => v != null && String(v).trim().length > 0)
@@ -312,12 +336,18 @@ export class ImportService {
     return records.map((rec, idx) => this.validate(rec, idx + 2)); // +2: header row + 1-index
   }
 
+  /**
+   * A row of the claim register (it has a «وضعیت پرونده» or a «تاریخ فوت») is a case: closed ones
+   * (پرداخت شده / مختومه / رد) keep their final status, everything else comes in «در حال بررسی» and is
+   * completed by hand from «ویرایش». A plain phone-book row (neither column) is an insured person.
+   */
   private classify(data: Record<string, string>): { kind: RowKind; claimStatus?: ClaimStatus } {
     const status = (data.caseStatus || '').trim();
     if (status) {
       const match = FINAL_STATUS.find((f) => f.re.test(status));
-      if (match) return { kind: 'CLAIM', claimStatus: match.status };
+      return { kind: 'CLAIM', claimStatus: match ? match.status : ClaimStatus.UNDER_REVIEW };
     }
+    if ((data.deathDate || '').trim()) return { kind: 'CLAIM', claimStatus: ClaimStatus.UNDER_REVIEW };
     return { kind: 'PERSON' };
   }
 
@@ -356,7 +386,8 @@ export class ImportService {
       const data: Record<string, string> = {};
       const raw: Record<string, string> = {};
       headerCells.forEach((header, i) => {
-        const cell = this.cellValue(row.getCell(i + 1)); // getCell is 1-based; i aligns with the header
+        const v = this.cellValue(row.getCell(i + 1)); // getCell is 1-based; i aligns with the header
+        const cell = v === '0' ? '' : v; // the register export writes «0» for an empty cell
         if (header) raw[header.trim()] = cell;
         const key = keys[i];
         if (key) data[key] = cell;

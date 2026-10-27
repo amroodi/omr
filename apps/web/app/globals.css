@@ -784,10 +784,11 @@ html:has(.pshell) { overflow: hidden; }
   display: grid; grid-template-columns: repeat(auto-fit, minmax(86px, 1fr)); gap: 0;
   background: var(--surface-2); border: 1px solid var(--border); border-radius: 14px; overflow: hidden;
 }
-.wd-tile { outline: 1px solid var(--border); outline-offset: -0.5px; min-width: 0; padding: 10px 6px 12px; text-align: center; cursor: pointer; transition: background .14s ease; background: var(--surface-2); display: flex; flex-direction: column; align-items: center; }
+/* Compact: two lines of label and the count — the strip stays short (and never scrolls sideways). */
+.wd-tile { outline: 1px solid var(--border); outline-offset: -0.5px; min-width: 0; padding: 6px 4px 5px; text-align: center; cursor: pointer; transition: background .14s ease; background: var(--surface-2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; }
 .wd-tile:hover { background: var(--brand-soft); }
-.wd-tile-label { font-size: 0.72rem; color: var(--muted); line-height: 1.5; display: flex; align-items: center; justify-content: center; min-height: 4.5em; overflow-wrap: anywhere; }
-.wd-tile-count { font-size: 1.25rem; font-weight: 800; margin-top: 4px; color: var(--brand); }
+.wd-tile-label { font-size: 0.7rem; color: var(--muted); line-height: 1.35; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; min-height: 2.7em; overflow-wrap: anywhere; }
+.wd-tile-count { font-size: 1rem; font-weight: 800; line-height: 1.3; color: var(--brand); }
 .wd-tile.is-zero { cursor: default; }
 .wd-tile.is-zero:hover { background: var(--surface-2); }
 .wd-tile.is-zero .wd-tile-count { color: var(--muted); }
