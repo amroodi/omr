@@ -17,6 +17,13 @@ export default function OrgLogin() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  // Organizations to pick from (a dropdown instead of typing the شناسه). Temporary: once every org has
+  // its own domain / subdomain the login won't need a choice at all. null = list unavailable → type it.
+  const [orgs, setOrgs] = useState<{ slug: string; name: string }[] | null>(null);
+
+  useEffect(() => {
+    fetch(`${client.base}/customer/orgs`).then((r) => (r.ok ? r.json() : null)).then((l) => setOrgs(Array.isArray(l) && l.length ? l : null)).catch(() => setOrgs(null));
+  }, []);
 
   useEffect(() => {
     const org = new URLSearchParams(window.location.search).get('org');
@@ -62,7 +69,16 @@ export default function OrgLogin() {
           <button type="button" className="text-xs underline" onClick={() => setFixedOrg(false)}>تغییر</button>
         </div>
       ) : (
-        <Field label="شناسه سازمان"><input className="input" value={tenantSlug} onChange={(e) => setSlug(e.target.value)} placeholder="damuon" style={{ direction: 'ltr', textAlign: 'right' }} /></Field>
+        <Field label="سازمان">
+          {orgs ? (
+            <select className="input" value={tenantSlug} onChange={(e) => setSlug(e.target.value)}>
+              {!orgs.some((o) => o.slug === tenantSlug) && <option value={tenantSlug}>{tenantSlug || '— انتخاب سازمان —'}</option>}
+              {orgs.map((o) => <option key={o.slug} value={o.slug}>{o.name}</option>)}
+            </select>
+          ) : (
+            <input className="input" value={tenantSlug} onChange={(e) => setSlug(e.target.value)} placeholder="damuon" style={{ direction: 'ltr', textAlign: 'right' }} />
+          )}
+        </Field>
       )}
       <Field label="نام کاربری"><input className="input" value={username} onChange={(e) => setUsername(e.target.value)} /></Field>
       <Field label="رمز عبور"><input type="password" className="input" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} /></Field>
