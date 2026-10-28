@@ -105,7 +105,7 @@ function Signup({ slug, onBack }: { slug: string; onBack: () => void }) {
           <Field label="کد ملی"><input className="input latin-digits" value={f.nationalCode} onChange={(e) => setF({ ...f, nationalCode: e.target.value })} inputMode="numeric" maxLength={10} style={{ direction: 'ltr', textAlign: 'right' }} /></Field>
           <Field label="شمارهٔ همراه (به نام خودتان)"><input className="input latin-digits" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} inputMode="numeric" maxLength={11} placeholder="۰۹۱۲…" style={{ direction: 'ltr', textAlign: 'right' }} /></Field>
           <button type="submit" disabled={loading || f.fullName.trim().length < 2 || !f.nationalCode.trim() || !f.phone.trim()} className="btn btn-primary w-full">{loading ? '…' : 'دریافت کد تایید'}</button>
-          <p className="text-xs" style={{ color: 'var(--muted)' }}>کد ملی و شمارهٔ همراه باید به نام یک نفر باشند (استعلام شاهکار). پس از تایید سازمان، با کد ملی به‌عنوان نام کاربری و رمز عبور اولیه وارد شوید.</p>
+          <p className="text-xs" style={{ color: 'var(--muted)' }}>کد ملی و شمارهٔ همراه باید به نام یک نفر باشند. پس از تایید سازمان، با کد ملی به‌عنوان نام کاربری و رمز عبور اولیه وارد شوید.</p>
           <button type="button" className="text-sm w-full" style={{ color: 'var(--brand)' }} onClick={onBack}>بازگشت به ورود</button>
         </form>
       ) : (
