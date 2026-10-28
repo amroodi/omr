@@ -7,6 +7,8 @@ import { customerClaimWhere, getContext, getTenantIdOrThrow } from '../../common
 import { LINE_CLAIM_TYPES, LINE_FA } from '../policyholders/policyholders.service';
 import { toAsciiDigits, toJalali } from '../../common/jalali/jalali.util';
 import { NotificationsService } from '../notifications/notifications.service';
+import { HashService } from '../../common/crypto/hash.service';
+import { ShahkarService } from '../auth/shahkar.service';
 
 /**
  * Customer dashboard data. A logged-in customer sees only cases where they are the insured or a
@@ -20,6 +22,8 @@ export class CustomerService {
     private readonly crypto: FieldCryptoService,
     private readonly audit: AuditService,
     private readonly notifications: NotificationsService,
+    private readonly hash: HashService,
+    private readonly shahkar: ShahkarService,
   ) {}
 
   private validatePair(nationalCode: string, phone: string): { nid: string; phone: string } {
@@ -31,7 +35,11 @@ export class CustomerService {
   }
 
   // ── Public self-signup: creates a PENDING account and notifies the org admin ──
-  async signup(input: { tenantSlug: string; nationalCode: string; phone: string; fullName?: string }) {
+  async signup(input: { tenantSlug: string; nationalCode: string; phone: string; fullName?: string; passwordHash?: string; shahkarVerified?: boolean }) {
+    const login = {
+      ...(input.passwordHash ? { passwordHash: input.passwordHash, mustChangePassword: true } : {}),
+      shahkarVerifiedAt: input.shahkarVerified ? new Date() : null,
+    };
     const { nid, phone } = this.validatePair(input.nationalCode, input.phone);
     const db = this.prisma.unscoped();
     const tenant = await db.tenant.findUnique({ where: { slug: input.tenantSlug.trim() }, select: { id: true, isActive: true, smsConfig: true } });
@@ -41,11 +49,11 @@ export class CustomerService {
     const existing = await db.customerAccount.findFirst({ where: { tenantId: tenant.id, nationalCodeHash: nidHash }, select: { id: true, signupStatus: true } });
     if (existing) {
       if (existing.signupStatus === 'ACTIVE') throw new BadRequestException('شما قبلاً در این سازمان ثبت شده‌اید؛ وارد شوید.');
-      if (existing.signupStatus === 'PENDING') throw new BadRequestException('درخواست ثبت‌نام شما قبلاً ارسال شده و در انتظار تایید است.');
+      if (existing.signupStatus === 'PENDING') throw new BadRequestException('درخواست ثبت‌نام شما قبلاً ارسال شده و در دست بررسی است.');
       // REJECTED → allow a fresh request.
       await db.customerAccount.update({
         where: { id: existing.id },
-        data: { signupStatus: 'PENDING', phone: this.crypto.encrypt(phone), phoneHash: this.crypto.blindIndex(phone), fullName: input.fullName ? this.crypto.encrypt(input.fullName) : null },
+        data: { signupStatus: 'PENDING', phone: this.crypto.encrypt(phone), phoneHash: this.crypto.blindIndex(phone), fullName: input.fullName ? this.crypto.encrypt(input.fullName) : null, ...login },
       });
     } else {
       await db.customerAccount.create({
@@ -57,6 +65,7 @@ export class CustomerService {
           phone: this.crypto.encrypt(phone),
           phoneHash: this.crypto.blindIndex(phone),
           signupStatus: 'PENDING',
+          ...login,
         },
       });
     }
@@ -66,11 +75,11 @@ export class CustomerService {
     await this.notifications.notify({
       tenantId: tenant.id,
       audience: 'ORG',
-      title: 'درخواست ثبت‌نام بیمه‌گزار',
-      body: 'یک بیمه‌گزار درخواست ثبت‌نام داده است؛ برای تایید به پنل مراجعه کنید.',
+      title: 'درخواست ثبت‌نام نماینده',
+      body: `${input.fullName ? `«${input.fullName}»` : 'یک نماینده'} درخواست ثبت‌نام در پنل بیمه‌گزار داده است؛ برای تایید به «بیمه‌گزاران › نمایندگان» مراجعه کنید.`,
       link: '/org/policyholders',
     });
-    return { ok: true, message: 'درخواست ثبت‌نام ارسال شد. پس از تایید سازمان، امکان ورود خواهید داشت.' };
+    return { ok: true, message: 'درخواست ثبت‌نام ارسال شد. پس از تایید سازمان، با کد ملی خود (نام کاربری و رمز عبور اولیه) وارد شوید.' };
   }
 
   async approve(id: string) {
@@ -110,13 +119,16 @@ export class CustomerService {
   }
 
   // ── Org-side بیمه‌گزار onboarding (tenant-scoped) ── admin-created accounts are ACTIVE at once
-  async createAccount(input: { nationalCode: string; phone: string; fullName?: string; companyId?: string }) {
+  async createAccount(input: { nationalCode: string; phone: string; fullName?: string; companyId?: string; password?: string }) {
     const tenantId = getTenantIdOrThrow();
     const { nid, phone } = this.validatePair(input.nationalCode, input.phone);
     const nidHash = this.crypto.blindIndex(nid)!;
     if (await this.prisma.scoped.customerAccount.findFirst({ where: { nationalCodeHash: nidHash } })) {
-      throw new BadRequestException('بیمه‌گزار با این کد ملی قبلاً ثبت شده است');
+      throw new BadRequestException('نماینده‌ای با این کد ملی قبلاً ثبت شده است');
     }
+    const checked = await this.shahkar.assertMatch(nid, phone);
+    const pw = input.password?.trim();
+    if (pw && pw.length < 8) throw new BadRequestException('رمز عبور باید دست‌کم ۸ نویسه باشد');
     const acc = await this.prisma.scoped.customerAccount.create({
       data: {
         companyId: input.companyId ? await this.ownCompany(input.companyId) : null,
@@ -127,11 +139,28 @@ export class CustomerService {
         phone: this.crypto.encrypt(phone),
         phoneHash: this.crypto.blindIndex(phone),
         signupStatus: 'ACTIVE',
+        // Login: کد ملی + password; without one the کد ملی is the first password (changed on first login).
+        passwordHash: await this.hash.hashPassword(pw || nid),
+        mustChangePassword: !pw,
+        shahkarVerifiedAt: checked ? new Date() : null,
       },
       select: { id: true },
     });
     await this.audit.record({ action: AuditAction.CREATE, targetType: 'CustomerAccount', targetId: acc.id });
     return { id: acc.id, ok: true };
+  }
+
+  /** Set (or reset to the کد ملی, when empty) a نماینده's password. */
+  async setAccountPassword(id: string, password?: string) {
+    const acc = await this.prisma.scoped.customerAccount.findFirst({ where: { id } });
+    if (!acc) throw new NotFoundException('نماینده یافت نشد');
+    const nid = this.crypto.decrypt(acc.nationalCode) ?? '';
+    if (!/^\d{10}$/.test(nid)) throw new BadRequestException('این حساب نمایندهٔ شخص نیست');
+    const pw = password?.trim();
+    if (pw && pw.length < 8) throw new BadRequestException('رمز عبور باید دست‌کم ۸ نویسه باشد');
+    await this.prisma.scoped.customerAccount.updateMany({ where: { id }, data: { passwordHash: await this.hash.hashPassword(pw || nid), mustChangePassword: !pw } });
+    await this.audit.record({ action: AuditAction.EDIT, targetType: 'RepresentativePassword', targetId: id, metadata: { reset: !pw } });
+    return { ok: true, message: pw ? 'رمز عبور تنظیم شد.' : 'رمز عبور به کد ملی بازنشانی شد.' };
   }
 
   private async ownCompany(id: string): Promise<string> {
@@ -156,7 +185,8 @@ export class CustomerService {
       fullName: acc.fullName ? this.crypto.decrypt(acc.fullName) : null,
       companyLogin: !!ctx.customerCompanyId,
       brokerPanel: !!ctx.customerBrokerPanel,
-      mustChangePassword: !!c?.mustChangePassword,
+      mustChangePassword: acc.passwordHash ? acc.mustChangePassword : !!c?.mustChangePassword,
+      representative: !!acc.passwordHash,
       brokerName: acc.tenant.name,
       // «۱۴۰۴/۰۹/۰۱ لغایت ۱۴۰۵/۰۹/۰۱» — the policy year in force today (sidebar, under the logo)
       policyPeriod: inForce ? `${inForce.startDate ? toJalali(inForce.startDate, false) : '…'} لغایت ${inForce.endDate ? toJalali(inForce.endDate, false) : '…'}` : null,
@@ -266,6 +296,9 @@ export class CustomerService {
         phoneMasked: phone ? `••••${phone.slice(-4)}` : null,
         canViewPii: canPii,
         signupStatus: r.signupStatus,
+        hasPassword: !!r.passwordHash,
+        mustChangePassword: r.mustChangePassword,
+        shahkarVerified: !!r.shahkarVerifiedAt,
         company: r.company,
         isActive: r.isActive,
         createdAt: toJalali(r.createdAt),

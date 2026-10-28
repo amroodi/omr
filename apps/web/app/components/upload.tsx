@@ -47,10 +47,12 @@ type Item = { id: number; name: string; pct: number; eta: number | null; state: 
  * (and its owner keeps showing progress) if the user closes the dialog.
  */
 export function UploadDialog({
-  open, onClose, onUpload, accept, maxMB, title = 'بارگذاری پرونده', subtitle, multiple = false, camera = false, closeOnDone = true, note,
+  open, onClose, onUpload, accept, maxMB, title = 'بارگذاری پرونده', subtitle, multiple = false, camera = false, closeOnDone = true, note, cameraOnly = false,
 }: {
   open: boolean; onClose: () => void; onUpload: UploadFn; accept: string; maxMB: number;
   title?: string; subtitle?: ReactNode; multiple?: boolean; camera?: boolean; closeOnDone?: boolean; note?: ReactNode;
+  /** On a phone, only «اسکن با دوربین» — no picking files from the device (بیمه‌گزار panel). */
+  cameraOnly?: boolean;
 }) {
   const [items, setItems] = useState<Item[]>([]);
   const [drag, setDrag] = useState(false);
@@ -108,7 +110,7 @@ export function UploadDialog({
   if (!mounted || !open) return null;
   return createPortal(
     <div className="pmodal-backdrop" onClick={onClose}>
-      <div className="pmodal upd" role="dialog" aria-modal="true" aria-labelledby={tid} onClick={(e) => e.stopPropagation()}>
+      <div className={`pmodal upd${cameraOnly ? ' upd-camonly' : ''}`} role="dialog" aria-modal="true" aria-labelledby={tid} onClick={(e) => e.stopPropagation()}>
         <div className="pmodal-head">
           <div className="min-w-0">
             <div className="pmodal-title" id={tid}>{title}</div>
@@ -125,19 +127,21 @@ export function UploadDialog({
             onDrop={onDrop}
           >
             <svg className="upd-ico" viewBox="0 0 24 24" aria-hidden><path d="M12 15V3m0 0L7.5 7.5M12 3l4.5 4.5M4 15v4a2 2 0 002 2h12a2 2 0 002-2v-4" /></svg>
-            <div className="upd-big">برای بارگذاری، {multiple ? 'پرونده‌ها' : 'پرونده'} را اینجا بکشید</div>
-            <div className="upd-or">یا</div>
+            <div className="upd-big upd-desk">برای بارگذاری، {multiple ? 'پرونده‌ها' : 'پرونده'} را اینجا بکشید</div>
+            <div className="upd-or upd-desk">یا</div>
+            {cameraOnly && <div className="upd-big upd-phone">از هر برگهٔ مدرک با دوربین گوشی عکس بگیرید</div>}
             <div className="flex flex-wrap gap-2 justify-center">
-              <button ref={pickRef} type="button" className="upd-pick" onClick={() => fileRef.current?.click()}>{multiple ? 'گزینش پرونده‌ها' : 'گزینش پرونده'}</button>
-              {camera && <button type="button" className="upd-pick sm:hidden" onClick={() => camRef.current?.click()}>گرفتن عکس با دوربین</button>}
+              <button ref={pickRef} type="button" className="upd-pick upd-desk" onClick={() => fileRef.current?.click()}>{multiple ? 'گزینش پرونده‌ها' : 'گزینش پرونده'}</button>
+              {(camera || cameraOnly) && <button type="button" className="upd-pick sm:hidden" onClick={() => camRef.current?.click()}>{cameraOnly ? 'اسکن با دوربین' : 'گرفتن عکس با دوربین'}</button>}
             </div>
             <input ref={fileRef} type="file" accept={accept} multiple={multiple} hidden
               onChange={(e) => { run(Array.from(e.target.files || [])); e.currentTarget.value = ''; }} />
-            {camera && <input ref={camRef} type="file" accept="image/*" capture="environment" hidden
+            {(camera || cameraOnly) && <input ref={camRef} type="file" accept="image/*" capture="environment" hidden
               onChange={(e) => { run(Array.from(e.target.files || [])); e.currentTarget.value = ''; }} />}
           </div>
 
-          <p className="upd-hint">حداکثر اندازهٔ پرونده برای بارگذاری: {faN(maxMB)} مگابایت — قالب‌های مجاز: {acceptLabel(accept)}.</p>
+          <p className="upd-hint upd-desk">حداکثر اندازهٔ پرونده برای بارگذاری: {faN(maxMB)} مگابایت — قالب‌های مجاز: {acceptLabel(accept)}.</p>
+          {cameraOnly && <p className="upd-hint upd-phone">در گوشی، مدارک فقط با دوربین اسکن می‌شوند؛ هر عکس جداگانه بارگذاری می‌شود.</p>}
           {note && <div className="upd-hint">{note}</div>}
 
           {items.length > 0 && (
@@ -180,10 +184,10 @@ const CHECK = 'M20 6L9 17l-5-5';
  */
 export function DocUploadTile({
   label, onUpload, uploaded = false, rejected = false, required = true, help, accept = '.pdf,.doc,.docx,.jpg,.jpeg,.png', maxMB = 15,
-  camera = true, disabled = false, compact = false, addText = 'افزودن تصویر مدارک',
+  camera = true, disabled = false, compact = false, addText = 'افزودن تصویر مدارک', cameraOnly = false,
 }: {
   label: string; onUpload: UploadFn; uploaded?: boolean; rejected?: boolean; required?: boolean; help?: string;
-  accept?: string; maxMB?: number; camera?: boolean; disabled?: boolean; compact?: boolean; addText?: string;
+  accept?: string; maxMB?: number; camera?: boolean; disabled?: boolean; compact?: boolean; addText?: string; cameraOnly?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [prog, setProg] = useState<{ pct: number; eta: number | null } | null>(null);
@@ -218,7 +222,7 @@ export function DocUploadTile({
           : <svg className="dut-ico" viewBox="0 0 24 24" aria-hidden><path d={uploaded && !rejected ? CHECK : CLIP} /></svg>}
         <span className="dut-t">{required && !uploaded && <span className="dut-req">* </span>}{prog ? 'در حال بارگذاری…' : text}</span>
       </button>
-      <UploadDialog open={open} onClose={() => setOpen(false)} onUpload={run} accept={accept} maxMB={maxMB} camera={camera}
+      <UploadDialog open={open} onClose={() => setOpen(false)} onUpload={run} accept={accept} maxMB={maxMB} camera={camera} cameraOnly={cameraOnly}
         title={uploaded ? 'جایگزینی مدرک' : 'بارگذاری مدرک'} subtitle={label} />
     </span>
   );
@@ -227,7 +231,7 @@ export function DocUploadTile({
 /** A plain button that opens the upload dialog — for logos, import files, letters and other single uploads. */
 export function UploadButton({ children, className = 'btn btn-ghost btn-sm', disabled, ...dialog }: {
   children: ReactNode; className?: string; disabled?: boolean;
-  onUpload: UploadFn; accept: string; maxMB: number; title?: string; subtitle?: ReactNode; multiple?: boolean; camera?: boolean; note?: ReactNode;
+  onUpload: UploadFn; accept: string; maxMB: number; title?: string; subtitle?: ReactNode; multiple?: boolean; camera?: boolean; note?: ReactNode; cameraOnly?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   return (

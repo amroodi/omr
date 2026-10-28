@@ -50,6 +50,14 @@ model Tenant {
   manualCompletion Boolean @default(true)
   // BROKER only: password of the «broker» login on the بیمه‌گزار panel (sees every company). Set by super admin.
   brokerPanelPasswordHash String?
+  // «دلایل رد مدارک»: the checklist an operator ticks when rejecting a document (one reason per entry).
+  // The insurer's list is offered on its claims; a brokerage may keep its own list as well.
+  rejectReasons String[] @default([])
+  // «اعلام خسارت» rules: who may file a claim from which panel and on which desk it starts
+  // (see claims/claim-notice.ts). null = the defaults.
+  claimNoticeRules Json?
+  // Reminders: may operators of this org get an SMS for a reminder (on top of the in-panel one)?
+  reminderSms   Boolean  @default(false)
   // Panel theme tokens (see branding/theme.ts). null = the default Damuon design.
   theme         Json?
   // Origins allowed to embed the inquiry widget in an <iframe> (CSP frame-ancestors allowlist).
@@ -108,6 +116,10 @@ model PlatformConfig {
   // Master switch for OTP on login/inquiry/signup. When false, users proceed without a code
   // (no SMS sent, no code checked). Super-admin toggle — a deliberate security downgrade.
   otpEnabled         Boolean  @default(true)
+  // «شاهکار»: check that a نماینده's کد ملی and mobile belong to the same person (signup and when an org
+  // defines one). Off = no check, the operator's approval alone is enough. Super-admin only.
+  shahkarEnabled     Boolean  @default(false)
+  shahkarConfig      String? // ENCRYPTED json: provider + endpoint + credentials (see auth/shahkar.service.ts)
   updatedAt          DateTime @updatedAt @default(now())
 }
 
@@ -275,6 +287,7 @@ model OrgUser {
   desk         WorkflowStage?
   username     String
   displayName  String
+  phone        String? // ENCRYPTED — mobile for reminder SMS
   passwordHash String // argon2id
   totpSecret   String? // ENCRYPTED, optional MFA
   isActive     Boolean  @default(true)
@@ -310,6 +323,11 @@ model CustomerAccount {
   phone            String? // ENCRYPTED
   phoneHash        String? // blind index for OTP pairing
   shareConsent     Boolean  @default(false) // consent to FULL cross-org sharing of their PII
+  // نماینده login on the بیمه‌گزار panel: کد ملی + password (default = their کد ملی, changed on first login).
+  passwordHash     String?
+  mustChangePassword Boolean @default(false)
+  // Did «شاهکار» confirm this کد ملی and mobile belong to one person? (null = not checked)
+  shahkarVerifiedAt DateTime?
   signupStatus     CustomerSignupStatus @default(ACTIVE)
   isActive         Boolean  @default(true)
   lastLoginAt      DateTime?
@@ -1025,4 +1043,28 @@ model AuditLog {
 
   @@index([tenantId, action])
   @@index([tenantId, createdAt])
+}
+
+// ─────────────────────────────── Reminders ───────────────────────────────
+
+// «یادآور»: an operator reminds themself or a colleague (same org) to do something at a time — e.g.
+// follow up a case. Shown in the panel when due; also sent by SMS when the reminder asks for it and the
+// org allows reminder SMS (Tenant.reminderSms).
+model Reminder {
+  id          String    @id @default(uuid())
+  tenantId    String
+  createdById String // OrgUser
+  assigneeId  String // OrgUser who is reminded
+  claimId     String? // optional case it is about
+  title       String
+  note        String?
+  dueAt       DateTime
+  sms         Boolean   @default(false)
+  firedAt     DateTime? // when the in-panel notification (and SMS) went out
+  smsSentAt   DateTime?
+  doneAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([tenantId, assigneeId, doneAt])
+  @@index([firedAt, dueAt])
 }

@@ -58,6 +58,7 @@ export default function ClaimDetail() {
               <button onClick={() => setMode('preview')} className={`btn btn-sm ${mode === 'preview' ? 'btn-primary' : 'btn-ghost'}`}>پیش‌نمایش</button>
               {!isInsurer && <button onClick={() => setMode('edit')} className={`btn btn-sm ${mode === 'edit' ? 'btn-primary' : 'btn-ghost'}`}>ویرایش</button>}
               <Link href={`/org/claims/${id}/assess`} className="btn btn-sm btn-ghost" title="ارزیابی و تایید مدارک در صفحهٔ دوستونه"><Icon path={ICON_ASSESS} /> ارزیابی پرونده</Link>
+              <a href={`/org/reminders?claim=${id}&n=${encodeURIComponent(claim.claimNumber)}`} target="_blank" rel="noopener" className="btn btn-sm btn-ghost" title="یادآوری پیگیری این پرونده برای خودتان یا همکار"><Icon path="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0" /> یادآور</a>
             </div>
             {mode === 'preview' && perms.exp && (
               <button onClick={() => client.download(`/exports/claim/${id}.xlsx`, 'org', `claim-${claim.policyNumber || claim.claimNumber}.xlsx`)} className="btn btn-ghost btn-sm" title="خروجی اکسل این پرونده"><Icon path={ICONS.pdf} /> خروجی اکسل</button>

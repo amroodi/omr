@@ -121,9 +121,11 @@ export const ICONS = {
  * Navy header card: title + subtitle, white chips (by default the two dates), the notes pill and the
  * back/exit buttons. `exitHref` is where «خروج» goes (the org Work Desk, or the بیمه‌گزار home).
  */
-export function CaseHero({ title, claim, notes, notesLabel = 'توضیحات پرونده:', back, sub, chips, badge, exitHref = '/org/work-desk' }: {
+export function CaseHero({ title, claim, notes, notesLabel = 'توضیحات پرونده:', back, sub, chips, badge, exitHref = '/org/work-desk', steps }: {
   title: string; claim: CaseClaim; notes: string; notesLabel?: string; back?: string; sub?: string;
   chips?: { label: string; value: ReactNode; icon?: string }[]; badge?: ReactNode; exitHref?: string;
+  /** بیمه‌گزار panel: the buttons read «مرحله قبل» (→ back) and «مرحله بعد» (→ exitHref). */
+  steps?: boolean;
 }) {
   const router = useRouter();
   const list = chips ?? [
@@ -145,8 +147,10 @@ export function CaseHero({ title, claim, notes, notesLabel = 'توضیحات پ�
       <div className="cs-hero-side">
         <div className="cs-notes"><span className="cap">{notesLabel}</span><NotesPill text={notes} /></div>
         <div className="cs-hero-btns no-pdf">
-          {back && <Link href={back} className="cs-btn-back"><Icon path={ICONS.back} /> بازگشت</Link>}
-          <button type="button" className="cs-btn-exit" onClick={() => router.push(exitHref)}><Icon path={ICONS.exit} /> خروج</button>
+          {back && <Link href={back} className="cs-btn-back"><Icon path={ICONS.back} /> {steps ? 'مرحله قبل' : 'بازگشت'}</Link>}
+          {steps
+            ? <button type="button" className="cs-btn-back" onClick={() => router.push(exitHref)}>مرحله بعد <Icon path="M15 18l-6-6 6-6" /></button>
+            : <button type="button" className="cs-btn-exit" onClick={() => router.push(exitHref)}><Icon path={ICONS.exit} /> خروج</button>}
         </div>
       </div>
     </div>

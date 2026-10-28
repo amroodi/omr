@@ -37,6 +37,8 @@ interface UpdateSettings {
   embedOrigins?: string[];
   hqCeiling?: string | null;
   theme?: unknown;
+  rejectReasons?: string[];
+  reminderSms?: boolean;
 }
 
 @Injectable()
@@ -70,6 +72,8 @@ export class BrandingService {
       theme: t.theme ?? null,
       themePresets: Object.entries(THEME_PRESETS).map(([key, p]) => ({ key, label: p.label, theme: p.theme })),
       embedOrigins: t.embedOrigins,
+      rejectReasons: t.rejectReasons,
+      reminderSms: t.reminderSms,
       hasLogo: !!t.logoKey,
       hasFavicon: !!t.faviconKey,
       hasCustomFont: !!t.fontKey,
@@ -91,6 +95,8 @@ export class BrandingService {
         ...(dto.embedOrigins !== undefined ? { embedOrigins: dto.embedOrigins } : {}),
         ...(dto.hqCeiling !== undefined ? { hqCeiling: dto.hqCeiling ? new Prisma.Decimal(dto.hqCeiling) : null } : {}),
         ...(dto.theme !== undefined ? { theme: themeValue(dto.theme) } : {}),
+        ...(dto.rejectReasons !== undefined ? { rejectReasons: [...new Set(dto.rejectReasons.map((r) => r.trim()).filter(Boolean))] } : {}),
+        ...(dto.reminderSms !== undefined ? { reminderSms: dto.reminderSms } : {}),
       },
     });
     await this.audit.record({ action: AuditAction.EDIT, targetType: 'TenantBranding', targetId: id, metadata: dto as Record<string, unknown> });

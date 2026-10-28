@@ -7,6 +7,7 @@ import { ClaimTypeBadge, ErrorBox, FancyLoader, Overlay, ReviewButtons, Spinner,
 import { ORG_NAV } from '../../../nav';
 import { Workflow, WorkflowPanel } from '../../../../components/WorkflowPanel';
 import { caseTitle } from '../../../../../lib/caseTitle';
+import { OnProgress, UploadButton } from '../../../../components/upload';
 
 interface DocReview { stage: string; state: string; canEdit: boolean; changedAt?: string | null; changedBy?: string | null; changes?: number }
 interface HistoryEntry { at: string; stageLabel: string | null; state: string | null; by: string; text: string }
@@ -92,6 +93,11 @@ export default function AssessClaim() {
   const [busy, setBusy] = useState(false);
   const [zoom, setZoom] = useState(100);
   const [finalAmt, setFinalAmt] = useState('');
+  // Rejecting a document: tick reasons from the insurer's «دلایل رد مدارک» list and/or type your own.
+  const [reject, setReject] = useState<{ docId: string; stage: string; label: string } | null>(null);
+  const [reasons, setReasons] = useState<string[] | null>(null);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [ownReason, setOwnReason] = useState('');
   const canProcess = hasPerm('org', 'claim:process');
   const [history, setHistory] = useState<{ title: string; entries: HistoryEntry[] | null } | null>(null);
   const openHistory = (docId: string, title: string) => {
@@ -116,11 +122,26 @@ export default function AssessClaim() {
   useEffect(() => { setFinalAmt(claim?.finalizedAmount ? String(claim.finalizedAmount) : ''); }, [claim?.finalizedAmount]);
 
   const act = async (fn: () => Promise<any>) => { setError(''); setBusy(true); try { await fn(); await load(); } catch (e: any) { setError(e.message); } finally { setBusy(false); } };
-  const reviewDoc = (docId: string, stage: string, state: 'APPROVED' | 'REJECTED' | 'PENDING') => act(async () => {
-    let note: string | undefined;
-    if (state === 'REJECTED') note = window.prompt('دلیل رد (اختیاری):') || undefined;
-    await client.post(`/claims/${id}/documents/${docId}/review`, { stage, state, note }, 'org');
-  });
+  const reviewDoc = (docId: string, stage: string, state: 'APPROVED' | 'REJECTED' | 'PENDING', label = '') => {
+    if (state === 'REJECTED') {
+      setPicked([]); setOwnReason(''); setReject({ docId, stage, label });
+      if (!reasons) client.get<string[]>(`/claims/${id}/reject-reasons`, 'org').then(setReasons).catch(() => setReasons([]));
+      return;
+    }
+    act(() => client.post(`/claims/${id}/documents/${docId}/review`, { stage, state }, 'org'));
+  };
+  const confirmReject = () => {
+    if (!reject) return;
+    const note = [...picked, ownReason.trim()].filter(Boolean).join('؛ ') || undefined;
+    const r = reject; setReject(null);
+    act(() => client.post(`/claims/${id}/documents/${r.docId}/review`, { stage: r.stage, state: 'REJECTED', note }, 'org'));
+  };
+  // Operator uploads (or replaces) a required document from ارزیابی.
+  const uploadDoc = async (code: string, file: File, onProgress: OnProgress) => {
+    const fd = new FormData(); fd.append('file', file);
+    await client.upload(`/claims/${id}/documents?docCode=${encodeURIComponent(code)}`, fd, 'org', onProgress);
+    await load();
+  };
   const saveFinalized = () => act(() => client.put(`/claims/${id}/finalized-amount`, { amount: finalAmt }, 'org'));
 
   // The checkpoint(s) this operator may actually set (from the docs' canEdit flags).
@@ -131,13 +152,15 @@ export default function AssessClaim() {
   }, [checklist]);
   const myStageLabel = myStages.map((s) => STAGE_LABEL[s]).join('، ');
 
-  // Every uploaded document to review — required docs (latest per item) + any other uploads.
-  const reviewDocs = useMemo(() => {
-    const out: { label: string; d: ClaimDoc }[] = [];
-    checklist?.items.forEach((it) => { const d = it.documents.find((x) => x.isLatest) || it.documents[0]; if (d) out.push({ label: it.label, d }); });
-    checklist?.otherDocuments?.filter((d) => d.isLatest).forEach((d) => out.push({ label: d.fileName, d }));
+  // Every document to review — each required item (latest file, or none yet: the operator may upload it)
+  // + any other uploads.
+  const rows = useMemo(() => {
+    const out: { label: string; code: string | null; d: ClaimDoc | null }[] = [];
+    checklist?.items.forEach((it) => out.push({ label: it.label, code: it.code, d: it.documents.find((x) => x.isLatest) || it.documents[0] || null }));
+    checklist?.otherDocuments?.filter((d) => d.isLatest).forEach((d) => out.push({ label: d.fileName, code: null, d }));
     return out;
   }, [checklist]);
+  const reviewDocs = useMemo(() => rows.filter((r): r is { label: string; code: string | null; d: ClaimDoc } => !!r.d), [rows]);
 
   // Bulk-approve every latest document at the operator's stage.
   const approveAllMyStage = () => act(async () => {
@@ -183,11 +206,29 @@ export default function AssessClaim() {
                   {checklist && <span className={`badge ${checklist.complete ? 'badge-success' : 'badge-warning'}`}>{checklist.complete ? 'مدارک کامل' : 'مدارک ناقص'}</span>}
                 </div>
                 <div className="space-y-2">
-                  {reviewDocs.map(({ label, d }) => (
+                  {rows.filter((r) => !r.d).map(({ label, code }) => (
+                    <div key={`need-${code}`} className="rounded-xl p-2.5 as-doc as-missing">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-semibold truncate" title={label}>{label} <span style={{ color: 'var(--danger)' }}>— بارگذاری نشده</span></span>
+                        {!closed && code && (
+                          <UploadButton className="btn btn-solid btn-sm shrink-0" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" maxMB={15} camera
+                            title="بارگذاری مدرک" subtitle={label} onUpload={(f, onP) => uploadDoc(code, f, onP)}>بارگذاری</UploadButton>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  {reviewDocs.map(({ label, code, d }) => (
                     <div key={d.id} className={`rounded-xl p-2.5 as-doc${d.reviews?.length && d.reviews.every((r) => r.state === 'APPROVED') ? ' is-approved' : ''}`}>
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-semibold truncate">{label}</span>
-                        <button onClick={() => document.getElementById(`doc-${d.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="btn btn-ghost btn-sm shrink-0" title="نمایش در تصویر">نمایش سند</button>
+                        <span className="text-xs font-semibold truncate" title={label}>{label}</span>
+                        <span className="flex flex-col gap-1 shrink-0">
+                          <button onClick={() => document.getElementById(`doc-${d.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="btn btn-ghost btn-sm" title="نمایش در تصویر">نمایش سند</button>
+                          {!closed && (
+                            <UploadButton className="btn btn-ghost btn-sm" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" maxMB={15} camera
+                              title="بارگذاری دوبارهٔ مدرک" subtitle={label} note="فایل تازه جایگزین نسخهٔ فعلی می‌شود؛ نسخهٔ قبلی در سوابق پرونده می‌ماند."
+                              onUpload={(f, onP) => uploadDoc(code || 'OTHER', f, onP)}>بارگذاری</UploadButton>
+                          )}
+                        </span>
                       </div>
                       {d.reviews && d.reviews.length > 0 && (
                         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-2 text-xs">
@@ -201,7 +242,7 @@ export default function AssessClaim() {
                                   {STAGE_LABEL[rv.stage] || rv.stage}:
                                   {(rv.changes ?? 0) > 1 && <span className="as-count">{(rv.changes ?? 0).toLocaleString('fa-IR')}</span>}
                                 </button>
-                                <ReviewButtons state={rv.state} editable={editable} busy={busy} label={STAGE_LABEL[rv.stage]} onSet={(st) => reviewDoc(d.id, rv.stage, st)} />
+                                <ReviewButtons state={rv.state} editable={editable} busy={busy} label={STAGE_LABEL[rv.stage]} onSet={(st) => reviewDoc(d.id, rv.stage, st, label)} />
                               </span>
                             );
                           })}
@@ -302,6 +343,38 @@ export default function AssessClaim() {
                     ))}
                   </ol>
                 )}
+            </div>
+          </div>
+        </Overlay>
+      )}
+      {reject && (
+        <Overlay onClose={() => setReject(null)}>
+          <div className="pmodal" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
+            <div className="pmodal-head">
+              <span className="pmodal-title">دلیل رد مدرک{reject.label ? ` — ${reject.label}` : ''}</span>
+              <button className="pmodal-x" onClick={() => setReject(null)} aria-label="بستن">×</button>
+            </div>
+            <div className="pmodal-body space-y-3 text-sm">
+              {!reasons ? <div className="flex justify-center py-4"><Spinner size={32} /></div> : reasons.length > 0 ? (
+                <fieldset className="space-y-1.5">
+                  <legend className="label">دلایل رد (یک یا چند مورد)</legend>
+                  {reasons.map((r) => (
+                    <label key={r} className="flex items-start gap-2 cursor-pointer">
+                      <input type="checkbox" className="mt-1" checked={picked.includes(r)} onChange={(e) => setPicked((p) => e.target.checked ? [...p, r] : p.filter((x) => x !== r))} />
+                      <span>{r}</span>
+                    </label>
+                  ))}
+                </fieldset>
+              ) : <div className="text-xs" style={{ color: 'var(--muted)' }}>فهرست دلایل رد هنوز در «تنظیمات سازمان» تعریف نشده است؛ دلیل را بنویسید.</div>}
+              <div>
+                <label className="label">دلیل دیگر (اختیاری)</label>
+                <textarea className="input" rows={2} value={ownReason} onChange={(e) => setOwnReason(e.target.value)} maxLength={500} placeholder="شرح دلیل رد مدرک" />
+              </div>
+              <div className="text-xs" style={{ color: 'var(--muted)' }}>دلایل برای بیمه‌گزار نمایش داده می‌شود تا مدرک را اصلاح کند.</div>
+            </div>
+            <div className="flex border-t" style={{ borderColor: 'var(--border)' }}>
+              <button onClick={() => setReject(null)} className="flex-1 py-3 font-bold" style={{ color: 'var(--muted)', borderInlineEnd: '1px solid var(--border)' }}>انصراف</button>
+              <button onClick={confirmReject} disabled={busy} className="flex-1 py-3 font-bold" style={{ color: 'var(--danger)' }}>رد مدرک</button>
             </div>
           </div>
         </Overlay>

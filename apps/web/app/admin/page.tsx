@@ -210,8 +210,50 @@ export default function AdminDashboard() {
           </table>
         </div>
         <PlatformSms />
+        <ShahkarCard />
         </div>
       </div>
+    </div>
+  );
+}
+
+/** «استعلام شاهکار»: only the super admin turns it on/off. Off = نماینده is approved by the operator alone. */
+function ShahkarCard() {
+  const [c, setC] = useState<any>(null);
+  const [f, setF] = useState({ provider: 'finnotech', baseUrl: '', clientId: '', token: '' });
+  const [msg, setMsg] = useState<{ t: 'ok' | 'err'; m: string } | null>(null);
+  const load = () => client.get<any>('/platform/shahkar', 'super').then((d) => { setC(d); setF({ provider: d.provider, baseUrl: d.baseUrl, clientId: d.clientId, token: '' }); }).catch((e) => setMsg({ t: 'err', m: e.message }));
+  useEffect(() => { load(); }, []);
+  const save = async (enabled?: boolean) => {
+    setMsg(null);
+    try {
+      const d = await client.put<any>('/platform/shahkar', { ...(enabled !== undefined ? { enabled } : {}), provider: f.provider, baseUrl: f.baseUrl, clientId: f.clientId, ...(f.token ? { token: f.token } : {}) }, 'super');
+      setC(d); setF((x) => ({ ...x, token: '' })); setMsg({ t: 'ok', m: 'ذخیره شد' });
+    } catch (e: any) { setMsg({ t: 'err', m: e.message }); }
+  };
+  if (!c) return null;
+  return (
+    <div className="card p-5 space-y-3 mt-5">
+      <h3 className="font-semibold">استعلام شاهکار (تطبیق کد ملی و شمارهٔ همراه)</h3>
+      <p className="text-xs" style={{ color: 'var(--muted)' }}>هنگام ثبت‌نام یا تعریف نماینده، از سامانهٔ شاهکار بررسی می‌شود که کد ملی و شمارهٔ همراه متعلق به یک نفر باشند. اگر خاموش باشد، نماینده فقط با تایید کاربر سازمان فعال می‌شود.</p>
+      {msg && <div className={msg.t === 'ok' ? 'alert-success' : 'alert-error'}>{msg.m}</div>}
+      <label className="flex items-center gap-2 text-sm cursor-pointer">
+        <input type="checkbox" checked={!!c.enabled} onChange={(e) => save(e.target.checked)} />
+        <span className="font-semibold">استعلام شاهکار فعال باشد</span>
+        {c.enabled && !c.configured && <span className="badge badge-danger">تنظیم نشده</span>}
+      </label>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <Field label="ارائه‌دهنده">
+          <select className="input" value={f.provider} onChange={(e) => setF({ ...f, provider: e.target.value })}>
+            <option value="finnotech">فینوتک (Finnotech)</option>
+            <option value="generic">سرویس دیگر (POST JSON)</option>
+          </select>
+        </Field>
+        <Field label="نشانی سرویس (https://…)"><input className="input" value={f.baseUrl} onChange={(e) => setF({ ...f, baseUrl: e.target.value })} placeholder={f.provider === 'finnotech' ? 'https://api.finnotech.ir' : 'https://…/shahkar'} style={{ direction: 'ltr', textAlign: 'left' }} /></Field>
+        {f.provider === 'finnotech' && <Field label="Client ID"><input className="input" value={f.clientId} onChange={(e) => setF({ ...f, clientId: e.target.value })} style={{ direction: 'ltr', textAlign: 'left' }} /></Field>}
+        <Field label={`توکن دسترسی${c.hasToken ? ' (تنظیم‌شده)' : ''}`}><input className="input" type="password" value={f.token} onChange={(e) => setF({ ...f, token: e.target.value })} placeholder={c.hasToken ? '••••••' : ''} style={{ direction: 'ltr', textAlign: 'left' }} /></Field>
+      </div>
+      <button onClick={() => save()} className="btn btn-primary btn-sm">ذخیرهٔ تنظیمات شاهکار</button>
     </div>
   );
 }
@@ -287,7 +329,7 @@ function PlatformSms() {
           <div className="divide-y" style={{ borderColor: 'var(--border)' }}>
             {reqs.map((r) => (
               <div key={r.id} className="flex justify-between items-center py-2 text-sm">
-                <span>{r.name} {r.smsUsePlatform ? <span className="badge badge-success">مجاز</span> : <span className="badge badge-warning">در انتظار</span>}</span>
+                <span>{r.name} {r.smsUsePlatform ? <span className="badge badge-success">مجاز</span> : <span className="badge badge-warning">در دست بررسی</span>}</span>
                 {r.smsUsePlatform
                   ? <button onClick={() => setPlatform(r.id, false)} className="text-xs" style={{ color: 'var(--danger)' }}>لغو دسترسی</button>
                   : <button onClick={() => setPlatform(r.id, true)} className="text-xs" style={{ color: 'var(--success)' }}>تایید دسترسی</button>}

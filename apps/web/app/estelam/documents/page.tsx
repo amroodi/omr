@@ -50,7 +50,7 @@ export default function EstelamDocuments() {
                       {desks.map((s) => {
                         const rv = d.reviews.find((x) => x.stage === s);
                         const st = rv?.state === 'APPROVED' ? 'ok' : rv?.state === 'REJECTED' ? 'no' : 'wait';
-                        return <span key={s} className="cs-td-desk"><Mark state={d.uploaded ? st : 'wait'} title={`${DESK_FA[s]}: ${!d.uploaded ? 'بارگذاری نشده' : st === 'ok' ? 'تایید' : st === 'no' ? 'رد' : 'در انتظار بررسی'}${rv?.at && st !== 'wait' ? ` — ${rv.at}` : ''}`} /></span>;
+                        return <span key={s} className="cs-td-desk"><Mark state={d.uploaded ? st : 'wait'} title={`${DESK_FA[s]}: ${!d.uploaded ? 'بارگذاری نشده' : st === 'ok' ? 'تایید' : st === 'no' ? 'رد' : 'در دست بررسی'}${rv?.at && st !== 'wait' ? ` — ${rv.at}` : ''}`} /></span>;
                       })}
                       <span className="cs-td-doc">{d.label}</span>
                     </div>

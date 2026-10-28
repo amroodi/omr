@@ -1637,3 +1637,10 @@ code, kbd, pre, samp, .latin-digits { font-family: 'Vazirmatn', ui-monospace, SF
 .cs-hist-at { color: #2563eb; font-weight: 700; }
 .cs-hist-note { color: var(--text); font-weight: 700; }
 .cu-kv-btns { display: flex; justify-content: flex-start; background: var(--surface-2); }
+
+/* Upload dialog, «cameraOnly» (بیمه‌گزار panel): on a phone only «اسکن با دوربین» is offered. */
+.upd-phone { display: none; }
+@media (max-width: 639px) {
+  .upd-camonly .upd-desk { display: none !important; }
+  .upd-camonly .upd-phone { display: block; }
+}

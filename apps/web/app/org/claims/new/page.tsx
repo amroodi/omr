@@ -57,7 +57,10 @@ export default function NewClaim() {
   const [f, setF] = useState({
     companyId: '', policyHolderId: '', insurerTenantId: '', channel: 'BROKER', sellingBranchId: '',
     claimType: 'DEATH_ILLNESS', deceasedFullName: '', deceasedNationalCode: '', birthDate: '', eventDate: '', claimedAmount: '', policyNumber: '', description: '',
+    startStage: '',
   });
+  // «اعلام خسارت»: may this operator file, and to which desks may the case go?
+  const [notice, setNotice] = useState<{ enabled: boolean; targets: string[]; default: string; labels: Record<string, string> } | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -66,6 +69,7 @@ export default function NewClaim() {
     client.get<Company[]>('/claims/on-behalf/companies', 'org').then(setCompanies).catch(() => setCompanies([]));
     client.get<{ id: string; name: string }[]>('/claims/insurers', 'org').then(setInsurers).catch((e) => setError(e.message));
     client.get<{ id: string; name: string; code: string }[]>('/branches', 'org').then(setBranches).catch(() => {});
+    client.get<any>('/claims/notice-options', 'org').then(setNotice).catch(() => setNotice(null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -101,6 +105,7 @@ export default function NewClaim() {
       if (birthIso) payload.deceasedBirthDate = birthIso;
       if (f.policyNumber.trim()) payload.policyNumber = toAscii(f.policyNumber).trim();
       if (f.description.trim()) payload.description = f.description.trim();
+      if (f.startStage) payload.startStage = f.startStage;
       const c = await client.post<{ id: string }>('/claims', payload, 'org');
       router.push(`/org/claims/${c.id}`);
     } catch (e: any) { setError(e.message); } finally { setBusy(false); }
@@ -119,6 +124,7 @@ export default function NewClaim() {
         </div>
 
         <ErrorBox message={error} />
+        {notice && !notice.enabled && <div className="alert-error mt-3">اعلام خسارت برای شما در «تنظیمات سازمان › اعلام خسارت» غیرفعال است.</div>}
 
         <div className="grid md:grid-cols-2 gap-5 mt-4">
           {companies.length > 0 && (
@@ -186,6 +192,13 @@ export default function NewClaim() {
           <PField label="مبلغ خسارت برآوردی (ریال)" help="اختیاری؛ مبلغ قطعی پس از ارزیابی ثبت می‌شود.">
             <input className="input" inputMode="numeric" value={groupDigits(f.claimedAmount)} onChange={(e) => setF((s) => ({ ...s, claimedAmount: toAscii(e.target.value).replace(/[^\d]/g, '') }))} placeholder="۰" style={{ direction: 'ltr', textAlign: 'right' }} />
           </PField>
+          {notice && notice.enabled && notice.targets.length > 1 && (
+            <PField label="ارسال پرونده پس از ثبت به" help="مرحله‌هایی که در «تنظیمات سازمان › اعلام خسارت» مجاز شده‌اند.">
+              <select className="input" value={f.startStage || notice.default} onChange={set('startStage')}>
+                {notice.targets.filter((t) => t !== 'BROKER' || !manual || f.channel === 'BROKER').map((t) => <option key={t} value={t}>{notice.labels[t] ?? t}</option>)}
+              </select>
+            </PField>
+          )}
           <PField label="شماره بیمه‌نامه" help={co ? 'اگر خالی بماند از قرارداد شرکت برداشته می‌شود.' : 'اختیاری.'}>
             <input className="input" value={f.policyNumber} onChange={set('policyNumber')} style={{ direction: 'ltr', textAlign: 'right' }} />
           </PField>

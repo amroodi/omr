@@ -6,7 +6,7 @@ import { ErrorBox, Field, Overlay } from '../../components/ui';
 import { ORG_NAV } from '../nav';
 
 interface Role { id: string; name: string; permissions: string[]; isSystem: boolean; locked: boolean; users: number }
-interface User { id: string; username: string; displayName: string; isActive: boolean; lastLoginAt?: string | null; role: { id: string; name: string } | null; branch?: { id: string; name: string } | null; desk?: string | null }
+interface User { id: string; username: string; displayName: string; isActive: boolean; lastLoginAt?: string | null; role: { id: string; name: string } | null; branch?: { id: string; name: string } | null; desk?: string | null; phone?: string | null }
 type Msg = { t: 'ok' | 'err'; m: string } | null;
 
 /** Permission names in Persian, grouped by area (unknown keys fall back to the raw key). */
@@ -79,10 +79,10 @@ export default function UsersRoles() {
   const [roleBusy, setRoleBusy] = useState(false);
 
   // user editor / creator
-  const [nu, setNu] = useState({ username: '', displayName: '', password: '', roleId: '', seat: 'HQ' });
+  const [nu, setNu] = useState({ username: '', displayName: '', password: '', roleId: '', seat: 'HQ', phone: '' });
   const [userMsg, setUserMsg] = useState<Msg>(null);
   const [userBusy, setUserBusy] = useState(false);
-  const [ue, setUe] = useState<{ user: User; displayName: string; roleId: string; seat: string; isActive: boolean; password: string } | null>(null);
+  const [ue, setUe] = useState<{ user: User; displayName: string; roleId: string; seat: string; isActive: boolean; password: string; phone: string } | null>(null);
   const [ueMsg, setUeMsg] = useState<Msg>(null);
 
   useEffect(() => {
@@ -137,14 +137,15 @@ export default function UsersRoles() {
       const payload: Record<string, string> = { username: nu.username.trim(), password: nu.password, roleId: nu.roleId };
       if (isInsurer) { if (nu.seat.startsWith('branch:')) payload.branchId = nu.seat.slice(7); else payload.desk = nu.seat; }
       if (nu.displayName.trim()) payload.displayName = nu.displayName.trim();
+      if (nu.phone.trim()) payload.phone = nu.phone.trim();
       await client.post('/users', payload, 'org');
-      setNu({ username: '', displayName: '', password: '', roleId: '', seat: 'HQ' });
+      setNu({ username: '', displayName: '', password: '', roleId: '', seat: 'HQ', phone: '' });
       setUserMsg({ t: 'ok', m: 'کاربر با موفقیت ساخته شد.' });
       load();
     } catch (e: any) { setUserMsg({ t: 'err', m: e.message }); } finally { setUserBusy(false); }
   };
 
-  const openUser = (u: User) => { setUeMsg(null); setUe({ user: u, displayName: u.displayName, roleId: u.role?.id ?? '', seat: seatValue(u), isActive: u.isActive, password: '' }); };
+  const openUser = (u: User) => { setUeMsg(null); setUe({ user: u, displayName: u.displayName, roleId: u.role?.id ?? '', seat: seatValue(u), isActive: u.isActive, password: '', phone: u.phone ?? '' }); };
   const saveUser = async () => {
     if (!ue) return;
     setUeMsg(null);
@@ -154,6 +155,7 @@ export default function UsersRoles() {
       const body: Record<string, unknown> = { isActive: ue.isActive };
       if (ue.displayName.trim() && ue.displayName.trim() !== ue.user.displayName) body.displayName = ue.displayName.trim();
       if (ue.roleId && ue.roleId !== ue.user.role?.id) body.roleId = ue.roleId;
+      if (ue.phone.trim() !== (ue.user.phone ?? '')) body.phone = ue.phone.trim();
       if (isInsurer && ue.seat !== seatValue(ue.user)) {
         if (ue.seat.startsWith('branch:')) body.branchId = ue.seat.slice(7); else { body.desk = ue.seat; body.branchId = null; }
       }
@@ -212,6 +214,7 @@ export default function UsersRoles() {
             <h3 className="font-semibold text-sm">افزودن کاربر</h3>
             <Field label="نام کاربری"><input value={nu.username} onChange={(e) => setNu({ ...nu, username: e.target.value })} className="input" /></Field>
             <Field label="نام نمایشی (اختیاری)"><input value={nu.displayName} onChange={(e) => setNu({ ...nu, displayName: e.target.value })} className="input" /></Field>
+            <Field label="شمارهٔ همراه (برای پیامک یادآور — اختیاری)"><input value={nu.phone} onChange={(e) => setNu({ ...nu, phone: e.target.value })} className="input" inputMode="numeric" placeholder="۰۹۱۲…" style={{ direction: 'ltr', textAlign: 'right' }} /></Field>
             <div>
               <label className="label">رمز عبور</label>
               <input type="password" value={nu.password} onChange={(e) => setNu({ ...nu, password: e.target.value })} className="input" placeholder="حداقل ۸ نویسه" />
@@ -269,6 +272,7 @@ export default function UsersRoles() {
             </div>
             <div className="pmodal-body space-y-3">
               <Field label="نام نمایشی"><input className="input" value={ue.displayName} onChange={(e) => setUe({ ...ue, displayName: e.target.value })} /></Field>
+              <Field label="شمارهٔ همراه (برای پیامک یادآور)"><input className="input" value={ue.phone} onChange={(e) => setUe({ ...ue, phone: e.target.value })} inputMode="numeric" placeholder="۰۹۱۲…" style={{ direction: 'ltr', textAlign: 'right' }} /></Field>
               <Field label="نقش">
                 <select className="input" value={ue.roleId} onChange={(e) => setUe({ ...ue, roleId: e.target.value })}>
                   {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}

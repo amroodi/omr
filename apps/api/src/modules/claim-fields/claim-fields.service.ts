@@ -11,7 +11,7 @@ import { Stage, STAGE_FA } from '../claims/workflow';
 /** What each hand-off did, for «تاریخچه وضعیت پرونده» of a case moved by the hierarchy. */
 const STEP_ACTION_FA: Record<string, string> = {
   SUBMIT: 'ارسال پرونده', FORWARD: 'تایید و ارسال به مرحلهٔ بعد', REFER_COUNCIL: 'ارجاع به شورای فنی', PAY_ORDER: 'دستور پرداخت',
-  RETURN: 'عودت برای رفع نقص', RETURN_DIRECT: 'عودت مستقیم به بیمه‌گزار', DOWN_FORWARD: 'ارسال به مرحلهٔ پایین‌تر',
+  RETURN: 'عودت برای رفع نقص', RETURN_DIRECT: 'برگشت از سرپرستی به بیمه‌گزار', DOWN_FORWARD: 'ارسال به مرحلهٔ پایین‌تر',
   DOWN_DIRECT: 'ارسال مستقیم به بیمه‌گزار', MARK_PAID: 'پرداخت خسارت', REJECT_FINAL: 'رد نهایی پرونده',
 };
 const STEP_STATE_FA: Record<string, string> = {

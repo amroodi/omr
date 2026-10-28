@@ -101,7 +101,7 @@ export default function CustomerCaseWorkflow() {
       {!claim ? <div className="pcard p-12 flex justify-center"><FancyLoader label="در حال بارگذاری روند پرونده" /></div> : (
         <div className="space-y-5">
           <div className="cs-sheet">
-            <CaseHero title="پیگیری آخرین وضعیت پرونده خسارت" claim={claim} notes={fv.case_notes || phaseText(claim)} back={`/customer/claims/${id}`} exitHref="/customer" />
+            <CaseHero title="پیگیری آخرین وضعیت پرونده خسارت" claim={claim} notes={fv.case_notes || phaseText(claim)} steps back={`/customer/claims/${id}`} exitHref="/customer/claims" />
             <PersonCards claim={claim} fv={fv} />
             <WorkflowStepsTable claim={claim} fv={fv} />
           </div>

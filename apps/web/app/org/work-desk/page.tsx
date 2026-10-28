@@ -406,7 +406,7 @@ function WorkDesk() {
       {tip && data && (
         <NoticeModal variant="info" title="خوش آمدید" onClose={() => setTip(false)} confirmLabel="متوجه شدم">
           <p className="font-bold mb-2">{data.userName ? `${data.userName} عزیز،` : 'کاربر گرامی،'}</p>
-          <p>در حال حاضر <b style={{ color: 'var(--brand)' }}>{fa(data.summary.pendingActions)}</b> مورد در میز کار شما در انتظار اقدام است (در <b>{fa(data.summary.queues)}</b> برگه).</p>
+          <p>در حال حاضر <b style={{ color: 'var(--brand)' }}>{fa(data.summary.pendingActions)}</b> مورد در میز کار شما در دست بررسی است (در <b>{fa(data.summary.queues)}</b> برگه).</p>
           <p className="mt-2" style={{ color: 'var(--muted)' }}>برای مشاهدهٔ هر صف، روی برگهٔ مربوط به آن در میز کار کلیک کنید.</p>
         </NoticeModal>
       )}

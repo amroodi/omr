@@ -1,5 +1,5 @@
 import { ClaimType } from '@prisma/client';
-import { IsEnum, IsISO8601, IsOptional, IsString, IsUUID, Length, Matches } from 'class-validator';
+import { IsEnum, IsIn, IsISO8601, IsOptional, IsString, IsUUID, Length, Matches } from 'class-validator';
 import { ToAsciiDigits } from '../../common/validation/to-ascii.decorator';
 
 export class CustomerRequestOtpDto {
@@ -103,6 +103,11 @@ export class CustomerFileClaimDto {
   @IsOptional()
   @IsUUID()
   contractId?: string;
+
+  // «اعلام خسارت به»: the desk the case starts on (allowed by the «اعلام خسارت» rules).
+  @IsOptional()
+  @IsIn(['POLICYHOLDER', 'BROKER', 'BRANCH', 'HQ', 'COUNCIL'])
+  startStage?: 'POLICYHOLDER' | 'BROKER' | 'BRANCH' | 'HQ' | 'COUNCIL';
 
   // علت فوت as the بیمه‌گزار knows it (free text, e.g. «ایست قلبی»).
   @IsOptional()
