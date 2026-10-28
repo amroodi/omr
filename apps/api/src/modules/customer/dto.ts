@@ -104,6 +104,12 @@ export class CustomerFileClaimDto {
   @IsUUID()
   contractId?: string;
 
+  // علت فوت as the بیمه‌گزار knows it (free text, e.g. «ایست قلبی»).
+  @IsOptional()
+  @IsString()
+  @Length(0, 300)
+  causeOfDeath?: string;
+
   // بیمه‌گزار can't know the exact amount/policy number; free-text details instead.
   @IsOptional()
   @IsString()
