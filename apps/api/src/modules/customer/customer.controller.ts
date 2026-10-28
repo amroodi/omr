@@ -175,6 +175,7 @@ export class CustomerController {
       claimType: dto.claimType,
       eventDate: dto.eventDate,
       description: dto.description,
+      causeOfDeath: dto.causeOfDeath,
       contractId: dto.contractId,
       policyholderCompanyId: dto.companyId,
       deceasedFullName: dto.deceasedFullName,

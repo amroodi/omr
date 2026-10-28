@@ -55,6 +55,7 @@ interface FileClaimInput {
   deceasedFullName: string;
   deceasedNationalCode: string;
   deceasedBirthDate?: string; // ISO
+  causeOfDeath?: string; // علت فوت, typed by whoever files (free text)
   policyHolderId?: string;
   policyholderCompanyId?: string; // بیمه‌گزار company (set automatically when the بیمه‌گزار files)
   onBehalf?: boolean; // کارگزاری files *as* the بیمه‌گزار company (claim:file-on-behalf) — starts at their desk
@@ -278,6 +279,7 @@ export class ClaimsService {
         policyNumber: input.policyNumber ?? null,
         claimedAmount: input.claimedAmount ?? '0',
         description: input.description ?? null,
+        causeOfDeath: input.causeOfDeath?.trim() || null,
         status: byPolicyHolder ? ClaimStatus.SUBMITTED : ClaimStatus.UNDER_REVIEW,
         currentStage: firstStage,
         flowDirection: 'UP',

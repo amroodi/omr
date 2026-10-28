@@ -51,7 +51,7 @@ export default function CustomerNewClaim() {
   // «broker» login: which company this claim is for (from ?company=…)
   const [brokerFor, setBrokerFor] = useState<{ id: string; name: string } | null | undefined>(undefined);
   const [isBroker, setIsBroker] = useState(false);
-  const [f, setF] = useState({ claimType: 'DEATH_ILLNESS', eventDate: '', birthDate: '', deceasedFullName: '', deceasedNationalCode: '', description: '' });
+  const [f, setF] = useState({ claimType: 'DEATH_ILLNESS', eventDate: '', birthDate: '', deceasedFullName: '', deceasedNationalCode: '', causeOfDeath: '', description: '' });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -115,6 +115,7 @@ export default function CustomerNewClaim() {
       };
       if (iso) payload.eventDate = iso;
       if (birthIso) payload.deceasedBirthDate = birthIso;
+      if (f.causeOfDeath.trim()) payload.causeOfDeath = f.causeOfDeath.trim();
       if (f.description.trim()) payload.description = f.description.trim();
       const c = await client.post<{ id: string }>('/customer/claims', payload, 'customer');
       router.push(`/customer/claims/${c.id}`);
@@ -174,6 +175,10 @@ export default function CustomerNewClaim() {
 
           <PField label={`${eventLabel} (شمسی) *`} help={isDeath ? 'تاریخ فوت بیمه‌شده به تقویم شمسی؛ بیمه‌گر بر اساس قرارداد معتبر در این تاریخ تعیین می‌شود.' : 'تاریخ وقوع حادثه به تقویم شمسی.'}>
             <JalaliDatePicker value={f.eventDate} onChange={onEventDate} placeholder="۱۴۰۵/۰۷/۰۱" />
+          </PField>
+
+          <PField label="علت فوت" help="علت فوت بیمه‌شده همان‌طور که می‌دانید؛ مثلاً «ایست قلبی»، «تصادف رانندگی» یا «سقوط از ارتفاع».">
+            <input className="input" value={f.causeOfDeath} onChange={(e) => setF({ ...f, causeOfDeath: e.target.value })} maxLength={300} placeholder="شرح علت فوت" />
           </PField>
 
           <PField label={isDeath ? 'سن متوفی (هنگام فوت)' : 'سن بیمه‌شده (هنگام حادثه)'} help="از روی تاریخ تولد و تاریخ فوت محاسبه می‌شود.">
