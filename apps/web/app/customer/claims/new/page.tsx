@@ -51,7 +51,10 @@ export default function CustomerNewClaim() {
   // «broker» login: which company this claim is for (from ?company=…)
   const [brokerFor, setBrokerFor] = useState<{ id: string; name: string } | null | undefined>(undefined);
   const [isBroker, setIsBroker] = useState(false);
-  const [f, setF] = useState({ claimType: 'DEATH_ILLNESS', eventDate: '', birthDate: '', deceasedFullName: '', deceasedNationalCode: '', causeOfDeath: '', description: '' });
+  const [f, setF] = useState({ claimType: 'DEATH_ILLNESS', eventDate: '', birthDate: '', deceasedFullName: '', deceasedNationalCode: '', causeOfDeath: '', description: '', startStage: '' });
+  // «اعلام خسارت»: is filing allowed from this login, and to which desks?
+  const [notice, setNotice] = useState<{ enabled: boolean; targets: string[]; default: string; labels: Record<string, string> } | null>(null);
+  useEffect(() => { client.get<any>('/customer/notice-options', 'customer').then(setNotice).catch(() => setNotice(null)); }, []);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -116,6 +119,7 @@ export default function CustomerNewClaim() {
       if (iso) payload.eventDate = iso;
       if (birthIso) payload.deceasedBirthDate = birthIso;
       if (f.causeOfDeath.trim()) payload.causeOfDeath = f.causeOfDeath.trim();
+      if (f.startStage) payload.startStage = f.startStage;
       if (f.description.trim()) payload.description = f.description.trim();
       const c = await client.post<{ id: string }>('/customer/claims', payload, 'customer');
       router.push(`/customer/claims/${c.id}`);
@@ -142,6 +146,7 @@ export default function CustomerNewClaim() {
         </div>
 
         <ErrorBox message={error} />
+        {notice && !notice.enabled && <div className="alert-error mt-3">اعلام خسارت از این پنل غیرفعال است؛ برای ثبت پرونده با کارگزاری تماس بگیرید.</div>}
 
         <div className="grid md:grid-cols-2 gap-5 mt-4">
           <div className="md:col-span-2">
@@ -185,6 +190,15 @@ export default function CustomerNewClaim() {
             <input className="input" readOnly value={age != null ? `${age.toLocaleString('fa-IR')} سال` : ''} placeholder="(پس از ورود تاریخ‌ها)" style={{ background: 'var(--surface-2)' }} />
           </PField>
         </div>
+
+        {notice && notice.enabled && notice.targets.length > 1 && (
+          <div className="mt-5 max-w-md">
+            <label className="label">ارسال پرونده پس از ثبت به</label>
+            <select className="input" value={f.startStage || notice.default} onChange={(e) => setF({ ...f, startStage: e.target.value })}>
+              {notice.targets.map((t) => <option key={t} value={t}>{notice.labels[t] ?? t}</option>)}
+            </select>
+          </div>
+        )}
 
         <div className="mt-5">
           <label className="label">توضیحات (اختیاری)</label>

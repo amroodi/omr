@@ -1,4 +1,4 @@
-import { IsBoolean, IsIn, IsOptional, IsString, IsUUID, Length, ValidateIf } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional, IsString, IsUUID, Length, Matches, ValidateIf } from 'class-validator';
 
 // Central insurer desks an admin can assign (branch users are شعبه automatically). null = derive.
 const DESKS = ['HQ', 'COUNCIL'];
@@ -27,9 +27,21 @@ export class CreateUserDto {
   @IsOptional()
   @IsIn(DESKS)
   desk?: 'HQ' | 'COUNCIL';
+
+  // Mobile for reminder SMS (optional).
+  @IsOptional()
+  @ValidateIf((_, v) => v !== '')
+  @Matches(/^0?9\d{9}$/, { message: 'شمارهٔ همراه نامعتبر است' })
+  phone?: string;
 }
 
 export class UpdateUserDto {
+  // Mobile for reminder SMS; '' clears it.
+  @IsOptional()
+  @ValidateIf((_, v) => v !== '')
+  @Matches(/^0?9\d{9}$/, { message: 'شمارهٔ همراه نامعتبر است' })
+  phone?: string;
+
   @IsOptional()
   @IsString()
   @Length(2, 120)

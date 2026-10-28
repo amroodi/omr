@@ -1,4 +1,4 @@
-import { IsArray, IsBoolean, IsHexColor, IsInt, IsOptional, IsString, Length, Matches, Max, Min, ValidateIf } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsHexColor, IsInt, IsOptional, IsString, Length, Matches, Max, Min, ValidateIf } from 'class-validator';
 
 export class UpdateBrandingDto {
   @IsOptional()
@@ -40,6 +40,19 @@ export class UpdateBrandingDto {
   @IsArray()
   @Matches(/^https?:\/\/[a-zA-Z0-9.:-]+$/, { each: true, message: 'هر مبدأ باید مانند https://example.com باشد' })
   embedOrigins?: string[];
+
+  // «دلایل رد مدارک» checklist (one reason per entry).
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsString({ each: true })
+  @Length(1, 300, { each: true })
+  rejectReasons?: string[];
+
+  // Reminder SMS for this org's operators (on top of the in-panel reminder).
+  @IsOptional()
+  @IsBoolean()
+  reminderSms?: boolean;
 
   // Theme tokens object, a preset name (e.g. "alborz"), or null to restore the default design.
   // Validated in branding/theme.ts (hex colours + one constrained gradient only).

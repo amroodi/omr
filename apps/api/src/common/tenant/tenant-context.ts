@@ -19,6 +19,8 @@ export interface RequestContext {
   customerCompanyId?: string;
   /** For the customer realm, the brokerage's own «broker» login: acts for every بیمه‌گزار of the brokerage. */
   customerBrokerPanel?: boolean;
+  /** For the customer realm: a نماینده (person, کد ملی + password) acting for their company. */
+  customerRepresentative?: boolean;
   /** Org user's branch, when branch-bound. */
   branchId?: string;
   /** When true, org queries must be restricted to `branchId` (branch admin / staff). */

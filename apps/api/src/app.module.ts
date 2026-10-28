@@ -20,6 +20,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { BranchesModule } from './modules/branches/branches.module';
 import { EmbedModule } from './modules/embed/embed.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { RemindersModule } from './modules/reminders/reminders.module';
 import { PartnerModule } from './modules/partner/partner.module';
 import { PlatformModule } from './modules/platform/platform.module';
 import { BrandingModule } from './modules/branding/branding.module';
@@ -81,6 +82,7 @@ import { UsersModule } from './modules/users/users.module';
     PartnerModule,
     EmbedModule,
     NotificationsModule,
+    RemindersModule,
     PlatformModule,
   ],
   providers: [

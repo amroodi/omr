@@ -9,7 +9,7 @@ import { UploadButton } from './upload';
 /** Shape of `workflow` on GET /claims/:id (see apps/api/src/modules/claims/workflow.ts). */
 export interface WorkflowAction {
   key: string; label: string; tone: 'primary' | 'warning' | 'danger' | 'ghost';
-  disabled?: string; adminOnly?: boolean; needsDeficiencies?: boolean; needsNote?: boolean;
+  disabled?: string; adminOnly?: boolean; needsDeficiencies?: boolean; needsNote?: boolean; confirm?: boolean;
   branchOptions?: { id: string; name: string; code: string }[]; selectedBranchId?: string | null;
 }
 export interface Workflow {
@@ -69,17 +69,19 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact }: 
   const [ln, setLn] = useState({ number: '', date: '' });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [sure, setSure] = useState(false); // «آیا مطمئن هستید؟» step of a confirm-first action
   const base = realm === 'customer' ? '/customer/claims' : '/claims';
   const cur = w.chain.findIndex((c) => c.stage === w.currentStage);
 
   const start = (a: WorkflowAction & { physical?: boolean }) => {
-    setErr(''); setNote(''); setDefs(''); setTracking(''); setLetter({ number: '', date: '', subject: '' }); setLetterFile(null);
+    setErr(''); setNote(''); setDefs(''); setTracking(''); setSure(false); setLetter({ number: '', date: '', subject: '' }); setLetterFile(null);
     setBranchId(a.selectedBranchId || (a.branchOptions?.length === 1 ? a.branchOptions[0].id : ''));
     setOpen(a);
   };
 
   const submit = async () => {
     if (!open) return;
+    if (open.confirm && !sure) { setSure(true); return; } // ask yes / no first
     setErr(''); setBusy(true);
     try {
       if (realm === 'customer') {
@@ -167,8 +169,8 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact }: 
           {w.physical.open && (
             <div className="text-xs">
               {w.physical.open.status === 'REQUESTED'
-                ? <>درخواست «{w.physical.open.requesterLabel}» — در انتظار اقدام «{w.physical.open.holderLabel}»</>
-                : <>اصل مدارک برای «{w.physical.open.requesterLabel}» ارسال شده — در انتظار تایید دریافت</>}
+                ? <>درخواست «{w.physical.open.requesterLabel}» — در دست بررسی «{w.physical.open.holderLabel}»</>
+                : <>اصل مدارک برای «{w.physical.open.requesterLabel}» ارسال شده — در دست بررسی دریافت</>}
             </div>
           )}
           {w.physical.actions.length > 0 && (
@@ -208,7 +210,7 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact }: 
             {w.actions.map((a) => (
               <button key={a.key} onClick={() => start(a)} disabled={busy || !!a.disabled} title={a.disabled || a.label}
                 className={TONE[a.tone]} style={TONE_COLOR[a.tone] ? { color: TONE_COLOR[a.tone] } : undefined}>
-                {a.label}{a.adminOnly ? ' ★' : ''}
+                {a.label}{a.adminOnly && !a.confirm ? ' ★' : ''}
               </button>
             ))}
           </div>
@@ -271,11 +273,23 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact }: 
                 </details>
               )}
               {err && <div className="alert-error">{err}</div>}
+              {sure && (
+                <div className="rounded-lg p-3 font-bold" style={{ background: 'var(--surface-2)', color: 'var(--danger)' }} role="alert">
+                  آیا مطمئن هستید که این پرونده را به بیمه‌گزار برمی‌گردانید؟
+                </div>
+              )}
             </div>
-            <div className="flex border-t" style={{ borderColor: 'var(--border)' }}>
-              <button onClick={() => setOpen(null)} disabled={busy} className="flex-1 py-3 font-bold" style={{ color: 'var(--muted)', borderInlineEnd: '1px solid var(--border)' }}>انصراف</button>
-              <button onClick={submit} disabled={busy || (!!open.branchOptions && !branchId) || (!!open.needsNote && !note.trim())} className="flex-1 py-3 font-bold" style={{ color: 'var(--brand)' }}>{busy ? 'در حال ارسال…' : 'تایید و ارسال'}</button>
-            </div>
+            {sure ? (
+              <div className="flex border-t" style={{ borderColor: 'var(--border)' }}>
+                <button onClick={() => setSure(false)} disabled={busy} className="flex-1 py-3 font-bold" style={{ color: 'var(--muted)', borderInlineEnd: '1px solid var(--border)' }}>خیر</button>
+                <button onClick={submit} disabled={busy} className="flex-1 py-3 font-bold" style={{ color: 'var(--danger)' }}>{busy ? 'در حال ارسال…' : 'بله، برگشت داده شود'}</button>
+              </div>
+            ) : (
+              <div className="flex border-t" style={{ borderColor: 'var(--border)' }}>
+                <button onClick={() => setOpen(null)} disabled={busy} className="flex-1 py-3 font-bold" style={{ color: 'var(--muted)', borderInlineEnd: '1px solid var(--border)' }}>انصراف</button>
+                <button onClick={submit} disabled={busy || (!!open.branchOptions && !branchId) || (!!open.needsNote && !note.trim())} className="flex-1 py-3 font-bold" style={{ color: 'var(--brand)' }}>{busy ? 'در حال ارسال…' : 'تایید و ارسال'}</button>
+              </div>
+            )}
           </div>
         </Overlay>
       )}
@@ -285,12 +299,12 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact }: 
 
 export const ACTION_FA: Record<string, string> = {
   SUBMIT: 'ارسال', FORWARD: 'تایید و ارسال', REFER_COUNCIL: 'ارجاع به شورای فنی', PAY_ORDER: 'دستور پرداخت',
-  RETURN: 'عودت برای رفع نقص', RETURN_DIRECT: 'عودت مستقیم (اختیار مدیریت)', DOWN_FORWARD: 'ارسال به سطح پایین‌تر',
+  RETURN: 'عودت برای رفع نقص', RETURN_DIRECT: 'برگشت از سرپرستی به بیمه‌گزار', DOWN_FORWARD: 'ارسال به سطح پایین‌تر',
   DOWN_DIRECT: 'ارسال مستقیم به بیمه‌گزار (اختیار مدیریت)', MARK_PAID: 'ثبت پرداخت', REJECT_FINAL: 'رد نهایی',
 };
 /** Older steps (before workflow v2) carry only a state, no action. */
 export const STATE_FA: Record<string, string> = {
-  PENDING: 'در انتظار اقدام', FORWARDED: 'تایید و ارسال', ESCALATED: 'ارجاع به سطح بالاتر', APPROVED: 'تایید شد',
+  PENDING: 'در دست بررسی', FORWARDED: 'تایید و ارسال', ESCALATED: 'ارجاع به سطح بالاتر', APPROVED: 'تایید شد',
   RETURNED_INCOMPLETE: 'عودت برای رفع نقص', REJECTED: 'رد شد', ACKED: 'دریافت و ارسال',
 };
 
@@ -315,7 +329,7 @@ export function WorkflowTimeline({ claimId, steps, realm }: { claimId: string; s
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <span className="font-semibold">{s.stageLabel || s.holderName || '—'}{s.branchName ? ` — ${s.branchName}` : ''}</span>
                 <span className="badge" style={{ background: 'var(--surface-2)', color }}>
-                  {pending ? (s.direction === 'DOWN' ? (s.purpose === 'PAYMENT' ? 'در انتظار اقدام (دستور پرداخت)' : 'در انتظار اقدام (عودت)') : 'در انتظار اقدام') : (ACTION_FA[s.action || ''] || STATE_FA[s.state] || s.state)}
+                  {pending ? (s.direction === 'DOWN' ? (s.purpose === 'PAYMENT' ? 'در دست بررسی (دستور پرداخت)' : 'در دست بررسی (عودت)') : 'در دست بررسی') : (ACTION_FA[s.action || ''] || STATE_FA[s.state] || s.state)}
                 </span>
               </div>
               {/* Operator names stay inside the organizations; outside parties see the desk and time only. */}

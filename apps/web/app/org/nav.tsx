@@ -11,6 +11,7 @@ export const ORG_NAV: NavItem[] = [
   { group: WORK, href: '/org/work-desk', label: 'میز کار', icon: <Icon path="M3 7l9-4 9 4v10l-9 4-9-4V7zM3 7l9 4 9-4M12 11v10" />, perm: 'claim:read' },
   { group: WORK, href: '/org/claims/on-behalf', label: 'ثبت پرونده برای بیمه‌گزار', icon: <Icon path="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM14 2v6h6M12 18v-6M9 15h6" />, perm: 'claim:file-on-behalf' },
   { group: WORK, href: '/org/track', label: 'پیگیری وضعیت پرونده', icon: <Icon path="M11 19a8 8 0 100-16 8 8 0 000 16zM21 21l-4.3-4.3" />, perm: 'tenant:settings' },
+  { group: WORK, href: '/org/reminders', label: 'یادآورها', icon: <Icon path="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0" />, perm: 'claim:read' },
   { group: WORK, href: '/org/reports', label: 'گزارش‌گیری', icon: <Icon path="M3 3v18h18M7 15l4-4 3 3 5-6" />, perm: 'claim:read' },
 
   { group: ADMIN, href: '/org/import', label: 'ورود دسته‌ای', icon: <Icon path="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />, perm: 'import:batch' },

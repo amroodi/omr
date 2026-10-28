@@ -27,6 +27,13 @@ class CreateCustomerDto {
   @IsOptional()
   @IsUUID()
   companyId?: string;
+
+  // نماینده's password; empty = their کد ملی (changed on first login).
+  @IsOptional() @IsString() @Length(0, 200) password?: string;
+}
+
+class AccountPasswordDto {
+  @IsOptional() @IsString() @Length(0, 200) password?: string;
 }
 import { CustomerSignupStatus } from '@prisma/client';
 import { ClaimsService } from '../claims/claims.service';
@@ -139,6 +146,13 @@ export class CustomerController {
     return this.customer.pendingCount();
   }
 
+  /** Set a نماینده's password (empty = reset to their کد ملی). */
+  @Permissions(PERMISSIONS.CUSTOMER_MANAGE)
+  @Post('accounts/:id/password')
+  setAccountPassword(@Param('id') id: string, @Body() dto: AccountPasswordDto) {
+    return this.customer.setAccountPassword(id, dto.password);
+  }
+
   @Permissions(PERMISSIONS.CUSTOMER_MANAGE)
   @Post('accounts/:id/approve')
   approve(@Param('id') id: string) {
@@ -165,6 +179,13 @@ export class CustomerController {
     return this.claims.listInsurers();
   }
 
+  /** «اعلام خسارت»: may this login file, and to which desks? */
+  @UseGuards(JwtAuthGuard)
+  @Get('notice-options')
+  noticeOptions() {
+    return this.claims.noticeOptions();
+  }
+
   /** A بیمه‌گزار files their own claim. channel=BROKER, معرف + policyHolder derived from the session. */
   @UseGuards(JwtAuthGuard)
   @Post('claims')
@@ -176,6 +197,7 @@ export class CustomerController {
       eventDate: dto.eventDate,
       description: dto.description,
       causeOfDeath: dto.causeOfDeath,
+      startStage: dto.startStage,
       contractId: dto.contractId,
       policyholderCompanyId: dto.companyId,
       deceasedFullName: dto.deceasedFullName,

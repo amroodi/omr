@@ -170,7 +170,7 @@ export const STATUS_MAP: Record<string, { label: string; cls: string }> = {
   VERIFIED: { label: 'تایید اصالت', cls: 'badge-success' },
   REJECTED: { label: 'رد شده', cls: 'badge-danger' },
   NEEDS_INFO: { label: 'نیاز به اطلاعات', cls: 'badge-warning' },
-  PENDING: { label: 'در انتظار', cls: 'badge-neutral' },
+  PENDING: { label: 'در دست بررسی', cls: 'badge-neutral' },
   // Claim statuses
   DRAFT: { label: 'پیش‌نویس', cls: 'badge-neutral' },
   SUBMITTED: { label: 'ثبت‌شده', cls: 'badge-info' },

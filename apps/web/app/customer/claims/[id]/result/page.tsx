@@ -38,8 +38,8 @@ export default function SubmitResult() {
           </>
         )}
         <div className="cu-result-btns">
-          <Link href={`/customer/claims/${id}`} className="cs-btn-back"><Icon path="M9 18l6-6-6-6" /> بازگشت</Link>
-          <Link href="/customer" className="cs-btn-exit"><Icon path="M15 3H5a2 2 0 00-2 2v14a2 2 0 002 2h10M17 16l4-4-4-4M21 12H9" /> خروج</Link>
+          <Link href={`/customer/claims/${id}`} className="cs-btn-back"><Icon path="M9 18l6-6-6-6" /> مرحله قبل</Link>
+          <Link href={`/customer/claims/${id}/workflow`} className="cs-btn-back">مرحله بعد <Icon path="M15 18l-6-6 6-6" /></Link>
         </div>
       </div>
     </Shell>

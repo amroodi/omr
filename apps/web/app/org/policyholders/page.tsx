@@ -9,7 +9,7 @@ import { JalaliDatePicker } from '../../components/JalaliDatePicker';
 import { ORG_NAV } from '../nav';
 import { NetworkTab } from './network';
 
-interface Acc { id: string; fullName: string | null; nationalCode: string | null; nationalCodeMasked: string | null; phone: string | null; phoneMasked: string | null; canViewPii: boolean; signupStatus: string; isActive: boolean; createdAt: string | null; lastLoginAt: string | null; company: { id: string; name: string } | null }
+interface Acc { id: string; fullName: string | null; nationalCode: string | null; nationalCodeMasked: string | null; phone: string | null; phoneMasked: string | null; canViewPii: boolean; signupStatus: string; isActive: boolean; createdAt: string | null; lastLoginAt: string | null; company: { id: string; name: string } | null; hasPassword?: boolean; mustChangePassword?: boolean; shahkarVerified?: boolean }
 interface Contract { id: string; insurerTenantId: string; insurerName: string; line: 'LIFE' | 'ACCIDENT' | null; lineLabel: string | null; policyNumber: string | null; startDate: string | null; endDate: string | null; isActive: boolean; note: string | null; isCurrent: boolean }
 interface Company {
   id: string; name: string; code: string | null; hasPassword: boolean; parentId: string | null; phone: string | null; email: string | null; address: string | null; website: string | null; contactName: string | null;
@@ -18,7 +18,7 @@ interface Company {
 interface Msg { id: string; claimId: string; claimNumber: string; companyName: string | null; phone: string; message: string; createdAt: string; handled: boolean }
 
 const STATUS: Record<string, { label: string; cls: string }> = {
-  PENDING: { label: 'در انتظار تایید', cls: 'badge-warning' },
+  PENDING: { label: 'در دست بررسی', cls: 'badge-warning' },
   ACTIVE: { label: 'فعال', cls: 'badge-success' },
   REJECTED: { label: 'ردشده', cls: 'badge-neutral' },
 };
@@ -253,7 +253,7 @@ function CompanyCard({ c, companies, insurers, open, onToggle, reload, setMsg, s
 function AccountsTab({ companies, setMsg }: { companies: Company[]; setMsg: (m: { t: 'ok' | 'err'; m: string } | null) => void }) {
   const [rows, setRows] = useState<Acc[]>([]);
   const [filter, setFilter] = useState<'ALL' | 'PENDING'>('ALL');
-  const [f, setF] = useState({ nationalCode: '', phone: '', fullName: '', companyId: '' });
+  const [f, setF] = useState({ nationalCode: '', phone: '', fullName: '', companyId: '', password: '' });
   const [busy, setBusy] = useState(false);
   const [pending, setPending] = useState(0);
 
@@ -267,8 +267,8 @@ function AccountsTab({ companies, setMsg }: { companies: Company[]; setMsg: (m: 
   const create = async () => {
     setMsg(null); setBusy(true);
     try {
-      await client.post('/customer/accounts', { ...f, companyId: f.companyId || undefined, fullName: f.fullName || undefined }, 'org');
-      setMsg({ t: 'ok', m: 'نمایندهٔ بیمه‌گزار ثبت شد' }); setF({ nationalCode: '', phone: '', fullName: '', companyId: '' }); load();
+      await client.post('/customer/accounts', { ...f, companyId: f.companyId || undefined, fullName: f.fullName || undefined, password: f.password || undefined }, 'org');
+      setMsg({ t: 'ok', m: f.password ? 'نمایندهٔ بیمه‌گزار ثبت شد' : 'نمایندهٔ بیمه‌گزار ثبت شد؛ رمز عبور اولیه همان کد ملی است.' }); setF({ nationalCode: '', phone: '', fullName: '', companyId: '', password: '' }); load();
     } catch (e: any) { setMsg({ t: 'err', m: e.message }); } finally { setBusy(false); }
   };
   const setStatus = async (r: Acc, action: 'approve' | 'reject') => {
@@ -276,6 +276,13 @@ function AccountsTab({ companies, setMsg }: { companies: Company[]; setMsg: (m: 
     const verb = action === 'approve' ? 'تایید/فعال‌سازی' : (r.signupStatus === 'ACTIVE' ? 'تعلیق (غیرفعال‌سازی)' : 'رد');
     if (!window.confirm(`${verb} «${name}»؟`)) return;
     try { await client.post(`/customer/accounts/${r.id}/${action}`, {}, 'org'); setMsg({ t: 'ok', m: 'وضعیت تغییر کرد' }); load(); } catch (e: any) { setMsg({ t: 'err', m: e.message }); }
+  };
+  // Set a نماینده's password; empty = back to their کد ملی.
+  const setPassword = async (r: Acc) => {
+    const pw = window.prompt(`رمز عبور تازهٔ «${r.fullName || r.nationalCodeMasked || 'نماینده'}» (دست‌کم ۸ نویسه).\nخالی بگذارید تا رمز به کد ملی بازنشانی شود:`, '');
+    if (pw === null) return;
+    try { const d = await client.post<{ message: string }>(`/customer/accounts/${r.id}/password`, { password: pw.trim() || undefined }, 'org'); setMsg({ t: 'ok', m: d.message }); load(); }
+    catch (e: any) { setMsg({ t: 'err', m: e.message }); }
   };
   const assign = async (r: Acc, companyId: string) => {
     try { await client.put(`/policyholder-companies/accounts/${r.id}`, { companyId: companyId || null }, 'org'); setMsg({ t: 'ok', m: 'شرکت نماینده تغییر کرد' }); load(); } catch (e: any) { setMsg({ t: 'err', m: e.message }); }
@@ -285,7 +292,7 @@ function AccountsTab({ companies, setMsg }: { companies: Company[]; setMsg: (m: 
     <div className="grid grid-cols-[minmax(0,1fr)] lg:grid-cols-[320px_minmax(0,1fr)] gap-5">
       <div className="card p-4 space-y-3 h-fit">
         <h3 className="font-semibold text-sm">افزودن نمایندهٔ بیمه‌گزار (تایید فوری)</h3>
-        <p className="text-xs" style={{ color: 'var(--muted)' }}>نماینده با کد ملی و کد پیامکی وارد پنل بیمه‌گزار می‌شود و پرونده‌ها را برای شرکت خود ثبت می‌کند.</p>
+        <p className="text-xs" style={{ color: 'var(--muted)' }}>نماینده با کد ملی (نام کاربری) و رمز عبور وارد پنل بیمه‌گزار می‌شود و برای شرکت خود پرونده ثبت و مدارک بارگذاری می‌کند.</p>
         <Field label="شرکت بیمه‌گزار *">
           <select className="input" value={f.companyId} onChange={(e) => setF({ ...f, companyId: e.target.value })}>
             <option value="">— انتخاب شرکت —</option>
@@ -295,19 +302,22 @@ function AccountsTab({ companies, setMsg }: { companies: Company[]; setMsg: (m: 
         <Field label="کد ملی"><input className="input" value={f.nationalCode} onChange={(e) => setF({ ...f, nationalCode: e.target.value })} inputMode="numeric" style={{ direction: 'ltr', textAlign: 'right' }} /></Field>
         <Field label="موبایل"><input className="input" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} inputMode="numeric" placeholder="۰۹۱۲…" style={{ direction: 'ltr', textAlign: 'right' }} /></Field>
         <Field label="نام و نام خانوادگی (اختیاری)"><input className="input" value={f.fullName} onChange={(e) => setF({ ...f, fullName: e.target.value })} /></Field>
+        <Field label="رمز عبور (خالی = کد ملی؛ در اولین ورود تغییر می‌کند)">
+          <input className="input" type="text" autoComplete="new-password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} placeholder="دست‌کم ۸ نویسه" style={{ direction: 'ltr', textAlign: 'right' }} />
+        </Field>
         <button onClick={create} disabled={busy || !f.nationalCode || !f.phone || !f.companyId} className="btn btn-primary btn-sm w-full">ثبت نماینده</button>
       </div>
 
       <div className="space-y-3">
         <div className="flex gap-2">
-          <button onClick={() => setFilter('PENDING')} className="btn btn-sm" style={tabStyle(filter === 'PENDING')}>در انتظار تایید{pending > 0 ? ` (${pending})` : ''}</button>
+          <button onClick={() => setFilter('PENDING')} className="btn btn-sm" style={tabStyle(filter === 'PENDING')}>در دست بررسی{pending > 0 ? ` (${pending})` : ''}</button>
           <button onClick={() => setFilter('ALL')} className="btn btn-sm" style={tabStyle(filter === 'ALL')}>همه</button>
         </div>
         <div className="card overflow-x-auto">
           <table className="table">
-            <thead><tr>{['نام', 'شرکت بیمه‌گزار', 'کد ملی', 'موبایل', 'وضعیت', 'اقدام'].map((h) => <th key={h}>{h}</th>)}</tr></thead>
+            <thead><tr>{['نام', 'شرکت بیمه‌گزار', 'کد ملی', 'موبایل', 'وضعیت', 'رمز عبور', 'اقدام'].map((h) => <th key={h}>{h}</th>)}</tr></thead>
             <tbody>
-              {rows.length === 0 ? <tr><td colSpan={6} className="text-center py-8" style={{ color: 'var(--muted)' }}>موردی نیست</td></tr> :
+              {rows.length === 0 ? <tr><td colSpan={7} className="text-center py-8" style={{ color: 'var(--muted)' }}>موردی نیست</td></tr> :
                 rows.map((r) => (
                   <tr key={r.id}>
                     <td className="font-semibold">{r.fullName || '—'}</td>
@@ -319,12 +329,17 @@ function AccountsTab({ companies, setMsg }: { companies: Company[]; setMsg: (m: 
                     </td>
                     <td style={{ direction: 'ltr', textAlign: 'right' }}>{r.nationalCode || r.nationalCodeMasked}</td>
                     <td style={{ direction: 'ltr', textAlign: 'right' }}>{r.phone || r.phoneMasked || '—'}</td>
-                    <td><span className={`badge ${STATUS[r.signupStatus]?.cls || 'badge-neutral'}`}>{STATUS[r.signupStatus]?.label || r.signupStatus}</span></td>
+                    <td>
+                      <span className={`badge ${STATUS[r.signupStatus]?.cls || 'badge-neutral'}`}>{STATUS[r.signupStatus]?.label || r.signupStatus}</span>
+                      {r.shahkarVerified && <span className="badge badge-success mr-1" title="کد ملی و موبایل در شاهکار تطبیق داده شد">شاهکار ✓</span>}
+                    </td>
+                    <td className="text-xs">{!r.hasPassword ? '—' : r.mustChangePassword ? <span className="badge badge-warning">کد ملی (پیش‌فرض)</span> : <span className="badge badge-success">تنظیم شده</span>}</td>
                     <td>
                       <span className="flex gap-2">
                         {r.signupStatus !== 'ACTIVE' && <button onClick={() => setStatus(r, 'approve')} className="text-xs" style={{ color: 'var(--success)' }}>{r.signupStatus === 'PENDING' ? 'تایید' : 'فعال‌سازی'}</button>}
                         {r.signupStatus === 'PENDING' && <button onClick={() => setStatus(r, 'reject')} className="text-xs" style={{ color: 'var(--danger)' }}>رد</button>}
                         {r.signupStatus === 'ACTIVE' && <button onClick={() => setStatus(r, 'reject')} className="text-xs" style={{ color: 'var(--danger)' }}>تعلیق</button>}
+                        {r.hasPassword !== undefined && (r.nationalCode || r.nationalCodeMasked) && <button onClick={() => setPassword(r)} className="text-xs" style={{ color: 'var(--brand)' }}>تعیین رمز</button>}
                       </span>
                     </td>
                   </tr>

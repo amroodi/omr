@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { AuditAction } from '@prisma/client';
 import { AuditService } from '../../common/audit/audit.service';
 import { HashService } from '../../common/crypto/hash.service';
+import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { getContext, getTenantIdOrThrow } from '../../common/tenant/tenant-context';
 
@@ -12,8 +13,10 @@ interface CreateInput {
   roleId: string;
   branchId?: string;
   desk?: 'HQ' | 'COUNCIL';
+  phone?: string;
 }
 interface UpdateInput {
+  phone?: string;
   displayName?: string;
   roleId?: string;
   branchId?: string | null;
@@ -27,10 +30,11 @@ export class UsersService {
     private readonly prisma: PrismaService,
     private readonly hash: HashService,
     private readonly audit: AuditService,
+    private readonly crypto: FieldCryptoService,
   ) {}
 
-  list() {
-    return this.prisma.scoped.orgUser.findMany({
+  async list() {
+    const rows = await this.prisma.scoped.orgUser.findMany({
       orderBy: { createdAt: 'asc' },
       select: {
         id: true,
@@ -41,8 +45,10 @@ export class UsersService {
         role: { select: { id: true, name: true } },
         branch: { select: { id: true, name: true } },
         desk: true,
+        phone: true,
       },
     });
+    return rows.map((r) => ({ ...r, phone: r.phone ? this.crypto.decrypt(r.phone) : null }));
   }
 
   async create(input: CreateInput) {
@@ -61,6 +67,7 @@ export class UsersService {
         roleId: input.roleId,
         branchId: input.branchId ?? null,
         desk: input.branchId ? null : (input.desk ?? null),
+        phone: input.phone ? this.crypto.encrypt(input.phone.trim()) : null,
       },
       select: { id: true, username: true, displayName: true },
     });
@@ -86,6 +93,7 @@ export class UsersService {
         ...(input.branchId !== undefined ? { branchId: input.branchId } : {}),
         ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
         ...(input.desk !== undefined ? { desk: input.desk } : {}),
+        ...(input.phone !== undefined ? { phone: input.phone ? this.crypto.encrypt(input.phone.trim()) : null } : {}),
       },
       select: { id: true, username: true, displayName: true, isActive: true },
     });

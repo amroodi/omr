@@ -1,11 +1,12 @@
 import JSZip from 'jszip';
+import { NoticeRule, NoticeSource, NoticeTarget, SOURCE_FA, TARGET_FA, TARGETS_OF, combine, rulesFor } from './claim-notice';
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditAction, ClaimStatus, ClaimType, Prisma, SalesChannel } from '@prisma/client';
 import { AuditService } from '../../common/audit/audit.service';
 import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { StorageService } from '../../common/storage/storage.service';
-import { customerClaimWhere, customerOwnsClaim, getContext } from '../../common/tenant/tenant-context';
+import { customerClaimWhere, customerOwnsClaim, getContext, getTenantIdOrThrow } from '../../common/tenant/tenant-context';
 import { toJalali, toPersianDigits } from '../../common/jalali/jalali.util';
 import { OcrService } from '../../integrations/ocr/ocr.service';
 import { ClaimFieldsService } from '../claim-fields/claim-fields.service';
@@ -34,7 +35,7 @@ export const CLAIM_RETENTION_DAYS = 14;
 type ReviewStateName = 'PENDING' | 'APPROVED' | 'REJECTED';
 
 const DOC_STATUS_LABELS: Record<string, string> = {
-  PENDING: 'در انتظار بررسی',
+  PENDING: 'در دست بررسی',
   VERIFIED: 'تاییدشده',
   REJECTED: 'ردشده',
   NEEDS_INFO: 'نیاز به اصلاح/ارسال مجدد',
@@ -59,6 +60,10 @@ interface FileClaimInput {
   policyHolderId?: string;
   policyholderCompanyId?: string; // بیمه‌گزار company (set automatically when the بیمه‌گزار files)
   onBehalf?: boolean; // کارگزاری files *as* the بیمه‌گزار company (claim:file-on-behalf) — starts at their desk
+  /** «اعلام خسارت به»: the desk the new case starts on (must be allowed by the org's rules). */
+  startStage?: NoticeTarget;
+  /** Start desk شعبه: which branch (optional — any branch of the insurer when empty). */
+  branchId?: string;
 }
 
 /** The caller's seat in the claim chain (see myDesk). */
@@ -249,12 +254,22 @@ export class ClaimsService {
       moarefRole = 'MOAREF_BRANCH';
     }
 
-    // The بیمه‌گزار keeps a claim they filed until they press «ارسال به …» (documents are uploaded
-    // first); an operator filing on their behalf puts it straight onto the first reviewer's desk.
-    // Filing on behalf (claim:file-on-behalf) works the same: the case starts at the بیمه‌گزار desk, where
-    // the کارگزاری staff upload the documents and press «ارسال به کارگزاری» for them.
-    const byPolicyHolder = getContext()?.actorType === 'CUSTOMER' || !!input.onBehalf;
-    const firstStage: Stage = byPolicyHolder ? 'POLICYHOLDER' : input.channel === 'BROKER' ? 'BROKER' : 'BRANCH';
+    // «اعلام خسارت» rules decide whether this panel may report a claim and on which desk it starts. By
+    // default the بیمه‌گزار keeps a claim they filed until they press «ارسال به …» (documents first), and
+    // filing on behalf starts at the بیمه‌گزار desk too; an operator's own filing goes to their desk.
+    const notice = await this.noticeOptions(input.channel === 'BROKER' ? input.brokerTenantId! : null, insurerTenantId);
+    if (!notice.enabled) throw new ForbiddenException('اعلام خسارت از این پنل غیرفعال است؛ با مدیر سازمان تماس بگیرید.');
+    const wanted = input.startStage ?? (input.onBehalf && notice.targets.includes('POLICYHOLDER') ? 'POLICYHOLDER' : notice.default);
+    if (!notice.targets.includes(wanted)) throw new BadRequestException('ارسال پرونده به این مرحله در تنظیمات اعلام خسارت مجاز نیست.');
+    if (wanted === 'BROKER' && input.channel !== 'BROKER') throw new BadRequestException('این پرونده کارگزاری ندارد؛ مرحلهٔ دیگری را انتخاب کنید.');
+    const firstStage: Stage = wanted as Stage;
+    const byPolicyHolder = firstStage === 'POLICYHOLDER';
+    let startBranchId = moarefBranchId;
+    if (firstStage === 'BRANCH' && !startBranchId && input.branchId) {
+      const b = await db.branch.findFirst({ where: { id: input.branchId, tenantId: insurerTenantId }, select: { id: true } });
+      if (!b) throw new BadRequestException('شعبه متعلق به بیمه‌گر پرونده نیست');
+      startBranchId = b.id;
+    }
 
     const nid = input.deceasedNationalCode;
     const claimNumber = await nextClaimNumber(db as any, input.policyNumber); // «سال/شماره بیمه‌نامه/n»
@@ -284,7 +299,7 @@ export class ClaimsService {
         currentStage: firstStage,
         flowDirection: 'UP',
         flowPurpose: 'REVIEW',
-        handlingBranchId: moarefBranchId,
+        handlingBranchId: startBranchId,
         participants: {
           create: [
             { tenantId: insurerTenantId, role: 'INSURER' },
@@ -294,11 +309,11 @@ export class ClaimsService {
         steps: {
           create: [{
             order: 1,
-            partyType: firstStage === 'POLICYHOLDER' ? 'POLICYHOLDER' : 'MOAREF',
+            partyType: firstStage === 'POLICYHOLDER' ? 'POLICYHOLDER' : firstStage === 'BROKER' || (firstStage === 'BRANCH' && moarefBranchId) ? 'MOAREF' : 'INSURER_LEVEL',
             stage: firstStage,
             purpose: 'REVIEW',
-            holderTenantId: firstStage === 'POLICYHOLDER' ? insurerTenantId : moarefTenantId,
-            holderBranchId: firstStage === 'BRANCH' ? moarefBranchId : null,
+            holderTenantId: firstStage === 'BROKER' ? moarefTenantId : insurerTenantId,
+            holderBranchId: firstStage === 'BRANCH' ? startBranchId : null,
             state: 'PENDING',
             direction: 'UP',
           }],
@@ -311,10 +326,51 @@ export class ClaimsService {
     if (byPolicyHolder) {
       await this.notifyPolicyHolder(claim.policyHolderId, 'ثبت پرونده خسارت', `پرونده ${claim.claimNumber} ثبت شد؛ مدارک را بارگذاری و پرونده را ارسال کنید.`);
     } else {
-      await this.notifyOrg(moarefTenantId, 'پرونده خسارت جدید', `پرونده ${claim.claimNumber} برای بررسی در انتظار شماست.`);
+      await this.notifyOrg(firstStage === 'BROKER' ? moarefTenantId : insurerTenantId, 'پرونده خسارت جدید', `پرونده ${claim.claimNumber} برای بررسی به میز کار شما رسید.`);
       await this.notifyPolicyHolder(claim.policyHolderId, 'ثبت پرونده خسارت', `پرونده ${claim.claimNumber} ثبت شد و در حال بررسی است.`);
     }
     return this.present(claim);
+  }
+
+  /**
+   * «اعلام خسارت» for the caller: may they report a claim, and on which desks may it start? The
+   * brokerage's rules cover بیمه‌گزار / نماینده / its operators; the insurer's cover its desks and نمایندگان.
+   * With `brokerTenantId` / `insurerTenantId` unknown (before the form is filled) the caller's own org
+   * decides, and the insurer is checked again when the claim is filed.
+   */
+  async noticeOptions(brokerTenantId?: string | null, insurerTenantId?: string | null): Promise<NoticeRule & { source: NoticeSource; labels: Record<string, string> }> {
+    const ctx = getContext();
+    const db = this.db();
+    let source: NoticeSource;
+    if (ctx?.actorType === 'CUSTOMER') source = ctx.customerRepresentative ? 'REPRESENTATIVE' : 'POLICYHOLDER';
+    else source = ((await this.myDesk()).stage ?? 'BROKER') as NoticeSource;
+    const brokerId = brokerTenantId ?? (ctx?.actorType === 'CUSTOMER' || source === 'BROKER' ? ctx?.tenantId : null);
+    const insurerId = insurerTenantId ?? (['BRANCH', 'HQ', 'COUNCIL'].includes(source) ? ctx?.tenantId : null);
+    const orgs = await db.tenant.findMany({ where: { id: { in: [brokerId, insurerId].filter((x): x is string => !!x) } }, select: { id: true, kind: true, claimNoticeRules: true } });
+    const rule = (id?: string | null) => { const t = orgs.find((o) => o.id === id); return t ? rulesFor(t.kind, t.claimNoticeRules)[source] : undefined; };
+    const r = combine(rule(brokerId), rule(insurerId)) ?? { enabled: false, targets: [], default: 'POLICYHOLDER' as NoticeTarget };
+    return { ...r, source, labels: TARGET_FA };
+  }
+
+  /** Org admin: this organization's «اعلام خسارت» rules (only the sources it decides for). */
+  async noticeRules() {
+    const t = await this.db().tenant.findUnique({ where: { id: getTenantIdOrThrow() }, select: { kind: true, claimNoticeRules: true } });
+    if (!t) throw new NotFoundException('سازمان یافت نشد');
+    const rules = rulesFor(t.kind, t.claimNoticeRules);
+    return {
+      kind: t.kind,
+      sources: Object.keys(rules).map((s) => ({ key: s, label: SOURCE_FA[s as NoticeSource], allowed: TARGETS_OF[s as NoticeSource].map((k) => ({ key: k, label: TARGET_FA[k] })), rule: rules[s as NoticeSource] })),
+    };
+  }
+
+  async saveNoticeRules(input: Record<string, unknown>) {
+    const id = getTenantIdOrThrow();
+    const t = await this.db().tenant.findUnique({ where: { id }, select: { kind: true } });
+    if (!t) throw new NotFoundException('سازمان یافت نشد');
+    const rules = rulesFor(t.kind, input); // keeps only valid sources / desks
+    await this.db().tenant.update({ where: { id }, data: { claimNoticeRules: rules as Prisma.InputJsonValue } });
+    await this.audit.record({ action: AuditAction.EDIT, tenantId: id, targetType: 'ClaimNoticeRules', metadata: rules as Record<string, unknown> });
+    return this.noticeRules();
   }
 
   // ─────────────────────────── Workflow (v2 engine) ───────────────────────────
@@ -460,8 +516,8 @@ export class ClaimsService {
         await this.move(claim, step, { ...base, closeState: 'FORWARDED', to: up!, direction: 'UP', purpose: 'REVIEW', status: ClaimStatus.UNDER_REVIEW });
         await this.audit.record({ action: resubmit ? AuditAction.CLAIM_RECTIFY : AuditAction.CLAIM_SUBMIT, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId });
         await this.notifyHolder(claim, up!, resubmit ? 'رفع نقص انجام شد' : 'پرونده خسارت جدید', resubmit
-          ? `نقص مدارک پروندهٔ ${claim.claimNumber} رفع شد؛ مدارک اصلاح‌شده در انتظار بررسی شماست.`
-          : `پروندهٔ ${claim.claimNumber} برای بررسی در انتظار شماست.`);
+          ? `نقص مدارک پروندهٔ ${claim.claimNumber} رفع شد؛ مدارک اصلاح‌شده در دست بررسی شماست.`
+          : `پروندهٔ ${claim.claimNumber} برای بررسی به میز کار شما رسید.`);
         break;
       }
       case 'FORWARD': {
@@ -1167,7 +1223,7 @@ export class ClaimsService {
     const ids = [...new Set(logs.map((l) => l.actorId).filter((x): x is string => !!x))];
     const users = ids.length ? await db.orgUser.findMany({ where: { id: { in: ids } }, select: { id: true, displayName: true, username: true } }) : [];
     const name = new Map(users.map((u) => [u.id, u.displayName || u.username]));
-    const STATE_VERB: Record<string, string> = { APPROVED: 'تایید کرد', REJECTED: 'رد کرد', PENDING: 'تایید/رد قبلی را برداشت و به «در انتظار بررسی» برگرداند' };
+    const STATE_VERB: Record<string, string> = { APPROVED: 'تایید کرد', REJECTED: 'رد کرد', PENDING: 'تایید/رد قبلی را برداشت و به «در دست بررسی» برگرداند' };
     const entries = logs.map((l) => {
       const m = this.safeJson(l.metadata) ?? {};
       const who = (l.actorId && name.get(l.actorId)) || (l.actorType === 'CUSTOMER' || l.actorType === 'INSURED' ? 'بیمه‌گزار' : 'کاربر سامانه');
@@ -1211,7 +1267,7 @@ export class ClaimsService {
     });
     await this.recomputeDocStatus(docId, claim);
     await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'ClaimDocumentReview', targetId: docId, metadata: { stage, state, note } });
-    const stateFa = { PENDING: 'در انتظار', APPROVED: 'تایید', REJECTED: 'رد' }[state] ?? state;
+    const stateFa = { PENDING: 'در دست بررسی', APPROVED: 'تایید', REJECTED: 'رد' }[state] ?? state;
     await this.notifyAdminsActivity('بررسی مدرک (مرحله‌ای)', `${await this.actorLabel()} در مرحلهٔ «${STAGE_FA[stage]}» یکی از مدارک پروندهٔ ${claim.claimNumber} را «${stateFa}» کرد.`, `/org/claims/${claimId}`);
     return { ok: true };
   }
@@ -1268,6 +1324,18 @@ export class ClaimsService {
       /* OCR is best-effort; never block the upload */
     }
     return doc;
+  }
+
+  /** «دلایل رد مدارک»: the insurer's checklist first, then any extra reasons of the caller's own org. */
+  async rejectReasons(claimId: string): Promise<string[]> {
+    const db = this.db();
+    const claim = await db.claim.findUnique({ where: { id: claimId } });
+    if (!claim) throw new NotFoundException('پرونده یافت نشد');
+    this.assertParticipant(claim);
+    const ids = [claim.insurerTenantId, getContext()?.tenantId].filter((x): x is string => !!x);
+    const orgs = await db.tenant.findMany({ where: { id: { in: ids } }, select: { id: true, rejectReasons: true } });
+    const list = ids.flatMap((id) => orgs.find((o) => o.id === id)?.rejectReasons ?? []);
+    return [...new Set(list)];
   }
 
   /** Decrypted bytes of a claim document, for any party to the claim (cross-tenant). */
@@ -1499,10 +1567,10 @@ export class ClaimsService {
     const up = (s: Stage): Prisma.ClaimWhereInput => ({ currentStage: s, flowDirection: 'UP' });
     return {
       'stage-policyholder': { label: 'نزد بیمه‌گزار (تکمیل / رفع نقص)', where: { currentStage: 'POLICYHOLDER' } },
-      'stage-broker': { label: 'در انتظار بررسی کارگزاری', where: up('BROKER'), desk: ['BROKER'] },
-      'stage-branch': { label: 'در انتظار بررسی شعبه', where: up('BRANCH'), desk: ['BRANCH'] },
-      'stage-hq': { label: 'در انتظار بررسی مدیریت ستاد', where: up('HQ'), desk: ['HQ'] },
-      'stage-council': { label: 'در انتظار بررسی شورای فنی', where: up('COUNCIL'), desk: ['COUNCIL'] },
+      'stage-broker': { label: 'در دست بررسی کارگزاری', where: up('BROKER'), desk: ['BROKER'] },
+      'stage-branch': { label: 'در دست بررسی شعبه', where: up('BRANCH'), desk: ['BRANCH'] },
+      'stage-hq': { label: 'در دست بررسی مدیریت ستاد', where: up('HQ'), desk: ['HQ'] },
+      'stage-council': { label: 'در دست بررسی شورای فنی', where: up('COUNCIL'), desk: ['COUNCIL'] },
       'returning': { label: 'عودت‌شده — در انتظار ارسال به سطح پایین‌تر', where: { flowDirection: 'DOWN', flowPurpose: 'DEFICIENCY', currentStage: { not: 'POLICYHOLDER' } }, desk: ['BROKER', 'BRANCH', 'HQ'] },
       'to-pay': { label: 'دستور پرداخت — در انتظار پرداخت', where: { flowPurpose: 'PAYMENT', status: ClaimStatus.APPROVED }, desk: ['BRANCH', 'HQ'] },
       'physical': { label: 'اصل مدارک — درخواست‌های باز', where: { physicalRequests: { some: { status: { in: ['REQUESTED', 'SENT'] } } } }, desk: ['BRANCH', 'HQ', 'COUNCIL'] },

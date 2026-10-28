@@ -31,8 +31,8 @@ function docStory(it: ChecklistItem, manual = false): { tone: 'ok' | 'bad' | 'wa
   if (rv.length && rv.every((r) => r.state === 'APPROVED')) return { tone: 'ok', text: 'این مدرک در همهٔ مراحل تایید شده است' };
   const done = rv.filter((r) => r.state === 'APPROVED').map((r) => DESK_FA[r.stage]);
   const next = rv.find((r) => r.state !== 'APPROVED');
-  if (done.length) return { tone: 'wait', text: `تایید ${done.join('، ')} — در انتظار بررسی ${next ? DESK_FA[next.stage] : ''}` };
-  return { tone: 'wait', text: 'بارگذاری شد — در انتظار بررسی کارگزاری' };
+  if (done.length) return { tone: 'wait', text: `تایید ${done.join('، ')} — در دست بررسی ${next ? DESK_FA[next.stage] : ''}` };
+  return { tone: 'wait', text: 'بارگذاری شد — در دست بررسی کارگزاری' };
 }
 
 /**
@@ -115,7 +115,8 @@ export default function CustomerClaim() {
                 title={caseTitle(claim)} claim={claim}
                 sub={`${CLAIM_TYPE_LABELS[claim.claimType] || claim.claimType} — ${claim.deceasedName || '—'}`}
                 chips={claim.insurerTenantId && insurers[claim.insurerTenantId] ? [{ label: 'بیمه‌گر', value: insurers[claim.insurerTenantId], icon: ICONS.policy }] : []}
-                notesLabel="وضعیت پرونده:" notes={STATUS_FA[claim.status] ?? claim.status} exitHref="/customer" />
+                notesLabel="وضعیت پرونده:" notes={STATUS_FA[claim.status] ?? claim.status}
+                steps back="/customer/claims" exitHref={`/customer/claims/${id}/workflow`} />
             </div>
             {claim.lateNotice && lateWarn && <div className="alert-error">⚠ اعلام خسارت خارج از مهلت مقرر بوده است (مهلت: {claim.noticeDeadline}).</div>}
             {claim.description && <div className="pcard p-4 text-sm whitespace-pre-wrap" style={{ color: 'var(--muted)' }}><b style={{ color: 'var(--text)' }}>توضیحات: </b>{claim.description}</div>}
@@ -155,7 +156,7 @@ export default function CustomerClaim() {
                         </div>
                         <div className="cu-doc-up">
                           <DocUploadTile label={it.label} uploaded={it.uploaded} rejected={story.tone === 'bad'}
-                            onUpload={(f, onP) => upload(it.code, f, onP)} />
+                            cameraOnly onUpload={(f, onP) => upload(it.code, f, onP)} />
                         </div>
                       </div>
                       {st && 'error' in st && <div className="cu-err">بارگذاری انجام نشد: {st.error}</div>}
@@ -167,7 +168,7 @@ export default function CustomerClaim() {
                           {(claim.story?.manual ? [] : d.reviews ?? []).map((r) => (
                             <span key={r.stage} className={`cu-step is-${r.state === 'APPROVED' ? 'ok' : r.state === 'REJECTED' ? 'no' : 'wait'}`} title={r.note ? `دلیل: ${r.note}` : undefined}>
                               <Icon path={r.state === 'APPROVED' ? OK : r.state === 'REJECTED' ? NO : 'M12 22a10 10 0 100-20 10 10 0 000 20zM12 7v5l3 2'} />
-                              {DESK_FA[r.stage] || r.stage}: {r.state === 'APPROVED' ? 'تایید شد' : r.state === 'REJECTED' ? 'رد شد' : 'در انتظار بررسی'}{r.changedAt && r.state !== 'PENDING' ? ` — ${r.changedAt}` : ''}
+                              {DESK_FA[r.stage] || r.stage}: {r.state === 'APPROVED' ? 'تایید شد' : r.state === 'REJECTED' ? 'رد شد' : 'در دست بررسی'}{r.changedAt && r.state !== 'PENDING' ? ` — ${r.changedAt}` : ''}
                             </span>
                           ))}
                           <button type="button" className="cu-view" onClick={() => viewDoc(d.id)}><Icon path="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8zM12 15a3 3 0 100-6 3 3 0 000 6z" /> مشاهدهٔ فایل</button>
@@ -199,7 +200,7 @@ export default function CustomerClaim() {
               <div className="pcard p-6 space-y-3">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <h3 className="font-extrabold">بارگذاری گروهی مدارک</h3>
-                  <UploadButton multiple camera accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" maxMB={15} className="cu-go"
+                  <UploadButton multiple camera cameraOnly accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" maxMB={15} className="cu-go"
                     title="بارگذاری گروهی مدارک" subtitle="چند فایل را با هم بکشید یا انتخاب کنید"
                     note="لازم نیست هر فایل با یکی از مدارک مورد نیاز جور باشد؛ همه با عنوان «سایر مدارک» ذخیره می‌شوند و کارگزاری و بیمه‌گر آن‌ها را می‌بینند. فایلی که قالبش مجاز نیست جدا اعلام می‌شود و بقیه بارگذاری می‌شوند."
                     onUpload={async (file, onP) => {

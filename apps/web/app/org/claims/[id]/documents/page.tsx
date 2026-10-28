@@ -62,7 +62,7 @@ export default function CaseDocumentsPage() {
     const r = d?.reviews?.find((x) => x.stage === stage);
     const st = r?.state === 'APPROVED' ? 'ok' : r?.state === 'REJECTED' ? 'no' : 'wait';
     const when = r?.changedAt ? ` — ${r.changedAt}${r.changedBy ? ` (${r.changedBy})` : ''}` : '';
-    return <Mark state={!d ? 'wait' : st} title={`${DESK_FA[stage]}: ${!d ? 'بارگذاری نشده' : st === 'ok' ? 'تایید' : st === 'no' ? 'رد' : 'در انتظار بررسی'}${when}`} />;
+    return <Mark state={!d ? 'wait' : st} title={`${DESK_FA[stage]}: ${!d ? 'بارگذاری نشده' : st === 'ok' ? 'تایید' : st === 'no' ? 'رد' : 'در دست بررسی'}${when}`} />;
   };
 
   const rows = [
@@ -144,7 +144,7 @@ export default function CaseDocumentsPage() {
                 {(claim.steps ?? []).map((s) => {
                   const pending = s.state === 'PENDING';
                   const back = s.action === 'RETURN' || s.action === 'RETURN_DIRECT' || s.state === 'REJECTED' || s.state === 'RETURNED_INCOMPLETE';
-                  const text = pending ? 'در انتظار اقدام' : ACTION_FA[s.action || ''] || STATE_FA[s.state] || s.state;
+                  const text = pending ? 'در دست بررسی' : ACTION_FA[s.action || ''] || STATE_FA[s.state] || s.state;
                   return (
                     <div key={s.order} className="cs-tr cs-grid-route">
                       <span className="cs-td-main">{faN(s.order)}. {s.stageLabel || s.holderName || '—'}{s.branchName ? ` — ${s.branchName}` : ''}</span>

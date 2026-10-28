@@ -41,6 +41,7 @@ export interface WorkflowAction {
   disabled?: string; // reason the action can't be taken yet
   adminOnly?: boolean;
   needsDeficiencies?: boolean; // ask for deficiency lines (required when nothing was rejected)
+  confirm?: boolean; // the panel asks «آیا مطمئن هستید؟» (yes / no) before sending — guards against misclicks
   needsNote?: boolean;
   branchOptions?: { id: string; name: string; code: string }[]; // کارگزاری picks the insurer's شعبه
   selectedBranchId?: string | null;
@@ -219,9 +220,13 @@ export function actionsFor(ctx: ActionContext): WorkflowAction[] {
   }
 
   if (dn) {
-    out.push({ key: 'RETURN', label: `ارسال به ${STAGE_FA[dn]} (عودت برای رفع نقص)`, tone: 'warning', needsDeficiencies: true });
+    // ستاد (سرپرستی) sends a case back to شعبه as «برگشت از سرپرستی به شعبه».
+    const back = s === 'HQ' && dn === 'BRANCH' ? 'برگشت از سرپرستی به شعبه' : `ارسال به ${STAGE_FA[dn]} (عودت برای رفع نقص)`;
+    out.push({ key: 'RETURN', label: back, tone: 'warning', needsDeficiencies: true });
     if (ctx.isAdmin && dn !== 'POLICYHOLDER') {
-      out.push({ key: 'RETURN_DIRECT', label: 'عودت مستقیم به بیمه‌گزار (اختیار مدیریت)', tone: 'ghost', adminOnly: true, needsDeficiencies: true });
+      // Skips every desk below — the panel asks the operator to confirm (yes / no) before it goes.
+      const from = s === 'HQ' ? 'سرپرستی' : STAGE_FA[s] ?? '';
+      out.push({ key: 'RETURN_DIRECT', label: `برگشت از ${from} به بیمه‌گزار`, tone: 'ghost', adminOnly: true, needsDeficiencies: true, confirm: true });
     }
   }
   if (s !== 'BROKER') out.push({ key: 'REJECT_FINAL', label: 'رد نهایی پرونده', tone: 'danger', needsNote: true });

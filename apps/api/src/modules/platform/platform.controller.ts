@@ -1,8 +1,17 @@
 import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
-import { IsBoolean } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional, IsString, Length } from 'class-validator';
+import { ShahkarService } from '../auth/shahkar.service';
 import { SuperAdminOnly } from '../../common/rbac/decorators';
 import { SmsConfigDto, TestSmsDto } from '../branding/dto';
 import { PlatformService } from './platform.service';
+
+class ShahkarDto {
+  @IsOptional() @IsBoolean() enabled?: boolean;
+  @IsOptional() @IsIn(['finnotech', 'generic']) provider?: string;
+  @IsOptional() @IsString() @Length(0, 300) baseUrl?: string;
+  @IsOptional() @IsString() @Length(0, 120) clientId?: string;
+  @IsOptional() @IsString() @Length(0, 2000) token?: string;
+}
 
 class SetPlatformSmsDto {
   @IsBoolean()
@@ -13,7 +22,7 @@ class SetPlatformSmsDto {
 @SuperAdminOnly()
 @Controller('platform')
 export class PlatformController {
-  constructor(private readonly platform: PlatformService) {}
+  constructor(private readonly platform: PlatformService, private readonly shahkarSvc: ShahkarService) {}
 
   @Get('sms-config')
   getSmsConfig() {
@@ -44,6 +53,17 @@ export class PlatformController {
   @Put('inquiry-sms')
   setInquiryUsePlatform(@Body() dto: SetPlatformSmsDto) {
     return this.platform.setInquiryUsePlatform(!!dto.enabled);
+  }
+
+  /** «استعلام شاهکار» (کد ملی ↔ شمارهٔ همراه of a نماینده): on/off + provider settings. */
+  @Get('shahkar')
+  shahkar() {
+    return this.shahkarSvc.settings();
+  }
+
+  @Put('shahkar')
+  setShahkar(@Body() dto: ShahkarDto) {
+    return this.shahkarSvc.save(dto);
   }
 
   /** Master switch: require OTP on login/inquiry/signup, or allow proceeding without a code. */

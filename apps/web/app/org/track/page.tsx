@@ -171,7 +171,7 @@ export default function TrackClaim() {
                         </span>
                       ))}
                       {it.uploaded
-                        ? <span className={d && d.status === 'VERIFIED' ? 'trk-done' : d && d.status === 'REJECTED' ? 'trk-rej' : 'trk-wait'}>{d?.status === 'VERIFIED' ? 'تکمیل شده' : d?.status === 'REJECTED' ? 'رد' : 'در انتظار'}</span>
+                        ? <span className={d && d.status === 'VERIFIED' ? 'trk-done' : d && d.status === 'REJECTED' ? 'trk-rej' : 'trk-wait'}>{d?.status === 'VERIFIED' ? 'تکمیل شده' : d?.status === 'REJECTED' ? 'رد' : 'در دست بررسی'}</span>
                         : <span style={{ color: '#888' }}>بارگذاری‌نشده</span>}
                       {it.uploaded && d && <button onClick={() => viewDoc(d.id)} className="trk-ico-btn" title="مشاهده"><Icon path={EYE} /></button>}
                     </div>

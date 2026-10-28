@@ -68,6 +68,15 @@ export class FileClaimDto {
   @IsOptional()
   @IsUUID()
   policyHolderId?: string;
+
+  // «اعلام خسارت به»: the desk the case starts on (allowed by the org's «اعلام خسارت» rules).
+  @IsOptional()
+  @IsIn(['POLICYHOLDER', 'BROKER', 'BRANCH', 'HQ', 'COUNCIL'])
+  startStage?: 'POLICYHOLDER' | 'BROKER' | 'BRANCH' | 'HQ' | 'COUNCIL';
+
+  @IsOptional()
+  @IsUUID()
+  branchId?: string;
 }
 
 /** کارگزاری files a case as a بیمه‌گزار company (claim:file-on-behalf). The insurer comes from its contract. */
@@ -106,6 +115,10 @@ export class FileOnBehalfDto {
   @IsString()
   @Length(0, 2000)
   description?: string;
+
+  @IsOptional()
+  @IsIn(['POLICYHOLDER', 'BROKER', 'BRANCH', 'HQ', 'COUNCIL'])
+  startStage?: 'POLICYHOLDER' | 'BROKER' | 'BRANCH' | 'HQ' | 'COUNCIL';
 }
 
 export class DecisionDto {

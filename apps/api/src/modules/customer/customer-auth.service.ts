@@ -11,6 +11,7 @@ import { getContext, getTenantIdOrThrow } from '../../common/tenant/tenant-conte
 import { TooManyRequestsException } from '../inquiry/http-exceptions';
 import { SmsService } from '../auth/sms.service';
 import { CustomerService } from './customer.service';
+import { ShahkarService } from '../auth/shahkar.service';
 
 /**
  * Customer realm (بیمه‌گزار panel) authentication.
@@ -34,6 +35,7 @@ export class CustomerAuthService {
     private readonly rateLimit: RateLimitService,
     private readonly config: ConfigService,
     private readonly customers: CustomerService,
+    private readonly shahkar: ShahkarService,
   ) {}
 
   // ── Company login: کد بیمه‌گزار + password ──
@@ -46,10 +48,11 @@ export class CustomerAuthService {
     const db = this.prisma.unscoped();
     if (key.toLowerCase() === 'broker') return this.brokerLogin(tenantId, password);
     const co = await db.policyholderCompany.findFirst({ where: { tenantId, code: key } });
+    if (!co && /^\d{10}$/.test(key)) return this.representativeLogin(tenantId, key, password);
     const ok = !!co?.isActive && !!co.passwordHash && (await this.hash.verifyPassword(co.passwordHash, password));
     if (!co || !ok) {
       await this.audit.record({ action: AuditAction.LOGIN_FAILED, tenantId, actorType: 'CUSTOMER', metadata: { realm: 'company', code: key } });
-      throw new ForbiddenException('کد بیمه‌گزار یا رمز عبور نادرست است.');
+      throw new ForbiddenException('نام کاربری یا رمز عبور نادرست است.');
     }
     const account = await this.companyAccount(co);
     await db.customerAccount.update({ where: { id: account.id }, data: { lastLoginAt: new Date() } });
@@ -84,6 +87,27 @@ export class CustomerAuthService {
     return { token, expiresIn };
   }
 
+  /**
+   * A نماینده (a person who acts for a بیمه‌گزار company) signs in with their کد ملی + password. Same panel and
+   * rights as the company login; the default password is their کد ملی, changed on first login.
+   */
+  private async representativeLogin(tenantId: string, nid: string, password: string) {
+    const db = this.prisma.unscoped();
+    const acc = await db.customerAccount.findFirst({ where: { tenantId, nationalCodeHash: this.crypto.blindIndex(nid)! } });
+    if (acc?.signupStatus === 'PENDING') throw new ForbiddenException('درخواست ثبت‌نام شما هنوز توسط سازمان تایید نشده است. پس از تایید، امکان ورود خواهید داشت.');
+    if (acc?.signupStatus === 'REJECTED') throw new ForbiddenException('درخواست ثبت‌نام شما تایید نشد. برای پیگیری با سازمان تماس بگیرید.');
+    const ok = !!acc?.isActive && !!acc.passwordHash && (await this.hash.verifyPassword(acc.passwordHash, password));
+    if (!acc || !ok) {
+      await this.audit.record({ action: AuditAction.LOGIN_FAILED, tenantId, actorType: 'CUSTOMER', metadata: { realm: 'representative' } });
+      throw new ForbiddenException('نام کاربری یا رمز عبور نادرست است.');
+    }
+    await db.customerAccount.update({ where: { id: acc.id }, data: { lastLoginAt: new Date() } });
+    const expiresIn = this.config.get<string>('JWT_SESSION_TTL', '8h');
+    const token = await this.jwt.signAsync({ kind: 'customer', sub: acc.id, tenantId, nidHash: acc.nationalCodeHash, companyId: acc.companyId ?? undefined, representative: true }, { expiresIn });
+    await this.audit.record({ action: AuditAction.LOGIN, tenantId, actorType: 'CUSTOMER', actorId: acc.id, metadata: { realm: 'representative' } });
+    return { token, expiresIn };
+  }
+
   /** The company's own panel account (created on first login); claims it files are linked to it. */
   private async companyAccount(co: { id: string; tenantId: string; code: string | null; name: string }) {
     const db = this.prisma.unscoped();
@@ -104,9 +128,20 @@ export class CustomerAuthService {
   async changeCompanyPassword(current: string, next: string) {
     const ctx = getContext();
     if (ctx?.customerBrokerPanel) throw new ForbiddenException('رمز ورود کارگزاری را مدیر سامانه تغییر می‌دهد.');
-    if (ctx?.actorType !== 'CUSTOMER' || !ctx.customerCompanyId) throw new ForbiddenException('فقط برای ورود با کد بیمه‌گزار');
+    if (ctx?.actorType !== 'CUSTOMER') throw new ForbiddenException('فقط برای بیمه‌گزار');
     if (!next || next.length < 8) throw new BadRequestException('رمز عبور جدید باید دست‌کم ۸ نویسه باشد.');
     const db = this.prisma.unscoped();
+    const me = await db.customerAccount.findUnique({ where: { id: ctx.actorId! } });
+    if (me?.passwordHash) {
+      // نماینده: their own password (default = کد ملی)
+      if (!(await this.hash.verifyPassword(me.passwordHash, current))) throw new ForbiddenException('رمز عبور فعلی نادرست است.');
+      if (next === current) throw new BadRequestException('رمز عبور جدید باید با رمز فعلی فرق داشته باشد.');
+      if (next === this.crypto.decrypt(me.nationalCode)) throw new BadRequestException('رمز عبور نباید همان کد ملی باشد.');
+      await db.customerAccount.update({ where: { id: me.id }, data: { passwordHash: await this.hash.hashPassword(next), mustChangePassword: false } });
+      await this.audit.record({ action: AuditAction.EDIT, tenantId: me.tenantId, actorType: 'CUSTOMER', actorId: me.id, targetType: 'RepresentativePassword', targetId: me.id });
+      return { ok: true };
+    }
+    if (!ctx.customerCompanyId) throw new ForbiddenException('فقط برای ورود با کد بیمه‌گزار');
     const co = await db.policyholderCompany.findUnique({ where: { id: ctx.customerCompanyId } });
     if (!co?.passwordHash || !(await this.hash.verifyPassword(co.passwordHash, current))) throw new ForbiddenException('رمز عبور فعلی نادرست است.');
     if (next === current) throw new BadRequestException('رمز عبور جدید باید با رمز فعلی فرق داشته باشد.');
@@ -124,8 +159,8 @@ export class CustomerAuthService {
 
   // ── Self-signup phone verification (OTP sent via the HOST/platform gateway) ──
   async requestSignupOtp(tenantSlug: string, nationalCode: string, phone: string): Promise<{ ok: true; message: string; otpRequired: boolean }> {
-    this.assertNidLogin();
     const ip = getContext()?.ip ?? 'unknown';
+    if (!/^\d{10}$/.test(nationalCode.trim())) throw new BadRequestException('کد ملی باید ۱۰ رقم باشد');
     const db = this.prisma.unscoped();
     const tenant = await db.tenant.findUnique({ where: { slug: tenantSlug.trim() }, select: { id: true, isActive: true } });
     if (!tenant || !tenant.isActive) throw new NotFoundException('سازمان یافت نشد');
@@ -140,8 +175,11 @@ export class CustomerAuthService {
     if (!this.rateLimit.hit(`signupotp:ph:${phoneHash}`, 5, 3600)) throw new TooManyRequestsException('تعداد درخواست‌ها زیاد است.');
 
     const nidHash = this.crypto.blindIndex(nationalCode.trim())!;
-    const existing = await db.customerAccount.findFirst({ where: { tenantId: tenant.id, nationalCodeHash: nidHash, signupStatus: 'ACTIVE' }, select: { id: true } });
-    if (existing) throw new BadRequestException('شما قبلاً در این سازمان ثبت شده‌اید؛ وارد شوید.');
+    const existing = await db.customerAccount.findFirst({ where: { tenantId: tenant.id, nationalCodeHash: nidHash }, select: { signupStatus: true } });
+    if (existing?.signupStatus === 'ACTIVE') throw new BadRequestException('شما قبلاً در این سازمان ثبت شده‌اید؛ وارد شوید.');
+    if (existing?.signupStatus === 'PENDING') throw new BadRequestException('درخواست ثبت‌نام شما قبلاً ارسال شده و در دست بررسی است.');
+    // شاهکار (when the super admin has it on): the کد ملی and mobile must belong to the same person.
+    await this.shahkar.assertMatch(nationalCode, phone);
 
     const code = this.hash.generateOtp(Number(this.config.get('OTP_LENGTH', 6)));
     const ttl = Number(this.config.get('OTP_TTL_SECONDS', 180));
@@ -165,7 +203,6 @@ export class CustomerAuthService {
   }
 
   async verifySignupOtp(dto: { tenantSlug: string; nationalCode: string; phone: string; code: string; fullName?: string }) {
-    this.assertNidLogin();
     const ip = getContext()?.ip ?? 'unknown';
     const db = this.prisma.unscoped();
     const tenant = await db.tenant.findUnique({ where: { slug: dto.tenantSlug.trim() }, select: { id: true, isActive: true } });
@@ -184,8 +221,12 @@ export class CustomerAuthService {
       throw new ForbiddenException('کد نامعتبر است.');
     }
     await db.otpChallenge.update({ where: { id: challenge.id }, data: { consumedAt: new Date() } });
-    // Phone verified → create the PENDING signup request (still needs org approval).
-    return this.customers.signup({ tenantSlug: dto.tenantSlug, nationalCode: dto.nationalCode, phone: dto.phone, fullName: dto.fullName });
+    // Phone verified → create the PENDING signup request (still needs org approval). شاهکار was checked
+    // when the code was sent; the default password is the کد ملی.
+    return this.customers.signup({
+      tenantSlug: dto.tenantSlug, nationalCode: dto.nationalCode, phone: dto.phone, fullName: dto.fullName,
+      passwordHash: await this.hash.hashPassword(dto.nationalCode.trim()), shahkarVerified: await this.shahkar.enabled(),
+    });
   }
 
   /** Platform master switch: is OTP required at all? (false = direct login, no code). */
@@ -319,9 +360,12 @@ export class CustomerAuthService {
 
   /** Create a pending signup with NO phone verification — only permitted when OTP is disabled. */
   async directSignup(dto: { tenantSlug: string; nationalCode: string; phone: string; fullName?: string }) {
-    this.assertNidLogin();
     if (await this.otpEnabled()) throw new ForbiddenException('کد تایید لازم است.');
-    return this.customers.signup({ tenantSlug: dto.tenantSlug, nationalCode: dto.nationalCode, phone: dto.phone, fullName: dto.fullName });
+    const checked = await this.shahkar.assertMatch(dto.nationalCode, dto.phone);
+    return this.customers.signup({
+      tenantSlug: dto.tenantSlug, nationalCode: dto.nationalCode, phone: dto.phone, fullName: dto.fullName,
+      passwordHash: await this.hash.hashPassword(dto.nationalCode.trim()), shahkarVerified: checked,
+    });
   }
 
   private normalizePhone(phone: string): string {

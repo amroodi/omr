@@ -28,6 +28,26 @@ export class ClaimsController {
     private readonly fields: ClaimFieldsService,
   ) {}
 
+  /** «اعلام خسارت» for the caller: allowed? on which desks may the case start? */
+  @Permissions(PERMISSIONS.CLAIM_FILE)
+  @Get('notice-options')
+  noticeOptions() {
+    return this.claims.noticeOptions();
+  }
+
+  /** Org admin: «اعلام خسارت» rules of this organization. */
+  @Permissions(PERMISSIONS.TENANT_SETTINGS)
+  @Get('notice-rules')
+  noticeRules() {
+    return this.claims.noticeRules();
+  }
+
+  @Permissions(PERMISSIONS.TENANT_SETTINGS)
+  @Put('notice-rules')
+  saveNoticeRules(@Body() body: Record<string, unknown>) {
+    return this.claims.saveNoticeRules(body ?? {});
+  }
+
   /** File a death claim (بیمه‌گزار / broker on their behalf). */
   @Permissions(PERMISSIONS.CLAIM_FILE)
   @Post()
@@ -130,6 +150,13 @@ export class ClaimsController {
   @Get(':id')
   get(@Param('id') id: string) {
     return this.claims.get(id);
+  }
+
+  /** «دلایل رد مدارک» offered when rejecting a document: the insurer's list plus the caller org's own. */
+  @Permissions(PERMISSIONS.CLAIM_READ)
+  @Get(':id/reject-reasons')
+  rejectReasons(@Param('id') id: string) {
+    return this.claims.rejectReasons(id);
   }
 
   /** Required-document checklist (filtered by the claim's cause of death). */
