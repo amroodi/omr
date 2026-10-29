@@ -11,13 +11,15 @@
   "dependencies": {
     "html-to-image": "^1.11.11",
     "jalaali-js": "^1.2.7",
-    "jspdf": "^2.5.2",
-    "next": "^14.2.0",
+    "jspdf": "^4.2.1",
+    "next": "^15.5.28",
+    "qrcode": "^1.5.4",
     "react": "^18.3.0",
     "react-dom": "^18.3.0"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
+    "@types/qrcode": "^1.5.5",
     "@types/react": "^18.3.0",
     "autoprefixer": "^10.4.19",
     "postcss": "^8.4.38",

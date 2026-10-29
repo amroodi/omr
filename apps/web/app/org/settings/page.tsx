@@ -111,7 +111,7 @@ function BrandingTab() {
   useEffect(() => { load(); }, []);
   const save = async () => {
     setMsg(null);
-    try { await client.patch('/tenant/settings', { name: s.name, contactHeader: s.contactHeader, noticeDays: Number(s.noticeDays), lateNoticeWarning: s.lateNoticeWarning !== false, rejectReasons: String(s.rejectReasonsText ?? (s.rejectReasons ?? []).join('\n')).split('\n').map((x: string) => x.trim()).filter(Boolean), reminderSms: !!s.reminderSms, ...(s.kind === 'INSURER' ? { hqCeiling: String(s.hqCeiling ?? '').replace(/[^\d]/g, '') || null } : {}) }, 'org'); setMsg({ t: 'ok', m: 'ذخیره شد' }); load(); }
+    try { await client.patch('/tenant/settings', { name: s.name, contactHeader: s.contactHeader, noticeDays: Number(s.noticeDays), lateNoticeWarning: s.lateNoticeWarning !== false, rejectReasons: String(s.rejectReasonsText ?? (s.rejectReasons ?? []).join('\n')).split('\n').map((x: string) => x.trim()).filter(Boolean), reminderSms: !!s.reminderSms, requireMfa: !!s.requireMfa, ...(s.kind === 'INSURER' ? { hqCeiling: String(s.hqCeiling ?? '').replace(/[^\d]/g, '') || null } : {}) }, 'org'); setMsg({ t: 'ok', m: 'ذخیره شد' }); load(); }
     catch (e: any) { setMsg({ t: 'err', m: e.message }); }
   };
   const uploadLogo = async (file: File, onProgress: OnProgress) => {
@@ -142,6 +142,10 @@ function BrandingTab() {
       <label className="flex items-center gap-2 text-sm cursor-pointer">
         <input type="checkbox" checked={!!s.reminderSms} onChange={(e) => setS({ ...s, reminderSms: e.target.checked })} />
         <span>ارسال پیامک یادآور به کاربران (علاوه بر یادآور در سامانه)</span>
+      </label>
+      <label className="flex items-start gap-2 text-sm cursor-pointer">
+        <input type="checkbox" className="mt-1" checked={!!s.requireMfa} onChange={(e) => setS({ ...s, requireMfa: e.target.checked })} />
+        <span>ورود دومرحله‌ای برای همهٔ کاربران سازمان الزامی باشد<span className="block text-xs" style={{ color: 'var(--muted)' }}>کاربرانی که هنوز راه‌اندازی نکرده‌اند در ورود بعدی ابتدا آن را راه‌اندازی می‌کنند.</span></span>
       </label>
       <div className="flex gap-2 items-center">
         <UploadButton onUpload={uploadLogo} accept="image/*" maxMB={3} title={s.hasLogo ? 'تغییر لوگو' : 'بارگذاری لوگو'}>{s.hasLogo ? 'تغییر لوگو' : 'بارگذاری لوگو'}</UploadButton>

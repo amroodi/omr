@@ -1,6 +1,7 @@
 import {
   CanActivate,
   ExecutionContext,
+  ForbiddenException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -62,6 +63,11 @@ export class JwtAuthGuard implements CanActivate {
       ctx.actorType = 'SUPER_ADMIN';
       ctx.permissions = payload.permissions ?? [];
     } else {
+      // The org requires two-step login and this user hasn't set it up yet: only the auth endpoints
+      // (who am I, set up two-step login, change password) until they do.
+      if (payload.mfaSetup === true && !/\/auth\//.test(req.path)) {
+        throw new ForbiddenException({ statusCode: 403, code: 'MFA_SETUP_REQUIRED', message: 'ابتدا ورود دومرحله‌ای را راه‌اندازی کنید' });
+      }
       ctx.actorType = 'ORG_USER';
       ctx.permissions = payload.permissions ?? [];
       ctx.branchId = payload.branchId ?? undefined;

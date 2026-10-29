@@ -17,6 +17,7 @@ export default function OrgLogin() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [totp, setTotp] = useState<string | null>(null); // null = not asked; '' = asked, typing
   // Organizations to pick from (a dropdown instead of typing the شناسه). Temporary: once every org has
   // its own domain / subdomain the login won't need a choice at all. null = list unavailable → type it.
   const [orgs, setOrgs] = useState<{ slug: string; name: string }[] | null>(null);
@@ -54,10 +55,15 @@ export default function OrgLogin() {
     setError(''); setLoading(true);
     try {
       setTenantSlug(tenantSlug);
-      const r = await client.post<{ token: string }>('/auth/org/login', { tenantSlug, username, password });
+      const code = totp ? totp.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).trim() : undefined;
+      const r = await client.post<{ token: string; mfaSetupRequired?: boolean }>('/auth/org/login', { tenantSlug, username, password, ...(code ? { totp: code } : {}) });
       setToken('org', r.token);
-      router.push('/org/welcome');
-    } catch (e: any) { setError(e.message); } finally { setLoading(false); }
+      router.push(r.mfaSetupRequired ? '/org/security?required=1' : '/org/welcome');
+    } catch (e: any) {
+      // Two-step login: the password was right; now the authenticator code.
+      if (e.code === 'MFA_REQUIRED') { setTotp(''); setError(''); }
+      else { setError(e.message); if (e.code === 'MFA_INVALID') setTotp(''); }
+    } finally { setLoading(false); }
   };
 
   const fields = (
@@ -82,6 +88,12 @@ export default function OrgLogin() {
       )}
       <Field label="نام کاربری"><input className="input" value={username} onChange={(e) => setUsername(e.target.value)} /></Field>
       <Field label="رمز عبور"><input type="password" className="input" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} /></Field>
+      {totp !== null && (
+        <Field label="کد ورود دومرحله‌ای (برنامهٔ احراز هویت گوشی)">
+          <input className="input latin-digits" value={totp} onChange={(e) => setTotp(e.target.value)} inputMode="numeric" maxLength={6} autoComplete="one-time-code" autoFocus
+            style={{ direction: 'ltr', textAlign: 'center', letterSpacing: '0.3em' }} onKeyDown={(e) => e.key === 'Enter' && submit()} />
+        </Field>
+      )}
     </>
   );
 

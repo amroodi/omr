@@ -15,7 +15,7 @@ export class HashService {
     memoryCost: 19456, // 19 MiB
     timeCost: 2,
     parallelism: 1,
-  };
+  } as const;
 
   hashPassword(password: string): Promise<string> {
     return argon2.hash(password, this.argonOpts);

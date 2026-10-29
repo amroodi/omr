@@ -46,9 +46,10 @@ export class UsersService {
         branch: { select: { id: true, name: true } },
         desk: true,
         phone: true,
+        totpSecret: true,
       },
     });
-    return rows.map((r) => ({ ...r, phone: r.phone ? this.crypto.decrypt(r.phone) : null }));
+    return rows.map(({ totpSecret, ...r }) => ({ ...r, phone: r.phone ? this.crypto.decrypt(r.phone) : null, mfaEnabled: !!totpSecret }));
   }
 
   async create(input: CreateInput) {

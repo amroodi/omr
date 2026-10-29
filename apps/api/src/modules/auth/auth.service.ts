@@ -9,11 +9,14 @@ import { RateLimitService } from '../../common/rate-limit/rate-limit.service';
 import { getContext } from '../../common/tenant/tenant-context';
 import { TooManyRequestsException } from '../inquiry/http-exceptions';
 import { OrgLoginDto, SuperAdminLoginDto } from './dto';
+import { MfaService } from './mfa.service';
 
 export interface TokenResult {
   token: string;
   expiresIn: string;
   actor: { id: string; displayName: string; permissions: string[] };
+  /** The org requires two-step login and this user must set it up before anything else. */
+  mfaSetupRequired?: boolean;
 }
 
 @Injectable()
@@ -40,6 +43,7 @@ export class AuthService {
     private readonly audit: AuditService,
     private readonly rateLimit: RateLimitService,
     private readonly config: ConfigService,
+    private readonly mfa: MfaService,
   ) {}
 
   async orgLogin(dto: OrgLoginDto): Promise<TokenResult> {
@@ -47,16 +51,16 @@ export class AuthService {
     // Login runs before any tenant context, so use the un-scoped client deliberately.
     const db = this.prisma.unscoped();
 
-    if (!this.rateLimit.hit(`login:ip:${ip}`, 20, 900)) {
+    if (!(await this.rateLimit.hit(`login:ip:${ip}`, 20, 900))) {
       throw new TooManyRequestsException('Too many login attempts');
     }
-    if (!this.rateLimit.hit(`login:user:${dto.tenantSlug}:${dto.username}`, 8, 900)) {
+    if (!(await this.rateLimit.hit(`login:user:${dto.tenantSlug}:${dto.username}`, 8, 900))) {
       throw new TooManyRequestsException('Too many login attempts');
     }
 
     const tenant = await db.tenant.findUnique({
       where: { slug: dto.tenantSlug },
-      select: { id: true, isActive: true },
+      select: { id: true, isActive: true, requireMfa: true },
     });
     const fail = () => new UnauthorizedException('نام کاربری یا رمز عبور نادرست است');
 
@@ -78,12 +82,16 @@ export class AuthService {
       throw fail();
     }
 
-    // TODO: if user.totpSecret set, verify dto.totp here (TOTP) before issuing a token.
+    // Two-step login: with an authenticator set up, the 6-digit code is required too.
+    await this.mfa.check({ kind: 'ORG_USER', id: user!.id }, user!, dto.totp);
+    // The org requires two-step login but this user hasn't set it up: a token that can only reach
+    // the setup endpoints (see JwtAuthGuard) until they do.
+    const mfaSetup = tenant.requireMfa && !user!.totpSecret;
 
     const permissions = user!.role?.permissions ?? [];
-    const expiresIn = this.config.get<string>('JWT_SESSION_TTL', '8h');
+    const expiresIn = mfaSetup ? '15m' : this.config.get<string>('JWT_SESSION_TTL', '8h');
     const token = await this.jwt.signAsync(
-      { kind: 'org', sub: user!.id, tenantId: tenant.id, permissions, branchId: user!.branchId ?? null },
+      { kind: 'org', sub: user!.id, tenantId: tenant.id, permissions, branchId: user!.branchId ?? null, ...(mfaSetup ? { mfaSetup: true } : {}) },
       { expiresIn },
     );
     await db.orgUser.update({ where: { id: user!.id }, data: { lastLoginAt: new Date() } });
@@ -98,13 +106,14 @@ export class AuthService {
       token,
       expiresIn,
       actor: { id: user!.id, displayName: user!.displayName, permissions },
+      ...(mfaSetup ? { mfaSetupRequired: true } : {}),
     };
   }
 
   async superAdminLogin(dto: SuperAdminLoginDto): Promise<TokenResult> {
     const ip = getContext()?.ip ?? 'unknown';
     const db = this.prisma.unscoped();
-    if (!this.rateLimit.hit(`superlogin:ip:${ip}`, 10, 900)) {
+    if (!(await this.rateLimit.hit(`superlogin:ip:${ip}`, 10, 900))) {
       throw new TooManyRequestsException('Too many login attempts');
     }
 
@@ -119,7 +128,8 @@ export class AuthService {
       throw new UnauthorizedException('اطلاعات ورود نادرست است');
     }
 
-    // TODO: enforce TOTP for super-admins (recommended mandatory).
+    // Two-step login for the super admin (strongly recommended — set it up in the admin panel).
+    await this.mfa.check({ kind: 'SUPER_ADMIN', id: admin!.id }, admin!, dto.totp);
     const permissions = ['tenant:manage'];
     const expiresIn = this.config.get<string>('JWT_SESSION_TTL', '8h');
     const token = await this.jwt.signAsync(

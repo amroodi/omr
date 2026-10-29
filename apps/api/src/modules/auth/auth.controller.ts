@@ -2,11 +2,33 @@ import { Body, Controller, Get, Post } from '@nestjs/common';
 import { CurrentActor, Public } from '../../common/rbac/decorators';
 import type { RequestContext } from '../../common/tenant/tenant-context';
 import { AuthService } from './auth.service';
-import { ChangePasswordDto, OrgLoginDto, SuperAdminLoginDto } from './dto';
+import { ChangePasswordDto, MfaCodeDto, MfaDisableDto, MfaSetupDto, OrgLoginDto, SuperAdminLoginDto } from './dto';
+import { MfaService } from './mfa.service';
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(private readonly auth: AuthService, private readonly mfa: MfaService) {}
+
+  // ── Two-step login (authenticator app) for the signed-in org user / super admin ──
+  @Get('mfa')
+  mfaStatus() {
+    return this.mfa.status();
+  }
+
+  @Post('mfa/setup')
+  mfaSetup(@Body() dto: MfaSetupDto) {
+    return this.mfa.setup(dto.password);
+  }
+
+  @Post('mfa/enable')
+  mfaEnable(@Body() dto: MfaCodeDto) {
+    return this.mfa.enable(dto.code);
+  }
+
+  @Post('mfa/disable')
+  mfaDisable(@Body() dto: MfaDisableDto) {
+    return this.mfa.disable(dto.password, dto.code);
+  }
 
   @Public()
   @Post('org/login')

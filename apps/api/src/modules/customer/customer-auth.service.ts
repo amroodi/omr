@@ -43,8 +43,8 @@ export class CustomerAuthService {
     const tenantId = getTenantIdOrThrow();
     const ip = getContext()?.ip ?? 'unknown';
     const key = code.trim();
-    if (!this.rateLimit.hit(`custpw:ip:${ip}`, 30, 600)) throw new TooManyRequestsException('تعداد تلاش‌ها زیاد است؛ چند دقیقه بعد دوباره تلاش کنید.');
-    if (!this.rateLimit.hit(`custpw:code:${tenantId}:${key}`, 10, 600)) throw new TooManyRequestsException('تعداد تلاش‌ها زیاد است؛ چند دقیقه بعد دوباره تلاش کنید.');
+    if (!(await this.rateLimit.hit(`custpw:ip:${ip}`, 30, 600))) throw new TooManyRequestsException('تعداد تلاش‌ها زیاد است؛ چند دقیقه بعد دوباره تلاش کنید.');
+    if (!(await this.rateLimit.hit(`custpw:code:${tenantId}:${key}`, 10, 600))) throw new TooManyRequestsException('تعداد تلاش‌ها زیاد است؛ چند دقیقه بعد دوباره تلاش کنید.');
     const db = this.prisma.unscoped();
     if (key.toLowerCase() === 'broker') return this.brokerLogin(tenantId, password);
     const co = await db.policyholderCompany.findFirst({ where: { tenantId, code: key } });
@@ -170,9 +170,9 @@ export class CustomerAuthService {
       return { ok: true, otpRequired: false, message: 'ثبت‌نام بدون کد تایید فعال است.' };
     }
 
-    if (!this.rateLimit.hit(`signupotp:ip:${ip}`, 10, 3600)) throw new TooManyRequestsException('تعداد درخواست‌ها زیاد است.');
+    if (!(await this.rateLimit.hit(`signupotp:ip:${ip}`, 10, 3600))) throw new TooManyRequestsException('تعداد درخواست‌ها زیاد است.');
     const phoneHash = this.crypto.blindIndex(this.normalizePhone(phone))!;
-    if (!this.rateLimit.hit(`signupotp:ph:${phoneHash}`, 5, 3600)) throw new TooManyRequestsException('تعداد درخواست‌ها زیاد است.');
+    if (!(await this.rateLimit.hit(`signupotp:ph:${phoneHash}`, 5, 3600))) throw new TooManyRequestsException('تعداد درخواست‌ها زیاد است.');
 
     const nidHash = this.crypto.blindIndex(nationalCode.trim())!;
     const existing = await db.customerAccount.findFirst({ where: { tenantId: tenant.id, nationalCodeHash: nidHash }, select: { signupStatus: true } });
@@ -207,7 +207,7 @@ export class CustomerAuthService {
     const db = this.prisma.unscoped();
     const tenant = await db.tenant.findUnique({ where: { slug: dto.tenantSlug.trim() }, select: { id: true, isActive: true } });
     if (!tenant || !tenant.isActive) throw new NotFoundException('سازمان یافت نشد');
-    if (!this.rateLimit.hit(`signupverify:ip:${ip}`, 20, 600)) throw new TooManyRequestsException('تعداد تلاش‌ها زیاد است.');
+    if (!(await this.rateLimit.hit(`signupverify:ip:${ip}`, 20, 600))) throw new TooManyRequestsException('تعداد تلاش‌ها زیاد است.');
 
     const phoneHash = this.crypto.blindIndex(this.normalizePhone(dto.phone))!;
     const challenge = await db.otpChallenge.findFirst({
@@ -247,10 +247,10 @@ export class CustomerAuthService {
       return { ok: true, otpRequired: false, message: 'ورود بدون کد تایید فعال است.' };
     }
 
-    if (!this.rateLimit.hit(`custotp:ip:${ip}`, 10, 3600)) {
+    if (!(await this.rateLimit.hit(`custotp:ip:${ip}`, 10, 3600))) {
       throw new TooManyRequestsException('تعداد درخواست‌ها زیاد است.');
     }
-    if (!this.rateLimit.hit(`custotp:nid:${nidHash}`, 5, 3600)) {
+    if (!(await this.rateLimit.hit(`custotp:nid:${nidHash}`, 5, 3600))) {
       throw new TooManyRequestsException('تعداد درخواست‌ها زیاد است.');
     }
 
@@ -303,7 +303,7 @@ export class CustomerAuthService {
     this.assertNidLogin();
     const tenantId = getTenantIdOrThrow();
     const ip = getContext()?.ip ?? 'unknown';
-    if (!this.rateLimit.hit(`custverify:ip:${ip}`, 20, 600)) {
+    if (!(await this.rateLimit.hit(`custverify:ip:${ip}`, 20, 600))) {
       throw new TooManyRequestsException('تعداد تلاش‌ها زیاد است.');
     }
     const nidHash = this.crypto.blindIndex(nationalCode)!;

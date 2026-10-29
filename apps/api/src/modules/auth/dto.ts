@@ -39,3 +39,25 @@ export class ChangePasswordDto {
   @Length(8, 128)
   newPassword!: string;
 }
+
+export class MfaSetupDto {
+  @IsString()
+  @Length(1, 128)
+  password!: string;
+}
+
+export class MfaCodeDto {
+  @IsString()
+  @Length(6, 8)
+  code!: string;
+}
+
+export class MfaDisableDto {
+  @IsString()
+  @Length(1, 128)
+  password!: string;
+
+  @IsString()
+  @Length(6, 8)
+  code!: string;
+}

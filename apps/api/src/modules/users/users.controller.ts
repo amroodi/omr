@@ -3,10 +3,18 @@ import { Permissions } from '../../common/rbac/decorators';
 import { PERMISSIONS } from '../../common/rbac/permissions';
 import { CreateUserDto, ResetPasswordDto, UpdateUserDto } from './dto';
 import { UsersService } from './users.service';
+import { MfaService } from '../auth/mfa.service';
 
 @Controller('users')
 export class UsersController {
-  constructor(private readonly users: UsersService) {}
+  constructor(private readonly users: UsersService, private readonly mfa: MfaService) {}
+
+  /** Clear a user's two-step login (lost phone); they set it up again. */
+  @Permissions(PERMISSIONS.USER_MANAGE)
+  @Post(':id/mfa-reset')
+  resetMfa(@Param('id') id: string) {
+    return this.mfa.resetForUser(id);
+  }
 
   @Permissions(PERMISSIONS.USER_MANAGE)
   @Get()

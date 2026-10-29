@@ -39,6 +39,7 @@ interface UpdateSettings {
   theme?: unknown;
   rejectReasons?: string[];
   reminderSms?: boolean;
+  requireMfa?: boolean;
 }
 
 @Injectable()
@@ -74,6 +75,7 @@ export class BrandingService {
       embedOrigins: t.embedOrigins,
       rejectReasons: t.rejectReasons,
       reminderSms: t.reminderSms,
+      requireMfa: t.requireMfa,
       hasLogo: !!t.logoKey,
       hasFavicon: !!t.faviconKey,
       hasCustomFont: !!t.fontKey,
@@ -97,6 +99,7 @@ export class BrandingService {
         ...(dto.theme !== undefined ? { theme: themeValue(dto.theme) } : {}),
         ...(dto.rejectReasons !== undefined ? { rejectReasons: [...new Set(dto.rejectReasons.map((r) => r.trim()).filter(Boolean))] } : {}),
         ...(dto.reminderSms !== undefined ? { reminderSms: dto.reminderSms } : {}),
+        ...(dto.requireMfa !== undefined ? { requireMfa: dto.requireMfa } : {}),
       },
     });
     await this.audit.record({ action: AuditAction.EDIT, targetType: 'TenantBranding', targetId: id, metadata: dto as Record<string, unknown> });

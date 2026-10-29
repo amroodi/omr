@@ -49,6 +49,11 @@ export class UpdateBrandingDto {
   @Length(1, 300, { each: true })
   rejectReasons?: string[];
 
+  // Every operator must use two-step login (authenticator app).
+  @IsOptional()
+  @IsBoolean()
+  requireMfa?: boolean;
+
   // Reminder SMS for this org's operators (on top of the in-panel reminder).
   @IsOptional()
   @IsBoolean()

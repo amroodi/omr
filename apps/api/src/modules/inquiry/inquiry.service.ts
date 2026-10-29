@@ -88,10 +88,10 @@ export class InquiryService {
     const nidHash = this.crypto.blindIndex(dto.nationalCode)!;
     const perIp = Number(this.config.get('RL_OTP_ISSUE_PER_IP_PER_HOUR', 10));
     const perNid = Number(this.config.get('RL_OTP_ISSUE_PER_NID_PER_HOUR', 5));
-    if (!this.rateLimit.hit(`otp:ip:${ip}`, perIp, 3600)) {
+    if (!(await this.rateLimit.hit(`otp:ip:${ip}`, perIp, 3600))) {
       throw new TooManyRequestsException('تعداد درخواست‌ها زیاد است. بعداً تلاش کنید.');
     }
-    if (!this.rateLimit.hit(`otp:nid:${nidHash}`, perNid, 3600)) {
+    if (!(await this.rateLimit.hit(`otp:nid:${nidHash}`, perNid, 3600))) {
       throw new TooManyRequestsException('تعداد درخواست‌ها زیاد است. بعداً تلاش کنید.');
     }
 
@@ -226,9 +226,9 @@ export class InquiryService {
 
     const perIp = Number(this.config.get('RL_OTP_ISSUE_PER_IP_PER_HOUR', 10));
     const perNid = Number(this.config.get('RL_OTP_ISSUE_PER_NID_PER_HOUR', 5));
-    if (!this.rateLimit.hit(`cst:ip:${ip}`, perIp, 3600)) throw new TooManyRequestsException('تعداد درخواست‌ها زیاد است. بعداً تلاش کنید.');
-    if (!this.rateLimit.hit(`cst:nid:${nidHash}`, perNid, 3600)) throw new TooManyRequestsException('تعداد درخواست‌ها زیاد است. بعداً تلاش کنید.');
-    if (!this.rateLimit.hit(`cst:phone:${phoneHash}`, perIp, 3600)) throw new TooManyRequestsException('تعداد درخواست‌ها زیاد است. بعداً تلاش کنید.');
+    if (!(await this.rateLimit.hit(`cst:ip:${ip}`, perIp, 3600))) throw new TooManyRequestsException('تعداد درخواست‌ها زیاد است. بعداً تلاش کنید.');
+    if (!(await this.rateLimit.hit(`cst:nid:${nidHash}`, perNid, 3600))) throw new TooManyRequestsException('تعداد درخواست‌ها زیاد است. بعداً تلاش کنید.');
+    if (!(await this.rateLimit.hit(`cst:phone:${phoneHash}`, perIp, 3600))) throw new TooManyRequestsException('تعداد درخواست‌ها زیاد است. بعداً تلاش کنید.');
 
     const claim = await this.findClaimByDeceased(tenantId, nidHash, dto.companyId);
     await this.recordInquiry(tenantId, claim, phone, dto.nationalCode, ip);
@@ -272,7 +272,7 @@ export class InquiryService {
     const tenantId = getTenantIdOrThrow();
     const ctx = getContext();
     const ip = ctx?.ip ?? 'unknown';
-    if (!this.rateLimit.hit(`otpverify:ip:${ip}`, 20, 600)) {
+    if (!(await this.rateLimit.hit(`otpverify:ip:${ip}`, 20, 600))) {
       throw new TooManyRequestsException('تعداد تلاش‌ها زیاد است.');
     }
 
@@ -467,7 +467,7 @@ export class InquiryService {
     if (!claimId || !ctx?.scopedPhone) throw new ForbiddenException('برای ارسال پیام ابتدا استعلام کنید.');
     const text = String(message ?? '').trim();
     if (text.length < 3) throw new BadRequestException('متن پیام را بنویسید');
-    if (!this.rateLimit.hit(`inqmsg:${claimId}:${ctx.scopedPhone}`, 5, 3600)) throw new TooManyRequestsException('تعداد پیام‌ها زیاد است. بعداً تلاش کنید.');
+    if (!(await this.rateLimit.hit(`inqmsg:${claimId}:${ctx.scopedPhone}`, 5, 3600))) throw new TooManyRequestsException('تعداد پیام‌ها زیاد است. بعداً تلاش کنید.');
     const c = await this.prisma.unscoped().claim.findUnique({ where: { id: claimId }, select: { id: true, claimNumber: true, brokerTenantId: true, insurerTenantId: true, policyHolderId: true, policyholderCompanyId: true } });
     if (!c) throw new NotFoundException('پرونده یافت نشد.');
     const companyId = c.policyholderCompanyId ?? (await this.companyOfFiler(c.policyHolderId));
