@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { jwtTtl } from '../../common/crypto/jwt-ttl';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { AuditAction } from '@prisma/client';
@@ -57,7 +58,7 @@ export class CustomerAuthService {
     const account = await this.companyAccount(co);
     await db.customerAccount.update({ where: { id: account.id }, data: { lastLoginAt: new Date() } });
     const expiresIn = this.config.get<string>('JWT_SESSION_TTL', '8h');
-    const token = await this.jwt.signAsync({ kind: 'customer', sub: account.id, tenantId, nidHash: account.nationalCodeHash, companyId: co.id }, { expiresIn });
+    const token = await this.jwt.signAsync({ kind: 'customer', sub: account.id, tenantId, nidHash: account.nationalCodeHash, companyId: co.id }, { expiresIn: jwtTtl(expiresIn) });
     await this.audit.record({ action: AuditAction.LOGIN, tenantId, actorType: 'CUSTOMER', actorId: account.id, metadata: { realm: 'company', companyId: co.id } });
     return { token, expiresIn };
   }
@@ -82,7 +83,7 @@ export class CustomerAuthService {
       }));
     await db.customerAccount.update({ where: { id: account.id }, data: { lastLoginAt: new Date() } });
     const expiresIn = this.config.get<string>('JWT_SESSION_TTL', '8h');
-    const token = await this.jwt.signAsync({ kind: 'customer', sub: account.id, tenantId, nidHash: nationalCodeHash, brokerPanel: true }, { expiresIn });
+    const token = await this.jwt.signAsync({ kind: 'customer', sub: account.id, tenantId, nidHash: nationalCodeHash, brokerPanel: true }, { expiresIn: jwtTtl(expiresIn) });
     await this.audit.record({ action: AuditAction.LOGIN, tenantId, actorType: 'CUSTOMER', actorId: account.id, metadata: { realm: 'broker-panel' } });
     return { token, expiresIn };
   }
@@ -103,7 +104,7 @@ export class CustomerAuthService {
     }
     await db.customerAccount.update({ where: { id: acc.id }, data: { lastLoginAt: new Date() } });
     const expiresIn = this.config.get<string>('JWT_SESSION_TTL', '8h');
-    const token = await this.jwt.signAsync({ kind: 'customer', sub: acc.id, tenantId, nidHash: acc.nationalCodeHash, companyId: acc.companyId ?? undefined, representative: true }, { expiresIn });
+    const token = await this.jwt.signAsync({ kind: 'customer', sub: acc.id, tenantId, nidHash: acc.nationalCodeHash, companyId: acc.companyId ?? undefined, representative: true }, { expiresIn: jwtTtl(expiresIn) });
     await this.audit.record({ action: AuditAction.LOGIN, tenantId, actorType: 'CUSTOMER', actorId: acc.id, metadata: { realm: 'representative' } });
     return { token, expiresIn };
   }
@@ -333,7 +334,7 @@ export class CustomerAuthService {
     const expiresIn = this.config.get<string>('JWT_SESSION_TTL', '8h');
     const token = await this.jwt.signAsync(
       { kind: 'customer', sub: account.id, tenantId, nidHash },
-      { expiresIn },
+      { expiresIn: jwtTtl(expiresIn) },
     );
     await this.audit.record({ action: AuditAction.OTP_VERIFY, tenantId, actorType: 'CUSTOMER', actorId: account.id, metadata: { realm: 'customer' } });
     return { token, expiresIn };
@@ -353,7 +354,7 @@ export class CustomerAuthService {
     if (!account) throw new ForbiddenException('حساب یافت نشد.');
     await this.prisma.scoped.customerAccount.update({ where: { id: account.id }, data: { lastLoginAt: new Date() } });
     const expiresIn = this.config.get<string>('JWT_SESSION_TTL', '8h');
-    const token = await this.jwt.signAsync({ kind: 'customer', sub: account.id, tenantId, nidHash }, { expiresIn });
+    const token = await this.jwt.signAsync({ kind: 'customer', sub: account.id, tenantId, nidHash }, { expiresIn: jwtTtl(expiresIn) });
     await this.audit.record({ action: AuditAction.LOGIN, tenantId, actorType: 'CUSTOMER', actorId: account.id, metadata: { realm: 'customer', otp: false } });
     return { token, expiresIn };
   }

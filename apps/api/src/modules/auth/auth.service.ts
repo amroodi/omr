@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { jwtTtl } from '../../common/crypto/jwt-ttl';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { AuditAction } from '@prisma/client';
@@ -92,7 +93,7 @@ export class AuthService {
     const expiresIn = mfaSetup ? '15m' : this.config.get<string>('JWT_SESSION_TTL', '8h');
     const token = await this.jwt.signAsync(
       { kind: 'org', sub: user!.id, tenantId: tenant.id, permissions, branchId: user!.branchId ?? null, ...(mfaSetup ? { mfaSetup: true } : {}) },
-      { expiresIn },
+      { expiresIn: jwtTtl(expiresIn) },
     );
     await db.orgUser.update({ where: { id: user!.id }, data: { lastLoginAt: new Date() } });
     await this.audit.record({
@@ -134,7 +135,7 @@ export class AuthService {
     const expiresIn = this.config.get<string>('JWT_SESSION_TTL', '8h');
     const token = await this.jwt.signAsync(
       { kind: 'super', sub: admin!.id, permissions },
-      { expiresIn },
+      { expiresIn: jwtTtl(expiresIn) },
     );
     await this.audit.record({
       action: AuditAction.LOGIN,
