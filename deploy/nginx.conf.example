@@ -10,6 +10,19 @@
 # Then add TLS automatically (edits this file in place, adds the 443 block + HTTP->HTTPS redirect):
 #   sudo certbot --nginx -d panel.damuon.com
 
+# ── Edge protection (this file is included inside nginx's http {} block) ──────────────────────
+# Per-IP request rates, in front of the API's own per-user / per-number limits. Generous on purpose:
+# a whole branch office often reaches us from ONE public IP.
+limit_req_zone $binary_remote_addr zone=omr_api:10m  rate=40r/s;
+limit_req_zone $binary_remote_addr zone=omr_auth:10m rate=60r/m;
+limit_req_status 429;
+
+# Keep connections to the API open between requests (less latency, fewer sockets under load).
+upstream omr_api {
+    server 127.0.0.1:17421;
+    keepalive 64;
+}
+
 server {
     listen 80;
     listen [::]:80;
@@ -17,16 +30,39 @@ server {
 
     # Document uploads are up to 15 MB; allow headroom.
     client_max_body_size 20m;
+    # Slow-client protection: a request body / headers must keep arriving.
+    client_body_timeout 30s;
+    client_header_timeout 15s;
 
-    # API: everything under /api/ goes to NestJS (its global prefix is /api/v1).
-    location /api/ {
-        proxy_pass http://127.0.0.1:17421;
+    # Login, signup and the public inquiry: a tighter per-IP rate (password / code guessing).
+    location ~ ^/api/v1/(auth|customer/login|customer/signup|inquiry)/ {
+        limit_req zone=omr_auth burst=30 nodelay;
+        proxy_pass http://omr_api;
         proxy_http_version 1.1;
+        proxy_set_header Connection "";
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 60s;
+    }
+
+    # API: everything under /api/ goes to NestJS (its global prefix is /api/v1).
+    location /api/ {
+        limit_req zone=omr_api burst=120 nodelay;
+        proxy_pass http://omr_api;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60s;
+    }
+
+    # Next.js image optimizer: the panel doesn't use it, so it is closed (it has had serious bugs).
+    location /_next/image {
+        return 404;
     }
 
     # Web: everything else goes to Next.js.

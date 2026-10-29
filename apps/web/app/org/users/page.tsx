@@ -6,7 +6,7 @@ import { ErrorBox, Field, Overlay } from '../../components/ui';
 import { ORG_NAV } from '../nav';
 
 interface Role { id: string; name: string; permissions: string[]; isSystem: boolean; locked: boolean; users: number }
-interface User { id: string; username: string; displayName: string; isActive: boolean; lastLoginAt?: string | null; role: { id: string; name: string } | null; branch?: { id: string; name: string } | null; desk?: string | null; phone?: string | null }
+interface User { id: string; username: string; displayName: string; isActive: boolean; lastLoginAt?: string | null; role: { id: string; name: string } | null; branch?: { id: string; name: string } | null; desk?: string | null; phone?: string | null; mfaEnabled?: boolean }
 type Msg = { t: 'ok' | 'err'; m: string } | null;
 
 /** Permission names in Persian, grouped by area (unknown keys fall back to the raw key). */
@@ -205,6 +205,7 @@ export default function UsersRoles() {
                   <span style={{ color: 'var(--muted)' }}>{u.role?.name}</span>
                   {isInsurer && <span className="badge badge-neutral">{seatLabel(u)}</span>}
                   {!u.isActive && <span className="badge badge-danger">غیرفعال</span>}
+                  {u.mfaEnabled && <span className="badge badge-success" title="ورود دومرحله‌ای فعال است">دومرحله‌ای</span>}
                   <button onClick={() => openUser(u)} className="btn btn-ghost btn-sm">ویرایش</button>
                 </span>
               </div>
@@ -273,6 +274,15 @@ export default function UsersRoles() {
             <div className="pmodal-body space-y-3">
               <Field label="نام نمایشی"><input className="input" value={ue.displayName} onChange={(e) => setUe({ ...ue, displayName: e.target.value })} /></Field>
               <Field label="شمارهٔ همراه (برای پیامک یادآور)"><input className="input" value={ue.phone} onChange={(e) => setUe({ ...ue, phone: e.target.value })} inputMode="numeric" placeholder="۰۹۱۲…" style={{ direction: 'ltr', textAlign: 'right' }} /></Field>
+              {ue.user.mfaEnabled && (
+                <div className="flex items-center justify-between gap-2 text-sm rounded-lg p-2" style={{ background: 'var(--surface-2)' }}>
+                  <span>ورود دومرحله‌ای این کاربر فعال است.</span>
+                  <button type="button" className="text-xs underline" style={{ color: 'var(--danger)' }} onClick={async () => {
+                    if (!window.confirm('ورود دومرحله‌ای این کاربر بازنشانی شود؟ (مثلاً گوشی را گم کرده است) — باید دوباره راه‌اندازی کند.')) return;
+                    try { await client.post(`/users/${ue.user.id}/mfa-reset`, {}, 'org'); setUe({ ...ue, user: { ...ue.user, mfaEnabled: false } }); load(); } catch (e: any) { setUeMsg({ t: 'err', m: e.message }); }
+                  }}>بازنشانی</button>
+                </div>
+              )}
               <Field label="نقش">
                 <select className="input" value={ue.roleId} onChange={(e) => setUe({ ...ue, roleId: e.target.value })}>
                   {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}

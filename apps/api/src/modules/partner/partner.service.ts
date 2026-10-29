@@ -38,7 +38,7 @@ export class PartnerService {
       throw new BadRequestException('شماره پرونده و کد ملی الزامی است');
     }
     // Rate limit per key and per IP to prevent enumeration of claim numbers.
-    if (!this.rateLimit.hit(`partner:key:${keyId}`, 120, 3600) || !this.rateLimit.hit(`partner:ip:${ip}`, 120, 3600)) {
+    if (!(await this.rateLimit.hit(`partner:key:${keyId}`, 120, 3600)) || !(await this.rateLimit.hit(`partner:ip:${ip}`, 120, 3600))) {
       throw new BadRequestException('تعداد درخواست‌ها زیاد است');
     }
 

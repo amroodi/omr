@@ -1,3 +1,5 @@
+import cluster from 'node:cluster';
+import { availableParallelism } from 'node:os';
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
@@ -46,4 +48,28 @@ async function bootstrap(): Promise<void> {
   logger.log(`OMR Damuon API listening on http://${host}:${port}/api/v1`);
 }
 
-bootstrap();
+/**
+ * `API_WORKERS` > 1 runs that many API processes on one port (Node cluster), so the API uses every CPU
+ * core instead of one. Safe because nothing per-request lives in a single process: rate limits are in
+ * Postgres, reminders are claimed in the database, files are on the shared disk. `API_WORKERS=auto`
+ * = one per core. A worker that dies is restarted. Default 1 (a single process, as before).
+ */
+function start(): void {
+  const raw = String(process.env.API_WORKERS ?? '1').trim().toLowerCase();
+  const n = raw === 'auto' ? availableParallelism() : Math.max(1, Math.min(64, Number(raw) || 1));
+  if (n <= 1 || !cluster.isPrimary) { bootstrap(); return; }
+  const logger = new Logger('Cluster');
+  logger.log(`Starting ${n} API workers`);
+  for (let i = 0; i < n; i++) cluster.fork();
+  let stopping = false;
+  const stop = () => { stopping = true; for (const w of Object.values(cluster.workers ?? {})) w?.kill('SIGTERM'); };
+  process.on('SIGTERM', stop);
+  process.on('SIGINT', stop);
+  cluster.on('exit', (w, code, signal) => {
+    if (stopping) { if (!Object.keys(cluster.workers ?? {}).length) process.exit(0); return; }
+    logger.error(`API worker ${w.process.pid} exited (${signal || code}); starting a new one`);
+    setTimeout(() => cluster.fork(), 1000);
+  });
+}
+
+start();

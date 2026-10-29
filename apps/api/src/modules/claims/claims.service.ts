@@ -1594,17 +1594,20 @@ export class ClaimsService {
     type Tile = { key: string; label: string; count: number; actionable: boolean; mine: number; href?: string };
     const tiles: Tile[] = [];
     if (perms.has(PERMISSIONS.CLAIM_READ)) {
-      const allCount = await db.claim.count({ where: scope });
-      tiles.push({ key: 'all', label: 'همه پرونده‌ها', count: allCount, actionable: false, mine: 0, href: '/org/claims' });
-      for (const [key, q] of Object.entries(this.wdQueues())) {
-        const rows = await db.claim.findMany({ where: { AND: [scope, q.where] }, select: { id: true, currentStage: true, flowDirection: true, handlingBranchId: true, brokerTenantId: true, insurerTenantId: true, policyHolderId: true, imported: true } });
-        const mine = key === 'physical'
-          // requests waiting on my desk: to send/relay (REQUESTED with me) or to confirm receipt (SENT to me)
-          ? (desk.stage ? await db.claim.count({ where: { AND: [scope, { physicalRequests: { some: { OR: [{ status: 'REQUESTED', holderStage: desk.stage }, { status: 'SENT', requesterStage: desk.stage }] } } }] } }) : 0)
-          : rows.filter((c) => this.holdsDesk(c, desk)).length;
-        const seats = desk.insurerAdmin ? INSURER_DESKS : desk.stage ? [desk.stage] : [];
-        tiles.push({ key, label: q.label, count: rows.length, actionable: seats.some((st) => q.desk?.includes(st)), mine });
-      }
+      // Every tile's query runs at once (not one after another) — the Work Desk is the busiest page.
+      const seats = desk.insurerAdmin ? INSURER_DESKS : desk.stage ? [desk.stage] : [];
+      const [allCount, ...queueTiles] = await Promise.all([
+        db.claim.count({ where: scope }),
+        ...Object.entries(this.wdQueues()).map(async ([key, q]): Promise<Tile> => {
+          const rows = await db.claim.findMany({ where: { AND: [scope, q.where] }, select: { id: true, currentStage: true, flowDirection: true, handlingBranchId: true, brokerTenantId: true, insurerTenantId: true, policyHolderId: true, imported: true } });
+          const mine = key === 'physical'
+            // requests waiting on my desk: to send/relay (REQUESTED with me) or to confirm receipt (SENT to me)
+            ? (desk.stage ? await db.claim.count({ where: { AND: [scope, { physicalRequests: { some: { OR: [{ status: 'REQUESTED', holderStage: desk.stage }, { status: 'SENT', requesterStage: desk.stage }] } } }] } }) : 0)
+            : rows.filter((c) => this.holdsDesk(c, desk)).length;
+          return { key, label: q.label, count: rows.length, actionable: seats.some((st) => q.desk?.includes(st)), mine };
+        }),
+      ]);
+      tiles.push({ key: 'all', label: 'همه پرونده‌ها', count: allCount as number, actionable: false, mine: 0, href: '/org/claims' }, ...(queueTiles as Tile[]));
     }
 
     const pendingActions = tiles.reduce((s, t) => s + t.mine, 0);

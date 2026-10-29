@@ -42,38 +42,48 @@ export class AuditService {
     const ctx = getContext();
     if (ctx) ctx.audited = true;
     const tenantId = input.tenantId ?? ctx?.tenantId ?? null;
-    const now = new Date();
     const db = this.prisma.unscoped();
 
     try {
-      const prev = await db.auditLog.findFirst({
-        where: { tenantId },
-        orderBy: { createdAt: 'desc' },
-        select: { hash: true },
+      // One writer per chain at a time (concurrent requests, several API processes): a transaction-
+      // scoped advisory lock on the tenant's chain, so no two rows ever link to the same previous row.
+      await db.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'audit:' + (tenantId ?? 'platform')}))`;
+        const prev = await tx.auditLog.findFirst({
+          where: { tenantId },
+          orderBy: { createdAt: 'desc' },
+          select: { hash: true, createdAt: true },
+        });
+        const prevHash = prev?.hash ?? null;
+        // Strictly after the previous row, so ordering by createdAt always replays the chain.
+        let now = new Date();
+        if (prev && now.getTime() <= prev.createdAt.getTime()) now = new Date(prev.createdAt.getTime() + 1);
+        await tx.auditLog.create({ data: this.build(input, ctx, tenantId, prevHash, now) });
       });
-      const prevHash = prev?.hash ?? null;
-
-      const row = {
-        tenantId,
-        actorType: input.actorType ?? ctx?.actorType ?? 'SYSTEM',
-        actorId: input.actorId ?? ctx?.actorId ?? null,
-        action: input.action,
-        targetType: input.targetType ?? null,
-        targetId: input.targetId ?? null,
-        ip: ctx?.ip ?? null,
-        userAgent: ctx?.userAgent ?? null,
-        metadata: input.metadata ? JSON.stringify(this.redact(input.metadata)) : null,
-        jalaliTimestamp: toJalali(now),
-      };
-
-      const hash = this.computeHash(prevHash, row, now);
-      // Set createdAt explicitly so the stored timestamp matches the one folded into the hash
-      // (a DB-defaulted now() would differ and break verifyChain()).
-      await db.auditLog.create({ data: { ...row, prevHash, hash, createdAt: now } });
     } catch (err) {
       // Never let audit failure break the request, but make it loud.
       this.logger.error(`Audit write failed for ${input.action}: ${String(err)}`);
     }
+  }
+
+  private build(input: AuditInput, ctx: ReturnType<typeof getContext>, tenantId: string | null, prevHash: string | null, now: Date) {
+    const row = {
+      tenantId,
+      actorType: input.actorType ?? ctx?.actorType ?? 'SYSTEM',
+      actorId: input.actorId ?? ctx?.actorId ?? null,
+      action: input.action,
+      targetType: input.targetType ?? null,
+      targetId: input.targetId ?? null,
+      ip: ctx?.ip ?? null,
+      userAgent: ctx?.userAgent ?? null,
+      metadata: input.metadata ? JSON.stringify(this.redact(input.metadata)) : null,
+      jalaliTimestamp: toJalali(now),
+    };
+
+    const hash = this.computeHash(prevHash, row, now);
+    // Set createdAt explicitly so the stored timestamp matches the one folded into the hash
+    // (a DB-defaulted now() would differ and break verifyChain()).
+    return { ...row, prevHash, hash, createdAt: now };
   }
 
   private computeHash(prevHash: string | null, row: Record<string, unknown>, at: Date): string {

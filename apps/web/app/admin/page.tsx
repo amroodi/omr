@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { clearToken, client, getToken } from '../../lib/client';
 import { ErrorBox, Field, StatCard } from '../components/ui';
+import { MfaSetup } from '../components/MfaSetup';
 import { Icon } from '../components/Shell';
 import { ChangePasswordModal } from '../components/ChangePasswordModal';
 
@@ -211,6 +212,10 @@ export default function AdminDashboard() {
         </div>
         <PlatformSms />
         <ShahkarCard />
+        <div className="card p-5 space-y-3 mt-5">
+          <h3 className="font-semibold">ورود دومرحله‌ای مدیر سامانه</h3>
+          <MfaSetup realm="super" />
+        </div>
         </div>
       </div>
     </div>

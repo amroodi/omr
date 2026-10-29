@@ -21,6 +21,7 @@ import { BranchesModule } from './modules/branches/branches.module';
 import { EmbedModule } from './modules/embed/embed.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { RemindersModule } from './modules/reminders/reminders.module';
+import { HealthController } from './modules/health/health.controller';
 import { PartnerModule } from './modules/partner/partner.module';
 import { PlatformModule } from './modules/platform/platform.module';
 import { BrandingModule } from './modules/branding/branding.module';
@@ -85,6 +86,7 @@ import { UsersModule } from './modules/users/users.module';
     RemindersModule,
     PlatformModule,
   ],
+  controllers: [HealthController],
   providers: [
     TenantResolverGuard,
     // Global auth + RBAC. @Public() opts a route out of auth; @Permissions()/@SuperAdminOnly()

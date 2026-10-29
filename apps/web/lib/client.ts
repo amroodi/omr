@@ -97,7 +97,7 @@ async function handle<T>(res: Response, realm?: Realm): Promise<T> {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     if (res.status === 401) onUnauthorized(realm);
-    throw new Error((data as any).message || `خطا (${res.status})`);
+    throw Object.assign(new Error((data as any).message || `خطا (${res.status})`), { code: (data as any).code, status: res.status });
   }
   return data as T;
 }
@@ -157,7 +157,7 @@ export const client = {
     if (!res.ok) {
       if (res.status === 401) onUnauthorized(realm);
       const data = await res.json().catch(() => ({}));
-      throw new Error((data as any).message || `خطا (${res.status})`);
+      throw Object.assign(new Error((data as any).message || `خطا (${res.status})`), { code: (data as any).code, status: res.status });
     }
     const url = URL.createObjectURL(await res.blob());
     const a = document.createElement('a');
@@ -170,7 +170,7 @@ export const client = {
     if (!res.ok) {
       if (res.status === 401) onUnauthorized(realm);
       const data = await res.json().catch(() => ({}));
-      throw new Error((data as any).message || `خطا (${res.status})`);
+      throw Object.assign(new Error((data as any).message || `خطا (${res.status})`), { code: (data as any).code, status: res.status });
     }
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
