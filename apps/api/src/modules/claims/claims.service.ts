@@ -1,4 +1,5 @@
 import JSZip from 'jszip';
+import { uploadName } from '../../common/validation/upload-name';
 import { NoticeRule, NoticeSource, NoticeTarget, SOURCE_FA, TARGET_FA, TARGETS_OF, combine, rulesFor } from './claim-notice';
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditAction, ClaimStatus, ClaimType, Prisma, SalesChannel } from '@prisma/client';
@@ -810,7 +811,7 @@ export class ClaimsService {
     let stored: { storageKey: string; fileName: string; mimeType: string; sizeBytes: number } | null = null;
     if (file?.buffer?.length) {
       if (!claimDocOk(file)) throw new BadRequestException(CLAIM_DOC_TYPES_FA);
-      stored = { storageKey: await this.storage.save(claim.insurerTenantId, file.buffer), fileName: file.originalname, mimeType: file.mimetype, sizeBytes: file.size };
+      stored = { storageKey: await this.storage.save(claim.insurerTenantId, file.buffer), fileName: uploadName(file.originalname), mimeType: file.mimetype, sizeBytes: file.size };
     }
     const ctx = getContext();
     const letter = await db.claimLetter.create({
@@ -1304,7 +1305,7 @@ export class ClaimsService {
         claimId,
         docCode: docCode.trim(),
         kind: 'OTHER',
-        fileName: file.originalname,
+        fileName: uploadName(file.originalname),
         mimeType: file.mimetype,
         sizeBytes: file.size,
         storageKey,

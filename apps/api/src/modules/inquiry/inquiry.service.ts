@@ -5,6 +5,7 @@ import {
   NotFoundException,
   TooManyRequestsException,
 } from './http-exceptions';
+import { jwtTtl } from '../../common/crypto/jwt-ttl';
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
@@ -162,7 +163,7 @@ export class InquiryService {
 
     const token = await this.jwt.signAsync(
       { kind: 'record', tenantId, caseId, claimId, sub: insuredId },
-      { expiresIn: this.config.get<string>('RECORD_TOKEN_TTL', '10m') },
+      { expiresIn: jwtTtl(this.config.get<string>('RECORD_TOKEN_TTL', '10m')) },
     );
     await this.audit.record({
       action: AuditAction.OTP_VERIFY,
@@ -264,7 +265,7 @@ export class InquiryService {
     await this.recordInquiry(tenantId, claim, phone, dto.nationalCode, ctx?.ip ?? 'unknown');
     const ttl = this.config.get<string>('RECORD_TOKEN_TTL', '10m');
     // `ph` = the requester's phone (encrypted) so «پاسخگوی آنلاین» knows whom to answer.
-    const token = await this.jwt.signAsync({ kind: 'record', tenantId, caseId: null, claimId: claim.id, sub: null, ph: this.crypto.encrypt(phone) }, { expiresIn: ttl });
+    const token = await this.jwt.signAsync({ kind: 'record', tenantId, caseId: null, claimId: claim.id, sub: null, ph: this.crypto.encrypt(phone) }, { expiresIn: jwtTtl(ttl) });
     return { token, expiresIn: ttl };
   }
 
@@ -304,7 +305,7 @@ export class InquiryService {
     // Mint a token scoped to exactly one record id (case or claim) — not the National ID.
     const token = await this.jwt.signAsync(
       { kind: 'record', tenantId, caseId: challenge.caseId, claimId: challenge.claimId, sub: challenge.insuredId, ph: this.crypto.encrypt(this.normalizePhone(dto.phone)) },
-      { expiresIn: this.config.get<string>('RECORD_TOKEN_TTL', '10m') },
+      { expiresIn: jwtTtl(this.config.get<string>('RECORD_TOKEN_TTL', '10m')) },
     );
     await this.audit.record({
       action: AuditAction.OTP_VERIFY,

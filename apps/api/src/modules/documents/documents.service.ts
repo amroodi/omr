@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { uploadName } from '../../common/validation/upload-name';
 import { AuditAction, DocumentKind, VerificationStatus } from '@prisma/client';
 import { AuditService } from '../../common/audit/audit.service';
 import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
@@ -41,7 +42,7 @@ export class DocumentsService {
         tenantId,
         caseId,
         kind,
-        fileName: file.originalname,
+        fileName: uploadName(file.originalname),
         mimeType: file.mimetype,
         sizeBytes: file.size,
         storageKey,
@@ -50,7 +51,7 @@ export class DocumentsService {
       },
       select: this.publicSelect(),
     });
-    await this.audit.record({ action: AuditAction.UPLOAD, targetType: 'Document', targetId: doc.id, metadata: { kind, fileName: file.originalname } });
+    await this.audit.record({ action: AuditAction.UPLOAD, targetType: 'Document', targetId: doc.id, metadata: { kind, fileName: uploadName(file.originalname) } });
     return doc;
   }
 
