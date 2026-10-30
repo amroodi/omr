@@ -1,3 +1,4 @@
+import { assertNotPaid } from './archived';
 import JSZip from 'jszip';
 import { uploadName } from '../../common/validation/upload-name';
 import { NoticeRule, NoticeSource, NoticeTarget, SOURCE_FA, TARGET_FA, TARGETS_OF, combine, rulesFor } from './claim-notice';
@@ -495,6 +496,7 @@ export class ClaimsService {
     const claim = await db.claim.findUnique({ where: { id: claimId } });
     if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
     this.assertParticipant(claim);
+    assertNotPaid(claim); // archived once paid
     const desk = await this.myDesk();
     const actions = await this.availableActions(claim, desk);
     const a = actions.find((x) => x.key === input.action);
@@ -688,6 +690,7 @@ export class ClaimsService {
     const claim = await db.claim.findUnique({ where: { id: claimId } });
     if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
     this.assertParticipant(claim);
+    assertNotPaid(claim); // archived once paid
     const desk = await this.myDesk();
     if (claim.currentStage !== 'BRANCH' || claim.flowDirection !== 'UP' || !this.holdsDesk(claim, desk)) {
       throw new ForbiddenException('ثبت اعلام خسارت فقط توسط شعبهٔ رسیدگی‌کننده ممکن است');
@@ -757,6 +760,7 @@ export class ClaimsService {
     const claim = await db.claim.findUnique({ where: { id: claimId } });
     if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
     this.assertParticipant(claim);
+    assertNotPaid(claim); // archived once paid
     const desk = await this.myDesk();
     const state = await this.physicalState(claim);
     const seat = this.physicalSeats(claim, desk).find((st) => physicalActionsFor(st, state).some((a) => a.key === input.action));
@@ -809,6 +813,7 @@ export class ClaimsService {
     const claim = await db.claim.findUnique({ where: { id: claimId } });
     if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
     this.assertParticipant(claim);
+    assertNotPaid(claim); // archived once paid
     if (!input.number?.trim() && !file?.buffer?.length) throw new BadRequestException('شمارهٔ نامه یا فایل نامه الزامی است');
     let stored: { storageKey: string; fileName: string; mimeType: string; sizeBytes: number } | null = null;
     if (file?.buffer?.length) {
@@ -849,6 +854,7 @@ export class ClaimsService {
     const claim = await db.claim.findUnique({ where: { id: claimId } });
     if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
     this.assertParticipant(claim);
+    assertNotPaid(claim); // archived once paid
     const normalized = String(amount ?? '').replace(/[^\d.]/g, '');
     if (normalized === '' || isNaN(Number(normalized)) || Number(normalized) < 0) throw new BadRequestException('مبلغ قطعی نامعتبر است');
     await db.claim.update({ where: { id: claimId }, data: { finalizedAmount: new Prisma.Decimal(normalized) } });
@@ -866,10 +872,11 @@ export class ClaimsService {
     const u = this.prisma.unscoped();
     const claim = await u.claim.findUnique({
       where: { id: claimId },
-      select: { id: true, claimNumber: true, insurerTenantId: true, brokerTenantId: true, policyHolderId: true, policyholderCompanyId: true, deletedAt: true },
+      select: { id: true, claimNumber: true, insurerTenantId: true, brokerTenantId: true, policyHolderId: true, policyholderCompanyId: true, deletedAt: true, status: true },
     });
     if (!claim) throw new NotFoundException('پرونده یافت نشد');
     this.assertParticipant(claim);
+    assertNotPaid(claim); // archived once paid
     if (!claim.deletedAt) {
       await u.claim.update({ where: { id: claimId }, data: { deletedAt: new Date() } });
       await this.audit.record({
@@ -1164,6 +1171,7 @@ export class ClaimsService {
     const reqCodes = new Set(reqs.map((r) => r.code));
     return {
       claimType: claim.claimType,
+      archived: claim.status === 'PAID', // a paid case takes no more uploads or reviews
       complete: items.length > 0 && items.every((i) => i.uploaded),
       items,
       // Each «سایر مدارک» file stands on its own (a batch upload is many documents, not versions of one).
@@ -1178,6 +1186,7 @@ export class ClaimsService {
     const db = this.db();
     const claim = await db.claim.findUnique({ where: { id: claimId } });
     if (!claim) throw new NotFoundException('پرونده یافت نشد');
+    assertNotPaid(claim); // archived once paid
     this.assertParticipant(claim);
     const doc = await db.document.findFirst({ where: { id: docId, claimId }, select: { id: true } });
     if (!doc) throw new NotFoundException('سند یافت نشد');
@@ -1257,6 +1266,7 @@ export class ClaimsService {
     const claim = await db.claim.findUnique({ where: { id: claimId } });
     if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
     this.assertParticipant(claim);
+    assertNotPaid(claim); // archived once paid
     const desk = await this.myDesk();
     if (!this.canReviewStage(claim, stage, desk)) throw new ForbiddenException('بررسی مدارک این مرحله در حال حاضر در اختیار شما نیست');
     const doc = await db.document.findFirst({ where: { id: docId, claimId }, select: { id: true } });
@@ -1300,6 +1310,7 @@ export class ClaimsService {
     const claim = await db.claim.findUnique({ where: { id: claimId } });
     if (!claim) throw new NotFoundException('پرونده یافت نشد');
     this.assertParticipant(claim);
+    assertNotPaid(claim); // archived once paid
     const storageKey = await this.storage.save(claim.insurerTenantId, file.buffer);
     const doc = await db.document.create({
       data: {

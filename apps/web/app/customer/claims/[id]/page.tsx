@@ -155,8 +155,10 @@ export default function CustomerClaim() {
                           <div className="cu-story">{story.text}</div>
                         </div>
                         <div className="cu-doc-up">
-                          <DocUploadTile label={it.label} uploaded={it.uploaded} rejected={story.tone === 'bad'}
-                            cameraOnly onUpload={(f, onP) => upload(it.code, f, onP)} />
+                          {claim.status !== 'PAID' && (
+                            <DocUploadTile label={it.label} uploaded={it.uploaded} rejected={story.tone === 'bad'}
+                              cameraOnly onUpload={(f, onP) => upload(it.code, f, onP)} />
+                          )}
                         </div>
                       </div>
                       {st && 'error' in st && <div className="cu-err">بارگذاری انجام نشد: {st.error}</div>}
@@ -196,7 +198,7 @@ export default function CustomerClaim() {
 
             {/* «broker» login: drop any number of files at once — they're kept as «سایر مدارک», no matter
                 which required item they belong to; each file uploads (or is refused) on its own. */}
-            {isBroker && (
+            {isBroker && claim.status !== 'PAID' && (
               <div className="pcard p-6 space-y-3">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <h3 className="font-extrabold">بارگذاری گروهی مدارک</h3>

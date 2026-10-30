@@ -65,7 +65,8 @@ export function CaseEditForm({ claimId, title, onSaved }: { claimId: string; tit
   const save = async () => {
     setBusy(true); setMsg(null);
     const errs: Record<string, string> = {};
-    for (const f of dirty) {
+    const LAST = new Set(['payment_order_status', 'council_approve_status']); // these can close the case
+    for (const f of [...dirty.filter((x) => !LAST.has(x.key)), ...dirty.filter((x) => LAST.has(x.key))]) {
       try { await client.put(`/claims/${claimId}/fields/${f.key}`, { value: drafts[f.key] ?? '' }, 'org'); }
       catch (e: any) { errs[f.key] = e.message; }
     }

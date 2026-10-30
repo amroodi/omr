@@ -1072,6 +1072,10 @@ html[data-wall] .pshell { background-blend-mode: normal; }
 .est-pill { display: inline-flex; align-items: center; gap: 10px; background: rgba(255,255,255,.18); border-radius: 999px; padding: 12px 22px; font-weight: 700; line-height: 1.6; }
 .est-pill-light { background: var(--surface-2); color: var(--text); }
 .est-pill-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+/* «توضیحات پرونده»: green paid · yellow in progress · red rejected / missing documents */
+.est-pill.tone-ok { background: #16a34a; color: #fff; }
+.est-pill.tone-wait { background: #facc15; color: #422006; }
+.est-pill.tone-bad { background: #ef4444; color: #fff; }
 .est-exit { display: inline-flex; align-items: center; justify-content: center; gap: 8px; background: #e53935; color: #fff; font-weight: 800;
   padding: 16px 36px; border-radius: 12px; box-shadow: 0 8px 18px -8px rgba(229,57,53,.7); transition: background .15s; }
 .est-exit:hover { background: #c62828; }

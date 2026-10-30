@@ -6,6 +6,7 @@ import { Spinner } from '../components/ui';
 import { BrandMark } from '../components/brand';
 import { Icon } from '../components/Shell';
 import { inquiryApi } from '../../lib/api';
+import { notesTone } from '../components/case-ui';
 
 /**
  * مشاهده سریع و استعلام پرونده — shared pieces of the inquiry pages (/estelam and its five sub-pages).
@@ -23,6 +24,20 @@ export const ACTION_FA: Record<string, string> = {
 export const STATE_FA: Record<string, string> = {
   FORWARDED: 'تایید و ارسال', ESCALATED: 'ارجاع به سطح بالاتر', APPROVED: 'تایید شد', RETURNED_INCOMPLETE: 'عودت برای رفع نقص', REJECTED: 'رد شد', ACKED: 'دریافت و ارسال',
 };
+
+/**
+ * Colour of «توضیحات پرونده»: green = paid (or the payment order is out), red = rejected or waiting for
+ * missing documents, yellow = still being processed. The organization's own note wins when it says so.
+ */
+export function phaseTone(r: any, text: string): 'ok' | 'wait' | 'bad' {
+  if (r.status === 'PAID') return 'ok';
+  if (r.status === 'REJECTED') return 'bad';
+  const t = notesTone(text);
+  if (t !== 'other') return t;
+  if (r.flowPurpose === 'PAYMENT') return 'ok';
+  if (r.flowDirection === 'DOWN' || r.status === 'RETURNED_INCOMPLETE') return 'bad';
+  return 'wait';
+}
 
 export function phaseText(r: any): string {
   if (r.status === 'PAID') return 'خسارت پرداخت شده است';
