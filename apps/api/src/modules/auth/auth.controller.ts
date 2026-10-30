@@ -45,7 +45,7 @@ export class AuthController {
   /** Who is signed in — the top bar's «نام کاربر». */
   @Get('me')
   me(@CurrentActor() actor: RequestContext) {
-    return this.auth.me(actor?.actorType, actor?.actorId);
+    return this.auth.me(actor?.actorType, actor?.actorId, actor?.panel);
   }
 
   /** Change the signed-in actor's own password (super-admin or org user). Requires a valid token. */

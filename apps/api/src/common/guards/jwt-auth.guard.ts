@@ -71,6 +71,7 @@ export class JwtAuthGuard implements CanActivate {
       ctx.actorType = 'ORG_USER';
       ctx.permissions = payload.permissions ?? [];
       ctx.branchId = payload.branchId ?? undefined;
+      ctx.panel = payload.panel ?? undefined;
       // Branch-bound users without an org-wide scope see only their branch.
       ctx.branchScoped = !!payload.branchId && !(payload.permissions ?? []).includes('branch:manage');
     }

@@ -40,7 +40,7 @@ import { ClaimsService } from '../claims/claims.service';
 import { PhysicalDto } from '../claims/dto';
 import { CustomerAuthService } from './customer-auth.service';
 import { CustomerService } from './customer.service';
-import { CustomerChangePasswordDto, CustomerCompanyLoginDto, CustomerFileClaimDto, CustomerRequestOtpDto, CustomerSignupDto, CustomerSignupVerifyDto, CustomerVerifyOtpDto } from './dto';
+import { RepresentativeLoginDto, CustomerChangePasswordDto, CustomerCompanyLoginDto, CustomerFileClaimDto, CustomerRequestOtpDto, CustomerSignupDto, CustomerSignupVerifyDto, CustomerVerifyOtpDto } from './dto';
 
 @Controller('customer')
 export class CustomerController {
@@ -56,6 +56,14 @@ export class CustomerController {
   @Post('login/company')
   companyLogin(@Body() dto: CustomerCompanyLoginDto) {
     return this.auth.companyLogin(dto.code, dto.password);
+  }
+
+  /** نماینده panel login: کد ملی + password. */
+  @Public()
+  @UseGuards(TenantResolverGuard)
+  @Post('login/representative')
+  representativeLogin(@Body() dto: RepresentativeLoginDto) {
+    return this.auth.representativeLoginPublic(dto.nationalCode, dto.password);
   }
 
   @UseGuards(JwtAuthGuard)

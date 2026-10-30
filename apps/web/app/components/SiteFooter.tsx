@@ -2,7 +2,7 @@
 import { usePathname } from 'next/navigation';
 
 /** Pages whose login card already carries the credit line — no second copy under it. */
-const CARD_PAGES = new Set(['/customer/login', '/org/login']);
+const CARD_PAGES = new Set(['/customer/login', '/org/login', '/insurer/login']);
 
 /** Site-wide credit line under the page content. */
 export function SiteFooter() {

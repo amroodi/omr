@@ -59,7 +59,7 @@ export class AuditLogsService {
     const pageSize = Math.min(200, Math.max(1, query.pageSize ?? 50));
     // Audit reads use the un-scoped client with an explicit tenant filter: AuditLog rows can have
     // a null tenantId (pre-tenant events like failed logins), which the scoped extension rejects.
-    const db = this.prisma.unscoped();
+    const db = this.prisma.replica(); // read-only list → the read-replica when configured
 
     const [total, rows] = await Promise.all([
       db.auditLog.count({ where }),

@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { jwtTtl } from '../../common/crypto/jwt-ttl';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
@@ -18,17 +18,23 @@ export interface TokenResult {
   actor: { id: string; displayName: string; permissions: string[] };
   /** The org requires two-step login and this user must set it up before anything else. */
   mfaSetupRequired?: boolean;
+  /** Which org panel this session is (کارگزاری / شعبه / ستاد / شورای فنی). */
+  panel?: Panel;
 }
+
+/** The org panels — one per desk, each with its own login page. */
+export type Panel = 'BROKER' | 'BRANCH' | 'HQ' | 'COUNCIL';
+const PANEL_FA: Record<Panel, string> = { BROKER: 'پنل کارگزاری', BRANCH: 'پنل شعبه', HQ: 'پنل ستاد', COUNCIL: 'پنل شورای فنی' };
 
 @Injectable()
 export class AuthService {
   /** Display name of the signed-in org user / super admin (the panel's top bar). */
-  async me(actorType?: string, actorId?: string): Promise<{ name: string | null }> {
+  async me(actorType?: string, actorId?: string, panel?: string): Promise<{ name: string | null; panel?: string | null }> {
     if (!actorId) return { name: null };
     const db = this.prisma.unscoped();
     if (actorType === 'ORG_USER') {
       const u = await db.orgUser.findUnique({ where: { id: actorId }, select: { displayName: true, username: true } });
-      return { name: u?.displayName || u?.username || null };
+      return { name: u?.displayName || u?.username || null, panel: panel ?? null };
     }
     if (actorType === 'SUPER_ADMIN') {
       const a = await db.superAdmin.findUnique({ where: { id: actorId }, select: { email: true } });
@@ -61,7 +67,7 @@ export class AuthService {
 
     const tenant = await db.tenant.findUnique({
       where: { slug: dto.tenantSlug },
-      select: { id: true, isActive: true, requireMfa: true },
+      select: { id: true, isActive: true, requireMfa: true, kind: true },
     });
     const fail = () => new UnauthorizedException('نام کاربری یا رمز عبور نادرست است');
 
@@ -83,6 +89,18 @@ export class AuthService {
       throw fail();
     }
 
+    // Separate panels: کارگزاری, شعبه, ستاد and شورای فنی each have their own login page. The password
+    // was right, so say which panel this account belongs to (an insurer admin may use any of its own).
+    const home: Panel = tenant.kind === 'BROKER' ? 'BROKER' : user!.desk === 'HQ' || user!.desk === 'COUNCIL' || user!.desk === 'BRANCH' ? user!.desk : user!.branchId ? 'BRANCH' : 'HQ';
+    const insurerAdmin = tenant.kind === 'INSURER' && (user!.role?.permissions ?? []).includes('claim:override');
+    let panel: Panel = home;
+    if (dto.panel && dto.panel !== home) {
+      if (!(insurerAdmin && dto.panel !== 'BROKER')) {
+        throw new ForbiddenException({ statusCode: 403, code: 'WRONG_PANEL', panel: home, message: `این حساب کاربری متعلق به «${PANEL_FA[home]}» است؛ از صفحهٔ ورود همان پنل وارد شوید.` });
+      }
+      panel = dto.panel;
+    }
+
     // Two-step login: with an authenticator set up, the 6-digit code is required too.
     await this.mfa.check({ kind: 'ORG_USER', id: user!.id }, user!, dto.totp);
     // The org requires two-step login but this user hasn't set it up: a token that can only reach
@@ -92,7 +110,7 @@ export class AuthService {
     const permissions = user!.role?.permissions ?? [];
     const expiresIn = mfaSetup ? '15m' : this.config.get<string>('JWT_SESSION_TTL', '8h');
     const token = await this.jwt.signAsync(
-      { kind: 'org', sub: user!.id, tenantId: tenant.id, permissions, branchId: user!.branchId ?? null, ...(mfaSetup ? { mfaSetup: true } : {}) },
+      { kind: 'org', sub: user!.id, tenantId: tenant.id, permissions, branchId: user!.branchId ?? null, panel, ...(mfaSetup ? { mfaSetup: true } : {}) },
       { expiresIn: jwtTtl(expiresIn) },
     );
     await db.orgUser.update({ where: { id: user!.id }, data: { lastLoginAt: new Date() } });
@@ -107,6 +125,7 @@ export class AuthService {
       token,
       expiresIn,
       actor: { id: user!.id, displayName: user!.displayName, permissions },
+      panel,
       ...(mfaSetup ? { mfaSetupRequired: true } : {}),
     };
   }
