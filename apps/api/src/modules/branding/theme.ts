@@ -35,6 +35,29 @@ export const THEME_PRESETS: Record<string, { label: string; theme: TenantTheme }
   },
 };
 
+/** The panels an organization designs: a brokerage's own and its customers', an insurer's desks. */
+export const DESIGN_PANELS: Record<'BROKER' | 'INSURER', { key: string; label: string }[]> = {
+  BROKER: [
+    { key: 'BROKER', label: 'پنل کارگزاری' },
+    { key: 'COMPANY', label: 'پنل بیمه‌گزار' },
+    { key: 'REPRESENTATIVE', label: 'پنل نماینده' },
+  ],
+  INSURER: [
+    { key: 'BRANCH', label: 'پنل شعبه' },
+    { key: 'HQ', label: 'پنل ستاد' },
+    { key: 'COUNCIL', label: 'پنل شورای فنی' },
+  ],
+};
+export const ALL_PANELS = new Set([...DESIGN_PANELS.BROKER, ...DESIGN_PANELS.INSURER].map((p) => p.key));
+
+/** A panel's effective theme: its own tokens over the organization's (either may be empty). */
+export function panelTheme(orgTheme: unknown, panelThemes: unknown, panel?: string | null): TenantTheme | null {
+  const base = (orgTheme && typeof orgTheme === 'object' ? orgTheme : {}) as TenantTheme;
+  const own = panel && panelThemes && typeof panelThemes === 'object' ? ((panelThemes as Record<string, TenantTheme>)[panel] ?? {}) : {};
+  const out = { ...base, ...own };
+  return Object.keys(out).length ? out : null;
+}
+
 /** Validate a theme payload (or a preset name); returns null to clear the theme. */
 export function normalizeTheme(input: unknown): TenantTheme | null {
   if (input === null || input === '' || input === undefined) return null;

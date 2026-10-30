@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { clearToken, client, getToken } from '../../lib/client';
@@ -17,7 +18,7 @@ export default function AdminDashboard() {
   const router = useRouter();
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [form, setForm] = useState({ name: '', slug: '', kind: 'BROKER', adminUsername: 'admin', adminDisplayName: '' });
-  const [result, setResult] = useState<{ username: string; oneTimePassword: string } | null>(null);
+  const [result, setResult] = useState<{ username: string; oneTimePassword: string; tenantId?: string } | null>(null);
   const [error, setError] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [resetResult, setResetResult] = useState<{ name: string; username: string; oneTimePassword: string } | null>(null);
@@ -53,8 +54,8 @@ export default function AdminDashboard() {
     try {
       const payload: Record<string, string> = { name: form.name.trim(), slug: form.slug.trim(), kind: form.kind, adminUsername: form.adminUsername.trim() };
       if (form.adminDisplayName.trim()) payload.adminDisplayName = form.adminDisplayName.trim();
-      const r = await client.post<{ admin: { username: string; oneTimePassword: string } }>('/tenants', payload, 'super');
-      setResult(r.admin);
+      const r = await client.post<{ tenant: { id: string }; admin: { username: string; oneTimePassword: string } }>('/tenants', payload, 'super');
+      setResult({ ...r.admin, tenantId: r.tenant?.id });
       setForm({ name: '', slug: '', kind: 'BROKER', adminUsername: 'admin', adminDisplayName: '' });
       load();
     } catch (e: any) { setError(e.message); }
@@ -176,6 +177,7 @@ export default function AdminDashboard() {
             <div className="alert-success">
               مدیر ساخته شد.<br />کاربری: <b>{result.username}</b><br />رمز یک‌بار مصرف: <b style={{ direction: 'ltr', display: 'inline-block' }}>{result.oneTimePassword}</b>
               <div className="mt-1 text-xs" style={{ opacity: 0.8 }}>این رمز فقط یک‌بار نمایش داده می‌شود.</div>
+              {result.tenantId && <Link href={`/admin/orgs/${result.tenantId}`} className="btn btn-primary btn-sm mt-2">طراحی ظاهر و تنظیمات سازمان جدید</Link>}
             </div>
           )}
         </div>
@@ -201,6 +203,7 @@ export default function AdminDashboard() {
                   <td>
                     <span className="flex gap-2 whitespace-nowrap">
                       <button onClick={() => setEdit({ id: t.id, name: t.name, slug: t.slug, kind: t.kind })} className="text-xs" style={{ color: 'var(--brand)' }}>ویرایش</button>
+                      <Link href={`/admin/orgs/${t.id}`} className="text-xs" style={{ color: 'var(--brand)' }}>طراحی و تنظیمات</Link>
                       {t.kind === 'BROKER' && <button onClick={() => openPartners(t)} className="text-xs" style={{ color: 'var(--brand)' }}>بیمه‌گرها</button>}
                       <button onClick={() => resetAdmin(t)} className="text-xs" style={{ color: 'var(--muted)' }}>بازنشانی رمز</button>
                     </span>

@@ -2,6 +2,7 @@
 import { usePathname } from 'next/navigation';
 import { useEffect } from 'react';
 import { client } from '../../lib/client';
+import { lastPanel } from '../../lib/panel';
 import { applyTheme } from '../../lib/theme';
 
 /**
@@ -15,7 +16,9 @@ export function ThemeApplier() {
     if (path === '/org/login') return;
     if (!themed) { applyTheme(null); return; }
     let active = true;
-    client.get<{ theme?: Record<string, string> | null }>('/tenant/branding')
+    // This panel's own look (پنل کارگزاری / بیمه‌گزار / نماینده / شعبه / ستاد / شورای فنی), over the org's.
+    const panel = lastPanel(path.startsWith('/customer') ? 'customer' : 'org');
+    client.get<{ theme?: Record<string, string> | null }>(`/tenant/branding${panel ? `?panel=${panel}` : ''}`)
       .then((b) => { if (active) applyTheme(b.theme ?? null); })
       .catch(() => {});
     return () => { active = false; };
