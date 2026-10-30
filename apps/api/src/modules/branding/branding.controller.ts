@@ -1,12 +1,15 @@
+import { ASSET_SAFE_HEADERS } from './theme';
 import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
   Post,
   Put,
+  Query,
   Res,
   UploadedFile,
   UseGuards,
@@ -19,7 +22,7 @@ import { Permissions } from '../../common/rbac/decorators';
 import { PERMISSIONS } from '../../common/rbac/permissions';
 import { TenantResolverGuard } from '../../common/tenant/tenant-resolver.guard';
 import { AssetKind, BrandingService } from './branding.service';
-import { CarrierConfigDto, SmsConfigDto, TestSmsDto, UpdateBrandingDto } from './dto';
+import { CarrierConfigDto, DesignDto, SmsConfigDto, TestSmsDto, UpdateBrandingDto } from './dto';
 
 const ASSET_KINDS: AssetKind[] = ['logo', 'favicon', 'font'];
 const assetLimits = { fileSize: 3 * 1024 * 1024 }; // 3 MB
@@ -88,19 +91,46 @@ export class BrandingController {
   @Public()
   @UseGuards(TenantResolverGuard)
   @Get('branding')
-  publicBranding() {
-    return this.branding.getPublicBranding();
+  publicBranding(@Query('panel') panel?: string) {
+    return this.branding.getPublicBranding(panel);
+  }
+
+  // ── «طراحی ظاهر»: the organization's and each panel's theme and logo ──
+  @Permissions(PERMISSIONS.TENANT_SETTINGS)
+  @Get('design')
+  design() {
+    return this.branding.getDesign();
+  }
+
+  @Permissions(PERMISSIONS.TENANT_SETTINGS)
+  @Put('design')
+  saveDesign(@Body() body: DesignDto) {
+    return this.branding.saveDesign(body);
+  }
+
+  @Permissions(PERMISSIONS.TENANT_SETTINGS)
+  @Post('design/logo')
+  @UseInterceptors(FileInterceptor('file', { limits: assetLimits }))
+  uploadDesignLogo(@UploadedFile() file: Express.Multer.File, @Query('panel') panel?: string) {
+    return this.branding.uploadLogo(file, panel || undefined);
+  }
+
+  @Permissions(PERMISSIONS.TENANT_SETTINGS)
+  @Delete('design/logo')
+  clearDesignLogo(@Query('panel') panel: string) {
+    return this.branding.clearPanelLogo(panel);
   }
 
   @Public()
   @UseGuards(TenantResolverGuard)
   @Get('assets/:kind')
-  async asset(@Param('kind') kind: string, @Res() res: Response) {
-    const { buffer, mime } = await this.branding.getAsset(assertKind(kind));
+  async asset(@Param('kind') kind: string, @Res() res: Response, @Query('panel') panel?: string) {
+    const { buffer, mime } = await this.branding.getAsset(assertKind(kind), panel || undefined);
     res.setHeader('Content-Type', mime);
     res.setHeader('Cache-Control', 'public, max-age=300');
     // Public branding asset — allow cross-origin embedding (panel header, inquiry widget, etc.).
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    for (const [k, v] of Object.entries(ASSET_SAFE_HEADERS)) res.setHeader(k, v);
     res.send(buffer);
   }
 }

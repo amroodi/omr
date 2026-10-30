@@ -6,6 +6,7 @@ import { downloadPdf } from '../../../lib/pdf';
 import { BrandMark } from '../../components/brand';
 import { Icon } from '../../components/Shell';
 import { Spinner } from '../../components/ui';
+import { EstelamSide } from '../shared';
 import { CaseClaim, CaseHero, ICONS, PersonCards, phaseText, StatusHistoryButton, WorkflowStepsTable } from '../../components/case-ui';
 
 const REFRESH_MS = 30_000;
@@ -81,6 +82,8 @@ export default function EstelamTrack() {
         </nav>
       </header>
 
+      <div className={claim ? 'est-body' : undefined}>
+      {claim && <EstelamSide r={r} />}
       <main className="trk2-main">
         {!ready ? <div className="flex justify-center p-16"><Spinner /></div> : !claim ? (
           <div className="pcard p-10 text-center space-y-4">
@@ -107,6 +110,7 @@ export default function EstelamTrack() {
           </>
         )}
       </main>
+      </div>
     </div>
   );
 }

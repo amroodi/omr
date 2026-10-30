@@ -62,6 +62,11 @@ model Tenant {
   requireMfa    Boolean  @default(false)
   // Panel theme tokens (see branding/theme.ts). null = the default Damuon design.
   theme         Json?
+  // Per-panel themes over `theme` ({ BROKER | COMPANY | REPRESENTATIVE | BRANCH | HQ | COUNCIL: tokens }) —
+  // e.g. the کارگزاری panel looks different from the بیمه‌گزار panel of the same brokerage.
+  panelThemes   Json?
+  // Per-panel logos ({ panel: packed storage key }); a panel without one shows the organization's logo.
+  panelLogos    Json?
   // Origins allowed to embed the inquiry widget in an <iframe> (CSP frame-ancestors allowlist).
   embedOrigins  String[] @default([])
   isActive      Boolean  @default(true)
@@ -241,13 +246,20 @@ model InquiryMessage {
   claimId    String
   companyId  String?
   phone      String // ENCRYPTED — the requester's (verified) mobile
+  phoneIdx   String? // blind index of the phone: finds the requester's own thread on a later inquiry
   message    String
+  // «گفتگو» is two-way: a row from the کارگزاری answers one question (replyToId) and is sent by SMS.
+  fromStaff  Boolean   @default(false)
+  replyToId  String?
+  authorId   String? // the brokerage operator who answered (never shown to the requester)
   handledAt  DateTime?
   handledById String?
   createdAt  DateTime  @default(now())
 
   @@index([claimId])
   @@index([companyId])
+  @@index([claimId, phoneIdx])
+  @@index([replyToId])
 }
 
 // ─────────────────────────── Identity & access ──────────────────────────

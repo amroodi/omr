@@ -1,7 +1,7 @@
 'use client';
 import { ReactNode, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { Spinner } from '../components/ui';
 import { BrandMark } from '../components/brand';
 import { Icon } from '../components/Shell';
@@ -78,6 +78,44 @@ export function useExit() {
 
 const EXIT_ICON = 'M15 3H5a2 2 0 00-2 2v14a2 2 0 002 2h10M17 16l4-4-4-4M21 12H9';
 
+/** The inquiry panel's side menu: every page of the looked-up case. */
+export const SIDE_MENU = [
+  { href: '/estelam', label: 'مشخصات پرونده', icon: 'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM14 2v6h6' },
+  { href: '/estelam/track', label: 'وضعیت پرونده', icon: PANELS[0].icon },
+  { href: '/estelam/process', label: 'فرایند رسیدگی پرونده', icon: 'M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11' },
+  { href: '/estelam/documents', label: 'مدارک', icon: 'M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9l-7-7zM13 2v7h7M9 15l2 2 4-4' },
+  { href: '/estelam/online', label: 'گفتگو', icon: PANELS[2].icon },
+  { href: '/estelam/beneficiaries', label: PANELS[1].label, icon: PANELS[1].icon },
+  { href: '/estelam/faq', label: PANELS[3].label, icon: PANELS[3].icon },
+  { href: '/estelam/contact', label: PANELS[4].label, icon: PANELS[4].icon },
+] as const;
+
+/** Side menu of the inquiry panel (right side; a scrolling strip on phones). */
+export function EstelamSide({ r }: { r: any }) {
+  const path = usePathname();
+  const exit = useExit();
+  const nav = useRef<HTMLElement>(null);
+  // On phones the menu is a scrolling strip: bring the current page's item into view.
+  useEffect(() => { nav.current?.querySelector('.is-active')?.scrollIntoView({ block: 'nearest', inline: 'center' }); }, [path]);
+  return (
+    <aside className="est-side" aria-label="منوی پرونده">
+      <div className="est-side-head">
+        <span className="est-side-k">پرونده</span>
+        <span className="est-side-v latin-digits">{r?.claimNumber || r?.caseNumber || '—'}</span>
+        {r?.deceasedName && <span className="est-side-n">{r.deceasedName}</span>}
+      </div>
+      <nav className="est-side-nav" ref={nav}>
+        {SIDE_MENU.map((m) => (
+          <Link key={m.href} href={m.href} className={path === m.href ? 'is-active' : undefined} aria-current={path === m.href ? 'page' : undefined}>
+            <Icon path={m.icon} /> {m.label}
+          </Link>
+        ))}
+        <button type="button" onClick={exit} className="est-side-exit"><Icon path={EXIT_ICON} /> خروج</button>
+      </nav>
+    </aside>
+  );
+}
+
 /** White top bar, page body, footer line and the back-to-top button shared by every inquiry page. */
 export function EstelamFrame({ children }: { children: (r: any, token: string | null) => ReactNode }) {
   const { r, token, ready } = useInquiry();
@@ -105,6 +143,8 @@ export function EstelamFrame({ children }: { children: (r: any, token: string | 
         </nav>
       </header>
 
+      <div className={r ? 'est-body' : undefined}>
+      {ready && r && <EstelamSide r={r} />}
       <main className="est-main">
         {!ready ? (
           <div className="flex justify-center p-16"><Spinner /></div>
@@ -117,6 +157,7 @@ export function EstelamFrame({ children }: { children: (r: any, token: string | 
 
         <div className="est-card est-footer">کارگزاری رسمی بیمه مستقیم برخط آتیه اندیشان دامون</div>
       </main>
+      </div>
 
       {showTop && (
         <button type="button" className="est-totop" aria-label="بازگشت به بالا" onClick={() => box.current?.scrollTo({ top: 0, behavior: 'smooth' })}>

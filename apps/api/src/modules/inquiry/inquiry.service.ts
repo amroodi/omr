@@ -391,7 +391,9 @@ export class InquiryService {
       policyStartDate: fv.policy_start_date ?? null,
       deathCapital: fv.death_capital ?? null,
       accidentCapital: fv.accident_capital ?? null,
-      payableAmount: fv.payable_amount ?? (c.claimedAmount != null ? c.claimedAmount.toString() : null),
+      payableAmount: fv.payable_amount ?? (c.finalizedAmount ?? c.claimedAmount)?.toString() ?? null, // the approved amount once there is one
+      claimedAmount: c.claimedAmount != null ? c.claimedAmount.toString() : null, // «فرایند رسیدگی پرونده»
+      finalizedAmount: c.finalizedAmount != null ? c.finalizedAmount.toString() : null,
       causeOfDeath: fv.cause_of_death ?? c.causeOfDeath ?? null,
       eventDate: c.eventDate ? toJalali(c.eventDate, false) : null,
       createdAt: c.createdAt && !(c.imported && (c.status === 'PAID' || c.status === 'REJECTED')) ? toJalali(c.createdAt, false) : null, // completed imported: only the import date
@@ -472,7 +474,8 @@ export class InquiryService {
     const c = await this.prisma.unscoped().claim.findUnique({ where: { id: claimId }, select: { id: true, claimNumber: true, brokerTenantId: true, insurerTenantId: true, policyHolderId: true, policyholderCompanyId: true } });
     if (!c) throw new NotFoundException('پرونده یافت نشد.');
     const companyId = c.policyholderCompanyId ?? (await this.companyOfFiler(c.policyHolderId));
-    await this.prisma.unscoped().inquiryMessage.create({ data: { claimId, companyId, phone: ctx.scopedPhone, message: text.slice(0, 2000) } });
+    const phoneIdx = this.crypto.blindIndex(this.crypto.decrypt(ctx.scopedPhone));
+    await this.prisma.unscoped().inquiryMessage.create({ data: { claimId, companyId, phone: ctx.scopedPhone, phoneIdx, message: text.slice(0, 2000) } });
     const body = `پیام جدید از استعلام‌کنندهٔ پروندهٔ ${c.claimNumber}: «${text.slice(0, 140)}»`;
     const orgId = c.brokerTenantId ?? c.insurerTenantId;
     await this.notifications.notify({ tenantId: orgId, audience: 'ORG', title: 'پاسخگوی آنلاین', body, link: '/org/policyholders?tab=messages' });
@@ -481,7 +484,30 @@ export class InquiryService {
       if (acc) await this.notifications.notify({ tenantId: acc.tenantId, audience: 'CUSTOMER', recipientId: c.policyHolderId, title: 'پاسخگوی آنلاین', body, link: '/customer' });
     }
     await this.audit.record({ action: AuditAction.CREATE, targetType: 'InquiryMessage', targetId: claimId, actorType: 'INSURED' });
-    return { ok: true, message: 'پیام شما ثبت شد؛ کارشناس با شمارهٔ موبایل شما تماس خواهد گرفت.' };
+    return { ok: true, message: 'پیام شما ثبت شد؛ پاسخ کارشناس کارگزاری در همین گفتگو نمایش داده می‌شود و با پیامک به شما اطلاع داده می‌شود.' };
+  }
+
+  /**
+   * «گفتگو» — the requester's own conversation about the claim they looked up: their questions and the
+   * کارگزاری's answers, oldest first. Matched by the verified phone, so a later inquiry from the same
+   * mobile sees the whole thread and nobody else's.
+   */
+  async thread() {
+    const ctx = getContext();
+    const claimId = ctx?.scopedClaimId;
+    if (!claimId || !ctx?.scopedPhone) throw new ForbiddenException('برای دیدن گفتگو ابتدا استعلام کنید.');
+    const phone = this.crypto.decrypt(ctx.scopedPhone);
+    const idx = this.crypto.blindIndex(phone);
+    const db = this.prisma.unscoped();
+    const rows = await db.inquiryMessage.findMany({ where: { claimId, OR: [{ phoneIdx: idx }, { phoneIdx: null }] }, orderBy: { createdAt: 'asc' }, take: 200 });
+    // Rows written before the blind index existed are matched by decrypting their phone.
+    const mine = rows.filter((m) => m.phoneIdx === idx || (m.phoneIdx === null && this.crypto.decrypt(m.phone) === phone));
+    const c = await db.claim.findUnique({ where: { id: claimId }, select: { brokerTenantId: true } });
+    const broker = c?.brokerTenantId ? await db.tenant.findUnique({ where: { id: c.brokerTenantId }, select: { name: true } }) : null;
+    return {
+      brokerName: broker?.name ?? 'کارگزاری',
+      messages: mine.map((m) => ({ id: m.id, fromStaff: m.fromStaff, message: m.message, at: toJalali(m.createdAt), answered: !m.fromStaff && !!m.handledAt })),
+    };
   }
 
   private safeParse(v: string | null): string[] {

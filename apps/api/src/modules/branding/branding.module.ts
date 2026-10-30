@@ -7,5 +7,6 @@ import { BrandingService } from './branding.service';
   imports: [AuthModule], // for SmsService (per-tenant gateway config + test send)
   controllers: [BrandingController],
   providers: [BrandingService],
+  exports: [BrandingService], // the super admin's org designer (tenants module)
 })
 export class BrandingModule {}

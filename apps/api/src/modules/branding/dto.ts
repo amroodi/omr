@@ -1,4 +1,4 @@
-import { ArrayMaxSize, IsArray, IsBoolean, IsHexColor, IsInt, IsOptional, IsString, Length, Matches, Max, Min, ValidateIf } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsObject, IsHexColor, IsInt, IsOptional, IsString, Length, Matches, Max, Min, ValidateIf } from 'class-validator';
 
 export class UpdateBrandingDto {
   @IsOptional()
@@ -102,4 +102,16 @@ export class CarrierConfigDto {
   @IsOptional()
   @IsString()
   password?: string;
+}
+
+/** «طراحی ظاهر»: organization theme and per-panel themes (validated in branding/theme.ts). */
+export class DesignDto {
+  // Theme tokens object, a preset name, or null (default design).
+  @IsOptional()
+  theme?: Record<string, string> | string | null;
+
+  // { panelKey: theme tokens | null } — each panel's own look over the organization's.
+  @IsOptional()
+  @IsObject()
+  panelThemes?: Record<string, unknown>;
 }

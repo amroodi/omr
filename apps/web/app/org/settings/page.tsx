@@ -1,7 +1,9 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { OnProgress, UploadButton } from '../../components/upload';
-import { client } from '../../../lib/client';
+import { client, getTenantSlug } from '../../../lib/client';
+import { lastPanel } from '../../../lib/panel';
+import { Design, DesignApi, ThemeDesigner } from '../../components/ThemeDesigner';
 import { applyTheme } from '../../../lib/theme';
 import { Shell } from '../../components/Shell';
 import { CLAIM_TYPE_LABELS, ErrorBox, Field } from '../../components/ui';
@@ -104,6 +106,23 @@ function NoticeTab() {
   );
 }
 
+/** The org admin's own design endpoints (the super admin's are in /admin/orgs/[id]). */
+const ORG_DESIGN_API: DesignApi = {
+  load: () => client.get<Design>('/tenant/design', 'org'),
+  save: async (body) => { const d = await client.put<Design>('/tenant/design', body, 'org'); reapplyTheme(); return d; },
+  uploadLogo: (file, panel, onP) => { const fd = new FormData(); fd.append('file', file); return client.upload<Design>(`/tenant/design/logo${panel ? `?panel=${panel}` : ''}`, fd, 'org', onP); },
+  clearLogo: (panel) => client.del<Design>(`/tenant/design/logo?panel=${panel}`, 'org'),
+  logoSrc: async (panel) => {
+    const r = await fetch(`${client.base}/tenant/assets/logo?tenant=${getTenantSlug()}${panel ? `&panel=${panel}` : ''}&v=${Date.now()}`);
+    return r.ok ? URL.createObjectURL(await r.blob()) : null;
+  },
+};
+/** After saving, show this panel's new look right away. */
+function reapplyTheme() {
+  const panel = lastPanel('org');
+  client.get<{ theme?: Record<string, string> | null }>(`/tenant/branding${panel ? `?panel=${panel}` : ''}`, 'org').then((b) => applyTheme(b.theme ?? null)).catch(() => {});
+}
+
 function BrandingTab() {
   const [s, setS] = useState<any>(null);
   const [msg, setMsg] = useState<{ t: 'ok' | 'err'; m: string } | null>(null);
@@ -152,61 +171,9 @@ function BrandingTab() {
         {s.hasLogo && <span className="badge badge-success">لوگو تنظیم شده</span>}
       </div>
       <button onClick={save} className="btn btn-primary btn-sm">ذخیره</button>
-      <ThemeEditor settings={s} onSaved={load} />
-    </div>
-  );
-}
-
-// Panel colour tokens an organization can set (validated server-side: branding/theme.ts).
-const THEME_FIELDS: [string, string][] = [
-  ['brand', 'رنگ اصلی (دکمه‌ها و برجسته‌ها)'],
-  ['title', 'رنگ عنوان صفحه'],
-  ['sidebar', 'منوی کناری'],
-  ['sidebarDeep', 'منوی کناری — ردیف فعال'],
-  ['canvas', 'پس‌زمینهٔ صفحه'],
-  ['loginButton', 'دکمهٔ ورود'],
-];
-
-/** «قالب رنگی پنل»: the look this organization's operators get; empty = the default (Damuon) design. */
-function ThemeEditor({ settings, onSaved }: { settings: any; onSaved: () => void }) {
-  const [t, setT] = useState<Record<string, string>>(settings.theme || {});
-  const [msg, setMsg] = useState<{ t: 'ok' | 'err'; m: string } | null>(null);
-  const presets: { key: string; label: string; theme: Record<string, string> }[] = settings.themePresets || [];
-  const save = async (theme: Record<string, string> | null) => {
-    setMsg(null);
-    try {
-      const r = await client.patch<any>('/tenant/settings', { theme }, 'org');
-      setT(r.theme || {}); applyTheme(r.theme); onSaved();
-      setMsg({ t: 'ok', m: theme ? 'قالب رنگی اعمال شد' : 'طرح پیش‌فرض بازگردانده شد' });
-    } catch (e: any) { setMsg({ t: 'err', m: e.message }); }
-  };
-  return (
-    <div className="border-t pt-4 mt-2 space-y-3" style={{ borderColor: 'var(--border)' }}>
-      <h3 className="font-bold text-sm">قالب رنگی پنل سازمان</h3>
-      <p className="text-xs" style={{ color: 'var(--muted)' }}>کاربران این سازمان پنل را با این رنگ‌ها و لوگوی سازمان می‌بینند. خالی = طرح پیش‌فرض.</p>
-      {msg && <div className={msg.t === 'ok' ? 'alert-success' : 'alert-error'}>{msg.m}</div>}
-      <div className="flex flex-wrap gap-2">
-        {presets.map((p) => (
-          <button key={p.key} onClick={() => setT({ ...p.theme })} className="btn btn-ghost btn-sm" style={{ borderInlineStart: `6px solid ${p.theme.brand}` }}>قالب {p.label}</button>
-        ))}
-        <button onClick={() => setT({})} className="btn btn-ghost btn-sm">طرح پیش‌فرض</button>
-      </div>
-      <div className="grid sm:grid-cols-2 gap-2">
-        {THEME_FIELDS.map(([k, label]) => (
-          <label key={k} className="flex items-center gap-2 text-xs">
-            <input type="color" value={t[k] || '#ffffff'} onChange={(e) => setT({ ...t, [k]: e.target.value })} style={{ width: 34, height: 28, border: 0, background: 'none' }} />
-            <span className="flex-1">{label}</span>
-            {t[k] && <button className="text-[11px]" style={{ color: 'var(--muted)' }} onClick={() => { const n = { ...t }; delete n[k]; setT(n); }}>حذف</button>}
-          </label>
-        ))}
-      </div>
-      <Field label="پس‌زمینهٔ صفحهٔ ورود (رنگ یا linear-gradient)">
-        <input className="input" value={t.loginBg || ''} onChange={(e) => setT({ ...t, loginBg: e.target.value })} placeholder="linear-gradient(120deg, #4458d0 0%, #c150c1 100%)" style={{ direction: 'ltr', fontSize: 12 }} />
-      </Field>
-      {t.loginBg && <div className="rounded-lg h-10" style={{ background: t.loginBg }} />}
-      <div className="flex gap-2">
-        <button onClick={() => save(Object.keys(t).length ? t : null)} className="btn btn-primary btn-sm">ذخیرهٔ قالب رنگی</button>
-        {settings.slug && <a className="btn btn-ghost btn-sm" href={`/org/login?org=${settings.slug}`} target="_blank" rel="noreferrer">پیش‌نمایش صفحهٔ ورود</a>}
+      <div className="border-t pt-4 mt-2" style={{ borderColor: 'var(--border)' }}>
+        <h3 className="font-bold text-sm mb-2">طراحی ظاهر پنل‌ها</h3>
+        <ThemeDesigner api={ORG_DESIGN_API} />
       </div>
     </div>
   );

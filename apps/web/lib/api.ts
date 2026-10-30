@@ -27,6 +27,9 @@ async function get<T>(path: string, token: string): Promise<T> {
 
 export const API_BASE = BASE;
 
+/** «گفتگو» of the looked-up case: the requester's questions and the کارگزاری's answers. */
+export interface InquiryThread { brokerName: string; messages: { id: string; fromStaff: boolean; message: string; at: string; answered: boolean }[] }
+
 export interface CompanyHit { id: string; name: string; hasLogo: boolean }
 
 export const inquiryApi = {
@@ -46,4 +49,5 @@ export const inquiryApi = {
   getCase: (token: string) => get<any>('/inquiry/case', token),
   // «پاسخگوی آنلاین» — leave a question on the looked-up claim (record token from the inquiry).
   message: (token: string, message: string) => post<{ ok: boolean; message: string }>('/inquiry/message', { message }, token),
+  thread: (token: string) => get<InquiryThread>('/inquiry/messages', token),
 };

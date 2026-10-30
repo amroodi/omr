@@ -6,7 +6,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { StorageService } from '../../common/storage/storage.service';
 import { getContext, getTenantIdOrThrow } from '../../common/tenant/tenant-context';
 import { SMS_DRIVERS, SmsService, TenantSmsConfig } from '../auth/sms.service';
-import { normalizeTheme, THEME_PRESETS } from './theme';
+import { ALL_PANELS, DESIGN_PANELS, normalizeTheme, panelTheme, THEME_PRESETS } from './theme';
 
 /** Prisma JSON column value for a validated theme (DbNull clears it). */
 export function themeValue(input: unknown) {
@@ -56,8 +56,8 @@ export class BrandingService {
     return this.prisma.unscoped().tenant; // Tenant has no tenantId column; query by id explicitly.
   }
 
-  async getSettings() {
-    const id = getTenantIdOrThrow();
+  async getSettings(tenantId?: string) {
+    const id = tenantId ?? getTenantIdOrThrow();
     const t = await this.tenantDb().findUnique({ where: { id } });
     if (!t) throw new NotFoundException('سازمان یافت نشد');
     return {
@@ -83,8 +83,8 @@ export class BrandingService {
     };
   }
 
-  async updateSettings(dto: UpdateSettings) {
-    const id = getTenantIdOrThrow();
+  async updateSettings(dto: UpdateSettings, tenantId?: string) {
+    const id = tenantId ?? getTenantIdOrThrow();
     const t = await this.tenantDb().update({
       where: { id },
       data: {
@@ -102,8 +102,8 @@ export class BrandingService {
         ...(dto.requireMfa !== undefined ? { requireMfa: dto.requireMfa } : {}),
       },
     });
-    await this.audit.record({ action: AuditAction.EDIT, targetType: 'TenantBranding', targetId: id, metadata: dto as Record<string, unknown> });
-    return this.getSettings();
+    await this.audit.record({ action: AuditAction.EDIT, tenantId: id, targetType: 'TenantBranding', targetId: id, metadata: dto as Record<string, unknown> });
+    return this.getSettings(id);
   }
 
   // ── Per-tenant SMS gateway ─────────────────────────────────────────────
@@ -200,32 +200,122 @@ export class BrandingService {
     return { ok: true, kind };
   }
 
-  /** Read a tenant's branding asset for public display. Decrypts on the way out. */
-  async getAsset(kind: AssetKind): Promise<{ buffer: Buffer; mime: string }> {
+  /** Read a tenant's branding asset for public display. Decrypts on the way out. A panel's own logo
+   *  (`panel`) when it has one, else the organization's. */
+  async getAsset(kind: AssetKind, panel?: string): Promise<{ buffer: Buffer; mime: string }> {
     const id = getTenantIdOrThrow();
-    const t = await this.tenantDb().findUnique({ where: { id }, select: { [KEY_FIELD[kind]]: true } as any });
-    const packed = (t as any)?.[KEY_FIELD[kind]] as string | null;
+    const t = await this.tenantDb().findUnique({ where: { id }, select: { [KEY_FIELD[kind]]: true, panelLogos: true } as any });
+    const own = kind === 'logo' && panel ? ((t as any)?.panelLogos as Record<string, string> | null)?.[panel] : null;
+    const packed = (own || (t as any)?.[KEY_FIELD[kind]]) as string | null;
     if (!packed) throw new NotFoundException('asset not set');
     const { key, mime } = unpack(packed);
-    return { buffer: await this.storage.read(key), mime };
+    return { buffer: await this.readAsset(key), mime };
   }
 
-  /** Public branding for theming the frontend (resolved via tenant slug). */
-  async getPublicBranding() {
+  /** Public branding for theming the frontend (resolved via tenant slug); `panel` = that panel's look. */
+  async getPublicBranding(panel?: string) {
     const id = getTenantIdOrThrow();
     const t = await this.tenantDb().findUnique({ where: { id } });
     if (!t) throw new NotFoundException('سازمان یافت نشد');
+    const p = panel && ALL_PANELS.has(panel) ? panel : null;
+    const ownLogo = !!p && !!(t.panelLogos as Record<string, string> | null)?.[p];
     return {
       name: t.name,
       kind: t.kind,
       primaryColor: t.primaryColor,
       fontFamily: t.fontFamily,
       lateNoticeWarning: t.lateNoticeWarning,
-      theme: t.theme ?? null,
-      logoUrl: t.logoKey ? '/tenant/assets/logo' : null,
+      theme: panelTheme(t.theme, t.panelThemes, p),
+      logoUrl: ownLogo ? `/tenant/assets/logo?panel=${p}` : t.logoKey ? '/tenant/assets/logo' : null,
       faviconUrl: t.faviconKey ? '/tenant/assets/favicon' : null,
       fontUrl: t.fontKey ? '/tenant/assets/font' : null,
     };
+  }
+
+  // ── Panel design («طراحی ظاهر»): the org admin for their own org, the super admin for any org ──
+
+  /** Theme of the organization and of each of its panels, which panels have their own logo, presets. */
+  async getDesign(tenantId?: string) {
+    const id = tenantId ?? getTenantIdOrThrow();
+    const t = await this.tenantDb().findUnique({ where: { id } });
+    if (!t) throw new NotFoundException('سازمان یافت نشد');
+    const panels = DESIGN_PANELS[t.kind === 'INSURER' ? 'INSURER' : 'BROKER'];
+    const logos = (t.panelLogos ?? {}) as Record<string, string>;
+    return {
+      id: t.id, name: t.name, slug: t.slug, kind: t.kind,
+      theme: t.theme ?? null,
+      panelThemes: (t.panelThemes ?? {}) as Record<string, unknown>,
+      panels: panels.map((p) => ({ ...p, hasLogo: !!logos[p.key] })),
+      hasLogo: !!t.logoKey,
+      presets: Object.entries(THEME_PRESETS).map(([key, p]) => ({ key, label: p.label, theme: p.theme })),
+    };
+  }
+
+  /** Save the organization theme and/or the per-panel themes (each validated; empty = inherit). */
+  async saveDesign(input: { theme?: unknown; panelThemes?: Record<string, unknown> }, tenantId?: string) {
+    const id = tenantId ?? getTenantIdOrThrow();
+    const t = await this.tenantDb().findUnique({ where: { id }, select: { kind: true } });
+    if (!t) throw new NotFoundException('سازمان یافت نشد');
+    const allowed = new Set(DESIGN_PANELS[t.kind === 'INSURER' ? 'INSURER' : 'BROKER'].map((p) => p.key));
+    const data: Prisma.TenantUpdateInput = {};
+    if (input.theme !== undefined) data.theme = themeValue(input.theme);
+    if (input.panelThemes !== undefined) {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(input.panelThemes ?? {})) {
+        if (!allowed.has(k)) throw new BadRequestException(`پنل «${k}» برای این سازمان وجود ندارد`);
+        const n = normalizeTheme(v);
+        if (n) out[k] = n;
+      }
+      data.panelThemes = Object.keys(out).length ? (out as Prisma.InputJsonObject) : Prisma.DbNull;
+    }
+    await this.tenantDb().update({ where: { id }, data });
+    await this.audit.record({ action: AuditAction.EDIT, tenantId: id, targetType: 'TenantDesign', targetId: id, metadata: { panels: Object.keys(input.panelThemes ?? {}), theme: input.theme !== undefined } });
+    return this.getDesign(id);
+  }
+
+  /** Upload the organization's logo (no panel) or one panel's own logo. */
+  async uploadLogo(file: Express.Multer.File, panel?: string, tenantId?: string) {
+    const id = tenantId ?? getTenantIdOrThrow();
+    if (!file?.buffer?.length) throw new BadRequestException('فایلی دریافت نشد');
+    if (!IMAGE_MIME.has(file.mimetype)) throw new BadRequestException('فرمت تصویر نامعتبر است');
+    const t = await this.tenantDb().findUnique({ where: { id }, select: { kind: true, panelLogos: true } });
+    if (!t) throw new NotFoundException('سازمان یافت نشد');
+    const packed = pack(await this.storage.save(id, file.buffer), file.mimetype);
+    if (!panel) {
+      await this.tenantDb().update({ where: { id }, data: { logoKey: packed } });
+    } else {
+      if (!DESIGN_PANELS[t.kind === 'INSURER' ? 'INSURER' : 'BROKER'].some((p) => p.key === panel)) throw new BadRequestException('پنل نامعتبر است');
+      const logos = { ...((t.panelLogos ?? {}) as Record<string, string>), [panel]: packed };
+      await this.tenantDb().update({ where: { id }, data: { panelLogos: logos } });
+    }
+    await this.audit.record({ action: AuditAction.UPLOAD, tenantId: id, targetType: 'TenantAsset', targetId: id, metadata: { kind: 'logo', panel: panel ?? null } });
+    return this.getDesign(id);
+  }
+
+  /** A panel goes back to the organization's logo. */
+  async clearPanelLogo(panel: string, tenantId?: string) {
+    const id = tenantId ?? getTenantIdOrThrow();
+    const t = await this.tenantDb().findUnique({ where: { id }, select: { panelLogos: true } });
+    if (!t) throw new NotFoundException('سازمان یافت نشد');
+    const logos = { ...((t.panelLogos ?? {}) as Record<string, string>) };
+    delete logos[panel];
+    await this.tenantDb().update({ where: { id }, data: { panelLogos: Object.keys(logos).length ? logos : Prisma.DbNull } });
+    return this.getDesign(id);
+  }
+
+  /** A panel's logo bytes for the designer preview (super admin views any org). */
+  async getLogo(tenantId: string, panel?: string): Promise<{ buffer: Buffer; mime: string }> {
+    const t = await this.tenantDb().findUnique({ where: { id: tenantId }, select: { logoKey: true, panelLogos: true } });
+    const own = panel ? ((t?.panelLogos ?? {}) as Record<string, string>)[panel] : null;
+    const packed = own || t?.logoKey;
+    if (!packed) throw new NotFoundException('asset not set');
+    const { key, mime } = unpack(packed);
+    return { buffer: await this.readAsset(key), mime };
+  }
+
+  /** A stored branding file; one that went missing from storage is «not set» (404), not a server error. */
+  private async readAsset(key: string): Promise<Buffer> {
+    try { return await this.storage.read(key); } catch { throw new NotFoundException('asset not found'); }
   }
 
   async setCarrierConfig(config: Record<string, unknown>) {

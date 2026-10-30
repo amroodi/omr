@@ -15,7 +15,7 @@ interface Company {
   id: string; name: string; code: string | null; hasPassword: boolean; parentId: string | null; phone: string | null; email: string | null; address: string | null; website: string | null; contactName: string | null;
   isActive: boolean; hasLogo: boolean; accounts: number; currentInsurer: { id: string; name: string } | null; contracts: Contract[];
 }
-interface Msg { id: string; claimId: string; claimNumber: string; companyName: string | null; phone: string; message: string; createdAt: string; handled: boolean }
+interface Msg { id: string; claimId: string; claimNumber: string; companyName: string | null; phone: string; message: string; createdAt: string; handled: boolean; replies?: { id: string; message: string; at: string; by: string | null }[] }
 
 const STATUS: Record<string, { label: string; cls: string }> = {
   PENDING: { label: 'در دست بررسی', cls: 'badge-warning' },
@@ -357,6 +357,18 @@ function MessagesTab({ setMsg }: { setMsg: (m: { t: 'ok' | 'err'; m: string } | 
   const [rows, setRows] = useState<Msg[] | null>(null);
   const load = () => client.get<Msg[]>('/policyholder-companies/messages', 'org').then(setRows).catch((e) => setMsg({ t: 'err', m: e.message }));
   useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+  const [open, setOpen] = useState<string | null>(null);
+  const [draft, setDraft] = useState('');
+  const [busy, setBusy] = useState(false);
+  // «گفتگو»: the answer joins the requester's thread and is texted to them.
+  const reply = async (m: Msg) => {
+    setBusy(true);
+    try {
+      const r = await client.post<{ ok: boolean; sms: boolean }>(`/policyholder-companies/messages/${m.id}/reply`, { message: draft.trim() }, 'org');
+      setMsg({ t: 'ok', m: r.sms ? 'پاسخ ثبت و برای استعلام‌کننده پیامک شد' : 'پاسخ ثبت شد (پیامک ارسال نشد؛ استعلام‌کننده آن را در گفتگو می‌بیند)' });
+      setDraft(''); setOpen(null); load();
+    } catch (e: any) { setMsg({ t: 'err', m: e.message }); } finally { setBusy(false); }
+  };
   const done = async (m: Msg) => { try { await client.post(`/policyholder-companies/messages/${m.id}/handled`, {}, 'org'); load(); } catch (e: any) { setMsg({ t: 'err', m: e.message }); } };
   if (!rows) return <div className="card p-8 text-center"><Spinner /></div>;
   if (rows.length === 0) return <div className="card p-8 text-center text-sm" style={{ color: 'var(--muted)' }}>پیامی از استعلام‌کنندگان دریافت نشده است.</div>;
@@ -369,10 +381,24 @@ function MessagesTab({ setMsg }: { setMsg: (m: { t: 'ok' | 'err'; m: string } | 
             <span style={{ color: 'var(--muted)' }}>{m.createdAt}</span>
           </div>
           <p className="text-sm mt-2 whitespace-pre-wrap">{m.message}</p>
-          <div className="flex items-center justify-between gap-2 mt-2 text-sm">
+          {(m.replies ?? []).map((x) => (
+            <div key={x.id} className="text-sm mt-2 rounded-md p-2 whitespace-pre-wrap" style={{ background: 'var(--surface-2)', borderInlineStart: '3px solid var(--brand)' }}>
+              <div className="text-xs mb-1" style={{ color: 'var(--muted)' }}>پاسخ کارگزاری{x.by ? ` — ${x.by}` : ''} · {x.at}</div>{x.message}
+            </div>
+          ))}
+          <div className="flex items-center justify-between gap-2 mt-2 text-sm flex-wrap">
             <span>تماس با استعلام‌کننده: <a href={`tel:${m.phone}`} dir="ltr" style={{ color: 'var(--brand)', fontWeight: 700 }}>{m.phone}</a></span>
-            {m.handled ? <span className="badge badge-success">پاسخ داده شد</span> : <button onClick={() => done(m)} className="btn btn-ghost btn-sm">ثبت «پاسخ داده شد»</button>}
+            <span className="flex items-center gap-2">
+              <button onClick={() => setOpen(open === m.id ? null : m.id)} className="btn btn-primary btn-sm">{m.replies?.length ? 'پاسخ دیگر' : 'پاسخ'}</button>
+              {m.handled ? <span className="badge badge-success">پاسخ داده شد</span> : <button onClick={() => done(m)} className="btn btn-ghost btn-sm">ثبت «پاسخ داده شد» (تماس تلفنی)</button>}
+            </span>
           </div>
+          {open === m.id && (
+            <div className="mt-2 space-y-2">
+              <textarea className="input" rows={3} value={draft} onChange={(e) => setDraft(e.target.value)} maxLength={2000} placeholder="پاسخ به استعلام‌کننده — در گفتگوی او نمایش داده و پیامک می‌شود" />
+              <button onClick={() => reply(m)} disabled={busy || draft.trim().length < 2} className="btn btn-primary btn-sm">{busy ? '…' : 'ارسال پاسخ و پیامک'}</button>
+            </div>
+          )}
         </div>
       ))}
     </div>

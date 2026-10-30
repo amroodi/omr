@@ -1,4 +1,9 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { Response } from 'express';
+import { BrandingService } from '../branding/branding.service';
+import { DesignDto, UpdateBrandingDto } from '../branding/dto';
+import { ASSET_SAFE_HEADERS } from '../branding/theme';
 import { SuperAdminOnly } from '../../common/rbac/decorators';
 import { ProvisionTenantDto, ResetAdminDto, SetPartnerDto, SetTenantActiveDto, UpdateTenantDto } from './dto';
 import { TenantsService } from './tenants.service';
@@ -7,7 +12,50 @@ import { TenantsService } from './tenants.service';
 @SuperAdminOnly()
 @Controller('tenants')
 export class TenantsController {
-  constructor(private readonly tenants: TenantsService) {}
+  constructor(private readonly tenants: TenantsService, private readonly branding: BrandingService) {}
+
+  // ── «طراحی سازمان»: theme + logo of the organization and of each of its panels, and its admin settings ──
+  @Get(':id/design')
+  design(@Param('id') id: string) {
+    return this.branding.getDesign(id);
+  }
+
+  @Put(':id/design')
+  saveDesign(@Param('id') id: string, @Body() dto: DesignDto) {
+    return this.branding.saveDesign(dto, id);
+  }
+
+  @Post(':id/design/logo')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 3 * 1024 * 1024 } }))
+  uploadLogo(@Param('id') id: string, @UploadedFile() file: Express.Multer.File, @Query('panel') panel?: string) {
+    return this.branding.uploadLogo(file, panel || undefined, id);
+  }
+
+  @Delete(':id/design/logo')
+  clearLogo(@Param('id') id: string, @Query('panel') panel: string) {
+    return this.branding.clearPanelLogo(panel, id);
+  }
+
+  /** The designer's logo preview (any org, any panel). */
+  @Get(':id/design/logo')
+  async logo(@Param('id') id: string, @Res() res: Response, @Query('panel') panel?: string) {
+    const { buffer, mime } = await this.branding.getLogo(id, panel || undefined);
+    res.setHeader('Content-Type', mime);
+    res.setHeader('Cache-Control', 'no-store');
+    for (const [k, v] of Object.entries(ASSET_SAFE_HEADERS)) res.setHeader(k, v);
+    res.send(buffer);
+  }
+
+  /** The organization admin's own settings («تنظیمات سازمان»), set up by the super admin. */
+  @Get(':id/settings')
+  settings(@Param('id') id: string) {
+    return this.branding.getSettings(id);
+  }
+
+  @Patch(':id/settings')
+  saveSettings(@Param('id') id: string, @Body() dto: UpdateBrandingDto) {
+    return this.branding.updateSettings(dto, id);
+  }
 
   @Get()
   list() {
