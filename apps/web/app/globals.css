@@ -1237,6 +1237,36 @@ html[data-wall] .pshell { background-blend-mode: normal; }
   .cs-act { min-width: 0; flex: 1 1 100%; }
 }
 
+/* «پیگیری آخرین وضعیت پرونده خسارت» tables as a real grid: square corners, one ruled table — every
+   row and every cell divided by a line (instead of separate rounded rows floating on a dark card). */
+:root { --cs-grid: #b4bbc6; }
+:root.dark { --cs-grid: rgba(255,255,255,.16); }
+.cs-table { border-radius: 0; padding: 0; border: 1px solid var(--cs-navy); background: var(--cs-row); }
+.cs-table-h { border-radius: 0; }
+.cs-table-b { padding: 0; gap: 0; }
+.cs-tr { border-radius: 0; border-bottom: 1px solid var(--cs-grid); padding: 0; min-height: 52px; }
+.cs-tr:last-child { border-bottom: 0; }
+.cs-grid-wf, .cs-grid-route, .cs-grid-docs { gap: 0; }
+/* each cell padded, a vertical rule between cells (header cells too) */
+.cs-grid-wf > *, .cs-grid-route > *, .cs-grid-docs > * { padding: 10px 14px; align-self: stretch; display: flex; align-items: center; min-width: 0; }
+.cs-grid-wf > * + *, .cs-grid-route > * + *, .cs-grid-docs > * + * { border-inline-start: 1px solid var(--cs-grid); }
+.cs-table-h.cs-grid-wf > * + *, .cs-table-h.cs-grid-route > * + *, .cs-table-h.cs-grid-docs > * + * { border-inline-start-color: rgba(255,255,255,.18); }
+.cs-table-h.cs-grid-wf, .cs-table-h.cs-grid-route, .cs-table-h.cs-grid-docs { padding: 0; }
+.cs-table-h.cs-grid-wf > *, .cs-table-h.cs-grid-route > *, .cs-table-h.cs-grid-docs > * { justify-content: center; padding-block: 14px; }
+.cs-table-h .cs-th-main, .cs-table-h .cs-th-doc { justify-content: flex-start; }
+.cs-td-date { border-inline: 0; border-inline-start: 1px solid var(--cs-grid); justify-content: center; }
+.cs-td-status { justify-content: space-between; }
+.cs-td-n, .cs-td-desk { justify-content: center; }
+.cs-tr.cs-foot { padding: 12px 14px; border-top: 1px solid var(--cs-grid); }
+/* square status discs and buttons inside the grid too */
+.cs-table .cs-mark { border-radius: 4px; }
+.cs-table .cs-upload, .cs-table .cs-mini { border-radius: 2px; }
+@media (max-width: 760px) {
+  .cs-grid-wf > *, .cs-grid-route > *, .cs-grid-docs > * { padding: 8px 10px; }
+  /* the status cell wraps under the label on phones: rule it from above instead of the side */
+  .cs-grid-wf .cs-td-status, .cs-grid-route .cs-td-status, .cs-grid-docs .cs-td-doc { border-inline-start: 0; border-top: 1px solid var(--cs-grid); }
+}
+
 /* ── Case edit (to-ui-editing 1–3) ── */
 .ce-wrap { background: var(--surface); border-radius: 22px; padding: clamp(16px, 3vw, 32px); box-shadow: 0 10px 26px -18px rgba(0,0,0,.5); }
 .ce-title { font-size: 1.2rem; font-weight: 800; margin-bottom: 18px; }
