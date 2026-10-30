@@ -145,7 +145,7 @@ export class ClaimsService {
   }
 
   private db() {
-    return this.prisma.unscoped();
+    return this.prisma.party(); // the database shows an organization only the cases it is named on
   }
 
   // ─────────────────────────── Filing ───────────────────────────
@@ -273,7 +273,9 @@ export class ClaimsService {
     }
 
     const nid = input.deceasedNationalCode;
-    const claimNumber = await nextClaimNumber(db as any, input.policyNumber); // «سال/شماره بیمه‌نامه/n»
+    // Numbering must see every case with this policy number (other brokerages' too), or it could pick a
+    // number already taken: the unrestricted client, which returns only numbers.
+    const claimNumber = await nextClaimNumber(this.prisma.unscoped() as any, input.policyNumber); // «سال/شماره بیمه‌نامه/n»
     const claim = await db.claim.create({
       data: {
         claimNumber,
@@ -1402,7 +1404,7 @@ export class ClaimsService {
    */
   async reportData() {
     const ctx = getContext();
-    const db = this.prisma.replica(); // read-only screen → the read-replica when configured
+    const db = this.prisma.partyReplica(); // read-only screen → the read-replica when configured
     const claims = await db.claim.findMany({
       where: this.wdScope(ctx?.tenantId),
       orderBy: { createdAt: 'desc' },
@@ -1587,7 +1589,7 @@ export class ClaimsService {
    */
   async workDesk() {
     const ctx = getContext();
-    const db = this.prisma.replica(); // read-only screen → the read-replica when configured
+    const db = this.prisma.partyReplica(); // read-only screen → the read-replica when configured
     const desk = await this.myDesk();
     const scope = this.wdScope(ctx?.tenantId);
     const perms = new Set(ctx?.permissions ?? []);
@@ -1640,7 +1642,7 @@ export class ClaimsService {
    * decrypting within the already-scoped result set. Dates/amounts accept from–to ranges.
    */
   async searchClaims(q: Record<string, string | undefined>) {
-    const db = this.prisma.replica(); // read-only screen → the read-replica when configured
+    const db = this.prisma.partyReplica(); // read-only screen → the read-replica when configured
     const and: Prisma.ClaimWhereInput[] = [this.wdScope(getContext()?.tenantId)];
     const clean = (s?: string) => (s ?? '').trim();
 

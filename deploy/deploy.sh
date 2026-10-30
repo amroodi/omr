@@ -30,7 +30,9 @@ PUBLIC_API_BASE="${OVERRIDE_API_BASE:-${PUBLIC_API_BASE:-https://omr.damuon.com/
 PUBLIC_TENANT_SLUG="${OVERRIDE_TENANT_SLUG:-${PUBLIC_TENANT_SLUG:-damuon}}"
 
 echo "==> Prisma: generate client + apply migrations + sync system-role permissions + case numbers + file names"
-( cd apps/api && npx prisma generate && npx prisma migrate deploy && npx ts-node prisma/sync-roles.ts && npx ts-node prisma/renumber-claims.ts && npx ts-node prisma/fix-file-names.ts )
+# Migrations and maintenance scripts run as the database owner (MIGRATE_DATABASE_URL) when the API itself
+# uses a limited role for row-level security (deploy/rls-role.sh); otherwise both use DATABASE_URL.
+( cd apps/api && export DATABASE_URL="${MIGRATE_DATABASE_URL:-$DATABASE_URL}" && npx prisma generate && npx prisma migrate deploy && npx ts-node prisma/sync-roles.ts && npx ts-node prisma/renumber-claims.ts && npx ts-node prisma/fix-file-names.ts )
 
 echo "==> Building API"
 npm --workspace apps/api run build
