@@ -246,13 +246,20 @@ model InquiryMessage {
   claimId    String
   companyId  String?
   phone      String // ENCRYPTED — the requester's (verified) mobile
+  phoneIdx   String? // blind index of the phone: finds the requester's own thread on a later inquiry
   message    String
+  // «گفتگو» is two-way: a row from the کارگزاری answers one question (replyToId) and is sent by SMS.
+  fromStaff  Boolean   @default(false)
+  replyToId  String?
+  authorId   String? // the brokerage operator who answered (never shown to the requester)
   handledAt  DateTime?
   handledById String?
   createdAt  DateTime  @default(now())
 
   @@index([claimId])
   @@index([companyId])
+  @@index([claimId, phoneIdx])
+  @@index([replyToId])
 }
 
 // ─────────────────────────── Identity & access ──────────────────────────

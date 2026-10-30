@@ -6,6 +6,9 @@ import { toJalali } from '../../common/jalali/jalali.util';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { StorageService } from '../../common/storage/storage.service';
 import { getContext, getTenantIdOrThrow } from '../../common/tenant/tenant-context';
+import { SmsService } from '../auth/sms.service';
+import { RateLimitService } from '../../common/rate-limit/rate-limit.service';
+import { TooManyRequestsException } from '../inquiry/http-exceptions';
 
 const LOGO_MIME = new Set(['image/png', 'image/jpeg', 'image/webp']);
 
@@ -49,6 +52,8 @@ export class PolicyholdersService {
     private readonly storage: StorageService,
     private readonly crypto: FieldCryptoService,
     private readonly audit: AuditService,
+    private readonly sms: SmsService,
+    private readonly rateLimit: RateLimitService,
   ) {}
 
   private db() {
@@ -172,7 +177,10 @@ export class PolicyholdersService {
     const canPii = (getContext()?.permissions ?? []).includes('view:pii');
     const claims = await this.db().claim.findMany({ where: { brokerTenantId: tenantId }, select: { id: true, claimNumber: true, policyholderCompanyId: true } });
     const cMap = new Map(claims.map((c) => [c.id, c]));
-    const rows = await this.db().inquiryMessage.findMany({ where: { claimId: { in: [...cMap.keys()] } }, orderBy: { createdAt: 'desc' }, take: 300 });
+    const rows = await this.db().inquiryMessage.findMany({ where: { claimId: { in: [...cMap.keys()] }, fromStaff: false }, orderBy: { createdAt: 'desc' }, take: 300 });
+    const replies = rows.length ? await this.db().inquiryMessage.findMany({ where: { replyToId: { in: rows.map((m) => m.id) } }, orderBy: { createdAt: 'asc' } }) : [];
+    const authors = await this.db().orgUser.findMany({ where: { id: { in: [...new Set(replies.map((x) => x.authorId).filter((x): x is string => !!x))] } }, select: { id: true, displayName: true, username: true } });
+    const aMap = new Map(authors.map((a) => [a.id, a.displayName || a.username]));
     const companies = await this.prisma.scoped.policyholderCompany.findMany({ select: { id: true, name: true } });
     const coMap = new Map(companies.map((c) => [c.id, c.name]));
     return rows.map((m) => {
@@ -182,8 +190,37 @@ export class PolicyholdersService {
         companyName: m.companyId ? (coMap.get(m.companyId) ?? null) : null,
         phone: canPii ? phone : `${phone.slice(0, 4)}•••${phone.slice(-4)}`,
         message: m.message, createdAt: toJalali(m.createdAt), handled: !!m.handledAt,
+        replies: replies.filter((x) => x.replyToId === m.id).map((x) => ({ id: x.id, message: x.message, at: toJalali(x.createdAt), by: x.authorId ? (aMap.get(x.authorId) ?? null) : null })),
       };
     });
+  }
+
+  /**
+   * «گفتگو»: the brokerage answers a requester's question. The answer joins the requester's thread
+   * (shown on their next inquiry) and is texted to their verified mobile; the question is marked answered.
+   */
+  async replyMessage(id: string, text: string) {
+    const tenantId = getTenantIdOrThrow();
+    const body = String(text ?? '').trim();
+    if (body.length < 2) throw new BadRequestException('متن پاسخ را بنویسید');
+    const m = await this.db().inquiryMessage.findUnique({ where: { id } });
+    const claim = m ? await this.db().claim.findUnique({ where: { id: m.claimId }, select: { brokerTenantId: true, claimNumber: true } }) : null;
+    if (!m || m.fromStaff || claim?.brokerTenantId !== tenantId) throw new NotFoundException('پیام یافت نشد');
+    // each reply is an SMS to the requester — at most 10 an hour per question
+    if (!(await this.rateLimit.hit(`inqreply:${id}`, 10, 3600))) throw new TooManyRequestsException('تعداد پاسخ‌ها به این پیام زیاد است. بعداً تلاش کنید.');
+    const actorId = getContext()?.actorId ?? null;
+    const phone = this.crypto.decrypt(m.phone) ?? '';
+    await this.db().inquiryMessage.create({
+      data: { claimId: m.claimId, companyId: m.companyId, phone: m.phone, phoneIdx: m.phoneIdx ?? this.crypto.blindIndex(phone), message: body.slice(0, 2000), fromStaff: true, replyToId: m.id, authorId: actorId },
+    });
+    await this.db().inquiryMessage.update({ where: { id }, data: { handledAt: new Date(), handledById: actorId } });
+    const broker = await this.db().tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
+    let sms = true;
+    try {
+      await this.sms.send(phone, `${broker?.name ?? 'کارگزاری'}: پاسخ پیام شما دربارهٔ پروندهٔ ${claim!.claimNumber}: «${body.slice(0, 120)}${body.length > 120 ? '…' : ''}» — متن کامل در «مشاهده سریع و استعلام پرونده»، بخش گفتگو.`, tenantId);
+    } catch { sms = false; } // the answer is saved either way; the requester also sees it on the next inquiry
+    await this.audit.record({ action: AuditAction.CREATE, targetType: 'InquiryMessage', targetId: id, metadata: { reply: true, sms } });
+    return { ok: true, sms };
   }
 
   async markMessageHandled(id: string) {

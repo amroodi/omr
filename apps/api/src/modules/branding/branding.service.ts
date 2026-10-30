@@ -209,7 +209,7 @@ export class BrandingService {
     const packed = (own || (t as any)?.[KEY_FIELD[kind]]) as string | null;
     if (!packed) throw new NotFoundException('asset not set');
     const { key, mime } = unpack(packed);
-    return { buffer: await this.storage.read(key), mime };
+    return { buffer: await this.readAsset(key), mime };
   }
 
   /** Public branding for theming the frontend (resolved via tenant slug); `panel` = that panel's look. */
@@ -310,7 +310,12 @@ export class BrandingService {
     const packed = own || t?.logoKey;
     if (!packed) throw new NotFoundException('asset not set');
     const { key, mime } = unpack(packed);
-    return { buffer: await this.storage.read(key), mime };
+    return { buffer: await this.readAsset(key), mime };
+  }
+
+  /** A stored branding file; one that went missing from storage is «not set» (404), not a server error. */
+  private async readAsset(key: string): Promise<Buffer> {
+    try { return await this.storage.read(key); } catch { throw new NotFoundException('asset not found'); }
   }
 
   async setCarrierConfig(config: Record<string, unknown>) {

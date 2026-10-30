@@ -4,7 +4,7 @@ import { Response } from 'express';
 import { Permissions, Public } from '../../common/rbac/decorators';
 import { PERMISSIONS } from '../../common/rbac/permissions';
 import { TenantResolverGuard } from '../../common/tenant/tenant-resolver.guard';
-import { AssignCompanyDto, CompanyDto, ContractDto, PartnerDto } from './dto';
+import { AssignCompanyDto, CompanyDto, ContractDto, PartnerDto, ReplyDto } from './dto';
 import { PolicyholdersService } from './policyholders.service';
 
 /** بیمه‌گزار companies of a brokerage + their insurer contracts (کارگزاری panel). */
@@ -42,6 +42,12 @@ export class PolicyholdersController {
   @Get('messages')
   messages() {
     return this.svc.messages();
+  }
+
+  @Permissions(PERMISSIONS.CLAIM_READ)
+  @Post('messages/:id/reply')
+  reply(@Param('id') id: string, @Body() dto: ReplyDto) {
+    return this.svc.replyMessage(id, dto.message);
   }
 
   @Permissions(PERMISSIONS.CLAIM_READ)

@@ -16,6 +16,15 @@ export interface TenantTheme {
 }
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
+
+/**
+ * Headers for an uploaded branding file (logo/favicon/font). Logos may be SVG; opened directly on the
+ * app's own origin an SVG could run script, so the response is sandboxed and never type-sniffed.
+ */
+export const ASSET_SAFE_HEADERS: Record<string, string> = {
+  'Content-Security-Policy': "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; font-src 'self'; sandbox",
+  'X-Content-Type-Options': 'nosniff',
+};
 const GRADIENT = /^linear-gradient\(\s*\d{1,3}deg(\s*,\s*#[0-9a-fA-F]{6}(\s+\d{1,3}%)?){2,5}\s*\)$/;
 const COLOR_KEYS = ['brand', 'title', 'sidebar', 'sidebarDeep', 'canvas', 'loginButton'] as const;
 

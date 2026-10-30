@@ -3,6 +3,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
 import { BrandingService } from '../branding/branding.service';
 import { DesignDto, UpdateBrandingDto } from '../branding/dto';
+import { ASSET_SAFE_HEADERS } from '../branding/theme';
 import { SuperAdminOnly } from '../../common/rbac/decorators';
 import { ProvisionTenantDto, ResetAdminDto, SetPartnerDto, SetTenantActiveDto, UpdateTenantDto } from './dto';
 import { TenantsService } from './tenants.service';
@@ -41,6 +42,7 @@ export class TenantsController {
     const { buffer, mime } = await this.branding.getLogo(id, panel || undefined);
     res.setHeader('Content-Type', mime);
     res.setHeader('Cache-Control', 'no-store');
+    for (const [k, v] of Object.entries(ASSET_SAFE_HEADERS)) res.setHeader(k, v);
     res.send(buffer);
   }
 

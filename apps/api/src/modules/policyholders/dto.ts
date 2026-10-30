@@ -88,3 +88,10 @@ export class AssignCompanyDto {
   @IsUUID()
   companyId!: string | null;
 }
+
+/** «گفتگو» — the brokerage's answer to a requester's question. */
+export class ReplyDto {
+  @IsString()
+  @Length(2, 2000)
+  message!: string;
+}

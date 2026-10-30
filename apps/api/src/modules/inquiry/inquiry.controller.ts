@@ -62,4 +62,11 @@ export class InquiryController {
   message(@Body() dto: InquiryMessageDto) {
     return this.inquiry.leaveMessage(dto.message);
   }
+
+  /** «گفتگو» — the requester's questions and the کارگزاری's answers on this claim. */
+  @UseGuards(JwtAuthGuard)
+  @Get('messages')
+  messages() {
+    return this.inquiry.thread();
+  }
 }

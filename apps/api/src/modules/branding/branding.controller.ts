@@ -1,3 +1,4 @@
+import { ASSET_SAFE_HEADERS } from './theme';
 import {
   BadRequestException,
   Body,
@@ -129,6 +130,7 @@ export class BrandingController {
     res.setHeader('Cache-Control', 'public, max-age=300');
     // Public branding asset — allow cross-origin embedding (panel header, inquiry widget, etc.).
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    for (const [k, v] of Object.entries(ASSET_SAFE_HEADERS)) res.setHeader(k, v);
     res.send(buffer);
   }
 }
