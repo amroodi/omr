@@ -208,7 +208,7 @@ export class ExportsService {
 
   private async fetchClaims(status?: string, q?: string) {
     const where: Prisma.ClaimWhereInput = { ...this.claimTenantWhere(), ...(status ? { status: status as any } : {}) };
-    const claims = await this.prisma.replica().claim.findMany({
+    const claims = await this.prisma.partyReplica().claim.findMany({
       where,
       orderBy: { updatedAt: 'desc' },
       take: 10000,
@@ -298,11 +298,11 @@ export class ExportsService {
 
   /** Single-claim XLSX: header facts + every structured field value. Audit-logged. */
   async claimXlsx(res: Response, claimId: string): Promise<void> {
-    const claim = await this.prisma.replica().claim.findFirst({ where: { id: claimId, ...this.claimTenantWhere() } });
+    const claim = await this.prisma.partyReplica().claim.findFirst({ where: { id: claimId, ...this.claimTenantWhere() } });
     if (!claim) throw new NotFoundException('پرونده یافت نشد');
     const [defs, vals, insurer, header] = await Promise.all([
       this.prisma.replica().claimFieldDef.findMany({ where: { tenantId: claim.insurerTenantId, isActive: true }, orderBy: { order: 'asc' } }),
-      this.prisma.replica().claimFieldValue.findMany({ where: { claimId } }),
+      this.prisma.partyReplica().claimFieldValue.findMany({ where: { claimId } }),
       this.prisma.replica().tenant.findUnique({ where: { id: claim.insurerTenantId }, select: { name: true } }),
       this.tenantHeader(),
     ]);

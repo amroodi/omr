@@ -1,6 +1,14 @@
 # Proposal: a separate database per organization
 
-**Status:** proposal only. Nothing here has been built yet.
+**Status:** step 1 (row-level security) is built: migration `20261031100000_row_level_security`, `PrismaService.party()` and the scoped client, `deploy/rls-role.sh`. Steps 2 and 3 are proposals.
+
+### Turning step 1 on (server, once)
+
+1. `OMR_APP_PASSWORD='<long random password>' bash /opt/omr/deploy/rls-role.sh` creates `omr_app`, a role that is not a superuser. Superusers skip the rules.
+2. In `/etc/omr/api.env`: point `DATABASE_URL` at `omr_app`, and put the old `omr` address in `MIGRATE_DATABASE_URL`.
+3. Deploy. `journalctl -u omr-api` should show «Row-level security enforced».
+
+Emergency rollback: `ROW_SECURITY=off` in api.env plus a restart opens the rules; the app's own checks stay.
 
 ## The question
 

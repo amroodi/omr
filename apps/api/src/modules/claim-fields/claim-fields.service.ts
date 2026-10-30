@@ -49,7 +49,7 @@ export class ClaimFieldsService {
   ) {}
 
   private db() {
-    return this.prisma.unscoped();
+    return this.prisma.party(); // the database shows an organization only the cases it is named on
   }
 
   private async loadClaim(claimId: string) {
