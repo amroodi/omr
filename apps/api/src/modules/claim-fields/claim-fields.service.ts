@@ -31,6 +31,9 @@ export const MANUAL_FLOW_KEYS = new Set([
   'council_approve_date', 'council_approve_status', 'payment_order_date', 'payment_order_status', 'payment_order', 'case_stage',
 ]);
 
+/** Fields the hierarchy fills from its own hand-offs (see claimFacts) — shown, never auto-saved. */
+const FLOW_DERIVED = new Set([...MANUAL_FLOW_KEYS, 'execution_stages', 'case_notes']);
+
 export interface OcrDraftField {
   key: string;
   value: string;
@@ -99,8 +102,11 @@ export class ClaimFieldsService {
     for (const d of defs) {
       const v = vmap.get(d.key);
       // An empty field shows what the claim itself already knows (filled at filing or by import),
-      // marked source CLAIM so the edit form can store it on the next save.
+      // marked source CLAIM so the edit form can store it on the next save. Values derived from the
+      // hierarchy's hand-offs are marked FLOW instead: they are NOT stored on save (that would freeze the
+      // case as hand-completed and hide every later step) — only a value someone actually changes is.
       const fb = !v?.value ? fallback[d.key] ?? null : null;
+      const fbSource = FLOW_DERIVED.has(d.key) ? 'FLOW' : 'CLAIM';
       groups[d.group].push({
         key: d.key,
         label: d.label,
@@ -108,7 +114,7 @@ export class ClaimFieldsService {
         options: d.options,
         required: d.required,
         value: v?.value ?? fb,
-        source: fb ? 'CLAIM' : v?.source ?? null,
+        source: fb ? fbSource : v?.source ?? null,
         confidence: v?.confidence ?? null,
         confirmed: !!v?.confirmedAt,
         canEdit: manual || d.editableBy.includes(party),
@@ -198,32 +204,63 @@ export class ClaimFieldsService {
       : null;
     // Executive steps the workflow itself recorded (each desk's hand-off), so a case moved through the
     // system shows its dates without anyone retyping them. A value typed by an operator always wins.
-    const steps = await this.db().claimStep.findMany({ where: { claimId: claim.id, decidedAt: { not: null } }, orderBy: { order: 'asc' }, select: { stage: true, action: true, direction: true, purpose: true, decidedAt: true } });
+    const [allSteps, physical] = await Promise.all([
+      this.db().claimStep.findMany({ where: { claimId: claim.id }, orderBy: { order: 'asc' }, select: { stage: true, action: true, direction: true, purpose: true, decidedAt: true, createdAt: true } }),
+      this.db().claimPhysicalRequest.findMany({ where: { claimId: claim.id }, orderBy: { createdAt: 'asc' }, select: { createdAt: true, receivedAt: true } }),
+    ]);
+    const steps = allSteps.filter((s) => s.decidedAt);
     const first = (pred: (s: (typeof steps)[number]) => boolean) => steps.find(pred) ?? null;
     const last = (pred: (s: (typeof steps)[number]) => boolean) => [...steps].reverse().find(pred) ?? null;
+    const submitted = first((s) => s.stage === 'POLICYHOLDER' && s.action === 'SUBMIT');
     const brokerFwd = first((s) => s.stage === 'BROKER' && s.action === 'FORWARD');
     const branchFwd = first((s) => s.stage === 'BRANCH' && s.action === 'FORWARD');
     const returned = last((s) => s.action === 'RETURN' || s.action === 'RETURN_DIRECT');
     const resubmit = returned ? steps.find((s) => s.decidedAt! > returned.decidedAt! && s.stage === 'POLICYHOLDER' && s.action === 'SUBMIT') ?? null : null;
+    // شورای فنی: referred by ستاد; its own decision (payment order / rejection) when it made one.
+    const referred = first((s) => s.action === 'REFER_COUNCIL');
     const council = first((s) => s.stage === 'COUNCIL' && (s.action === 'PAY_ORDER' || s.action === 'REJECT_FINAL'));
     const payOrder = first((s) => s.action === 'PAY_ORDER');
-    const toBranch = first((s) => s.stage === 'HQ' && s.direction === 'DOWN' && s.purpose === 'PAYMENT');
+    // «برگشت به شعبه»: the payment order reached شعبه (the شعبه step opened for the payment).
+    const toBranch = allSteps.find((s) => s.stage === 'BRANCH' && s.purpose === 'PAYMENT') ?? null;
     const paid = first((s) => s.action === 'MARK_PAID');
+    const rejected = first((s) => s.action === 'REJECT_FINAL');
+    // Originals («اصل مدارک»): asked for, then received.
+    const physAsked = physical[0] ?? null;
+    const physGot = physical.find((p) => p.receivedAt) ?? null;
     const at = (s: { decidedAt: Date | null } | null) => (s?.decidedAt ? jd(s.decidedAt) : null);
+    const stageNow = claim.status === 'PAID' ? 'پرداخت شده' : claim.status === 'REJECTED' ? 'رد شده'
+      : claim.flowPurpose === 'PAYMENT' ? 'در انتظار پرداخت'
+      : claim.currentStage ? `نزد ${claim.currentStage === 'POLICYHOLDER' ? 'بیمه‌گزار' : claim.currentStage === 'HQ' ? 'مدیریت ستاد' : STAGE_FA[claim.currentStage as Stage]}` : null;
     const manual = await this.isManual(claim.id);
     const hierarchy: Record<string, string | null> = {
+      // The death is reported when the case is filed (by the بیمه‌گزار, or by staff for them).
+      death_notice_date: jd(submitted?.decidedAt ?? claim.createdAt),
+      death_notice_status: 'انجام شد',
       broker_to_insurer_date: at(brokerFwd),
       broker_to_insurer_status: brokerFwd ? 'پرونده و مدارک به بیمه‌گر ارسال شد' : null,
+      execution_stages: stageNow,
+      docs_request_date: physAsked ? jd(physAsked.createdAt) : null,
+      docs_request_status: physAsked ? 'مدارک درخواست شد' : null,
+      // Received: the originals, or (when none were asked for) the documents the بیمه‌گزار sent in.
+      docs_receive_date: physAsked ? (physGot ? jd(physGot.receivedAt) : null) : at(submitted),
+      docs_receive_status: physAsked ? (physGot ? 'مدارک دریافت شد' : null) : submitted ? 'مدارک دریافت شد' : null,
       missing_docs_request_date: at(returned),
       missing_docs_request_status: returned ? (resubmit ? 'رفع شد' : 'کسری اعلام شد') : null,
+      // Complete once شعبه has approved every document and sent the case on.
+      case_complete_date: at(branchFwd),
+      case_complete: branchFwd ? 'تکمیل' : null,
+      case_complete_status: branchFwd ? 'پرونده تکمیل شده و کسری ندارد' : null,
       send_to_hq_date: at(branchFwd),
       send_to_hq_status: branchFwd ? 'ارسال شد' : null,
-      council_approve_date: at(council),
-      council_approve_status: council ? (council.action === 'PAY_ORDER' ? 'پرونده تایید شد' : 'رد شد') : null,
-      return_to_branch_date: at(toBranch),
+      council_approve_date: at(council) ?? (referred && (claim.status === 'PAID' || payOrder) ? at(payOrder) : at(referred)),
+      council_approve_status: council ? (council.action === 'PAY_ORDER' ? 'پرونده تایید شد' : 'رد شد')
+        : referred ? (payOrder ? 'پرونده تایید شد' : rejected ? 'رد شد' : 'در حال بررسی') : null,
+      return_to_branch_date: toBranch ? jd(toBranch.createdAt) : null,
       return_to_branch_status: toBranch ? 'پرونده جهت مجوز پرداخت به شعبه برگشته' : null,
       payment_order_date: at(payOrder),
       payment_order_status: paid ? 'پرداخت شد' : payOrder ? 'حواله پرداخت ثبت شد' : null,
+      payment_order: payOrder && claim.finalizedAmount != null ? String(claim.finalizedAmount) : null,
+      case_stage: stageNow,
       case_notes: claim.status === 'PAID' ? 'پرداخت شده' : claim.status === 'REJECTED' ? 'غیر قابل پرداخت' : null,
     };
     // A hand-completed case shows only what the operator typed (no dates/statuses from the hand-offs).
