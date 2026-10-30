@@ -1402,7 +1402,7 @@ export class ClaimsService {
    */
   async reportData() {
     const ctx = getContext();
-    const db = this.db();
+    const db = this.prisma.replica(); // read-only screen → the read-replica when configured
     const claims = await db.claim.findMany({
       where: this.wdScope(ctx?.tenantId),
       orderBy: { createdAt: 'desc' },
@@ -1587,7 +1587,7 @@ export class ClaimsService {
    */
   async workDesk() {
     const ctx = getContext();
-    const db = this.db();
+    const db = this.prisma.replica(); // read-only screen → the read-replica when configured
     const desk = await this.myDesk();
     const scope = this.wdScope(ctx?.tenantId);
     const perms = new Set(ctx?.permissions ?? []);
@@ -1630,7 +1630,7 @@ export class ClaimsService {
     if (q) where = { AND: [scope, q.where] };
     else if (key === 'all') where = scope;
     else throw new BadRequestException('صف نامعتبر است');
-    const [claims, desk] = await Promise.all([this.db().claim.findMany({ where, orderBy: { updatedAt: 'desc' }, take: 200 }), this.myDesk()]);
+    const [claims, desk] = await Promise.all([this.prisma.replica().claim.findMany({ where, orderBy: { updatedAt: 'desc' }, take: 200 }), this.myDesk()]);
     return claims.map((c) => ({ ...(this.present(c) as object), needsAction: this.holdsDesk(c, desk) }));
   }
 
@@ -1640,7 +1640,7 @@ export class ClaimsService {
    * decrypting within the already-scoped result set. Dates/amounts accept from–to ranges.
    */
   async searchClaims(q: Record<string, string | undefined>) {
-    const db = this.db();
+    const db = this.prisma.replica(); // read-only screen → the read-replica when configured
     const and: Prisma.ClaimWhereInput[] = [this.wdScope(getContext()?.tenantId)];
     const clean = (s?: string) => (s ?? '').trim();
 

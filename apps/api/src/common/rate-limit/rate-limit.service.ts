@@ -1,6 +1,10 @@
 import { Injectable, Logger, OnModuleDestroy, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
+
+// One atomic round trip: count the hit and start the window on the first one.
+const REDIS_HIT = `local c = redis.call('INCR', KEYS[1]) if c == 1 then redis.call('PEXPIRE', KEYS[1], ARGV[1]) end return c`;
 
 interface Bucket {
   count: number;
@@ -10,21 +14,26 @@ interface Bucket {
 /**
  * Fixed-window rate limiter keyed by arbitrary strings (IP, National-ID hash, etc.).
  *
- * Shared across every API process: the counters live in Postgres (`RateLimitBucket`, an UNLOGGED
- * table — fast, and limits need not survive a database crash), updated by one atomic upsert per hit.
- * So the limits hold when the API runs on several CPU cores or servers. `RATE_LIMIT_STORE=memory`
- * keeps them in this process only (tests / a single dev process); if the database can't be reached
- * a hit falls back to the in-memory counters rather than failing the request.
+ * Shared across every API process, so the limits hold when the API runs on several CPU cores or
+ * servers. Where the counters live (`RATE_LIMIT_STORE`):
+ *  - `redis` — Redis (one INCR per hit); the default whenever `REDIS_URL` is set;
+ *  - `db`    — Postgres (`RateLimitBucket`, an UNLOGGED table, one atomic upsert per hit); the default otherwise;
+ *  - `memory` — this process only (tests / a single dev process).
+ * If the chosen store can't be reached, a hit falls back to the next one (Redis → Postgres → memory)
+ * rather than failing the request.
  */
 @Injectable()
 export class RateLimitService implements OnModuleDestroy {
   private readonly logger = new Logger(RateLimitService.name);
   private buckets = new Map<string, Bucket>();
   private readonly useDb: boolean;
+  private readonly useRedis: boolean;
   private readonly timer: NodeJS.Timeout;
 
-  constructor(@Optional() private readonly prisma?: PrismaService, @Optional() config?: ConfigService) {
-    this.useDb = !!prisma && String(config?.get('RATE_LIMIT_STORE', 'db') ?? 'db').toLowerCase() !== 'memory';
+  constructor(@Optional() private readonly prisma?: PrismaService, @Optional() config?: ConfigService, @Optional() private readonly redis?: RedisService) {
+    const store = String(config?.get('RATE_LIMIT_STORE', '') ?? '').toLowerCase() || (redis?.configured ? 'redis' : 'db');
+    this.useRedis = store === 'redis' && !!redis?.configured;
+    this.useDb = !!prisma && store !== 'memory';
     // Evict expired buckets periodically to bound memory / table size.
     this.timer = setInterval(() => { this.sweep().catch(() => undefined); }, 60_000);
     this.timer.unref?.();
@@ -41,6 +50,15 @@ export class RateLimitService implements OnModuleDestroy {
    * @param windowSeconds window length
    */
   async hit(key: string, limit: number, windowSeconds: number): Promise<boolean> {
+    const r = this.useRedis ? this.redis!.client() : null;
+    if (r) {
+      try {
+        const n = Number(await r.eval(REDIS_HIT, 1, `rl:${key}`, String(windowSeconds * 1000)));
+        return n <= limit;
+      } catch (e) {
+        this.logger.error(`Redis rate-limit failed, using Postgres: ${String(e)}`);
+      }
+    }
     if (this.useDb) {
       try {
         const rows = await this.prisma!.$queryRaw<{ count: number }[]>`

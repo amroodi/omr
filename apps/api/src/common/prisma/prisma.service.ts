@@ -59,6 +59,29 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
     return this;
   }
 
+  private replicaClient: PrismaClient | null | undefined;
+
+  /**
+   * Read-only client for heavy screens (reports, search, Work Desk queues, audit logs, exports): the
+   * read-replica when `DATABASE_REPLICA_URL` is set, otherwise this same primary connection. Never
+   * write through it, and don't use it to read back something just written — a replica can lag a
+   * moment behind the primary. Un-scoped like unscoped(): callers apply their own tenant filter.
+   */
+  replica(): PrismaClient {
+    if (this.replicaClient === undefined) {
+      const url = String(process.env.DATABASE_REPLICA_URL ?? '').trim();
+      this.replicaClient = url ? new PrismaClient({ datasourceUrl: url, log: ['warn', 'error'] }) : null;
+      if (url) this.logger.log('Read-replica enabled for read-only screens');
+    }
+    return this.replicaClient ?? this;
+  }
+
+  /** For /health: 'off' (no replica configured), 'up' or 'down'. */
+  async replicaStatus(): Promise<'off' | 'up' | 'down'> {
+    if (!String(process.env.DATABASE_REPLICA_URL ?? '').trim()) return 'off';
+    try { await this.replica().$queryRaw`SELECT 1`; return 'up'; } catch { return 'down'; }
+  }
+
   private buildScoped() {
     return this.$extends({
       query: {

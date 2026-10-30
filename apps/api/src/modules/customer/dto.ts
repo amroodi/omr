@@ -121,3 +121,15 @@ export class CustomerFileClaimDto {
   @Length(0, 2000)
   description?: string;
 }
+
+/** نماینده panel login: کد ملی + password. */
+export class RepresentativeLoginDto {
+  @ToAsciiDigits()
+  @IsString()
+  @Matches(/^\d{10}$/, { message: 'کد ملی باید ۱۰ رقم باشد' })
+  nationalCode!: string;
+
+  @IsString()
+  @Length(1, 200)
+  password!: string;
+}

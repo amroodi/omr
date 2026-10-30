@@ -5,9 +5,11 @@ import { ReactNode, useState } from 'react';
 import { BrandLogo } from './brand';
 import { LoginBgSet, RotatingBg } from './RotatingBg';
 
+// Every panel's login page (the super-admin login is deliberately not linked).
 const LOGINS = [
-  { href: '/customer/login', label: 'ورود بیمه‌گزار' },
-  { href: '/org/login', label: 'پورتال سازمان' },
+  { href: '/customer/login', label: 'بیمه‌گزار و نماینده' },
+  { href: '/org/login', label: 'کارگزاری' },
+  { href: '/insurer/login', label: 'بیمه‌گر' },
 ];
 
 /**

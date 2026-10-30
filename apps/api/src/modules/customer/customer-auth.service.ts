@@ -88,6 +88,16 @@ export class CustomerAuthService {
     return { token, expiresIn };
   }
 
+  /** نماینده panel login page (its own address): same checks and limits as the shared login box. */
+  async representativeLoginPublic(nationalCode: string, password: string) {
+    const tenantId = getTenantIdOrThrow();
+    const ip = getContext()?.ip ?? 'unknown';
+    const nid = nationalCode.trim();
+    if (!(await this.rateLimit.hit(`custpw:ip:${ip}`, 30, 600))) throw new TooManyRequestsException('تعداد تلاش‌ها زیاد است؛ چند دقیقه بعد دوباره تلاش کنید.');
+    if (!(await this.rateLimit.hit(`custpw:code:${tenantId}:${nid}`, 10, 600))) throw new TooManyRequestsException('تعداد تلاش‌ها زیاد است؛ چند دقیقه بعد دوباره تلاش کنید.');
+    return this.representativeLogin(tenantId, nid, password);
+  }
+
   /**
    * A نماینده (a person who acts for a بیمه‌گزار company) signs in with their کد ملی + password. Same panel and
    * rights as the company login; the default password is their کد ملی, changed on first login.

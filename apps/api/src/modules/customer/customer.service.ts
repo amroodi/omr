@@ -115,7 +115,7 @@ export class CustomerService {
 
   /** Active organizations, for the public signup picker. */
   listOrgs() {
-    return this.prisma.unscoped().tenant.findMany({ where: { isActive: true }, orderBy: { name: 'asc' }, select: { slug: true, name: true } });
+    return this.prisma.unscoped().tenant.findMany({ where: { isActive: true }, orderBy: { name: 'asc' }, select: { slug: true, name: true, kind: true } });
   }
 
   // ── Org-side بیمه‌گزار onboarding (tenant-scoped) ── admin-created accounts are ACTIVE at once

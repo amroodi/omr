@@ -8,6 +8,7 @@ import { CryptoModule } from './common/crypto/crypto.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { RateLimitModule } from './common/rate-limit/rate-limit.module';
+import { RedisModule } from './common/redis/redis.module';
 import { RolesGuard } from './common/rbac/roles.guard';
 import { RequestContextMiddleware } from './common/tenant/request-context.middleware';
 import { TenantResolverGuard } from './common/tenant/tenant-resolver.guard';
@@ -55,6 +56,7 @@ import { UsersModule } from './modules/users/users.module';
     PrismaModule,
     CryptoModule,
     AuditModule,
+    RedisModule,
     RateLimitModule,
     StorageModule,
     CarriersModule,

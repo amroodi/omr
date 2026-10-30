@@ -1,4 +1,5 @@
 'use client';
+import { panelLogin } from './panel';
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:4000/api/v1';
 
@@ -82,14 +83,15 @@ function headers(realm?: Realm, json = true): Record<string, string> {
   return h;
 }
 
-const LOGIN_PATH: Record<Realm, string> = { org: '/org/login', customer: '/customer/login', super: '/admin/login' };
+// Signed out → the login page of the panel last used (شعبه → /branch/login, نماینده → /representative/login…).
+const loginPath = (realm: Realm): string => (realm === 'super' ? '/admin/login' : panelLogin(realm));
 
 /** On a 401 the stored token is stale/invalid — clear it and bounce to the realm's login instead
  * of surfacing a raw "Invalid or expired token" on an empty panel. */
 function onUnauthorized(realm?: Realm) {
   if (!realm || typeof window === 'undefined') return;
   clearToken(realm);
-  const login = LOGIN_PATH[realm];
+  const login = loginPath(realm);
   if (!window.location.pathname.endsWith('/login')) window.location.href = login;
 }
 

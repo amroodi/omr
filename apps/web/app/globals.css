@@ -1674,3 +1674,14 @@ code, kbd, pre, samp, .latin-digits { font-family: 'Vazirmatn', ui-monospace, SF
   .upd-camonly .upd-desk { display: none !important; }
   .upd-camonly .upd-phone { display: block; }
 }
+
+/* ── Separate panels: the panel's name + accent (پنل کارگزاری / شعبه / ستاد / شورای فنی / بیمه‌گزار / نماینده) ── */
+.pshell.has-panel .ptopbar { border-top: 3px solid var(--panel-accent); }
+.panel-chip { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; font-size: .74rem; font-weight: 800;
+  color: #fff; background: var(--panel-accent, var(--brand)); white-space: nowrap; flex-shrink: 0; }
+.psidebar-panel { margin-top: 6px; font-size: .74rem; font-weight: 800; color: #fff; background: var(--panel-accent, var(--brand));
+  border-radius: 999px; padding: 2px 10px; display: inline-block; }
+.psidebar.is-rail .psidebar-panel { display: none; }
+.panel-tag { display: block; text-align: center; font-weight: 800; font-size: .85rem; color: #fff; padding: 6px 10px;
+  background: var(--panel-accent, var(--brand)); border-radius: 10px; }
+@media (max-width: 640px) { .panel-chip { display: none; } }
