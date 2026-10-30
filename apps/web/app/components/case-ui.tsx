@@ -326,3 +326,13 @@ export function ManualStoryList({ story }: { story: CaseStory }) {
       </ul>
     );
 }
+
+/** «بایگانی»: a paid case is read-only for everyone — shown above its pages instead of edit controls. */
+export function ArchivedNotice() {
+  return (
+    <div className="alert-success flex items-center gap-2 no-print">
+      <Icon path="M21 8v13H3V8M1 3h22v5H1zM10 12h4" />
+      این پرونده پرداخت شده و بایگانی شده است؛ فقط قابل مشاهده است و هیچ تغییری در آن ممکن نیست.
+    </div>
+  );
+}

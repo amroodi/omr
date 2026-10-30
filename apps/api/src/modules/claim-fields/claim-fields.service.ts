@@ -1,3 +1,4 @@
+import { assertNotPaid } from '../claims/archived';
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditAction, ClaimPartyType, FieldSource } from '@prisma/client';
 import { AuditService } from '../../common/audit/audit.service';
@@ -117,10 +118,10 @@ export class ClaimFieldsService {
         source: fb ? fbSource : v?.source ?? null,
         confidence: v?.confidence ?? null,
         confirmed: !!v?.confirmedAt,
-        canEdit: manual || d.editableBy.includes(party),
+        canEdit: claim.status !== 'PAID' && (manual || d.editableBy.includes(party)), // archived once paid
       });
     }
-    return { claimId, party, manual, groups };
+    return { claimId, party, manual, groups, archived: claim.status === 'PAID' };
   }
 
   /**
@@ -281,6 +282,7 @@ export class ClaimFieldsService {
   /** Human sets/corrects a field value (validated, provenance recorded, implicitly confirmed). */
   async setValue(claimId: string, key: string, value: string) {
     const claim = await this.loadClaim(claimId);
+    assertNotPaid(claim); // archived once paid
     const party = this.party(claim);
     const def = await this.db().claimFieldDef.findFirst({ where: { tenantId: claim.insurerTenantId, key } });
     if (!def) throw new NotFoundException('فیلد تعریف نشده است');
@@ -309,6 +311,7 @@ export class ClaimFieldsService {
   /** Confirm an OCR draft as-is (the human accepts the extracted value without editing). */
   async confirmValue(claimId: string, key: string) {
     const claim = await this.loadClaim(claimId);
+    assertNotPaid(claim); // archived once paid
     const party = this.party(claim);
     const def = await this.db().claimFieldDef.findFirst({ where: { tenantId: claim.insurerTenantId, key } });
     if (!def || !def.editableBy.includes(party)) throw new ForbiddenException('اجازه تایید این فیلد را ندارید');

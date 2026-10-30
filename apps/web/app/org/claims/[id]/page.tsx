@@ -8,7 +8,7 @@ import { ErrorBox, FancyLoader } from '../../../components/ui';
 import { ORG_NAV } from '../../nav';
 import { WorkflowPanel } from '../../../components/WorkflowPanel';
 import { caseTitle } from '../../../../lib/caseTitle';
-import { CaseHero, CaseSummary, DEATH_TYPES, ICONS, phaseText, useCase } from '../../../components/case-ui';
+import { ArchivedNotice, CaseHero, CaseSummary, DEATH_TYPES, ICONS, phaseText, useCase } from '../../../components/case-ui';
 import { CaseEditForm } from './case-edit';
 
 const ICON_ASSESS = 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 104 0 2 2 0 00-4 0zM9 14l2 2 4-4';
@@ -52,11 +52,13 @@ export default function ClaimDetail() {
             <div className="alert-error">⚠ اعلام خسارت خارج از مهلت مقرر انجام شده است (مهلت: {claim.noticeDeadline}).</div>
           )}
 
+          {claim.status === 'PAID' && <ArchivedNotice />}
+
           {/* Tabs: پیش‌نمایش ↔ ویرایش, and the assessment page */}
           <div className="flex items-center justify-between gap-2 flex-wrap no-print">
             <div className="inline-flex rounded-xl p-1 text-sm" style={{ background: 'var(--surface-2)' }}>
               <button onClick={() => setMode('preview')} className={`btn btn-sm ${mode === 'preview' ? 'btn-primary' : 'btn-ghost'}`}>پیش‌نمایش</button>
-              {!isInsurer && <button onClick={() => setMode('edit')} className={`btn btn-sm ${mode === 'edit' ? 'btn-primary' : 'btn-ghost'}`}>ویرایش</button>}
+              {!isInsurer && claim.status !== 'PAID' && <button onClick={() => setMode('edit')} className={`btn btn-sm ${mode === 'edit' ? 'btn-primary' : 'btn-ghost'}`}>ویرایش</button>}
               <Link href={`/org/claims/${id}/assess`} className="btn btn-sm btn-ghost" title="ارزیابی و تایید مدارک در صفحهٔ دوستونه"><Icon path={ICON_ASSESS} /> ارزیابی پرونده</Link>
               <a href={`/org/reminders?claim=${id}&n=${encodeURIComponent(claim.claimNumber)}`} target="_blank" rel="noopener" className="btn btn-sm btn-ghost" title="یادآوری پیگیری این پرونده برای خودتان یا همکار"><Icon path="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0" /> یادآور</a>
             </div>
@@ -65,7 +67,7 @@ export default function ClaimDetail() {
             )}
           </div>
 
-          {mode === 'preview' || isInsurer ? (
+          {mode === 'preview' || isInsurer || claim.status === 'PAID' ? (
             <>
               <div className="cs-sheet">
                 <CaseHero title="مشخصات بیمه‌نامه" claim={claim} notes={fv.case_notes || phaseText(claim)} />
@@ -83,7 +85,7 @@ export default function ClaimDetail() {
                 <div className="card p-4 no-print">
                   <div className="flex items-center justify-between gap-2 mb-3">
                     <h3 className="font-extrabold flex items-center gap-2"><span className="sec-ico"><Icon path={ICONS.route} /></span>اقدام روی پرونده</h3>
-                    {perms.del && <button onClick={removeClaim} disabled={busy} className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} title="انتقال به سطل بازیافت (۱۴ روز قابل بازیابی)">حذف پرونده</button>}
+                    {perms.del && claim.status !== 'PAID' && <button onClick={removeClaim} disabled={busy} className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} title="انتقال به سطل بازیافت (۱۴ روز قابل بازیابی)">حذف پرونده</button>}
                   </div>
                   <WorkflowPanel claimId={id} workflow={claim.workflow} realm="org" onDone={reload} />
                 </div>
