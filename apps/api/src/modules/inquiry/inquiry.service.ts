@@ -478,7 +478,7 @@ export class InquiryService {
     await this.prisma.unscoped().inquiryMessage.create({ data: { claimId, companyId, phone: ctx.scopedPhone, phoneIdx, message: text.slice(0, 2000) } });
     const body = `پیام جدید از استعلام‌کنندهٔ پروندهٔ ${c.claimNumber}: «${text.slice(0, 140)}»`;
     const orgId = c.brokerTenantId ?? c.insurerTenantId;
-    await this.notifications.notify({ tenantId: orgId, audience: 'ORG', title: 'پاسخگوی آنلاین', body, link: '/org/policyholders?tab=messages' });
+    await this.notifications.notify({ tenantId: orgId, audience: 'ORG', title: 'پاسخگوی آنلاین', body, link: '/org/messages' });
     if (c.policyHolderId) {
       const acc = await this.prisma.unscoped().customerAccount.findUnique({ where: { id: c.policyHolderId }, select: { tenantId: true } });
       if (acc) await this.notifications.notify({ tenantId: acc.tenantId, audience: 'CUSTOMER', recipientId: c.policyHolderId, title: 'پاسخگوی آنلاین', body, link: '/customer' });

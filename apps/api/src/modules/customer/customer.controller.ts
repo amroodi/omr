@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Post,
@@ -13,7 +14,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
-import { IsOptional, IsString, IsUUID, Length, Matches } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, IsUUID, Length, Matches } from 'class-validator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { Permissions, Public } from '../../common/rbac/decorators';
 import { PERMISSIONS } from '../../common/rbac/permissions';
@@ -35,6 +36,18 @@ class CreateCustomerDto {
 
 class AccountPasswordDto {
   @IsOptional() @IsString() @Length(0, 200) password?: string;
+}
+
+/** A نماینده added by their own بیمه‌گزار company (the company is the signed-in one). */
+class CompanyRepresentativeDto {
+  @ToAsciiDigits() @IsString() @Length(8, 12) nationalCode!: string;
+  @ToAsciiDigits() @IsString() @Matches(/^0?9\d{9}$/) phone!: string;
+  @IsOptional() @IsString() @Length(2, 120) fullName?: string;
+  @IsOptional() @IsString() @Length(0, 200) password?: string;
+}
+
+class ActiveDto {
+  @IsBoolean() active!: boolean;
 }
 import { CustomerSignupStatus } from '@prisma/client';
 import { ClaimsService } from '../claims/claims.service';
@@ -172,6 +185,44 @@ export class CustomerController {
   @Post('accounts/:id/reject')
   reject(@Param('id') id: string) {
     return this.customer.reject(id);
+  }
+
+  /** Remove a نماینده (kept for the cases they filed, but hidden and signed out). */
+  @Permissions(PERMISSIONS.CUSTOMER_MANAGE)
+  @Delete('accounts/:id')
+  removeAccount(@Param('id') id: string) {
+    return this.customer.removeAccount(id);
+  }
+
+  // ── The بیمه‌گزار company's own نمایندگان (company login only; checked in the service) ──
+  @UseGuards(JwtAuthGuard)
+  @Get('representatives')
+  representatives() {
+    return this.customer.companyRepresentatives();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('representatives')
+  addRepresentative(@Body() dto: CompanyRepresentativeDto) {
+    return this.customer.addCompanyRepresentative(dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('representatives/:id/password')
+  representativePassword(@Param('id') id: string, @Body() dto: AccountPasswordDto) {
+    return this.customer.setCompanyRepresentativePassword(id, dto.password);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('representatives/:id/active')
+  representativeActive(@Param('id') id: string, @Body() dto: ActiveDto) {
+    return this.customer.setCompanyRepresentativeActive(id, dto.active);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('representatives/:id')
+  removeRepresentative(@Param('id') id: string) {
+    return this.customer.removeCompanyRepresentative(id);
   }
 
   /** Customer dashboard — the caller's own cases only (requires a `customer` token). */

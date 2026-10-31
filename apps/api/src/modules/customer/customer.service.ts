@@ -10,6 +10,9 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { HashService } from '../../common/crypto/hash.service';
 import { ShahkarService } from '../auth/shahkar.service';
 
+/** A نماینده as entered on a form (کارگزاری or the بیمه‌گزار company). */
+interface RepresentativeInput { nationalCode: string; phone: string; fullName?: string; password?: string }
+
 /**
  * Customer dashboard data. A logged-in customer sees only cases where they are the insured or a
  * beneficiary — matched by their nationalCodeHash from the token, within their own tenant.
@@ -119,48 +122,134 @@ export class CustomerService {
   }
 
   // ── Org-side بیمه‌گزار onboarding (tenant-scoped) ── admin-created accounts are ACTIVE at once
-  async createAccount(input: { nationalCode: string; phone: string; fullName?: string; companyId?: string; password?: string }) {
-    const tenantId = getTenantIdOrThrow();
+  async createAccount(input: RepresentativeInput & { companyId?: string }) {
+    return this.addRepresentative(getTenantIdOrThrow(), input.companyId ? await this.ownCompany(input.companyId) : null, input);
+  }
+
+  /**
+   * Add a نماینده (a person who signs in with کد ملی + password and files claims for their company).
+   * A previously removed نماینده with the same کد ملی is brought back instead of refused.
+   */
+  private async addRepresentative(tenantId: string, companyId: string | null, input: RepresentativeInput) {
     const { nid, phone } = this.validatePair(input.nationalCode, input.phone);
     const nidHash = this.crypto.blindIndex(nid)!;
-    if (await this.prisma.scoped.customerAccount.findFirst({ where: { nationalCodeHash: nidHash } })) {
-      throw new BadRequestException('نماینده‌ای با این کد ملی قبلاً ثبت شده است');
-    }
+    const db = this.prisma.unscoped();
+    const existing = await db.customerAccount.findFirst({ where: { tenantId, nationalCodeHash: nidHash }, select: { id: true, removedAt: true } });
+    if (existing && !existing.removedAt) throw new BadRequestException('نماینده‌ای با این کد ملی قبلاً ثبت شده است');
     const checked = await this.shahkar.assertMatch(nid, phone);
     const pw = input.password?.trim();
     if (pw && pw.length < 8) throw new BadRequestException('رمز عبور باید دست‌کم ۸ نویسه باشد');
-    const acc = await this.prisma.scoped.customerAccount.create({
-      data: {
-        companyId: input.companyId ? await this.ownCompany(input.companyId) : null,
-        tenantId,
-        nationalCode: this.crypto.encrypt(nid)!,
-        nationalCodeHash: nidHash,
-        fullName: input.fullName ? this.crypto.encrypt(input.fullName) : null,
-        phone: this.crypto.encrypt(phone),
-        phoneHash: this.crypto.blindIndex(phone),
-        signupStatus: 'ACTIVE',
-        // Login: کد ملی + password; without one the کد ملی is the first password (changed on first login).
-        passwordHash: await this.hash.hashPassword(pw || nid),
-        mustChangePassword: !pw,
-        shahkarVerifiedAt: checked ? new Date() : null,
-      },
-      select: { id: true },
-    });
-    await this.audit.record({ action: AuditAction.CREATE, targetType: 'CustomerAccount', targetId: acc.id });
+    const data = {
+      companyId,
+      nationalCode: this.crypto.encrypt(nid)!,
+      fullName: input.fullName?.trim() ? this.crypto.encrypt(input.fullName.trim()) : null,
+      phone: this.crypto.encrypt(phone),
+      phoneHash: this.crypto.blindIndex(phone),
+      signupStatus: 'ACTIVE' as const,
+      isActive: true,
+      removedAt: null,
+      // Login: کد ملی + password; without one the کد ملی is the first password (changed on first login).
+      passwordHash: await this.hash.hashPassword(pw || nid),
+      mustChangePassword: !pw,
+      shahkarVerifiedAt: checked ? new Date() : null,
+    };
+    const acc = existing
+      ? await db.customerAccount.update({ where: { id: existing.id }, data, select: { id: true } })
+      : await db.customerAccount.create({ data: { tenantId, nationalCodeHash: nidHash, ...data }, select: { id: true } });
+    await this.audit.record({ action: AuditAction.CREATE, tenantId, targetType: 'CustomerAccount', targetId: acc.id, metadata: { companyId, revived: !!existing } });
     return { id: acc.id, ok: true };
   }
 
   /** Set (or reset to the کد ملی, when empty) a نماینده's password. */
   async setAccountPassword(id: string, password?: string) {
-    const acc = await this.prisma.scoped.customerAccount.findFirst({ where: { id } });
+    const acc = await this.prisma.scoped.customerAccount.findFirst({ where: { id, removedAt: null } });
     if (!acc) throw new NotFoundException('نماینده یافت نشد');
+    return this.applyPassword(acc, password);
+  }
+
+  private async applyPassword(acc: { id: string; nationalCode: string }, password?: string) {
     const nid = this.crypto.decrypt(acc.nationalCode) ?? '';
     if (!/^\d{10}$/.test(nid)) throw new BadRequestException('این حساب نمایندهٔ شخص نیست');
     const pw = password?.trim();
     if (pw && pw.length < 8) throw new BadRequestException('رمز عبور باید دست‌کم ۸ نویسه باشد');
-    await this.prisma.scoped.customerAccount.updateMany({ where: { id }, data: { passwordHash: await this.hash.hashPassword(pw || nid), mustChangePassword: !pw } });
-    await this.audit.record({ action: AuditAction.EDIT, targetType: 'RepresentativePassword', targetId: id, metadata: { reset: !pw } });
+    await this.prisma.unscoped().customerAccount.update({ where: { id: acc.id }, data: { passwordHash: await this.hash.hashPassword(pw || nid), mustChangePassword: !pw } });
+    await this.audit.record({ action: AuditAction.EDIT, targetType: 'RepresentativePassword', targetId: acc.id, metadata: { reset: !pw } });
     return { ok: true, message: pw ? 'رمز عبور تنظیم شد.' : 'رمز عبور به کد ملی بازنشانی شد.' };
+  }
+
+  /** کارگزاری removes a نماینده: hidden everywhere and signed out; their cases stay as they are. */
+  async removeAccount(id: string) {
+    const acc = await this.prisma.scoped.customerAccount.findFirst({ where: { id, removedAt: null } });
+    if (!acc || !this.isPerson(acc.nationalCode)) throw new NotFoundException('نماینده یافت نشد');
+    return this.markRemoved(acc.id);
+  }
+
+  private async markRemoved(id: string) {
+    await this.prisma.unscoped().customerAccount.update({ where: { id }, data: { removedAt: new Date(), isActive: false } });
+    await this.audit.record({ action: AuditAction.DELETE, targetType: 'CustomerAccount', targetId: id });
+    return { ok: true };
+  }
+
+  /** A real person's account — not a company's or the brokerage's own panel login. */
+  private isPerson(encryptedNid: string): boolean {
+    return /^\d{10}$/.test(this.crypto.decrypt(encryptedNid) ?? '');
+  }
+
+  // ── The بیمه‌گزار company manages its own نمایندگان (company login only) ──
+  private companyOwner(): { tenantId: string; companyId: string } {
+    const ctx = getContext();
+    if (ctx?.actorType !== 'CUSTOMER' || !ctx.tenantId || !ctx.customerCompanyId || ctx.customerRepresentative || ctx.customerBrokerPanel) {
+      throw new ForbiddenException('مدیریت نمایندگان فقط با ورود کد بیمه‌گزار ممکن است');
+    }
+    return { tenantId: ctx.tenantId, companyId: ctx.customerCompanyId };
+  }
+
+  private async companyRepresentative(id: string) {
+    const { tenantId, companyId } = this.companyOwner();
+    const acc = await this.prisma.unscoped().customerAccount.findFirst({ where: { id, tenantId, companyId, removedAt: null } });
+    if (!acc || !this.isPerson(acc.nationalCode)) throw new NotFoundException('نماینده یافت نشد');
+    return acc;
+  }
+
+  async companyRepresentatives() {
+    const { tenantId, companyId } = this.companyOwner();
+    const rows = await this.prisma.unscoped().customerAccount.findMany({ where: { tenantId, companyId, removedAt: null }, orderBy: { createdAt: 'desc' } });
+    return rows.filter((r) => this.isPerson(r.nationalCode)).map((r) => ({
+      id: r.id,
+      fullName: r.fullName ? this.crypto.decrypt(r.fullName) : null,
+      nationalCode: this.crypto.decrypt(r.nationalCode),
+      phone: r.phone ? this.crypto.decrypt(r.phone) : null,
+      // Suspended by the company, or not (yet) approved by the کارگزاری
+      active: r.isActive && r.signupStatus === 'ACTIVE',
+      mustChangePassword: r.mustChangePassword,
+      createdAt: toJalali(r.createdAt),
+      lastLoginAt: r.lastLoginAt ? toJalali(r.lastLoginAt) : null,
+    }));
+  }
+
+  async addCompanyRepresentative(input: RepresentativeInput) {
+    const { tenantId, companyId } = this.companyOwner();
+    const res = await this.addRepresentative(tenantId, companyId, input);
+    const co = await this.prisma.unscoped().policyholderCompany.findUnique({ where: { id: companyId }, select: { name: true } });
+    await this.notifications.notifyOrgAdmins(tenantId, 'نمایندهٔ جدید بیمه‌گزار',
+      `${co?.name ?? 'بیمه‌گزار'} نمایندهٔ «${input.fullName?.trim() || input.nationalCode}» را برای ورود به پنل بیمه‌گزار ثبت کرد.`, '/org/policyholders?tab=accounts');
+    return res;
+  }
+
+  async setCompanyRepresentativePassword(id: string, password?: string) {
+    return this.applyPassword(await this.companyRepresentative(id), password);
+  }
+
+  async setCompanyRepresentativeActive(id: string, active: boolean) {
+    const acc = await this.companyRepresentative(id);
+    if (active && acc.signupStatus !== 'ACTIVE') throw new BadRequestException('این نماینده را کارگزاری غیرفعال کرده است؛ برای فعال‌سازی با کارگزاری تماس بگیرید.');
+    await this.prisma.unscoped().customerAccount.update({ where: { id: acc.id }, data: { isActive: active } });
+    await this.audit.record({ action: AuditAction.EDIT, targetType: 'CustomerAccount', targetId: acc.id, metadata: { action: active ? 'activate' : 'suspend', by: 'company' } });
+    return { ok: true };
+  }
+
+  async removeCompanyRepresentative(id: string) {
+    return this.markRemoved((await this.companyRepresentative(id)).id);
   }
 
   private async ownCompany(id: string): Promise<string> {
@@ -279,12 +368,13 @@ export class CustomerService {
     // Full National ID / phone are shown only to org users holding view:pii; otherwise masked.
     const canPii = (getContext()?.permissions ?? []).includes('view:pii');
     const rows = await this.prisma.scoped.customerAccount.findMany({
-      where: status ? { signupStatus: status } : {},
+      where: { removedAt: null, ...(status ? { signupStatus: status } : {}) },
       orderBy: { createdAt: 'desc' },
       take: 500,
       include: { company: { select: { id: true, name: true } } },
     });
-    return rows.map((r) => {
+    // Only people: a company's own panel login and the brokerage's «broker» login aren't نمایندگان.
+    return rows.filter((r) => this.isPerson(r.nationalCode)).map((r) => {
       const nid = this.crypto.decrypt(r.nationalCode) ?? '';
       const phone = r.phone ? (this.crypto.decrypt(r.phone) ?? '') : '';
       return {
@@ -308,7 +398,7 @@ export class CustomerService {
   }
 
   async pendingCount() {
-    return { count: await this.prisma.scoped.customerAccount.count({ where: { signupStatus: 'PENDING' } }) };
+    return { count: await this.prisma.scoped.customerAccount.count({ where: { signupStatus: 'PENDING', removedAt: null } }) };
   }
 
   async myCases(): Promise<unknown[]> {

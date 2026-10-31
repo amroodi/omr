@@ -354,6 +354,9 @@ model CustomerAccount {
   shahkarVerifiedAt DateTime?
   signupStatus     CustomerSignupStatus @default(ACTIVE)
   isActive         Boolean  @default(true)
+  // A نماینده removed by the کارگزاری or their company: hidden from every list and unable to sign in.
+  // Kept (not deleted) because the cases they filed still point at this account.
+  removedAt        DateTime?
   lastLoginAt      DateTime?
   createdAt        DateTime @default(now())
 

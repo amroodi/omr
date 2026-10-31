@@ -58,7 +58,8 @@ export class CustomerAuthService {
     const account = await this.companyAccount(co);
     await db.customerAccount.update({ where: { id: account.id }, data: { lastLoginAt: new Date() } });
     const expiresIn = this.config.get<string>('JWT_SESSION_TTL', '8h');
-    const token = await this.jwt.signAsync({ kind: 'customer', sub: account.id, tenantId, nidHash: account.nationalCodeHash, companyId: co.id }, { expiresIn: jwtTtl(expiresIn) });
+    // `permissions` only shows the «نمایندگان» menu; the server checks the login type itself.
+    const token = await this.jwt.signAsync({ kind: 'customer', sub: account.id, tenantId, nidHash: account.nationalCodeHash, companyId: co.id, permissions: ['representatives:manage'] }, { expiresIn: jwtTtl(expiresIn) });
     await this.audit.record({ action: AuditAction.LOGIN, tenantId, actorType: 'CUSTOMER', actorId: account.id, metadata: { realm: 'company', companyId: co.id } });
     return { token, expiresIn };
   }
@@ -104,14 +105,15 @@ export class CustomerAuthService {
    */
   private async representativeLogin(tenantId: string, nid: string, password: string) {
     const db = this.prisma.unscoped();
-    const acc = await db.customerAccount.findFirst({ where: { tenantId, nationalCodeHash: this.crypto.blindIndex(nid)! } });
+    const acc = await db.customerAccount.findFirst({ where: { tenantId, nationalCodeHash: this.crypto.blindIndex(nid)!, removedAt: null } });
     if (acc?.signupStatus === 'PENDING') throw new ForbiddenException('درخواست ثبت‌نام شما هنوز توسط سازمان تایید نشده است. پس از تایید، امکان ورود خواهید داشت.');
     if (acc?.signupStatus === 'REJECTED') throw new ForbiddenException('درخواست ثبت‌نام شما تایید نشد. برای پیگیری با سازمان تماس بگیرید.');
-    const ok = !!acc?.isActive && !!acc.passwordHash && (await this.hash.verifyPassword(acc.passwordHash, password));
+    const ok = !!acc?.passwordHash && (await this.hash.verifyPassword(acc.passwordHash, password));
     if (!acc || !ok) {
       await this.audit.record({ action: AuditAction.LOGIN_FAILED, tenantId, actorType: 'CUSTOMER', metadata: { realm: 'representative' } });
       throw new ForbiddenException('نام کاربری یا رمز عبور نادرست است.');
     }
+    if (!acc.isActive) throw new ForbiddenException('حساب شما غیرفعال شده است؛ با بیمه‌گزار یا کارگزاری تماس بگیرید.');
     await db.customerAccount.update({ where: { id: acc.id }, data: { lastLoginAt: new Date() } });
     const expiresIn = this.config.get<string>('JWT_SESSION_TTL', '8h');
     const token = await this.jwt.signAsync({ kind: 'customer', sub: acc.id, tenantId, nidHash: acc.nationalCodeHash, companyId: acc.companyId ?? undefined, representative: true }, { expiresIn: jwtTtl(expiresIn) });
