@@ -896,6 +896,8 @@ export class ClaimsService {
    * (claim:delete) and audit-logged. The permanent removal happens later in purgeExpired().
    */
   async remove(claimId: string) {
+    // Never a بیمه‌گزار (company login, نماینده or the «broker» panel login) — only org staff with claim:delete.
+    if (getContext()?.actorType !== 'ORG_USER') throw new ForbiddenException('حذف پرونده فقط توسط کاربران سازمان ممکن است');
     const u = this.prisma.unscoped();
     const claim = await u.claim.findUnique({
       where: { id: claimId },
