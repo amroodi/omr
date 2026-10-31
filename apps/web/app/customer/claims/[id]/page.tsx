@@ -10,6 +10,7 @@ import { WorkflowPanel } from '../../../components/WorkflowPanel';
 import { caseTitle } from '../../../../lib/caseTitle';
 import { AI_QUEUED_FA, aiVerdict, CaseHero, ChecklistItem, ClaimDoc, ICONS, STATUS_FA, useCase } from '../../../components/case-ui';
 import { DocUploadTile, OnProgress, UploadButton } from '../../../components/upload';
+import { HeirsCard } from '../../../components/heirs';
 
 const DESK_FA: Record<string, string> = { BROKER: 'کارگزاری', BRANCH: 'شعبه', HQ: 'مدیریت ستاد', COUNCIL: 'شورای فنی' };
 const OK = 'M20 6L9 17l-5-5';
@@ -122,6 +123,8 @@ export default function CustomerClaim() {
             </div>
             {claim.lateNotice && lateWarn && <div className="alert-error">⚠ اعلام خسارت خارج از مهلت مقرر بوده است (مهلت: {claim.noticeDeadline}).</div>}
             {claim.description && <div className="pcard p-4 text-sm whitespace-pre-wrap" style={{ color: 'var(--muted)' }}><b style={{ color: 'var(--text)' }}>توضیحات: </b>{claim.description}</div>}
+
+            <HeirsCard claimId={id} realm="customer" className="pcard p-6" />
 
             {claim.status === 'RETURNED_INCOMPLETE' && (
               <div className="pcard p-6" style={{ borderColor: 'var(--danger)' }}>

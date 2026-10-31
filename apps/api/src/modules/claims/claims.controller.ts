@@ -17,7 +17,7 @@ import { Permissions } from '../../common/rbac/decorators';
 import { PERMISSIONS } from '../../common/rbac/permissions';
 import { ClaimFieldsService } from '../claim-fields/claim-fields.service';
 import { ClaimsService } from './claims.service';
-import { ActionDto, DecisionDto, FileClaimDto, FileOnBehalfDto, LetterDto, LossNoticeDto, PhysicalDto } from './dto';
+import { ActionDto, DecisionDto, FileClaimDto, FileOnBehalfDto, HeirsDto, LetterDto, LossNoticeDto, PhysicalDto } from './dto';
 
 const docLimits = { fileSize: 15 * 1024 * 1024 };
 
@@ -157,6 +157,19 @@ export class ClaimsController {
   @Get(':id/reject-reasons')
   rejectReasons(@Param('id') id: string) {
     return this.claims.rejectReasons(id);
+  }
+
+  /** «ذینفع / وراث قانونی» of the case: kind + name and شبا of each (شبا masked without view:pii). */
+  @Permissions(PERMISSIONS.CLAIM_READ)
+  @Get(':id/heirs')
+  heirs(@Param('id') id: string) {
+    return this.claims.heirs(id);
+  }
+
+  @Permissions(PERMISSIONS.CLAIM_PROCESS)
+  @Put(':id/heirs')
+  setHeirs(@Param('id') id: string, @Body() dto: HeirsDto) {
+    return this.claims.setHeirs(id, dto);
   }
 
   /** Required-document checklist (filtered by the claim's cause of death). */

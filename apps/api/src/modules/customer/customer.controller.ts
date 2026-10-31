@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   Post,
+  Put,
   Query,
   Res,
   UploadedFile,
@@ -37,7 +38,7 @@ class AccountPasswordDto {
 }
 import { CustomerSignupStatus } from '@prisma/client';
 import { ClaimsService } from '../claims/claims.service';
-import { PhysicalDto } from '../claims/dto';
+import { HeirsDto, PhysicalDto } from '../claims/dto';
 import { CustomerAuthService } from './customer-auth.service';
 import { CustomerService } from './customer.service';
 import { RepresentativeLoginDto, CustomerChangePasswordDto, CustomerCompanyLoginDto, CustomerFileClaimDto, CustomerRequestOtpDto, CustomerSignupDto, CustomerSignupVerifyDto, CustomerVerifyOtpDto } from './dto';
@@ -205,6 +206,8 @@ export class CustomerController {
       eventDate: dto.eventDate,
       description: dto.description,
       causeOfDeath: dto.causeOfDeath,
+      beneficiaryType: dto.beneficiaryType,
+      heirs: dto.heirs,
       startStage: dto.startStage,
       contractId: dto.contractId,
       policyholderCompanyId: dto.companyId,
@@ -236,6 +239,20 @@ export class CustomerController {
   @Get('claims/:id/fields')
   claimFields(@Param('id') id: string) {
     return this.claims.fieldsReadOnly(id);
+  }
+
+  /** «ذینفع / وراث قانونی» of the case (name + شبا each). */
+  @UseGuards(JwtAuthGuard)
+  @Get('claims/:id/heirs')
+  claimHeirs(@Param('id') id: string) {
+    return this.claims.heirs(id);
+  }
+
+  /** The بیمه‌گزار corrects them while the case is on their desk. */
+  @UseGuards(JwtAuthGuard)
+  @Put('claims/:id/heirs')
+  setClaimHeirs(@Param('id') id: string, @Body() dto: HeirsDto) {
+    return this.claims.setHeirs(id, dto);
   }
 
   @UseGuards(JwtAuthGuard)
