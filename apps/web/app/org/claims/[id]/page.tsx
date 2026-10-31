@@ -10,6 +10,7 @@ import { WorkflowPanel } from '../../../components/WorkflowPanel';
 import { caseTitle } from '../../../../lib/caseTitle';
 import { ArchivedNotice, CaseHero, CaseSummary, DEATH_TYPES, ICONS, phaseText, useCase } from '../../../components/case-ui';
 import { CaseEditForm } from './case-edit';
+import { HeirsCard } from '../../../components/heirs';
 
 const ICON_ASSESS = 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 104 0 2 2 0 00-4 0zM9 14l2 2 4-4';
 
@@ -77,6 +78,7 @@ export default function ClaimDetail() {
                 <Link href={`/org/claims/${id}/documents`} className="cs-act"><Icon path={ICONS.doc} /> بررسی وضعیت مدارک</Link>
                 <Link href={`/org/claims/${id}/workflow`} className="cs-act is-alt"><Icon path={ICONS.list} /> مراحل و وضعیت گردش کار</Link>
               </div>
+              <HeirsCard claimId={id} realm="org" />
               {claim.description && (
                 <div className="card p-4 text-sm whitespace-pre-wrap"><b>توضیحات ثبت پرونده: </b><span style={{ color: 'var(--muted)' }}>{claim.description}</span></div>
               )}

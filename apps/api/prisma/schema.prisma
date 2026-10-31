@@ -875,6 +875,7 @@ model Claim {
   fieldValues  ClaimFieldValue[]
   letters      ClaimLetter[]
   physicalRequests ClaimPhysicalRequest[]
+  heirs        ClaimHeir[]
 
   @@index([insurerTenantId, status])
   @@index([brokerTenantId])
@@ -884,6 +885,20 @@ model Claim {
   @@index([insurerTenantId, currentStage])
   @@index([brokerTenantId, currentStage])
   @@index([policyHolderId])
+}
+
+// ذینفع قانونی / وراث قانونی named on the deceased's beneficiary (inheritance) form — the form itself is
+// the claim's BENEFICIARY_FILE document. One row per person, in the order typed. Deleted with the claim.
+model ClaimHeir {
+  id        String   @id @default(uuid())
+  claimId   String
+  claim     Claim    @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  fullName  String // ENCRYPTED
+  iban      String // ENCRYPTED — شماره شبا (IR + 24 digits, checksum-validated)
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([claimId])
 }
 
 // The desks of the claim chain, bottom → top.

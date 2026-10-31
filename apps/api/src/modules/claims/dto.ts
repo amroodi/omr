@@ -1,5 +1,7 @@
 import { ClaimType, SalesChannel } from '@prisma/client';
+import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
   ArrayNotEmpty,
   IsArray,
   IsEnum,
@@ -10,7 +12,36 @@ import {
   IsString,
   IsUUID,
   Length,
+  ValidateNested,
 } from 'class-validator';
+import { ToAsciiDigits } from '../../common/validation/to-ascii.decorator';
+
+export const BENEFICIARY_KINDS = ['ذینفع قانونی', 'وراث قانونی'] as const;
+
+/** One ذینفع / وارث from the deceased's beneficiary (inheritance) form: name + شبا. */
+export class HeirDto {
+  @IsString()
+  @Length(2, 120)
+  fullName!: string;
+
+  @ToAsciiDigits()
+  @IsString()
+  @Length(24, 34)
+  iban!: string; // checked (IR + 24 digits, mod-97) in the service
+}
+
+/** «ذینفع / وراث قانونی» of a case: the kind and the people named on the form. */
+export class HeirsDto {
+  @IsOptional()
+  @IsIn(BENEFICIARY_KINDS as unknown as string[])
+  beneficiaryType?: string;
+
+  @IsArray()
+  @ArrayMaxSize(30)
+  @ValidateNested({ each: true })
+  @Type(() => HeirDto)
+  heirs!: HeirDto[];
+}
 
 export class FileClaimDto {
   // Omitted when a بیمه‌گزار company is given: its contract for the date of death decides the insurer.
@@ -77,6 +108,17 @@ export class FileClaimDto {
   @IsOptional()
   @IsUUID()
   branchId?: string;
+
+  @IsOptional()
+  @IsIn(BENEFICIARY_KINDS as unknown as string[])
+  beneficiaryType?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(30)
+  @ValidateNested({ each: true })
+  @Type(() => HeirDto)
+  heirs?: HeirDto[];
 }
 
 /** کارگزاری files a case as a بیمه‌گزار company (claim:file-on-behalf). The insurer comes from its contract. */
@@ -119,6 +161,17 @@ export class FileOnBehalfDto {
   @IsOptional()
   @IsIn(['POLICYHOLDER', 'BROKER', 'BRANCH', 'HQ', 'COUNCIL'])
   startStage?: 'POLICYHOLDER' | 'BROKER' | 'BRANCH' | 'HQ' | 'COUNCIL';
+
+  @IsOptional()
+  @IsIn(BENEFICIARY_KINDS as unknown as string[])
+  beneficiaryType?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(30)
+  @ValidateNested({ each: true })
+  @Type(() => HeirDto)
+  heirs?: HeirDto[];
 }
 
 export class DecisionDto {

@@ -1,5 +1,7 @@
 import { ClaimType } from '@prisma/client';
-import { IsEnum, IsIn, IsISO8601, IsOptional, IsString, IsUUID, Length, Matches } from 'class-validator';
+import { Type } from 'class-transformer';
+import { ArrayMaxSize, IsArray, IsEnum, IsIn, IsISO8601, IsOptional, IsString, IsUUID, Length, Matches, ValidateNested } from 'class-validator';
+import { BENEFICIARY_KINDS, HeirDto } from '../claims/dto';
 import { ToAsciiDigits } from '../../common/validation/to-ascii.decorator';
 
 export class CustomerRequestOtpDto {
@@ -114,6 +116,18 @@ export class CustomerFileClaimDto {
   @IsString()
   @Length(0, 300)
   causeOfDeath?: string;
+
+  // «ذینفع / وراث قانونی» named on the deceased's form (the form itself is uploaded right after filing).
+  @IsOptional()
+  @IsIn(BENEFICIARY_KINDS as unknown as string[])
+  beneficiaryType?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(30)
+  @ValidateNested({ each: true })
+  @Type(() => HeirDto)
+  heirs?: HeirDto[];
 
   // بیمه‌گزار can't know the exact amount/policy number; free-text details instead.
   @IsOptional()

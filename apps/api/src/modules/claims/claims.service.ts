@@ -21,6 +21,8 @@ import { RateLimitService } from '../../common/rate-limit/rate-limit.service';
 import { TooManyRequestsException } from '../inquiry/http-exceptions';
 import { PERMISSIONS } from '../../common/rbac/permissions';
 import { nextClaimNumber } from './claim-number';
+import { isValidIban } from '../../common/validation/field-validation';
+import { toAsciiDigits } from '../../common/jalali/jalali.util';
 import { above, actionsFor, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, physicalActionsFor, PhysicalActionKey, physicalBelow, PhysicalState, Purpose, ReviewDesk, Stage, STAGE_FA, WorkflowAction } from './workflow';
 
 const CLAIM_DOC_MIME = new Set([
@@ -35,6 +37,17 @@ const CLAIM_DOC_TYPES_FA = 'فقط PDF، Word (DOC، DOCX)، JPG و PNG مجاز
 // «فایل ذینفع» (list of heirs/beneficiaries and their shares) may also be an Excel sheet.
 export const BENEFICIARY_FILE_CODE = 'BENEFICIARY_FILE';
 const EXCEL_MIME = new Set(['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']);
+
+/** A ذینفع / وارث named on the deceased's beneficiary form. */
+export interface HeirInput { fullName: string; iban: string }
+/** شبا as typed («IR06 2960 …», Persian digits, or the 24 digits alone) → «IR» + 24 digits. */
+const normIban = (s: string) => {
+  const a = toAsciiDigits(s ?? '').replace(/[\s-]/g, '').toUpperCase();
+  return /^\d{24}$/.test(a) ? `IR${a}` : a;
+};
+
+// The required document «اصل فرم تعیین ذینفع» (required-docs defaults): where the heirs' form is uploaded.
+export const BENEFICIARY_FORM_CODE = 'beneficiary_form';
 
 // How long a soft-deleted claim stays restorable before the daily purge removes it for good.
 export const CLAIM_RETENTION_DAYS = 14;
@@ -71,6 +84,9 @@ interface FileClaimInput {
   startStage?: NoticeTarget;
   /** Start desk شعبه: which branch (optional — any branch of the insurer when empty). */
   branchId?: string;
+  /** «ذینفع قانونی» / «وراث قانونی», and the people named on the deceased's form (name + شبا). */
+  beneficiaryType?: string;
+  heirs?: HeirInput[];
 }
 
 /** The caller's seat in the claim chain (see myDesk). */
@@ -281,6 +297,7 @@ export class ClaimsService {
       startBranchId = b.id;
     }
 
+    const heirs = this.cleanHeirs(input.heirs);
     const nid = input.deceasedNationalCode;
     // Numbering must see every case with this policy number (other brokerages' too), or it could pick a
     // number already taken: the unrestricted client, which returns only numbers.
@@ -307,6 +324,8 @@ export class ClaimsService {
         claimedAmount: input.claimedAmount ?? '0',
         description: input.description ?? null,
         causeOfDeath: input.causeOfDeath?.trim() || null,
+        beneficiaryType: input.beneficiaryType || null,
+        ...(heirs.length ? { heirs: { create: heirs.map((h, i) => ({ fullName: this.crypto.encrypt(h.fullName)!, iban: this.crypto.encrypt(h.iban)!, order: i })) } } : {}),
         status: byPolicyHolder ? ClaimStatus.SUBMITTED : ClaimStatus.UNDER_REVIEW,
         currentStage: firstStage,
         flowDirection: 'UP',
@@ -1023,6 +1042,64 @@ export class ClaimsService {
       result.paidDate = pay?.value ? toPersianDigits(pay.value) : null;
     }
     return result;
+  }
+
+  /** Trim names, normalise each شبا and refuse an invalid one (named, so the filer knows which row). */
+  private cleanHeirs(list?: HeirInput[]): HeirInput[] {
+    return (list ?? []).filter((h) => h.fullName?.trim() || h.iban?.trim()).map((h) => {
+      const fullName = (h.fullName ?? '').trim();
+      const iban = normIban(h.iban);
+      if (fullName.length < 2) throw new BadRequestException('نام هر ذینفع / وارث را بنویسید.');
+      if (!isValidIban(iban)) throw new BadRequestException(`شماره شبای «${fullName}» نامعتبر است (IR و ۲۴ رقم).`);
+      return { fullName, iban };
+    });
+  }
+
+  /** Who may change the heirs: staff who process cases (and see PII), or the بیمه‌گزار while it's on their desk. */
+  private canEditHeirs(claim: { status: string; currentStage: string | null }) {
+    const ctx = getContext();
+    if (claim.status === 'PAID') return false;
+    if (ctx?.actorType === 'CUSTOMER') return claim.currentStage === 'POLICYHOLDER';
+    const perms = ctx?.permissions ?? [];
+    return ctx?.actorType === 'SUPER_ADMIN' || (perms.includes(PERMISSIONS.CLAIM_PROCESS) && perms.includes(PERMISSIONS.VIEW_PII));
+  }
+
+  /** «ذینفع / وراث قانونی»: the kind, each person's name and شبا (masked for staff without view:pii). */
+  async heirs(claimId: string) {
+    const claim = await this.db().claim.findUnique({ where: { id: claimId }, include: { heirs: { orderBy: { order: 'asc' } } } });
+    if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
+    this.assertParticipant(claim);
+    const ctx = getContext();
+    const full = ctx?.actorType !== 'ORG_USER' || (ctx.permissions ?? []).includes(PERMISSIONS.VIEW_PII);
+    // The deceased's form itself: the latest upload in the checklist's «فرم تعیین ذینفع» slot.
+    const form = await this.db().document.findFirst({ where: { claimId, docCode: BENEFICIARY_FORM_CODE }, orderBy: { createdAt: 'desc' }, select: { id: true, fileName: true } });
+    return {
+      beneficiaryType: claim.beneficiaryType,
+      canEdit: this.canEditHeirs(claim),
+      form,
+      heirs: claim.heirs.map((h) => {
+        const iban = this.crypto.decrypt(h.iban) ?? '';
+        return { id: h.id, fullName: this.crypto.decrypt(h.fullName) ?? '', iban: full ? iban : `IR••••••••••••••••••••${iban.slice(-4)}` };
+      }),
+    };
+  }
+
+  /** Replace the heirs list (and the kind) of a case. */
+  async setHeirs(claimId: string, input: { beneficiaryType?: string; heirs: HeirInput[] }) {
+    const db = this.db();
+    const claim = await db.claim.findUnique({ where: { id: claimId } });
+    if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
+    this.assertParticipant(claim);
+    assertNotPaid(claim); // archived once paid
+    if (!this.canEditHeirs(claim)) throw new ForbiddenException('اجازهٔ ویرایش ذینفعان این پرونده را ندارید');
+    const heirs = this.cleanHeirs(input.heirs);
+    await db.$transaction([
+      db.claimHeir.deleteMany({ where: { claimId } }),
+      ...(heirs.length ? [db.claimHeir.createMany({ data: heirs.map((h, i) => ({ claimId, fullName: this.crypto.encrypt(h.fullName)!, iban: this.crypto.encrypt(h.iban)!, order: i })) })] : []),
+      db.claim.update({ where: { id: claimId }, data: { beneficiaryType: input.beneficiaryType || null } }),
+    ]);
+    await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { heirs: heirs.length, beneficiaryType: input.beneficiaryType ?? null } });
+    return this.heirs(claimId);
   }
 
   private nidMasked(nid: string | null): string | null {

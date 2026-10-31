@@ -7,6 +7,7 @@ import { CLAIM_TYPE_LABELS, ErrorBox } from '../../../components/ui';
 import { JalaliDatePicker } from '../../../components/JalaliDatePicker';
 import { Shell } from '../../../components/Shell';
 import { CUSTOMER_NAV, POLICY_KEY, PolicyRow } from '../../nav';
+import { EMPTY_HEIRS, HeirsFields, heirsBody, heirsProblem, uploadHeirsForm } from '../../../components/heirs';
 
 const toAscii = (s: string) => s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
 // Death claims ask for the date of death; accident disability / medical claims for the accident date.
@@ -55,6 +56,7 @@ export default function CustomerNewClaim() {
   // «اعلام خسارت»: is filing allowed from this login, and to which desks?
   const [notice, setNotice] = useState<{ enabled: boolean; targets: string[]; default: string; labels: Record<string, string> } | null>(null);
   useEffect(() => { client.get<any>('/customer/notice-options', 'customer').then(setNotice).catch(() => setNotice(null)); }, []);
+  const [heirs, setHeirs] = useState(EMPTY_HEIRS);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -107,6 +109,8 @@ export default function CustomerNewClaim() {
     const birthIso = f.birthDate ? jalaliToIso(f.birthDate) : null;
     if (f.birthDate && !birthIso) return setError('تاریخ تولد نامعتبر است (نمونه: ۱۳۴۵/۰۵/۱۲)');
     if (birthIso && iso && new Date(birthIso) > new Date(iso)) return setError(`تاریخ تولد بعد از ${eventLabel} است`);
+    const hp = heirsProblem(heirs);
+    if (hp) return setError(hp);
     setBusy(true);
     try {
       const payload: Record<string, string> = {
@@ -121,7 +125,8 @@ export default function CustomerNewClaim() {
       if (f.causeOfDeath.trim()) payload.causeOfDeath = f.causeOfDeath.trim();
       if (f.startStage) payload.startStage = f.startStage;
       if (f.description.trim()) payload.description = f.description.trim();
-      const c = await client.post<{ id: string }>('/customer/claims', payload, 'customer');
+      const c = await client.post<{ id: string }>('/customer/claims', { ...payload, ...heirsBody(heirs) }, 'customer');
+      await uploadHeirsForm(heirs, c.id, 'customer').catch(() => window.alert('پرونده ثبت شد اما فرم ذینفع بارگذاری نشد؛ آن را در صفحهٔ پرونده، بخش «ذینفع / وراث قانونی» دوباره بارگذاری کنید.'));
       router.push(`/customer/claims/${c.id}`);
     } catch (e: any) { setError(e.message); } finally { setBusy(false); }
   };
@@ -199,6 +204,8 @@ export default function CustomerNewClaim() {
             </select>
           </div>
         )}
+
+        <HeirsFields value={heirs} onChange={setHeirs} cameraOnly />
 
         <div className="mt-5">
           <label className="label">توضیحات (اختیاری)</label>
