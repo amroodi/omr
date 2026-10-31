@@ -133,6 +133,14 @@ model PlatformConfig {
   // slot it was uploaded to. Off = every file is accepted as before. Super-admin only.
   aiReviewEnabled    Boolean  @default(false)
   aiConfig           String? // ENCRYPTED json: { apiKey, model, maxConcurrency, threshold } (see ai-review/ai-review.config.ts)
+  // «امنیت ورود» alerts (security/sessions.service.ts): who gets the SMS, and for what.
+  securityAlertsSms    Boolean  @default(false)
+  securityAlertPhones  String? // ENCRYPTED json array of mobile numbers (Super Admin's own)
+  securityAlertKinds   String[] @default(["NEW_DEVICE", "CONCURRENT", "IMPOSSIBLE_TRAVEL", "SHARED_DEVICE", "OFF_HOURS"])
+  securityAlertRealms  String[] @default(["ORG", "SUPER"]) // whose logins alert by SMS (all are recorded)
+  workHoursStart       Int      @default(7) // Tehran time; a login outside [start, end) is «خارج از ساعت کاری»
+  workHoursEnd         Int      @default(22)
+  offHoursFriday       Boolean  @default(true) // Friday logins count as out of hours
   updatedAt          DateTime @updatedAt @default(now())
 }
 
@@ -1089,6 +1097,13 @@ model AuditLog {
   targetId       String?
   ip             String?
   userAgent      String?
+  // The browser that did it: our device id (kept in that browser), a fingerprint of its traits, a
+  // readable name («Chrome · Windows · رایانه») and the IP's place. Folded into the hash when present.
+  deviceId       String?
+  fingerprint    String?
+  deviceLabel    String?
+  location       String?
+  sessionId      String?
   metadata       String? // json, PII-redacted
   jalaliTimestamp String // rendered Shamsi time
   prevHash       String?
@@ -1172,4 +1187,57 @@ model CaseUploadLink {
   createdAt DateTime @default(now())
 
   @@index([claimId])
+}
+
+// ─────────────────────────── Login security («امنیت ورود») ───────────────────────────
+
+// One sign-in: who, on which browser/device, from where, and until when. Every token carries its
+// session id; ending the session (Super Admin, or logout) ends the token at once.
+model LoginSession {
+  id          String    @id @default(uuid())
+  realm       String // ORG | SUPER | CUSTOMER
+  actorId     String
+  actorLabel  String? // name / username at sign-in (for the list; the person may be renamed later)
+  tenantId    String?
+  tenantName  String?
+  deviceId    String? // random id kept in that browser
+  fingerprint String? // hash of the browser's traits (survives clearing the browser)
+  deviceLabel String? // «Chrome 130 · Windows · رایانه»
+  userAgent   String?
+  ip          String?
+  location    String? // «Tehran, Iran — Asiatech»
+  lat         Float?
+  lon         Float?
+  createdAt   DateTime  @default(now())
+  lastSeenAt  DateTime  @default(now())
+  endedAt     DateTime?
+  endReason   String? // LOGOUT | ADMIN | EXPIRED
+  endedBy     String?
+
+  alerts SecurityAlert[]
+
+  @@index([realm, actorId, createdAt])
+  @@index([deviceId])
+  @@index([fingerprint])
+  @@index([endedAt, lastSeenAt])
+}
+
+// Something unusual about a sign-in (new device, two places at once, …). Recorded always; texted to the
+// Super Admin's numbers when that's switched on for the kind and the realm.
+model SecurityAlert {
+  id         String       @id @default(uuid())
+  kind       String // NEW_DEVICE | CONCURRENT | IMPOSSIBLE_TRAVEL | SHARED_DEVICE | OFF_HOURS
+  sessionId  String
+  session    LoginSession @relation(fields: [sessionId], references: [id])
+  realm      String
+  actorId    String
+  actorLabel String?
+  message    String // the Persian sentence shown and texted
+  details    Json?
+  smsSent    Boolean      @default(false)
+  seenAt     DateTime?
+  createdAt  DateTime     @default(now())
+
+  @@index([createdAt])
+  @@index([seenAt])
 }

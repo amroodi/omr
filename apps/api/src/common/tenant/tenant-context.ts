@@ -7,6 +7,10 @@ export interface RequestContext {
   permissions: string[];
   ip?: string;
   userAgent?: string;
+  /** The browser behind the request (see common/device/device.ts) and the sign-in session it belongs to. */
+  deviceId?: string;
+  fingerprint?: string;
+  sessionId?: string;
   /** For the public inquiry: the single case id a record-token is scoped to. */
   scopedCaseId?: string;
   /** For the public inquiry: the single (new-model) claim id a record-token is scoped to. */

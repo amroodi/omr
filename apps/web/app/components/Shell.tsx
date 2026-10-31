@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { ReactNode, useEffect, useState } from 'react';
-import { clearToken, client, getTenantSlug, hasPerm, Realm } from '../../lib/client';
+import { signOut, client, getTenantSlug, hasPerm, Realm } from '../../lib/client';
 import { lastPanel, PanelKey, PANELS, rememberPanel } from '../../lib/panel';
 import { ChangePasswordModal } from './ChangePasswordModal';
 import { NotificationBell } from './NotificationBell';
@@ -114,7 +114,7 @@ export function Shell({
     else router.push(homeHref);
   };
   // Back to this panel's own login page.
-  const logout = () => { clearToken(realm); router.push(info ? info.login : `/${realm === 'super' ? 'admin' : realm}/login`); };
+  const logout = () => { signOut(realm); router.push(info ? info.login : `/${realm === 'super' ? 'admin' : realm}/login`); };
   const logoUrl = brand?.logoSrc !== undefined ? brand.logoSrc : brand?.hasLogo ? `${client.base}/tenant/assets/logo?tenant=${brand.slug}${panel ? `&panel=${panel}` : ''}` : null;
 
   const PW_ICON = 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zM8 11V7a4 4 0 118 0v4';

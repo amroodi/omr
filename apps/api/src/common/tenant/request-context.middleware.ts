@@ -2,6 +2,7 @@ import { Injectable, NestMiddleware } from '@nestjs/common';
 import { NextFunction, Request, Response } from 'express';
 import { requestContext, RequestContext } from './tenant-context';
 import { toAsciiDigits } from '../jalali/jalali.util';
+import { cleanDeviceId, cleanFingerprint } from '../device/device';
 
 // Numeric body fields where users commonly type Persian/Arabic digits (phone, National ID, OTP).
 // Normalized to ASCII here — before the ValidationPipe — so the ASCII-only regexes accept them.
@@ -29,6 +30,9 @@ export class RequestContextMiddleware implements NestMiddleware {
       // count (set in main.ts), so it is the real client IP and not a client-spoofable header value.
       ip: req.ip,
       userAgent: req.headers['user-agent'] as string | undefined,
+      // Sent by the web app with every request; ignored unless well-formed.
+      deviceId: cleanDeviceId(req.headers['x-device-id']),
+      fingerprint: cleanFingerprint(req.headers['x-device-fp']),
     };
     (req as any).context = store;
     requestContext.run(store, () => next());

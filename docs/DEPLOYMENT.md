@@ -230,6 +230,24 @@ One provider per deployment, chosen with `SMS_DRIVER` in `/etc/omr/api.env`. Sup
 
 After changing provider config: `sudo systemctl restart omr-api`, then run one real OTP from `/customer/login` and confirm delivery.
 
+## 8b. Sign-in locations («امنیت ورود»)
+
+Super Admin → «امنیت ورود» records every sign-in with its device and IP. To also show the **city and
+internet provider** (and catch «two distant places in minutes»), install the free DB-IP Lite databases
+(CC BY 4.0, refreshed monthly) and point the API at them:
+
+```bash
+sudo mkdir -p /var/lib/omr/geoip && cd /var/lib/omr/geoip
+M=$(date +%Y-%m)
+sudo curl -fsSLO https://download.db-ip.com/free/dbip-city-lite-$M.mmdb.gz && sudo gunzip -f dbip-city-lite-$M.mmdb.gz && sudo mv dbip-city-lite-$M.mmdb dbip-city-lite.mmdb
+sudo curl -fsSLO https://download.db-ip.com/free/dbip-asn-lite-$M.mmdb.gz && sudo gunzip -f dbip-asn-lite-$M.mmdb.gz && sudo mv dbip-asn-lite-$M.mmdb dbip-asn-lite.mmdb
+sudo chown -R omr:omr /var/lib/omr/geoip
+```
+
+Then in `/etc/omr/api.env` set `GEOIP_CITY_DB=/var/lib/omr/geoip/dbip-city-lite.mmdb` and
+`GEOIP_ASN_DB=/var/lib/omr/geoip/dbip-asn-lite.mmdb`, and `sudo systemctl restart omr-api`. Re-run the
+download monthly to keep it current. Alert SMS numbers and switches are set in Super Admin → «امنیت ورود».
+
 ## 9. Backups (do this before real data)
 
 Three things must be backed up. Losing the secrets is as catastrophic as losing the database.

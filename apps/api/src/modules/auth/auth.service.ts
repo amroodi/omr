@@ -11,6 +11,7 @@ import { getContext } from '../../common/tenant/tenant-context';
 import { TooManyRequestsException } from '../inquiry/http-exceptions';
 import { OrgLoginDto, SuperAdminLoginDto } from './dto';
 import { MfaService } from './mfa.service';
+import { SessionsService } from '../security/sessions.service';
 
 export interface TokenResult {
   token: string;
@@ -44,6 +45,7 @@ export class AuthService {
   }
 
   constructor(
+    private readonly sessions: SessionsService,
     private readonly prisma: PrismaService,
     private readonly hash: HashService,
     private readonly jwt: JwtService,
@@ -109,8 +111,9 @@ export class AuthService {
 
     const permissions = user!.role?.permissions ?? [];
     const expiresIn = mfaSetup ? '15m' : this.config.get<string>('JWT_SESSION_TTL', '8h');
+    const sid = await this.sessions.start({ realm: 'ORG', actorId: user!.id, actorLabel: `${user!.displayName || dto.username} (${dto.username})`, tenantId: tenant.id });
     const token = await this.jwt.signAsync(
-      { kind: 'org', sub: user!.id, tenantId: tenant.id, permissions, branchId: user!.branchId ?? null, panel, ...(mfaSetup ? { mfaSetup: true } : {}) },
+      { kind: 'org', sub: user!.id, sid, tenantId: tenant.id, permissions, branchId: user!.branchId ?? null, panel, ...(mfaSetup ? { mfaSetup: true } : {}) },
       { expiresIn: jwtTtl(expiresIn) },
     );
     await db.orgUser.update({ where: { id: user!.id }, data: { lastLoginAt: new Date() } });
@@ -152,8 +155,9 @@ export class AuthService {
     await this.mfa.check({ kind: 'SUPER_ADMIN', id: admin!.id }, admin!, dto.totp);
     const permissions = ['tenant:manage'];
     const expiresIn = this.config.get<string>('JWT_SESSION_TTL', '8h');
+    const sid = await this.sessions.start({ realm: 'SUPER', actorId: admin!.id, actorLabel: `مدیر سامانه (${admin!.email})` });
     const token = await this.jwt.signAsync(
-      { kind: 'super', sub: admin!.id, permissions },
+      { kind: 'super', sub: admin!.id, sid, permissions },
       { expiresIn: jwtTtl(expiresIn) },
     );
     await this.audit.record({

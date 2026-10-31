@@ -13,6 +13,7 @@ import { TooManyRequestsException } from '../inquiry/http-exceptions';
 import { SmsService } from '../auth/sms.service';
 import { CustomerService } from './customer.service';
 import { ShahkarService } from '../auth/shahkar.service';
+import { SessionsService } from '../security/sessions.service';
 
 /**
  * Customer realm (بیمه‌گزار panel) authentication.
@@ -27,6 +28,7 @@ import { ShahkarService } from '../auth/shahkar.service';
 export class CustomerAuthService {
   private readonly logger = new Logger(CustomerAuthService.name);
   constructor(
+    private readonly sessions: SessionsService,
     private readonly prisma: PrismaService,
     private readonly crypto: FieldCryptoService,
     private readonly hash: HashService,
@@ -58,7 +60,8 @@ export class CustomerAuthService {
     const account = await this.companyAccount(co);
     await db.customerAccount.update({ where: { id: account.id }, data: { lastLoginAt: new Date() } });
     const expiresIn = this.config.get<string>('JWT_SESSION_TTL', '8h');
-    const token = await this.jwt.signAsync({ kind: 'customer', sub: account.id, tenantId, nidHash: account.nationalCodeHash, companyId: co.id }, { expiresIn: jwtTtl(expiresIn) });
+    const sid = await this.sessions.start({ realm: 'CUSTOMER', actorId: account.id, actorLabel: `بیمه‌گزار: ${co.name}`, tenantId });
+    const token = await this.jwt.signAsync({ kind: 'customer', sub: account.id, sid, tenantId, nidHash: account.nationalCodeHash, companyId: co.id }, { expiresIn: jwtTtl(expiresIn) });
     await this.audit.record({ action: AuditAction.LOGIN, tenantId, actorType: 'CUSTOMER', actorId: account.id, metadata: { realm: 'company', companyId: co.id } });
     return { token, expiresIn };
   }
@@ -83,7 +86,8 @@ export class CustomerAuthService {
       }));
     await db.customerAccount.update({ where: { id: account.id }, data: { lastLoginAt: new Date() } });
     const expiresIn = this.config.get<string>('JWT_SESSION_TTL', '8h');
-    const token = await this.jwt.signAsync({ kind: 'customer', sub: account.id, tenantId, nidHash: nationalCodeHash, brokerPanel: true }, { expiresIn: jwtTtl(expiresIn) });
+    const sid = await this.sessions.start({ realm: 'CUSTOMER', actorId: account.id, actorLabel: `پنل کارگزاری (${t!.name})`, tenantId });
+    const token = await this.jwt.signAsync({ kind: 'customer', sub: account.id, sid, tenantId, nidHash: nationalCodeHash, brokerPanel: true }, { expiresIn: jwtTtl(expiresIn) });
     await this.audit.record({ action: AuditAction.LOGIN, tenantId, actorType: 'CUSTOMER', actorId: account.id, metadata: { realm: 'broker-panel' } });
     return { token, expiresIn };
   }
@@ -114,7 +118,9 @@ export class CustomerAuthService {
     }
     await db.customerAccount.update({ where: { id: acc.id }, data: { lastLoginAt: new Date() } });
     const expiresIn = this.config.get<string>('JWT_SESSION_TTL', '8h');
-    const token = await this.jwt.signAsync({ kind: 'customer', sub: acc.id, tenantId, nidHash: acc.nationalCodeHash, companyId: acc.companyId ?? undefined, representative: true }, { expiresIn: jwtTtl(expiresIn) });
+    const repName = acc.fullName ? this.crypto.decrypt(acc.fullName) : null;
+    const sid = await this.sessions.start({ realm: 'CUSTOMER', actorId: acc.id, actorLabel: `نماینده: ${repName || `••••••${nid.slice(-4)}`}`, tenantId });
+    const token = await this.jwt.signAsync({ kind: 'customer', sub: acc.id, sid, tenantId, nidHash: acc.nationalCodeHash, companyId: acc.companyId ?? undefined, representative: true }, { expiresIn: jwtTtl(expiresIn) });
     await this.audit.record({ action: AuditAction.LOGIN, tenantId, actorType: 'CUSTOMER', actorId: acc.id, metadata: { realm: 'representative' } });
     return { token, expiresIn };
   }
@@ -342,8 +348,9 @@ export class CustomerAuthService {
     await this.prisma.scoped.customerAccount.update({ where: { id: account.id }, data: { lastLoginAt: new Date() } });
 
     const expiresIn = this.config.get<string>('JWT_SESSION_TTL', '8h');
+    const sid = await this.sessions.start({ realm: 'CUSTOMER', actorId: account.id, actorLabel: 'بیمه‌گزار (ورود با کد ملی)', tenantId });
     const token = await this.jwt.signAsync(
-      { kind: 'customer', sub: account.id, tenantId, nidHash },
+      { kind: 'customer', sub: account.id, sid, tenantId, nidHash },
       { expiresIn: jwtTtl(expiresIn) },
     );
     await this.audit.record({ action: AuditAction.OTP_VERIFY, tenantId, actorType: 'CUSTOMER', actorId: account.id, metadata: { realm: 'customer' } });
@@ -364,7 +371,8 @@ export class CustomerAuthService {
     if (!account) throw new ForbiddenException('حساب یافت نشد.');
     await this.prisma.scoped.customerAccount.update({ where: { id: account.id }, data: { lastLoginAt: new Date() } });
     const expiresIn = this.config.get<string>('JWT_SESSION_TTL', '8h');
-    const token = await this.jwt.signAsync({ kind: 'customer', sub: account.id, tenantId, nidHash }, { expiresIn: jwtTtl(expiresIn) });
+    const sid = await this.sessions.start({ realm: 'CUSTOMER', actorId: account.id, actorLabel: 'بیمه‌گزار (ورود با کد ملی)', tenantId });
+    const token = await this.jwt.signAsync({ kind: 'customer', sub: account.id, sid, tenantId, nidHash }, { expiresIn: jwtTtl(expiresIn) });
     await this.audit.record({ action: AuditAction.LOGIN, tenantId, actorType: 'CUSTOMER', actorId: account.id, metadata: { realm: 'customer', otp: false } });
     return { token, expiresIn };
   }
