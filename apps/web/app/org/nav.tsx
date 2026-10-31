@@ -12,7 +12,7 @@ export const ORG_NAV: NavItem[] = [
   { group: WORK, href: '/org/claims/on-behalf', label: 'ثبت پرونده برای بیمه‌گزار', icon: <Icon path="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM14 2v6h6M12 18v-6M9 15h6" />, perm: 'claim:file-on-behalf', panels: ['BROKER'] },
   { group: WORK, href: '/org/track', label: 'پیگیری وضعیت پرونده', icon: <Icon path="M11 19a8 8 0 100-16 8 8 0 000 16zM21 21l-4.3-4.3" />, perm: 'tenant:settings' },
   { group: WORK, href: '/org/reminders', label: 'یادآورها', icon: <Icon path="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0" />, perm: 'claim:read' },
-  { group: WORK, href: '/org/messages', label: 'پاسخگوی آنلاین', icon: <Icon path="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />, perm: 'claim:read' },
+  { group: WORK, href: '/org/messages', label: 'پاسخگوی آنلاین', icon: <Icon path="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />, perm: 'claim:read', panels: ['BROKER'] },
   { group: WORK, href: '/org/reports', label: 'گزارش‌گیری', icon: <Icon path="M3 3v18h18M7 15l4-4 3 3 5-6" />, perm: 'claim:read' },
 
   { group: ADMIN, href: '/org/users', label: 'کاربران و نقش‌ها', icon: <Icon path="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" />, perm: ['user:manage', 'role:manage'] },

@@ -462,7 +462,7 @@ export class InquiryService {
 
   /**
    * «پاسخگوی آنلاین» — the requester leaves a question about the claim they looked up. It reaches the
-   * brokerage's inbox and the بیمه‌گزار; they answer the requester on the (OTP-verified) phone.
+   * کارگزاری's inbox only («پاسخگوی آنلاین» in the کارگزاری panel); staff answer on the (OTP-verified) phone.
    */
   async leaveMessage(message: string) {
     const ctx = getContext();
@@ -477,12 +477,8 @@ export class InquiryService {
     const phoneIdx = this.crypto.blindIndex(this.crypto.decrypt(ctx.scopedPhone));
     await this.prisma.unscoped().inquiryMessage.create({ data: { claimId, companyId, phone: ctx.scopedPhone, phoneIdx, message: text.slice(0, 2000) } });
     const body = `پیام جدید از استعلام‌کنندهٔ پروندهٔ ${c.claimNumber}: «${text.slice(0, 140)}»`;
-    const orgId = c.brokerTenantId ?? c.insurerTenantId;
-    await this.notifications.notify({ tenantId: orgId, audience: 'ORG', title: 'پاسخگوی آنلاین', body, link: '/org/messages' });
-    if (c.policyHolderId) {
-      const acc = await this.prisma.unscoped().customerAccount.findUnique({ where: { id: c.policyHolderId }, select: { tenantId: true } });
-      if (acc) await this.notifications.notify({ tenantId: acc.tenantId, audience: 'CUSTOMER', recipientId: c.policyHolderId, title: 'پاسخگوی آنلاین', body, link: '/customer' });
-    }
+    // Only the کارگزاری answers «پاسخگوی آنلاین» — the بیمه‌گزار panel and the insurer aren't involved.
+    if (c.brokerTenantId) await this.notifications.notify({ tenantId: c.brokerTenantId, audience: 'ORG', title: 'پاسخگوی آنلاین', body, link: '/org/messages' });
     await this.audit.record({ action: AuditAction.CREATE, targetType: 'InquiryMessage', targetId: claimId, actorType: 'INSURED' });
     return { ok: true, message: 'پیام شما ثبت شد؛ پاسخ کارشناس کارگزاری در همین گفتگو نمایش داده می‌شود و با پیامک به شما اطلاع داده می‌شود.' };
   }
