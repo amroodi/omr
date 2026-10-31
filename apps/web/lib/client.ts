@@ -131,7 +131,7 @@ export const client = {
     URL.revokeObjectURL(url);
   },
   // Multipart upload that reports progress (fetch can't): onProgress gets 0–1 and the estimated seconds left.
-  upload: <T>(path: string, form: FormData, realm: Realm, onProgress: (fraction: number, secondsLeft: number | null) => void) =>
+  upload: <T>(path: string, form: FormData, realm: Realm | undefined, onProgress: (fraction: number, secondsLeft: number | null) => void) =>
     new Promise<T>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open('POST', `${BASE}${path}`);

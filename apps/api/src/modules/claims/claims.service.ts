@@ -14,6 +14,11 @@ import { OcrService } from '../../integrations/ocr/ocr.service';
 import { ClaimFieldsService } from '../claim-fields/claim-fields.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PolicyholdersService } from '../policyholders/policyholders.service';
+import { AiReviewQueue } from '../ai-review/ai-review.queue';
+import { AiReviewSettings } from '../ai-review/ai-review.settings';
+import { sha256 } from '../ai-review/ai-review.queue';
+import { RateLimitService } from '../../common/rate-limit/rate-limit.service';
+import { TooManyRequestsException } from '../inquiry/http-exceptions';
 import { PERMISSIONS } from '../../common/rbac/permissions';
 import { nextClaimNumber } from './claim-number';
 import { above, actionsFor, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, physicalActionsFor, PhysicalActionKey, physicalBelow, PhysicalState, Purpose, ReviewDesk, Stage, STAGE_FA, WorkflowAction } from './workflow';
@@ -113,6 +118,9 @@ export class ClaimsService {
     private readonly fields: ClaimFieldsService,
     private readonly notifications: NotificationsService,
     private readonly policyholders: PolicyholdersService,
+    private readonly aiSettings: AiReviewSettings,
+    private readonly aiQueue: AiReviewQueue,
+    private readonly rateLimit: RateLimitService,
   ) {}
 
   // ── Notification helpers (in-panel + SMS via the relevant org's gateway) ──
@@ -1094,7 +1102,7 @@ export class ClaimsService {
     const docs = await db.document.findMany({
       where: { claimId },
       orderBy: { createdAt: 'desc' },
-      select: { id: true, docCode: true, fileName: true, verificationStatus: true, verificationNote: true, createdAt: true, uploadedBy: true },
+      select: { id: true, docCode: true, fileName: true, verificationStatus: true, verificationNote: true, createdAt: true, uploadedBy: true, aiStatus: true, aiReason: true, aiDetectedCode: true },
     });
     const byCode = new Map<string, typeof docs>();
     for (const d of docs) {
@@ -1131,6 +1139,7 @@ export class ClaimsService {
     const canEditStage = Object.fromEntries(applicableStages.map((st) => [st, this.canReviewStage(claim, st, desk)])) as Record<string, boolean>;
     // Present each docCode's uploads newest-first, with an explicit version number so admins can
     // tell new re-uploads from older ones at a glance. The newest is the "current" version.
+    const labelOf = new Map(reqs.map((r) => [r.code, r.label]));
     const present = (group: typeof docs) =>
       group.map((d, i) => ({
         id: d.id,
@@ -1141,6 +1150,8 @@ export class ClaimsService {
         uploadedAt: d.createdAt ? toJalali(d.createdAt) : null,
         version: group.length - i, // newest has the highest version number
         isLatest: i === 0,
+        // «بررسی هوشمند مدارک»: MISMATCH = refused (doesn't fill the slot), QUEUED/PROCESSING = being checked.
+        ai: d.aiStatus ? { status: d.aiStatus, reason: d.aiReason ?? null, detected: d.aiDetectedCode && d.aiDetectedCode !== d.docCode ? (labelOf.get(d.aiDetectedCode) ?? null) : null } : null,
         reviews: applicableStages.map((st) => {
           const r = reviewRow.get(`${d.id}|${st}`);
           return {
@@ -1163,7 +1174,8 @@ export class ClaimsService {
         code: r.code,
         label: r.label,
         appliesToTypes: r.appliesToTypes,
-        uploaded: group.length > 0,
+        uploaded: !!latest && latest.aiStatus !== 'MISMATCH', // a refused newest file leaves the slot to fix
+        aiRefused: latest?.aiStatus === 'MISMATCH',
         latestStatus: latest?.verificationStatus ?? null,
         documents: present(group),
       };
@@ -1311,6 +1323,19 @@ export class ClaimsService {
     if (!claim) throw new NotFoundException('پرونده یافت نشد');
     this.assertParticipant(claim);
     assertNotPaid(claim); // archived once paid
+    return this.storeDocument(claim, file, docCode, getContext()?.actorId ?? null, () => this.uploaderPhone(claim));
+  }
+
+  /**
+   * Save a claim document and, when «بررسی هوشمند مدارک» is on for the case, queue the AI check
+   * (the uploader carries on; the verdict comes by SMS). Shared by the panels and the SMS re-upload link.
+   */
+  async storeDocument(
+    claim: { id: string; insurerTenantId: string; brokerTenantId: string | null },
+    file: Express.Multer.File, docCode: string, uploadedBy: string | null, notifyPhone: () => Promise<string | null>,
+  ) {
+    const claimId = claim.id;
+    const db = this.prisma.unscoped(); // callers have already checked access to the case
     const storageKey = await this.storage.save(claim.insurerTenantId, file.buffer);
     const doc = await db.document.create({
       data: {
@@ -1322,12 +1347,17 @@ export class ClaimsService {
         mimeType: file.mimetype,
         sizeBytes: file.size,
         storageKey,
-        uploadedBy: getContext()?.actorId ?? null,
+        uploadedBy,
         verificationStatus: 'PENDING',
       },
       select: { id: true, docCode: true, fileName: true },
     });
     await this.audit.record({ action: AuditAction.UPLOAD, tenantId: claim.insurerTenantId, targetType: 'ClaimDocument', targetId: doc.id, metadata: { claimId, docCode } });
+    let aiQueued = false;
+    if (docCode.trim() !== BENEFICIARY_FILE_CODE && (await this.aiSettings.enabledForClaim(claim))) {
+      await this.aiQueue.enqueue(doc.id, claimId, await notifyPhone().catch(() => null));
+      aiQueued = true;
+    }
 
     // OCR-assist (shadow mode): extract candidate field values as unconfirmed drafts for review.
     try {
@@ -1337,7 +1367,74 @@ export class ClaimsService {
     } catch {
       /* OCR is best-effort; never block the upload */
     }
-    return doc;
+    return { ...doc, aiQueued };
+  }
+
+  /** Mobile of whoever is uploading (for the AI result SMS); falls back to the case's بیمه‌گزار. */
+  private async uploaderPhone(claim: { policyHolderId: string | null }): Promise<string | null> {
+    const ctx = getContext();
+    const db = this.prisma.unscoped();
+    let enc: string | null | undefined = null;
+    if (ctx?.actorType === 'CUSTOMER' && ctx.actorId) enc = (await db.customerAccount.findUnique({ where: { id: ctx.actorId }, select: { phone: true } }))?.phone;
+    else if (ctx?.actorType === 'ORG_USER' && ctx.actorId) enc = (await db.orgUser.findUnique({ where: { id: ctx.actorId }, select: { phone: true } }))?.phone;
+    if (!enc && claim.policyHolderId) enc = (await db.customerAccount.findUnique({ where: { id: claim.policyHolderId }, select: { phone: true } }))?.phone;
+    return enc ? this.crypto.decrypt(enc) : null;
+  }
+
+  // ── «بارگذاری دوبارهٔ مدارک» link (sent by SMS when the AI refused files) ──
+
+  private async linkClaim(token: string, ip: string) {
+    if (!(await this.rateLimit.hit(`uplink:ip:${ip}`, 60, 3600))) throw new TooManyRequestsException('تعداد درخواست‌ها زیاد است. بعداً تلاش کنید.');
+    if (!/^[\w-]{20,64}$/.test(token ?? '')) throw new NotFoundException('این پیوند معتبر نیست');
+    const db = this.prisma.unscoped();
+    const link = await db.caseUploadLink.findUnique({ where: { tokenHash: sha256(token) } });
+    if (!link || link.expiresAt < new Date()) throw new NotFoundException('این پیوند معتبر نیست یا منقضی شده است');
+    const claim = await db.claim.findFirst({ where: { id: link.claimId, deletedAt: null } });
+    if (!claim) throw new NotFoundException('پرونده یافت نشد');
+    return { link, claim };
+  }
+
+  /** What the link page shows: the case number and its refused documents (label + why). */
+  async uploadLinkInfo(token: string, ip: string) {
+    const { link, claim } = await this.linkClaim(token, ip);
+    const refused = await this.aiQueue.refusedSlots(claim.id);
+    const reqs = await this.prisma.unscoped().requiredDocument.findMany({ where: { tenantId: claim.insurerTenantId, code: { in: refused.map((r) => r.code) } }, select: { code: true, label: true } });
+    const label = new Map(reqs.map((r) => [r.code, r.label]));
+    const checking = await this.prisma.unscoped().aiReviewJob.count({ where: { claimId: claim.id, status: { not: 'DONE' } } });
+    return {
+      claimNumber: claim.claimNumber,
+      archived: claim.status === 'PAID',
+      expiresAt: toJalali(link.expiresAt),
+      checking,
+      items: refused.map((r) => ({ code: r.code, label: label.get(r.code) ?? r.code, reason: r.reason })),
+    };
+  }
+
+  async uploadViaLink(token: string, docCode: string, file: Express.Multer.File, ip: string) {
+    const { link, claim } = await this.linkClaim(token, ip);
+    if (!(await this.rateLimit.hit(`uplink:tok:${link.id}`, 30, 3600))) throw new TooManyRequestsException('تعداد بارگذاری‌ها زیاد است. بعداً تلاش کنید.');
+    assertNotPaid(claim);
+    if (!file?.buffer?.length) throw new BadRequestException('فایلی دریافت نشد');
+    if (!claimDocOk(file)) throw new BadRequestException(CLAIM_DOC_TYPES_FA);
+    const refused = await this.aiQueue.refusedSlots(claim.id);
+    if (!refused.some((r) => r.code === docCode)) throw new BadRequestException('این مدرک نیازی به بارگذاری دوباره ندارد');
+    const phone = link.phone ? this.crypto.decrypt(link.phone) : null;
+    return this.storeDocument(claim, file, docCode, null, async () => phone);
+  }
+
+  /** A کارشناس accepts a file the AI refused («پذیرش دستی»): the slot counts as filled again. */
+  async acceptAiRefused(claimId: string, docId: string) {
+    const ctx = getContext();
+    if (ctx?.actorType !== 'ORG_USER') throw new ForbiddenException('تنها کارشناس سازمان می‌تواند این کار را انجام دهد');
+    const db = this.db();
+    const claim = await db.claim.findUnique({ where: { id: claimId } });
+    if (!claim) throw new NotFoundException('پرونده یافت نشد');
+    this.assertParticipant(claim);
+    assertNotPaid(claim);
+    const n = await db.document.updateMany({ where: { id: docId, claimId, aiStatus: 'MISMATCH' }, data: { aiStatus: 'OVERRIDDEN' } });
+    if (!n.count) throw new BadRequestException('این مدرک توسط هوش مصنوعی رد نشده است');
+    await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'ClaimDocumentAi', targetId: docId, metadata: { claimId, accepted: true } });
+    return { ok: true };
   }
 
   /** «دلایل رد مدارک»: the insurer's checklist first, then any extra reasons of the caller's own org. */

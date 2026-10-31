@@ -8,7 +8,7 @@ import { Icon, Shell } from '../../../components/Shell';
 import { CUSTOMER_NAV } from '../../nav';
 import { WorkflowPanel } from '../../../components/WorkflowPanel';
 import { caseTitle } from '../../../../lib/caseTitle';
-import { CaseHero, ChecklistItem, ClaimDoc, ICONS, STATUS_FA, useCase } from '../../../components/case-ui';
+import { AI_QUEUED_FA, aiVerdict, CaseHero, ChecklistItem, ClaimDoc, ICONS, STATUS_FA, useCase } from '../../../components/case-ui';
 import { DocUploadTile, OnProgress, UploadButton } from '../../../components/upload';
 
 const DESK_FA: Record<string, string> = { BROKER: 'کارگزاری', BRANCH: 'شعبه', HQ: 'مدیریت ستاد', COUNCIL: 'شورای فنی' };
@@ -47,6 +47,7 @@ export default function CustomerClaim() {
   const [lateWarn, setLateWarn] = useState(true);
   const [up, setUp] = useState<Record<string, UpState>>({});
   const [sending, setSending] = useState(false);
+  const [aiNote, setAiNote] = useState(false); // an upload went to the AI check queue (result comes by SMS)
   const [isBroker, setIsBroker] = useState(false); // the brokerage's «broker» login (batch upload)
 
   useEffect(() => {
@@ -64,8 +65,9 @@ export default function CustomerClaim() {
     setUp((u) => ({ ...u, [code]: { pct: 0, eta: null } }));
     try {
       const fd = new FormData(); fd.append('file', file);
-      await client.upload(`/customer/claims/${id}/documents?docCode=${encodeURIComponent(code)}`, fd, 'customer',
+      const r = await client.upload<{ aiQueued?: boolean }>(`/customer/claims/${id}/documents?docCode=${encodeURIComponent(code)}`, fd, 'customer',
         (pct, eta) => { onProgress(pct, eta); setUp((u) => ({ ...u, [code]: { pct, eta } })); });
+      if (r?.aiQueued) setAiNote(true);
       setUp((u) => ({ ...u, [code]: { done: true } }));
       await reload();
     } catch (e: any) {
@@ -141,6 +143,7 @@ export default function CustomerClaim() {
                 <h3 className="font-extrabold">مدارک مورد نیاز</h3>
                 {checklist && <span className={`badge ${checklist.complete ? 'badge-success' : 'badge-warning'}`}>{checklist.complete ? 'کامل' : 'ناقص'}</span>}
               </div>
+              {aiNote && <div className="alert-success mb-3 text-sm">{AI_QUEUED_FA}</div>}
               <div className="space-y-2.5">
                 {checklist?.items.map((it) => {
                   const story = docStory(it, !!claim.story?.manual);
@@ -156,7 +159,7 @@ export default function CustomerClaim() {
                         </div>
                         <div className="cu-doc-up">
                           {claim.status !== 'PAID' && (
-                            <DocUploadTile label={it.label} uploaded={it.uploaded} rejected={story.tone === 'bad'}
+                            <DocUploadTile label={it.label} uploaded={it.uploaded} rejected={story.tone === 'bad' || !!it.aiRefused}
                               cameraOnly onUpload={(f, onP) => upload(it.code, f, onP)} />
                           )}
                         </div>
@@ -167,6 +170,7 @@ export default function CustomerClaim() {
                       {d && (
                         <div className="cu-trail">
                           <span className="cu-step is-ok"><Icon path={OK} />بارگذاری{d.uploadedAt ? ` — ${d.uploadedAt}` : ''}{d.version > 1 ? ` (نسخهٔ ${d.version.toLocaleString('fa-IR')})` : ''}</span>
+                          {(() => { const v = aiVerdict(d.ai); return v && <span className={`cu-step is-${v.tone}`}><Icon path={v.tone === 'ok' ? OK : v.tone === 'no' ? NO : 'M12 22a10 10 0 100-20 10 10 0 000 20zM12 7v5l3 2'} />{v.text}</span>; })()}
                           {(claim.story?.manual ? [] : d.reviews ?? []).map((r) => (
                             <span key={r.stage} className={`cu-step is-${r.state === 'APPROVED' ? 'ok' : r.state === 'REJECTED' ? 'no' : 'wait'}`} title={r.note ? `دلیل: ${r.note}` : undefined}>
                               <Icon path={r.state === 'APPROVED' ? OK : r.state === 'REJECTED' ? NO : 'M12 22a10 10 0 100-20 10 10 0 000 20zM12 7v5l3 2'} />
@@ -174,6 +178,7 @@ export default function CustomerClaim() {
                             </span>
                           ))}
                           <button type="button" className="cu-view" onClick={() => viewDoc(d.id)}><Icon path="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8zM12 15a3 3 0 100-6 3 3 0 000 6z" /> مشاهدهٔ فایل</button>
+                          {d.ai?.status === 'MISMATCH' && <div className="cu-reason">{aiVerdict(d.ai)?.why}</div>}
                           {(d.reviews ?? []).filter((r) => r.state === 'REJECTED' && r.note).map((r) => (
                             <div key={`n-${r.stage}`} className="cu-reason">دلیل رد ({DESK_FA[r.stage]}): {r.note}</div>
                           ))}

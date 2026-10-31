@@ -60,6 +60,8 @@ model Tenant {
   reminderSms   Boolean  @default(false)
   // Every operator of this org must use two-step login (authenticator app); set by the org admin.
   requireMfa    Boolean  @default(false)
+  // «بررسی هوشمند مدارک» for this org's cases (when the platform switch is on). Super-admin only.
+  aiReviewEnabled Boolean @default(true)
   // Panel theme tokens (see branding/theme.ts). null = the default Damuon design.
   theme         Json?
   // Per-panel themes over `theme` ({ BROKER | COMPANY | REPRESENTATIVE | BRANCH | HQ | COUNCIL: tokens }) —
@@ -127,6 +129,10 @@ model PlatformConfig {
   // defines one). Off = no check, the operator's approval alone is enough. Super-admin only.
   shahkarEnabled     Boolean  @default(false)
   shahkarConfig      String? // ENCRYPTED json: provider + endpoint + credentials (see auth/shahkar.service.ts)
+  // «بررسی هوشمند مدارک»: an AI model (via AvalAI) checks that each uploaded file is the document of the
+  // slot it was uploaded to. Off = every file is accepted as before. Super-admin only.
+  aiReviewEnabled    Boolean  @default(false)
+  aiConfig           String? // ENCRYPTED json: { apiKey, model, maxConcurrency, threshold } (see ai-review/ai-review.config.ts)
   updatedAt          DateTime @updatedAt @default(now())
 }
 
@@ -559,6 +565,16 @@ model Document {
   verifiedById       String? // OrgUser id of the assessor
   verifiedAt         DateTime?
   verificationNote   String? // reason / findings
+
+  // «بررسی هوشمند مدارک»: is this file the document of its slot? null = not checked (AI off / Excel).
+  // QUEUED | PROCESSING | MATCH | MISMATCH (refused — the slot counts as empty) | UNSURE | ERROR (both accepted,
+  // left to the کارشناس) | OVERRIDDEN (a کارشناس accepted a refused file).
+  aiStatus       String?
+  aiDetectedCode String? // the document type the model saw ("none" = not a claim document)
+  aiConfidence   Float?
+  aiReason       String? // short Persian explanation shown to the uploader and staff
+  aiCheckedAt    DateTime?
+  aiRequestId    String? // AvalAI request id (cost lookup)
 
   createdAt DateTime @default(now())
 
@@ -1100,4 +1116,45 @@ model RateLimitBucket {
   resetAt DateTime
 
   @@index([resetAt])
+}
+
+// «بررسی هوشمند مدارک» — the AI pre-prompt of each document type (RequiredDocument.code), shared by every
+// insurer's catalog. Written by the super admin; sent to the model with the slot it describes.
+model AiDocPrompt {
+  code      String   @id
+  prompt    String
+  updatedAt DateTime @updatedAt @default(now())
+}
+
+// The AI check queue: one job per uploaded file. Worked by ai-review/ai-review.queue.ts with a global
+// concurrency cap; survives restarts. The uploader gets one SMS per case once its files are all checked.
+model AiReviewJob {
+  id          String    @id @default(uuid())
+  documentId  String    @unique
+  claimId     String
+  status      String    @default("QUEUED") // QUEUED | PROCESSING | DONE
+  attempts    Int       @default(0)
+  runAfter    DateTime  @default(now())
+  lockedAt    DateTime?
+  finishedAt  DateTime?
+  lastError   String?
+  notifyPhone String? // ENCRYPTED — who gets the result SMS (the uploader)
+  notifiedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([status, runAfter])
+  @@index([claimId, status])
+}
+
+// One-tap re-upload link sent by SMS when the AI refused files: opens the case's refused slots only,
+// no login. Only a SHA-256 of the token is stored.
+model CaseUploadLink {
+  id        String   @id @default(uuid())
+  tokenHash String   @unique
+  claimId   String
+  phone     String? // ENCRYPTED — where its result SMS goes
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([claimId])
 }
