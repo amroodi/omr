@@ -14,8 +14,10 @@ import type { Workflow, TimelineStep } from './WorkflowPanel';
  */
 
 export interface DocReview { stage: string; state: string; canEdit: boolean; changedAt?: string | null; changedBy?: string | null; changes?: number; note?: string | null }
-export interface ClaimDoc { id: string; fileName: string; status: string; statusLabel: string; note: string | null; uploadedAt: string | null; version: number; isLatest: boolean; reviews?: DocReview[] }
-export interface ChecklistItem { code: string; label: string; uploaded: boolean; latestStatus: string | null; documents: ClaimDoc[] }
+/** «بررسی هوشمند مدارک» verdict on one file (null = not checked). */
+export interface DocAi { status: string; reason: string | null; detected: string | null }
+export interface ClaimDoc { id: string; fileName: string; status: string; statusLabel: string; note: string | null; uploadedAt: string | null; version: number; isLatest: boolean; reviews?: DocReview[]; ai?: DocAi | null }
+export interface ChecklistItem { code: string; label: string; uploaded: boolean; aiRefused?: boolean; latestStatus: string | null; documents: ClaimDoc[] }
 export interface Checklist { claimType: string; complete: boolean; items: ChecklistItem[]; otherDocuments?: ClaimDoc[] }
 export interface FieldRow { key: string; label: string; type: string; options: string[]; required: boolean; value: string | null; source: string | null; confirmed: boolean; canEdit: boolean }
 export interface FieldsData { party: string; manual?: boolean; groups: Record<string, FieldRow[]> }
@@ -335,4 +337,27 @@ export function ArchivedNotice() {
       این پرونده پرداخت شده و بایگانی شده است؛ فقط قابل مشاهده است و هیچ تغییری در آن ممکن نیست.
     </div>
   );
+}
+
+/** Shown after an upload that went to the AI check queue. */
+export const AI_QUEUED_FA = 'مدرک دریافت شد و در صف بررسی هوشمند قرار گرفت. می‌توانید بارگذاری مدارک دیگر را ادامه دهید؛ نتیجهٔ بررسی با پیامک به شما اعلام می‌شود.';
+
+const AI_FA: Record<string, { text: string; tone: 'ok' | 'no' | 'wait' }> = {
+  QUEUED: { text: 'در صف بررسی هوشمند', tone: 'wait' },
+  PROCESSING: { text: 'در حال بررسی هوشمند', tone: 'wait' },
+  MATCH: { text: 'تأیید بررسی هوشمند', tone: 'ok' },
+  MISMATCH: { text: 'رد در بررسی هوشمند — مدرک در جای درست نیست', tone: 'no' },
+  UNSURE: { text: 'بررسی هوشمند: نیاز به بررسی کارشناس', tone: 'wait' },
+  ERROR: { text: 'بررسی هوشمند انجام نشد؛ کارشناس بررسی می‌کند', tone: 'wait' },
+  OVERRIDDEN: { text: 'پذیرفته‌شده توسط کارشناس', tone: 'ok' },
+};
+/** One-line tone/text of an AI verdict (callers render it in their own row style). */
+export function aiVerdict(ai?: DocAi | null): { text: string; tone: 'ok' | 'no' | 'wait'; why: string | null } | null {
+  if (!ai) return null;
+  const v = AI_FA[ai.status];
+  if (!v) return null;
+  const why = ai.status === 'MISMATCH'
+    ? [ai.reason, ai.detected ? `به نظر می‌رسد این فایل «${ai.detected}» باشد.` : null, 'لطفاً مدرک درست را در همین بخش بارگذاری کنید.'].filter(Boolean).join(' ')
+    : ai.reason;
+  return { ...v, why };
 }

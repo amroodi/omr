@@ -228,6 +228,13 @@ export class ClaimsController {
     return this.claims.uploadDocument(id, file, docCode);
   }
 
+  /** «پذیرش دستی»: a کارشناس accepts a file the AI refused. */
+  @Permissions(PERMISSIONS.DOC_VERIFY)
+  @Post(':id/documents/:docId/ai-accept')
+  acceptAi(@Param('id') id: string, @Param('docId') docId: string) {
+    return this.claims.acceptAiRefused(id, docId);
+  }
+
   /** Approve / reject / request-info on an uploaded document (document-authenticity assessor). */
   @Permissions(PERMISSIONS.DOC_VERIFY)
   @Post(':id/documents/:docId/verify')

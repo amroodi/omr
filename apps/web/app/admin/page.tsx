@@ -92,6 +92,9 @@ export default function AdminDashboard() {
           <button onClick={() => router.push('/admin/imported-claims')} className="btn btn-ghost btn-sm">
             <Icon path="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" /> پرونده‌های ورود دسته‌ای
           </button>
+          <button onClick={() => router.push('/admin/ai-review')} className="btn btn-primary btn-sm">
+            <Icon path="M9 12l2 2 4-4M7 3h10l4 4v14H3V3h4z" /> بررسی هوشمند مدارک
+          </button>
           <button onClick={() => router.push('/admin/policyholders')} className="btn btn-primary btn-sm">
             <Icon path="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" /> بیمه‌گزاران
           </button>

@@ -9,7 +9,7 @@ import { ACTION_FA, STATE_FA } from '../../../../components/WorkflowPanel';
 import { ORG_NAV } from '../../../nav';
 import { caseTitle } from '../../../../../lib/caseTitle';
 import { downloadPdf } from '../../../../../lib/pdf';
-import { CaseHero, ClaimDoc, ICONS, NotesPill, PersonCards, phaseText, useCase } from '../../../../components/case-ui';
+import { AI_QUEUED_FA, aiVerdict, CaseHero, ClaimDoc, ICONS, NotesPill, PersonCards, phaseText, useCase } from '../../../../components/case-ui';
 import { OnProgress, UploadButton } from '../../../../components/upload';
 
 const DESK_FA: Record<string, string> = { BROKER: 'کارگزاری', BRANCH: 'شعبه', HQ: 'ستاد', COUNCIL: 'شورای فنی' };
@@ -32,7 +32,9 @@ export default function CaseDocumentsPage() {
   const sheet = useRef<HTMLDivElement>(null);
   const [saving, setSaving] = useState(false);
   const [canFile, setCanFile] = useState(false);
-  useEffect(() => { setCanFile(hasPerm('org', 'claim:file')); }, []);
+  const [canReview, setCanReview] = useState(false);
+  const [aiNote, setAiNote] = useState(false); // an upload went to the AI check queue
+  useEffect(() => { setCanFile(hasPerm('org', 'claim:file')); setCanReview(hasPerm('org', 'doc:verify')); }, []);
 
   // Desk columns: the review desks that appear on this case's documents (کارگزاری, شعبه, ستاد, شورای فنی).
   const manual = !!claim?.story?.manual; // completed by hand in «ویرایش» — its typed data has priority
@@ -48,8 +50,14 @@ export default function CaseDocumentsPage() {
   const upload = async (code: string, file: File, onProgress: OnProgress) => {
     setError('');
     const fd = new FormData(); fd.append('file', file);
-    await client.upload(`/claims/${id}/documents?docCode=${encodeURIComponent(code)}`, fd, 'org', onProgress);
+    const r = await client.upload<{ aiQueued?: boolean }>(`/claims/${id}/documents?docCode=${encodeURIComponent(code)}`, fd, 'org', onProgress);
+    if (r?.aiQueued) setAiNote(true);
     await reload();
+  };
+  // «پذیرش دستی»: accept a file the AI refused.
+  const acceptAi = async (docId: string) => {
+    if (!confirm('این فایل با وجود رد در بررسی هوشمند پذیرفته شود؟')) return;
+    try { await client.post(`/claims/${id}/documents/${docId}/ai-accept`, {}, 'org'); await reload(); } catch (e: any) { setError(e.message); }
   };
   const pdf = async () => {
     if (!sheet.current || !claim) return;
@@ -73,6 +81,7 @@ export default function CaseDocumentsPage() {
   return (
     <Shell title={claim ? `مدارک — ${caseTitle(claim)}` : 'بررسی وضعیت مدارک'} breadcrumb="بررسی وضعیت مدارک" nav={ORG_NAV} realm="org">
       <ErrorBox message={error} />
+      {aiNote && <div className="alert-success mb-3 text-sm">{AI_QUEUED_FA}</div>}
       {!claim || !checklist ? <div className="card p-12 flex justify-center"><FancyLoader label="در حال بارگذاری مدارک" /></div> : (
         <>
           <div ref={sheet} className="cs-sheet">
@@ -91,7 +100,7 @@ export default function CaseDocumentsPage() {
                   <div key={r.key} className={`cs-tr cs-grid-docs${r.doc?.status === 'VERIFIED' ? ' is-done' : ''}`} style={{ ['--desks' as any]: desks.length }}>
                     <span className="cs-td-n">{faN(i + 1)}</span>
                     <span className="cs-td-up">
-                      <Mark state={r.doc ? 'ok' : 'no'} title={r.doc ? `بارگذاری شده — ${r.doc.uploadedAt ?? ''}` : 'بارگذاری نشده'} />
+                      <Mark state={r.doc && r.doc.ai?.status !== 'MISMATCH' ? 'ok' : 'no'} title={r.doc ? `بارگذاری شده — ${r.doc.uploadedAt ?? ''}${r.doc.ai?.status === 'MISMATCH' ? ' (رد در بررسی هوشمند)' : ''}` : 'بارگذاری نشده'} />
                       {r.doc && <button type="button" className="cs-mini no-pdf" title="مشاهدهٔ فایل" onClick={() => client.view(`/claims/${id}/documents/${r.doc!.id}/file`, 'org').catch((e) => setError(e.message))}><Icon path="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8zM12 15a3 3 0 100-6 3 3 0 000 6z" /></button>}
                       {canFile && claim.status !== 'PAID' && r.code && (
                         // This page keeps its own design (Group 875): the small orange «بارگذاری فایل» button —
@@ -103,7 +112,22 @@ export default function CaseDocumentsPage() {
                       )}
                     </span>
                     {desks.map((s) => <span key={s} className="cs-td-desk">{deskCell(r.doc, s)}</span>)}
-                    <span className="cs-td-doc">{r.label}</span>
+                    <span className="cs-td-doc">
+                      <span className="min-w-0">
+                      {r.label}
+                      {(() => {
+                        const v = aiVerdict(r.doc?.ai);
+                        return v && (
+                          <span className="block text-xs mt-1" style={{ color: v.tone === 'ok' ? 'var(--success)' : v.tone === 'no' ? 'var(--danger)' : 'var(--muted)' }} title={v.why ?? undefined}>
+                            {v.text}{v.why && v.tone === 'no' ? ` — ${v.why}` : ''}
+                            {r.doc?.ai?.status === 'MISMATCH' && canReview && claim.status !== 'PAID' && (
+                              <button type="button" className="no-pdf mr-2 underline" onClick={() => acceptAi(r.doc!.id)}>پذیرش دستی</button>
+                            )}
+                          </span>
+                        );
+                      })()}
+                      </span>
+                    </span>
                   </div>
                 ))}
                 <div className="cs-tr cs-foot">
