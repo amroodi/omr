@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { IsArray, IsISO8601, IsOptional, IsString, Length } from 'class-validator';
-import { Permissions } from '../../common/rbac/decorators';
+import { BrokerPanelOnly, Permissions } from '../../common/rbac/decorators';
 import { PERMISSIONS } from '../../common/rbac/permissions';
 import { API_SCOPES, ApiKeysService } from './api-keys.service';
 
@@ -10,6 +10,7 @@ class CreateApiKeyDto {
   @IsOptional() @IsISO8601() expiresAt?: string;
 }
 
+@BrokerPanelOnly()
 @Controller('api-keys')
 export class ApiKeysController {
   constructor(private readonly svc: ApiKeysService) {}

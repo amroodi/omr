@@ -2,7 +2,7 @@ import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@
 import { Reflector } from '@nestjs/core';
 import { Request } from 'express';
 import { RequestContext } from '../tenant/tenant-context';
-import { IS_PUBLIC_KEY, PERMISSIONS_KEY, SUPER_ADMIN_KEY } from './decorators';
+import { IS_PUBLIC_KEY, PERMISSIONS_KEY, BROKER_PANEL_KEY, SUPER_ADMIN_KEY } from './decorators';
 import type { Permission } from './permissions';
 
 /**
@@ -29,6 +29,14 @@ export class RolesGuard implements CanActivate {
     ]);
     if (superOnly && ctx.actorType !== 'SUPER_ADMIN') {
       throw new ForbiddenException('Super-admin only');
+    }
+
+    const brokerOnly = this.reflector.getAllAndOverride<boolean>(BROKER_PANEL_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (brokerOnly && ctx.actorType === 'ORG_USER' && ctx.panel !== 'BROKER') {
+      throw new ForbiddenException('این بخش فقط در پنل کارگزاری در دسترس است');
     }
 
     const required = this.reflector.getAllAndOverride<Permission[]>(PERMISSIONS_KEY, [

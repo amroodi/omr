@@ -13,6 +13,10 @@ export const SUPER_ADMIN_KEY = 'superAdminOnly';
 /** Restrict a route to platform super-admins. */
 export const SuperAdminOnly = () => SetMetadata(SUPER_ADMIN_KEY, true);
 
+export const BROKER_PANEL_KEY = 'brokerPanelOnly';
+/** Only in the کارگزاری panel: refused for an insurer's شعبه / ستاد / شورای فنی sign-ins, whatever their role. */
+export const BrokerPanelOnly = () => SetMetadata(BROKER_PANEL_KEY, true);
+
 /** Inject the current request context (actor, tenant, permissions). */
 export const CurrentActor = createParamDecorator((_data: unknown, ctx: ExecutionContext) => {
   const req = ctx.switchToHttp().getRequest();
