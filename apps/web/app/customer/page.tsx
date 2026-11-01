@@ -138,7 +138,7 @@ function CompanyDashboard({ mustChangePassword }: { mustChangePassword: boolean 
         </div>
       )}
       {!dash ? <div className="pcard p-10 flex justify-center"><Spinner /></div> : (
-        <div className="space-y-5">
+        <div className="cu-home">
           {/* مشخصات بیمه نامه */}
           <section className="pcard cu-spec">
             <h2 className="cu-spec-h"><span>مشخصات بیمه نامه</span></h2>
@@ -179,7 +179,7 @@ function CompanyDashboard({ mustChangePassword }: { mustChangePassword: boolean 
               <span className="cu-card-ico"><BigIcon path={IC.user} size={52} /></span>
             </div>
             <div className="pcard cu-card">
-              <div><div className="cu-card-t">بیمه نامه {policy && <span className={`cu-tag${policy.inForce ? ' is-on' : ''}`}>[{policy.inForce ? 'فعال' : 'پایان یافته'}]</span>}</div>
+              <div><div className="cu-card-t is-big">بیمه نامه {policy && <span className={`cu-tag${policy.inForce ? ' is-on' : ''}`}>[{policy.inForce ? 'فعال' : 'پایان یافته'}]</span>}</div>
                 <div className="cu-card-k">شماره</div><div className="cu-card-v latin-digits">{policy?.policyNumber ?? '—'}</div>
                 <div className="cu-card-k">رشته / بیمه‌گر</div><div className="cu-card-s">{policy ? `${policy.lineLabel ?? '—'} — ${policy.insurerName}` : '—'}</div></div>
               <span className="cu-card-ico"><BigIcon path={IC.doc} size={52} /></span>
@@ -197,7 +197,7 @@ function CompanyDashboard({ mustChangePassword }: { mustChangePassword: boolean 
 
           {/* Action launcher */}
           <div className="pcard p-6">
-            <div className="flex flex-wrap items-stretch justify-around gap-4">
+            <div className="cu-tiles">
               <Diamond href={`/customer/claims/new${policyId ? `?policy=${policyId}` : ''}`} title="اعلام خسارت" sub="ثبت پروندهٔ خسارت جدید" icon={IC.clip} />
               <Diamond href="/customer/claims" title="پیگیری خسارت" sub="مشاهدهٔ جزئیات پرونده‌های اعلام‌شده" icon={IC.tray} />
               <Diamond onClick={() => open('action')} active={view === 'action'} title="نیازمند اقدام" sub={action.length ? `${fa(action.length)} پرونده منتظر شماست` : 'رفع نقص مدارک'} icon={IC.alert} />

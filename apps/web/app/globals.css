@@ -1727,3 +1727,90 @@ code, kbd, pre, samp, .latin-digits { font-family: 'Vazirmatn', ui-monospace, SF
 .panel-tag { display: block; text-align: center; font-weight: 800; font-size: .85rem; color: #fff; padding: 6px 10px;
   background: var(--panel-accent, var(--brand)); border-radius: 10px; }
 @media (max-width: 640px) { .panel-chip { display: none; } }
+
+/* ── بیمه‌گزار panel: exact sizes measured from the Sinad portal (px; see lib/scale.ts — no page zoom here) ── */
+.pshell.is-customer { --topbar-h: 55px; --rail-w: 46px; font-size: 14px; line-height: 23px; }
+
+/* Top bar: 55 tall, 0 15 padding; title 21/600; action button 152×32 */
+.is-customer .ptopbar { padding: 0 15px; border-bottom-width: .8px; }
+.is-customer .ptopbar-title { font-size: 21px; font-weight: 600; }
+.is-customer .cu-intro-btn { min-width: 152px; min-height: 32px; font-size: 14px; font-weight: 400; line-height: 20px; padding: 5px 10px; border-radius: 5px; border: .8px solid transparent; }
+.is-customer .pback { height: 32px; border-radius: 5px; }
+
+/* Side menu: rows 41 tall, 14/300, icons 20 wide */
+.is-customer .pnav-item { min-height: 41px; padding: 0 18px; font-size: 14px; font-weight: 300; line-height: 40px; border-bottom-width: .8px; }
+.is-customer .pnav-item.is-active { font-weight: 700; }
+.is-customer .pnav-item .ico { width: 20px; }
+.is-customer .pnav-item .ico svg { width: 20px; height: 20px; }
+.is-customer .psidebar.is-rail .pnav-item { padding: 0; }
+.is-customer .psidebar-toggle { min-height: 34px; padding-block: 5px; }
+.is-customer .psidebar.is-rail .psidebar-toggle { padding: 5px 0; }
+.is-customer .psidebar.is-rail .psidebar-logo { height: 55px; padding: 5px 2px; justify-content: center; }
+.is-customer .psidebar.is-rail .psidebar-logo .circle { width: 30px; height: 30px; }
+
+/* Boxes: 5 margin (10 between), 20 padding, radius 30 */
+.is-customer .pshell-content { padding: 5px 5px 40px; }
+.is-customer .pshell-wrap { max-width: none; }
+.is-customer .cu-home { display: flex; flex-direction: column; gap: 10px; }
+.is-customer .pcard { border-radius: 30px; }
+.is-customer .pcard.p-6, .is-customer .pcard.p-5 { padding: 20px; }
+.is-customer .cu-track, .is-customer .cu-pw { border-radius: 30px; padding: 20px; }
+.is-customer h3 { font-size: 16.38px; font-weight: 700; }
+
+/* Form elements: 45 tall, 12 font, 6 12 padding, radius 20; buttons 14 font, 5 10 padding, radius 5 */
+.is-customer .input { min-height: 45px; font-size: 12px; padding: 6px 12px; border-radius: 20px; border-width: .8px; }
+.is-customer .input.cu-pill { border-radius: 20px !important; }
+.is-customer textarea.input { border-radius: 20px; }
+.is-customer .btn { font-size: 14px; line-height: 20px; padding: 5px 10px; border-radius: 5px; }
+.is-customer .cu-go { font-size: 14px; line-height: 20px; padding: 5px 10px; min-height: 32px; border-radius: 5px; }
+
+/* «مشخصات بیمه نامه»: heading row 59 (16.38 bold, 2px rule), policy select + its facts, 60 tall */
+.is-customer .cu-spec { border-radius: 30px; padding: 20px; gap: 0; }
+.is-customer .cu-spec-h { min-height: 59px; gap: 10px; font-size: 16.38px; font-weight: 700; margin: 0; }
+.is-customer .cu-spec-note { font-size: 14px; line-height: 23px; }
+.is-customer .cu-spec-row { gap: 0; min-height: 60px; align-items: start; }
+.is-customer .cu-select { min-height: 45px; padding: 0; gap: 10px; border: 0; border-radius: 0; background: none; box-shadow: none; }
+.is-customer .cu-select-ico svg { width: 25px; height: 25px; }
+.is-customer .cu-select select, .is-customer .cu-select.is-static > span:last-child {
+  flex: 1; min-width: 0; height: 45px; line-height: 31px; font-size: 12px; padding: 6px 12px; border: .8px solid var(--border-strong); border-radius: 20px; background: var(--surface);
+}
+.is-customer .cu-select select:focus { border-color: var(--cu-ink); box-shadow: 0 0 0 3px color-mix(in srgb, var(--cu-ink) 15%, transparent); }
+.is-customer .cu-select.is-static { margin-top: 20px; }
+.is-customer .cu-spec-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; font-size: 14px; padding: 0 5px; white-space: nowrap; }
+.is-customer .cu-spec-facts > span { min-height: 30px; padding: 3px 10px; gap: 4px; }
+.is-customer .cu-spec-facts > span:last-child { grid-column: 1 / -1; }
+.is-customer .cu-spec-facts svg { width: 20px; height: 20px; }
+.is-customer .cu-dot { width: 20px; height: 20px; }
+@media (min-width: 901px) { .is-customer .cu-spec-row { grid-template-columns: 3fr 2fr; } }
+
+/* Info cards: 232 tall, 10 apart, icon 50×50, heading 14 bold, lines 14/23 */
+.is-customer .cu-cards { gap: 10px; }
+.is-customer .cu-card { border-radius: 30px; padding: 20px; min-height: 232px; }
+.is-customer .cu-card-t { font-size: 14px; font-weight: 700; line-height: 23px; margin-bottom: 18.62px; }
+.is-customer .cu-card-t.is-big { font-size: 16.38px; line-height: 26px; margin-bottom: 16.38px; }
+.is-customer .cu-tag { font-size: 12px; font-weight: 400; }
+.is-customer .cu-card-v { font-size: 14px; font-weight: 700; line-height: 23px; margin: 0; }
+.is-customer .cu-card-k, .is-customer .cu-card-s { font-size: 14px; line-height: 23px; margin: 14px 0; }
+.is-customer .cu-card-s:last-child { margin-bottom: 0; }
+.is-customer .cu-card-ico svg { width: 50px; height: 50px; }
+
+/* Menu tiles: 200×122, 0 20 margin, icon 60×60, title 14 bold / 30, subtitle 12 / 20 */
+.is-customer .cu-tiles { display: flex; flex-wrap: wrap; justify-content: center; }
+.is-customer .pdiamond-wrap { width: 200px; max-width: 100%; min-width: 0; min-height: 122px; margin: 0 20px; padding: 0; gap: 0; border-color: transparent; background: none; box-shadow: none; border-radius: 12px; }
+.is-customer .pdiamond-wrap:hover { background: var(--brand-soft); box-shadow: none; border-color: transparent; }
+.is-customer .pdiamond-wrap.is-active { border-color: var(--brand); box-shadow: 0 0 0 1px var(--brand) inset; }
+.is-customer .pdiamond { width: 42px; height: 42px; border-radius: 10px; margin: 9px 9px 18px; flex: none; }
+.is-customer .pdiamond svg { width: 26px; height: 26px; }
+.is-customer .pdiamond-title { font-size: 14px; font-weight: 700; line-height: 30px; }
+.is-customer .pdiamond-sub { font-size: 12px; line-height: 20px; }
+
+/* Bottom notice: 55 tall, 12 bold, 10 padding, radius 20 */
+.is-customer .cu-notice { display: flex; align-items: center; justify-content: center; min-height: 55px; padding: 10px; border-radius: 20px; font-size: 12px; font-weight: 700; line-height: 20px; }
+
+/* The 21px title needs the room: name and breadcrumb give way first, the action button never. */
+.is-customer .ptopbar { gap: 8px; }
+.is-customer .ptopbar > * { flex-shrink: 0; }
+.is-customer .ptopbar .ptopbar-user, .is-customer .ptopbar .pbreadcrumb { flex: 0 1 auto; min-width: 0; }
+.is-customer .ptopbar .ptopbar-spacer { flex: 1 1 0; }
+@media (max-width: 1300px) { .is-customer .pbreadcrumb { display: none; } }
+@media (max-width: 760px) { .is-customer .ptopbar > * { flex-shrink: 1; } }
