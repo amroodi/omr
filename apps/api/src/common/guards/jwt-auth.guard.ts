@@ -8,7 +8,9 @@ import {
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
+import { PrismaService } from '../prisma/prisma.service';
 import { IS_PUBLIC_KEY } from '../rbac/decorators';
+import { SessionsService } from '../../modules/security/sessions.service';
 import { RequestContext } from '../tenant/tenant-context';
 
 /**
@@ -21,6 +23,8 @@ export class JwtAuthGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly jwt: JwtService,
+    private readonly sessions: SessionsService,
+    private readonly prisma: PrismaService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -45,6 +49,11 @@ export class JwtAuthGuard implements CanActivate {
     const ctx = (req as any).context as RequestContext;
     ctx.tenantId = payload.tenantId;
     ctx.actorId = payload.sub;
+    // Sign-in tokens carry their «امنیت ورود» session; once it's ended the token is dead.
+    if (payload.sid) {
+      if (!(await this.sessions.isLive(payload.sid))) throw new UnauthorizedException('نشست شما پایان یافته است؛ دوباره وارد شوید');
+      ctx.sessionId = payload.sid;
+    }
 
     if (payload.kind === 'record') {
       ctx.actorType = 'INSURED';
@@ -59,6 +68,11 @@ export class JwtAuthGuard implements CanActivate {
       ctx.customerBrokerPanel = payload.brokerPanel === true;
       ctx.customerRepresentative = payload.representative === true;
       ctx.permissions = ['case:read'];
+      if (ctx.customerRepresentative) {
+        // Removed or suspended by the کارگزاری / their company → the session ends now, not at token expiry.
+        const acc = await this.prisma.unscoped().customerAccount.findUnique({ where: { id: payload.sub }, select: { isActive: true, removedAt: true } });
+        if (!acc?.isActive || acc.removedAt) throw new UnauthorizedException('حساب شما غیرفعال شده است');
+      }
     } else if (payload.kind === 'super') {
       ctx.actorType = 'SUPER_ADMIN';
       ctx.permissions = payload.permissions ?? [];

@@ -1,38 +1,25 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { OnProgress, UploadButton } from '../../components/upload';
-import { toGregorian } from 'jalaali-js';
 import { client } from '../../../lib/client';
 import { Shell } from '../../components/Shell';
-import { Field, Spinner } from '../../components/ui';
-import { JalaliDatePicker } from '../../components/JalaliDatePicker';
+import { Field } from '../../components/ui';
 import { ORG_NAV } from '../nav';
 import { NetworkTab } from './network';
 
 interface Acc { id: string; fullName: string | null; nationalCode: string | null; nationalCodeMasked: string | null; phone: string | null; phoneMasked: string | null; canViewPii: boolean; signupStatus: string; isActive: boolean; createdAt: string | null; lastLoginAt: string | null; company: { id: string; name: string } | null; hasPassword?: boolean; mustChangePassword?: boolean; shahkarVerified?: boolean }
-interface Contract { id: string; insurerTenantId: string; insurerName: string; line: 'LIFE' | 'ACCIDENT' | null; lineLabel: string | null; policyNumber: string | null; startDate: string | null; endDate: string | null; isActive: boolean; note: string | null; isCurrent: boolean }
-interface Company {
-  id: string; name: string; code: string | null; hasPassword: boolean; parentId: string | null; phone: string | null; email: string | null; address: string | null; website: string | null; contactName: string | null;
-  isActive: boolean; hasLogo: boolean; accounts: number; currentInsurer: { id: string; name: string } | null; contracts: Contract[];
-}
-interface Msg { id: string; claimId: string; claimNumber: string; companyName: string | null; phone: string; message: string; createdAt: string; handled: boolean; replies?: { id: string; message: string; at: string; by: string | null }[] }
+// Only what the نمایندگان tab needs (the company picker).
+interface Company { id: string; name: string; isActive: boolean }
 
 const STATUS: Record<string, { label: string; cls: string }> = {
   PENDING: { label: 'در دست بررسی', cls: 'badge-warning' },
   ACTIVE: { label: 'فعال', cls: 'badge-success' },
   REJECTED: { label: 'ردشده', cls: 'badge-neutral' },
 };
-const TABS = [['map', 'نقشهٔ اتصال‌ها'], ['companies', 'شرکت‌های بیمه‌گزار'], ['accounts', 'نمایندگان (ورود به پنل بیمه‌گزار)'], ['messages', 'پیام‌های استعلام']] as const;
+// Companies and their contracts are managed in Super Admin; inquiry questions live in «پاسخگوی آنلاین».
+const TABS = [['map', 'نقشهٔ اتصال‌ها'], ['accounts', 'نمایندگان (ورود به پنل بیمه‌گزار)']] as const;
 type Tab = (typeof TABS)[number][0];
 
-function jalaliToIso(v: string): string | null {
-  const p = v.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).split('/').map((x) => parseInt(x, 10));
-  if (p.length !== 3 || p.some((x) => !x)) return null;
-  const g = toGregorian(p[0], p[1], p[2]);
-  return new Date(Date.UTC(g.gy, g.gm - 1, g.gd)).toISOString();
-}
 const tabStyle = (on: boolean) => (on ? { background: 'var(--brand)', color: '#fff' } : { background: 'var(--surface-2)', color: 'var(--muted)', border: '1px solid var(--border)' });
-const EMPTY_CO = { name: '', parentId: '', phone: '', email: '', address: '', website: '', contactName: '' };
 
 export default function Policyholders() {
   const [tab, setTab] = useState<Tab | null>(null);
@@ -46,206 +33,21 @@ export default function Policyholders() {
     client.get<{ kind?: string }>('/tenant/branding', 'org').then((b) => {
       const broker = b.kind !== 'INSURER';
       setIsBroker(broker);
-      setTab(t === 'messages' || t === 'accounts' || t === 'companies' ? t : broker ? 'map' : 'companies');
-    }).catch(() => { setIsBroker(true); setTab(t === 'messages' || t === 'accounts' || t === 'companies' ? t : 'map'); }); // the API itself refuses the map to an insurer
+      setTab(t === 'accounts' || !broker ? 'accounts' : 'map');
+    }).catch(() => { setIsBroker(true); setTab(t === 'accounts' ? 'accounts' : 'map'); }); // the API itself refuses the map to an insurer
     loadCompanies();
   }, []);
   const tabs = TABS.filter(([k]) => k !== 'map' || isBroker);
 
   return (
-    <Shell title="بیمه‌گزاران" subtitle="شرکت‌های بیمه‌گزار، اتصال هر شرکت به بیمه‌گر طبق قرارداد، و نمایندگان آن‌ها" nav={ORG_NAV} realm="org">
+    <Shell title="بیمه‌گزاران" subtitle="اتصال هر شرکت بیمه‌گزار به بیمه‌گر طبق قرارداد، و نمایندگان آن‌ها" nav={ORG_NAV} realm="org">
       <div className="flex flex-wrap gap-2 mb-4">
         {isBroker !== null && tabs.map(([k, l]) => <button key={k} onClick={() => setTab(k)} className="btn btn-sm" style={tabStyle(tab === k)}>{l}</button>)}
       </div>
       {msg && <div className={`${msg.t === 'ok' ? 'alert-success' : 'alert-error'} mb-3`}>{msg.m}</div>}
       {tab === 'map' && isBroker && <NetworkTab setMsg={setMsg} onChanged={loadCompanies} />}
-      {tab === 'companies' && <CompaniesTab companies={companies} reload={loadCompanies} setMsg={setMsg} />}
       {tab === 'accounts' && <AccountsTab companies={companies} setMsg={setMsg} />}
-      {tab === 'messages' && <MessagesTab setMsg={setMsg} />}
     </Shell>
-  );
-}
-
-// ── شرکت‌های بیمه‌گزار ─────────────────────────────────────────────────────
-function CompaniesTab({ companies, reload, setMsg }: { companies: Company[]; reload: () => void; setMsg: (m: { t: 'ok' | 'err'; m: string } | null) => void }) {
-  const [f, setF] = useState(EMPTY_CO);
-  const [busy, setBusy] = useState(false);
-  const [openId, setOpenId] = useState<string | null>(null);
-  const [insurers, setInsurers] = useState<{ id: string; name: string }[]>([]);
-  const [q, setQ] = useState('');
-  useEffect(() => { client.get<{ id: string; name: string }[]>('/claims/insurers', 'org').then(setInsurers).catch(() => {}); }, []);
-
-  const create = async () => {
-    setMsg(null); setBusy(true);
-    try {
-      const body = Object.fromEntries(Object.entries(f).map(([k, v]) => [k, v.trim() || (k === 'parentId' ? null : undefined)]));
-      const r = await client.post<{ id: string }>('/policyholder-companies', body, 'org');
-      setMsg({ t: 'ok', m: 'شرکت بیمه‌گزار ثبت شد؛ اکنون قرارداد بیمه‌گر آن را تعیین کنید.' }); setF(EMPTY_CO); reload(); setOpenId(r.id);
-    } catch (e: any) { setMsg({ t: 'err', m: e.message }); } finally { setBusy(false); }
-  };
-
-  // Search by name, کد بیمه‌گزار or policy number; a match shows as its own card (no tree while searching).
-  const term = q.trim().replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).replace(/ي/g, 'ی').replace(/ك/g, 'ک');
-  const matches = term ? companies.filter((c) => c.name.includes(term) || (c.code ?? '').includes(term) || c.contracts.some((k) => (k.policyNumber ?? '') === term)) : companies;
-  const roots = term ? matches : companies.filter((c) => !c.parentId || !companies.some((p) => p.id === c.parentId));
-  const childrenOf = (id: string) => (term ? [] : companies.filter((c) => c.parentId === id));
-
-  return (
-    <div className="grid grid-cols-[minmax(0,1fr)] lg:grid-cols-[320px_minmax(0,1fr)] gap-5">
-      <div className="card p-4 space-y-3 h-fit">
-        <h3 className="font-semibold text-sm">افزودن شرکت بیمه‌گزار</h3>
-        <Field label="نام شرکت *"><input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Field>
-        <Field label="زیرمجموعهٔ (اختیاری)">
-          <select className="input" value={f.parentId} onChange={(e) => setF({ ...f, parentId: e.target.value })}>
-            <option value="">— شرکت مستقل —</option>
-            {companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </Field>
-        <Field label="مسئول پیگیری (رفاه / منابع انسانی)"><input className="input" value={f.contactName} onChange={(e) => setF({ ...f, contactName: e.target.value })} /></Field>
-        <Field label="تلفن"><input className="input" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} style={{ direction: 'ltr', textAlign: 'right' }} /></Field>
-        <Field label="ایمیل"><input className="input" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} style={{ direction: 'ltr', textAlign: 'right' }} /></Field>
-        <Field label="نشانی"><input className="input" value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} /></Field>
-        <button onClick={create} disabled={busy || f.name.trim().length < 2} className="btn btn-primary btn-sm w-full">ثبت شرکت</button>
-      </div>
-
-      <div className="space-y-3">
-        <div className="card p-3 flex items-center gap-2 flex-wrap">
-          <input className="input flex-1 min-w-[220px]" value={q} onChange={(e) => setQ(e.target.value)} placeholder="جستجوی بیمه‌گزار: نام، کد بیمه‌گزار یا شماره بیمه‌نامه" />
-          <span className="text-sm" style={{ color: 'var(--muted)' }}>{term ? `${matches.length.toLocaleString('fa-IR')} از ` : ''}{companies.length.toLocaleString('fa-IR')} بیمه‌گزار</span>
-        </div>
-        {companies.length === 0 && <div className="card p-8 text-center text-sm" style={{ color: 'var(--muted)' }}>هنوز شرکتی ثبت نشده است.</div>}
-        {term && matches.length === 0 && <div className="card p-6 text-center text-sm" style={{ color: 'var(--muted)' }}>بیمه‌گزاری با این مشخصات پیدا نشد.</div>}
-        {roots.map((c) => (
-          <div key={c.id} className="space-y-2">
-            <CompanyCard c={c} companies={companies} insurers={insurers} open={openId === c.id} onToggle={() => setOpenId(openId === c.id ? null : c.id)} reload={reload} setMsg={setMsg} />
-            {childrenOf(c.id).map((k) => (
-              <div key={k.id} className="mr-6">
-                <CompanyCard c={k} companies={companies} insurers={insurers} open={openId === k.id} onToggle={() => setOpenId(openId === k.id ? null : k.id)} reload={reload} setMsg={setMsg} sub />
-              </div>
-            ))}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function CompanyCard({ c, companies, insurers, open, onToggle, reload, setMsg, sub }: {
-  c: Company; companies: Company[]; insurers: { id: string; name: string }[]; open: boolean; onToggle: () => void; reload: () => void;
-  setMsg: (m: { t: 'ok' | 'err'; m: string } | null) => void; sub?: boolean;
-}) {
-  const [edit, setEdit] = useState({ name: c.name, parentId: c.parentId ?? '', phone: c.phone ?? '', email: c.email ?? '', address: c.address ?? '', website: c.website ?? '', contactName: c.contactName ?? '' });
-  const [k, setK] = useState({ insurerTenantId: '', line: '', policyNumber: '', start: '', end: '', note: '' });
-  const [logoVer, setLogoVer] = useState(0);
-  const act = async (fn: () => Promise<any>, ok: string) => { setMsg(null); try { await fn(); setMsg({ t: 'ok', m: ok }); reload(); } catch (e: any) { setMsg({ t: 'err', m: e.message }); } };
-
-  const save = () => act(() => client.patch(`/policyholder-companies/${c.id}`, { ...edit, parentId: edit.parentId || null }, 'org'), 'ذخیره شد');
-  const toggleActive = () => act(() => client.patch(`/policyholder-companies/${c.id}`, { isActive: !c.isActive }, 'org'), c.isActive ? 'شرکت غیرفعال شد' : 'شرکت فعال شد');
-  const uploadLogo = async (file: File, onProgress: OnProgress) => {
-    setMsg(null);
-    const fd = new FormData(); fd.append('file', file);
-    await client.upload(`/policyholder-companies/${c.id}/logo`, fd, 'org', onProgress);
-    setLogoVer((v) => v + 1); setMsg({ t: 'ok', m: 'لوگو بارگذاری شد' }); reload();
-  };
-  const addContract = () => act(async () => {
-    const startDate = k.start ? jalaliToIso(k.start) : null; const endDate = k.end ? jalaliToIso(k.end) : null;
-    if ((k.start && !startDate) || (k.end && !endDate)) throw new Error('تاریخ نامعتبر است (نمونه: ۱۴۰۵/۰۱/۰۱)');
-    await client.post(`/policyholder-companies/${c.id}/contracts`, { insurerTenantId: k.insurerTenantId, line: k.line || null, policyNumber: k.policyNumber || null, startDate, endDate, note: k.note || null }, 'org');
-    setK({ insurerTenantId: '', line: '', policyNumber: '', start: '', end: '', note: '' });
-  }, 'قرارداد ثبت شد؛ پرونده‌های جدید این شرکت بر اساس آن به بیمه‌گر ارسال می‌شوند.');
-  const toggleContract = (ct: Contract) => act(() => client.patch(`/policyholder-companies/${c.id}/contracts/${ct.id}`, { isActive: !ct.isActive }, 'org'), ct.isActive ? 'قرارداد غیرفعال شد' : 'قرارداد فعال شد');
-
-  return (
-    <div className="card p-4" style={{ opacity: c.isActive ? 1 : 0.65 }}>
-      <button type="button" onClick={onToggle} className="w-full flex items-center justify-between gap-3 text-right flex-wrap">
-        <span className="flex items-center gap-3 min-w-0">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          {c.hasLogo ? <img src={`${client.base}/policyholder-companies/${c.id}/logo?v=${logoVer}`} alt="" style={{ width: 36, height: 36, objectFit: 'contain' }} />
-            : <span className="rounded-lg flex items-center justify-center font-bold" style={{ width: 36, height: 36, background: 'var(--surface-2)', color: 'var(--muted)' }}>{c.name.slice(0, 1)}</span>}
-          <span className="min-w-0">
-            <span className="font-bold block truncate">{sub ? '↳ ' : ''}{c.name}{c.code && <span className="badge badge-neutral mr-2 latin-digits" title="کد بیمه‌گزار (نام کاربری ورود)">کد {c.code}</span>}</span>
-            <span className="text-xs" style={{ color: 'var(--muted)' }}>{c.accounts.toLocaleString('fa-IR')} نماینده{c.contactName ? ` · ${c.contactName}` : ''}</span>
-          </span>
-        </span>
-        <span className="flex items-center gap-2 flex-wrap justify-end">
-          {!c.isActive && <span className="badge badge-neutral">غیرفعال</span>}
-          {c.currentInsurer ? <span className="badge badge-success">بیمه‌گر فعلی: {c.currentInsurer.name}</span> : <span className="badge badge-warning">بدون قرارداد فعال</span>}
-          <span style={{ color: 'var(--muted)' }}>{open ? '▴' : '▾'}</span>
-        </span>
-      </button>
-
-      {open && (
-        <div className="mt-4 pt-4 border-t space-y-5" style={{ borderColor: 'var(--border)' }}>
-          {/* Insurer contracts */}
-          <div>
-            <h4 className="font-semibold text-sm mb-2">قراردادهای بیمه (اتصال به بیمه‌گر)</h4>
-            <p className="text-xs mb-2" style={{ color: 'var(--muted)' }}>پرونده‌ای که بیمه‌گزار ثبت می‌کند به بیمه‌گرِ قراردادی می‌رود که در تاریخ فوت معتبر بوده است. هر زمان می‌توانید قرارداد جدید ثبت یا قرارداد قبلی را غیرفعال کنید؛ پرونده‌های قبلی تغییر نمی‌کنند.</p>
-            {c.contracts.length > 0 && (
-              <div className="overflow-x-auto mb-3">
-                <table className="table">
-                  <thead><tr>{['بیمه‌گر', 'رشته', 'شماره بیمه‌نامه', 'از', 'تا', 'وضعیت', ''].map((h) => <th key={h}>{h}</th>)}</tr></thead>
-                  <tbody>
-                    {c.contracts.map((ct) => (
-                      <tr key={ct.id}>
-                        <td className="font-semibold">{ct.insurerName}{ct.isCurrent && <span className="badge badge-success mr-1">فعلی</span>}</td>
-                        <td>{ct.lineLabel || '—'}</td>
-                        <td>{ct.policyNumber || '—'}</td>
-                        <td>{ct.startDate || 'نامحدود'}</td>
-                        <td>{ct.endDate || 'نامحدود'}</td>
-                        <td>{ct.isActive ? 'فعال' : 'غیرفعال'}</td>
-                        <td><button onClick={() => toggleContract(ct)} className="text-xs" style={{ color: ct.isActive ? 'var(--danger)' : 'var(--success)' }}>{ct.isActive ? 'غیرفعال‌سازی' : 'فعال‌سازی'}</button></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-            <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-2 items-end">
-              <Field label="بیمه‌گر *">
-                <select className="input" value={k.insurerTenantId} onChange={(e) => setK({ ...k, insurerTenantId: e.target.value })}>
-                  <option value="">— انتخاب —</option>
-                  {insurers.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
-                </select>
-              </Field>
-              <Field label="رشته">
-                <select className="input" value={k.line} onChange={(e) => setK({ ...k, line: e.target.value })}>
-                  <option value="">—</option><option value="LIFE">عمر</option><option value="ACCIDENT">حوادث</option>
-                </select>
-              </Field>
-              <Field label="شماره بیمه‌نامه"><input className="input" value={k.policyNumber} onChange={(e) => setK({ ...k, policyNumber: e.target.value })} /></Field>
-              <Field label="از تاریخ"><JalaliDatePicker value={k.start} onChange={(v) => setK({ ...k, start: v })} placeholder="۱۴۰۵/۰۱/۰۱" /></Field>
-              <Field label="تا تاریخ (خالی = نامحدود)"><JalaliDatePicker value={k.end} onChange={(v) => setK({ ...k, end: v })} placeholder="۱۴۰۵/۱۲/۲۹" /></Field>
-            </div>
-            <button onClick={addContract} disabled={!k.insurerTenantId} className="btn btn-primary btn-sm mt-2">ثبت قرارداد</button>
-            {insurers.length === 0 && <p className="text-xs mt-1" style={{ color: 'var(--danger)' }}>هیچ بیمه‌گر همکاری برای این کارگزاری تعریف نشده است (مدیر سامانه).</p>}
-          </div>
-
-          {/* Company details */}
-          <div>
-            <h4 className="font-semibold text-sm mb-2">مشخصات و اطلاعات تماس (در استعلام به ذینفعان نمایش داده می‌شود)</h4>
-            <div className="grid sm:grid-cols-2 gap-2">
-              <Field label="نام شرکت"><input className="input" value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></Field>
-              <Field label="زیرمجموعهٔ">
-                <select className="input" value={edit.parentId} onChange={(e) => setEdit({ ...edit, parentId: e.target.value })}>
-                  <option value="">— شرکت مستقل —</option>
-                  {companies.filter((x) => x.id !== c.id).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
-                </select>
-              </Field>
-              <Field label="مسئول پیگیری"><input className="input" value={edit.contactName} onChange={(e) => setEdit({ ...edit, contactName: e.target.value })} /></Field>
-              <Field label="تلفن"><input className="input" value={edit.phone} onChange={(e) => setEdit({ ...edit, phone: e.target.value })} style={{ direction: 'ltr', textAlign: 'right' }} /></Field>
-              <Field label="ایمیل"><input className="input" value={edit.email} onChange={(e) => setEdit({ ...edit, email: e.target.value })} style={{ direction: 'ltr', textAlign: 'right' }} /></Field>
-              <Field label="وب‌سایت"><input className="input" value={edit.website} onChange={(e) => setEdit({ ...edit, website: e.target.value })} style={{ direction: 'ltr', textAlign: 'right' }} /></Field>
-              <div className="sm:col-span-2"><Field label="نشانی"><input className="input" value={edit.address} onChange={(e) => setEdit({ ...edit, address: e.target.value })} /></Field></div>
-            </div>
-            <div className="flex flex-wrap gap-2 mt-2">
-              <button onClick={save} className="btn btn-primary btn-sm">ذخیرهٔ مشخصات</button>
-              <UploadButton onUpload={uploadLogo} accept=".png,.jpg,.jpeg,.webp" maxMB={2} title={c.hasLogo ? 'تغییر لوگو' : 'بارگذاری لوگو'} subtitle={c.name}>{c.hasLogo ? 'تغییر لوگو' : 'بارگذاری لوگو'}</UploadButton>
-              <button onClick={toggleActive} className="btn btn-ghost btn-sm" style={{ color: c.isActive ? 'var(--danger)' : 'var(--success)' }}>{c.isActive ? 'غیرفعال‌سازی شرکت' : 'فعال‌سازی شرکت'}</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -283,6 +85,12 @@ function AccountsTab({ companies, setMsg }: { companies: Company[]; setMsg: (m: 
     if (pw === null) return;
     try { const d = await client.post<{ message: string }>(`/customer/accounts/${r.id}/password`, { password: pw.trim() || undefined }, 'org'); setMsg({ t: 'ok', m: d.message }); load(); }
     catch (e: any) { setMsg({ t: 'err', m: e.message }); }
+  };
+  // Remove: hidden and signed out at once; the cases they filed stay with their company.
+  const remove = async (r: Acc) => {
+    const name = r.fullName || r.nationalCode || r.nationalCodeMasked || 'این نماینده';
+    if (!window.confirm(`«${name}» از نمایندگان حذف شود؟\nدیگر نمی‌تواند وارد پنل بیمه‌گزار شود؛ پرونده‌هایی که ثبت کرده برای شرکت باقی می‌مانند.`)) return;
+    try { await client.del(`/customer/accounts/${r.id}`, 'org'); setMsg({ t: 'ok', m: 'نماینده حذف شد' }); load(); } catch (e: any) { setMsg({ t: 'err', m: e.message }); }
   };
   const assign = async (r: Acc, companyId: string) => {
     try { await client.put(`/policyholder-companies/accounts/${r.id}`, { companyId: companyId || null }, 'org'); setMsg({ t: 'ok', m: 'شرکت نماینده تغییر کرد' }); load(); } catch (e: any) { setMsg({ t: 'err', m: e.message }); }
@@ -340,6 +148,7 @@ function AccountsTab({ companies, setMsg }: { companies: Company[]; setMsg: (m: 
                         {r.signupStatus === 'PENDING' && <button onClick={() => setStatus(r, 'reject')} className="text-xs" style={{ color: 'var(--danger)' }}>رد</button>}
                         {r.signupStatus === 'ACTIVE' && <button onClick={() => setStatus(r, 'reject')} className="text-xs" style={{ color: 'var(--danger)' }}>تعلیق</button>}
                         {r.hasPassword !== undefined && (r.nationalCode || r.nationalCodeMasked) && <button onClick={() => setPassword(r)} className="text-xs" style={{ color: 'var(--brand)' }}>تعیین رمز</button>}
+                        <button onClick={() => remove(r)} className="text-xs" style={{ color: 'var(--danger)' }}>حذف</button>
                       </span>
                     </td>
                   </tr>
@@ -348,59 +157,6 @@ function AccountsTab({ companies, setMsg }: { companies: Company[]; setMsg: (m: 
           </table>
         </div>
       </div>
-    </div>
-  );
-}
-
-// ── پیام‌های استعلام («پاسخگوی آنلاین») ────────────────────────────────────
-function MessagesTab({ setMsg }: { setMsg: (m: { t: 'ok' | 'err'; m: string } | null) => void }) {
-  const [rows, setRows] = useState<Msg[] | null>(null);
-  const load = () => client.get<Msg[]>('/policyholder-companies/messages', 'org').then(setRows).catch((e) => setMsg({ t: 'err', m: e.message }));
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
-  const [open, setOpen] = useState<string | null>(null);
-  const [draft, setDraft] = useState('');
-  const [busy, setBusy] = useState(false);
-  // «گفتگو»: the answer joins the requester's thread and is texted to them.
-  const reply = async (m: Msg) => {
-    setBusy(true);
-    try {
-      const r = await client.post<{ ok: boolean; sms: boolean }>(`/policyholder-companies/messages/${m.id}/reply`, { message: draft.trim() }, 'org');
-      setMsg({ t: 'ok', m: r.sms ? 'پاسخ ثبت و برای استعلام‌کننده پیامک شد' : 'پاسخ ثبت شد (پیامک ارسال نشد؛ استعلام‌کننده آن را در گفتگو می‌بیند)' });
-      setDraft(''); setOpen(null); load();
-    } catch (e: any) { setMsg({ t: 'err', m: e.message }); } finally { setBusy(false); }
-  };
-  const done = async (m: Msg) => { try { await client.post(`/policyholder-companies/messages/${m.id}/handled`, {}, 'org'); load(); } catch (e: any) { setMsg({ t: 'err', m: e.message }); } };
-  if (!rows) return <div className="card p-8 text-center"><Spinner /></div>;
-  if (rows.length === 0) return <div className="card p-8 text-center text-sm" style={{ color: 'var(--muted)' }}>پیامی از استعلام‌کنندگان دریافت نشده است.</div>;
-  return (
-    <div className="space-y-2">
-      {rows.map((m) => (
-        <div key={m.id} className="card p-4" style={{ opacity: m.handled ? 0.6 : 1 }}>
-          <div className="flex items-center justify-between gap-2 flex-wrap text-sm">
-            <span className="font-bold">پرونده <a href={`/org/claims/${m.claimId}`} target="_blank" rel="noopener" style={{ color: 'var(--brand)' }}>{m.claimNumber}</a>{m.companyName ? ` — ${m.companyName}` : ''}</span>
-            <span style={{ color: 'var(--muted)' }}>{m.createdAt}</span>
-          </div>
-          <p className="text-sm mt-2 whitespace-pre-wrap">{m.message}</p>
-          {(m.replies ?? []).map((x) => (
-            <div key={x.id} className="text-sm mt-2 rounded-md p-2 whitespace-pre-wrap" style={{ background: 'var(--surface-2)', borderInlineStart: '3px solid var(--brand)' }}>
-              <div className="text-xs mb-1" style={{ color: 'var(--muted)' }}>پاسخ کارگزاری{x.by ? ` — ${x.by}` : ''} · {x.at}</div>{x.message}
-            </div>
-          ))}
-          <div className="flex items-center justify-between gap-2 mt-2 text-sm flex-wrap">
-            <span>تماس با استعلام‌کننده: <a href={`tel:${m.phone}`} dir="ltr" style={{ color: 'var(--brand)', fontWeight: 700 }}>{m.phone}</a></span>
-            <span className="flex items-center gap-2">
-              <button onClick={() => setOpen(open === m.id ? null : m.id)} className="btn btn-primary btn-sm">{m.replies?.length ? 'پاسخ دیگر' : 'پاسخ'}</button>
-              {m.handled ? <span className="badge badge-success">پاسخ داده شد</span> : <button onClick={() => done(m)} className="btn btn-ghost btn-sm">ثبت «پاسخ داده شد» (تماس تلفنی)</button>}
-            </span>
-          </div>
-          {open === m.id && (
-            <div className="mt-2 space-y-2">
-              <textarea className="input" rows={3} value={draft} onChange={(e) => setDraft(e.target.value)} maxLength={2000} placeholder="پاسخ به استعلام‌کننده — در گفتگوی او نمایش داده و پیامک می‌شود" />
-              <button onClick={() => reply(m)} disabled={busy || draft.trim().length < 2} className="btn btn-primary btn-sm">{busy ? '…' : 'ارسال پاسخ و پیامک'}</button>
-            </div>
-          )}
-        </div>
-      ))}
     </div>
   );
 }

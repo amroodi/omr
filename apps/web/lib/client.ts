@@ -1,5 +1,6 @@
 'use client';
 import { panelLogin } from './panel';
+import { getDeviceId, getFingerprint } from './device';
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:4000/api/v1';
 
@@ -51,6 +52,15 @@ export function clearToken(realm: Realm): void {
   }
 }
 
+/** «خروج»: end the session on the server too (so it leaves «نشست‌های فعال»), then forget the token. */
+export function signOut(realm: Realm): void {
+  const t = getToken(realm);
+  if (t) {
+    fetch(`${BASE}/security/logout`, { method: 'POST', headers: { Authorization: `Bearer ${t}`, 'x-tenant-slug': getTenantSlug() }, keepalive: true }).catch(() => {});
+  }
+  clearToken(realm);
+}
+
 /** Decode the permissions embedded in the realm's JWT (set at login). UI-gating only — the API
  * independently enforces every permission, so a tampered token still can't perform the action. */
 export function getPermissions(realm: Realm): string[] {
@@ -76,6 +86,10 @@ export function hasPerm(realm: Realm, perm: string | string[]): boolean {
 function headers(realm?: Realm, json = true): Record<string, string> {
   const h: Record<string, string> = { 'x-tenant-slug': getTenantSlug() };
   if (json) h['Content-Type'] = 'application/json';
+  // «امنیت ورود»: which browser this is (see lib/device.ts)
+  const id = getDeviceId(); const fp = getFingerprint();
+  if (id) h['x-device-id'] = id;
+  if (fp) h['x-device-fp'] = fp;
   if (realm) {
     const t = getToken(realm);
     if (t) h.Authorization = `Bearer ${t}`;

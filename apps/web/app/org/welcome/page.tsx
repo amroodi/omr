@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { client, clearToken, getToken } from '../../../lib/client';
+import { client, signOut, getToken } from '../../../lib/client';
 import { BrandMark } from '../../components/brand';
 import { Icon } from '../../components/Shell';
 
@@ -20,7 +20,7 @@ export default function OrgWelcome() {
     client.get<any>('/tenant/branding', 'org').then((b) => b?.name && setTenant(b.name)).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const logout = () => { clearToken('org'); router.push('/org/login'); };
+  const logout = () => { signOut('org'); router.push('/org/login'); };
 
   return (
     <div className="welcome-bg">

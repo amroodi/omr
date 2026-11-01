@@ -90,6 +90,13 @@ export class SmsService {
     return driver.sendOtp(toPhone, code);
   }
 
+  /** A plain text via the HOST/platform gateway (security alerts to the Super Admin's own numbers). */
+  async sendViaPlatform(toPhone: string, message: string): Promise<void> {
+    const driver = (await this.platformDriver()) ?? this.envDriver;
+    if (!driver) throw new Error('درگاه پیامک سکو پیکربندی نشده است');
+    return driver.send(toPhone, message);
+  }
+
   /** Build a one-off driver from a config object (used by the panel's test-send). */
   buildDriver(cfg: TenantSmsConfig): SmsDriver {
     const factory = REGISTRY[cfg.driver];

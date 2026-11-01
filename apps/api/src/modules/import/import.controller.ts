@@ -6,12 +6,13 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { Permissions } from '../../common/rbac/decorators';
+import { BrokerPanelOnly, Permissions } from '../../common/rbac/decorators';
 import { PERMISSIONS } from '../../common/rbac/permissions';
 import { ImportService } from './import.service';
 
 const limits = { fileSize: 5 * 1024 * 1024 }; // 5 MB
 
+@BrokerPanelOnly()
 @Controller('import')
 export class ImportController {
   constructor(private readonly importer: ImportService) {}

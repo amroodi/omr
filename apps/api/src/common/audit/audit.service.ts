@@ -4,6 +4,14 @@ import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { getContext } from '../tenant/tenant-context';
 import { toJalali } from '../jalali/jalali.util';
+import { deviceLabel, placeOf } from '../device/device';
+
+type DeviceFields = { deviceId: string | null; fingerprint: string | null; deviceLabel: string | null; location: string | null; sessionId: string | null };
+
+/** Device fields join the hashed row only when there are any, so rows written before them still verify. */
+function withDevice(row: Record<string, unknown>, d: DeviceFields): Record<string, unknown> {
+  return Object.values(d).some((v) => v != null) ? { ...row, ...d } : row;
+}
 
 export interface AuditInput {
   action: AuditAction;
@@ -79,11 +87,18 @@ export class AuditService {
       metadata: input.metadata ? JSON.stringify(this.redact(input.metadata)) : null,
       jalaliTimestamp: toJalali(now),
     };
+    const device: DeviceFields = {
+      deviceId: ctx?.deviceId ?? null,
+      fingerprint: ctx?.fingerprint ?? null,
+      deviceLabel: deviceLabel(ctx?.userAgent),
+      location: placeOf(ctx?.ip)?.label ?? null,
+      sessionId: ctx?.sessionId ?? null,
+    };
 
-    const hash = this.computeHash(prevHash, row, now);
+    const hash = this.computeHash(prevHash, withDevice(row, device), now);
     // Set createdAt explicitly so the stored timestamp matches the one folded into the hash
     // (a DB-defaulted now() would differ and break verifyChain()).
-    return { ...row, prevHash, hash, createdAt: now };
+    return { ...row, ...device, prevHash, hash, createdAt: now };
   }
 
   private computeHash(prevHash: string | null, row: Record<string, unknown>, at: Date): string {
@@ -111,18 +126,21 @@ export class AuditService {
       if (r.prevHash !== prevHash) return r.id;
       const recomputed = this.computeHash(
         prevHash,
-        {
-          tenantId: r.tenantId,
-          actorType: r.actorType,
-          actorId: r.actorId,
-          action: r.action,
-          targetType: r.targetType,
-          targetId: r.targetId,
-          ip: r.ip,
-          userAgent: r.userAgent,
-          metadata: r.metadata,
-          jalaliTimestamp: r.jalaliTimestamp,
-        },
+        withDevice(
+          {
+            tenantId: r.tenantId,
+            actorType: r.actorType,
+            actorId: r.actorId,
+            action: r.action,
+            targetType: r.targetType,
+            targetId: r.targetId,
+            ip: r.ip,
+            userAgent: r.userAgent,
+            metadata: r.metadata,
+            jalaliTimestamp: r.jalaliTimestamp,
+          },
+          { deviceId: r.deviceId, fingerprint: r.fingerprint, deviceLabel: r.deviceLabel, location: r.location, sessionId: r.sessionId },
+        ),
         r.createdAt,
       );
       if (recomputed !== r.hash) return r.id;

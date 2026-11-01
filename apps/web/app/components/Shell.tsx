@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { ReactNode, useEffect, useState } from 'react';
-import { clearToken, client, getTenantSlug, hasPerm, Realm } from '../../lib/client';
+import { signOut, client, getTenantSlug, hasPerm, Realm } from '../../lib/client';
 import { lastPanel, PanelKey, PANELS, rememberPanel } from '../../lib/panel';
 import { ChangePasswordModal } from './ChangePasswordModal';
 import { NotificationBell } from './NotificationBell';
@@ -101,6 +101,12 @@ export function Shell({
     return () => { active = false; };
   }, [realm]);
 
+  // A page of another panel, opened by its address (the menu doesn't offer it here).
+  useEffect(() => {
+    const item = nav.find((n) => n.href === pathname);
+    if (panel && item?.panels && !item.panels.includes(panel)) router.replace(realm === 'customer' ? '/customer' : '/org/work-desk');
+  }, [nav, pathname, panel, realm, router]);
+
   const toggleRail = () => setRail((r) => { const n = !r; try { localStorage.setItem(railKey, n ? '1' : '0'); } catch {} return n; });
   const visibleNav = nav.filter((n) => (!n.perm || (mounted && hasPerm(realm, n.perm))) && (!n.panels || !panel || n.panels.includes(panel)));
   const info = panel ? PANELS[panel] : null;
@@ -114,7 +120,7 @@ export function Shell({
     else router.push(homeHref);
   };
   // Back to this panel's own login page.
-  const logout = () => { clearToken(realm); router.push(info ? info.login : `/${realm === 'super' ? 'admin' : realm}/login`); };
+  const logout = () => { signOut(realm); router.push(info ? info.login : `/${realm === 'super' ? 'admin' : realm}/login`); };
   const logoUrl = brand?.logoSrc !== undefined ? brand.logoSrc : brand?.hasLogo ? `${client.base}/tenant/assets/logo?tenant=${brand.slug}${panel ? `&panel=${panel}` : ''}` : null;
 
   const PW_ICON = 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zM8 11V7a4 4 0 118 0v4';

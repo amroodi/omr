@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { clearToken, client, getToken } from '../../lib/client';
+import { signOut, client, getToken } from '../../lib/client';
 import { ErrorBox, Field, StatCard } from '../components/ui';
 import { MfaSetup } from '../components/MfaSetup';
 import { Icon } from '../components/Shell';
@@ -21,6 +21,7 @@ export default function AdminDashboard() {
   const [result, setResult] = useState<{ username: string; oneTimePassword: string; tenantId?: string } | null>(null);
   const [error, setError] = useState('');
   const [showPw, setShowPw] = useState(false);
+  const [secAlerts, setSecAlerts] = useState(0); // «امنیت ورود»: alerts not yet seen
   const [resetResult, setResetResult] = useState<{ name: string; username: string; oneTimePassword: string } | null>(null);
   const [edit, setEdit] = useState<{ id: string; name: string; slug: string; kind: string } | null>(null);
   const [partnersFor, setPartnersFor] = useState<{ id: string; name: string } | null>(null);
@@ -30,6 +31,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (!getToken('super')) { router.push('/admin/login'); return; }
     load();
+    client.get<{ unseen: number }>('/platform/security/alerts?unseen=1', 'super').then((d) => setSecAlerts(d.unseen)).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -98,13 +100,17 @@ export default function AdminDashboard() {
           <button onClick={() => router.push('/admin/policyholders')} className="btn btn-primary btn-sm">
             <Icon path="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" /> بیمه‌گزاران
           </button>
+          <button onClick={() => router.push('/admin/security')} className="btn btn-primary btn-sm">
+            <Icon path="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zM12 8v4M12 16h.01" /> امنیت ورود
+            {secAlerts > 0 && <span className="badge badge-danger mr-1">{secAlerts.toLocaleString('fa-IR')}</span>}
+          </button>
           <button onClick={() => router.push('/admin/audit')} className="btn btn-primary btn-sm">
             <Icon path="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 104 0 2 2 0 00-4 0zM9 12h6M9 16h6" /> رویدادهای سامانه
           </button>
           <button onClick={() => setShowPw(true)} className="btn btn-ghost btn-sm">
             <Icon path="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zM8 11V7a4 4 0 118 0v4" /> تغییر رمز عبور
           </button>
-          <button onClick={() => { clearToken('super'); router.push('/admin/login'); }} className="btn btn-ghost btn-sm">
+          <button onClick={() => { signOut('super'); router.push('/admin/login'); }} className="btn btn-ghost btn-sm">
             <Icon path="M15 3H5a2 2 0 00-2 2v14a2 2 0 002 2h10M17 16l4-4-4-4M21 12H9" /> خروج
           </button>
         </div>

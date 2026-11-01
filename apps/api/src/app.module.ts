@@ -42,6 +42,7 @@ import { RolesModule } from './modules/roles/roles.module';
 import { SharingModule } from './modules/sharing/sharing.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
 import { UsersModule } from './modules/users/users.module';
+import { SecurityModule } from './modules/security/security.module';
 
 @Module({
   imports: [
@@ -56,6 +57,7 @@ import { UsersModule } from './modules/users/users.module';
     PrismaModule,
     CryptoModule,
     AuditModule,
+    SecurityModule,
     RedisModule,
     RateLimitModule,
     StorageModule,

@@ -10,6 +10,7 @@ import { JalaliDatePicker } from '../../components/JalaliDatePicker';
 interface Row {
   id: string; tenantId: string | null; tenantName: string | null; actorType: string; actorId: string | null; actorName: string | null;
   action: string; targetType: string | null; targetId: string | null; ip: string | null; metadata: any; jalaliTimestamp: string;
+  deviceId?: string | null; deviceLabel?: string | null; location?: string | null;
 }
 
 const ACTION_FA: Record<string, string> = {
@@ -120,9 +121,9 @@ export default function AdminAudit() {
       <div className="card overflow-x-auto">
         {!data ? <div className="p-10 flex justify-center"><Spinner /></div> : (
           <table className="table">
-            <thead><tr>{['زمان', 'سازمان', 'انجام‌دهنده', 'اقدام', 'موضوع', 'جزئیات', 'IP'].map((h) => <th key={h}>{h}</th>)}</tr></thead>
+            <thead><tr>{['زمان', 'سازمان', 'انجام‌دهنده', 'اقدام', 'موضوع', 'جزئیات', 'IP', 'دستگاه و مکان'].map((h) => <th key={h}>{h}</th>)}</tr></thead>
             <tbody>
-              {data.items.length === 0 ? <tr><td colSpan={7} className="text-center py-8" style={{ color: 'var(--muted)' }}>رویدادی یافت نشد</td></tr> : data.items.map((r) => (
+              {data.items.length === 0 ? <tr><td colSpan={8} className="text-center py-8" style={{ color: 'var(--muted)' }}>رویدادی یافت نشد</td></tr> : data.items.map((r) => (
                 <tr key={r.id}>
                   <td style={{ whiteSpace: 'nowrap' }}>{r.jalaliTimestamp}</td>
                   <td>{r.tenantName || '—'}</td>
@@ -131,6 +132,11 @@ export default function AdminAudit() {
                   <td>{(r.targetType && TARGET_FA[r.targetType]) || r.targetType || '—'}</td>
                   <td style={{ maxWidth: 420, wordBreak: 'break-word', fontSize: '.78rem' }}>{details(r.metadata)}</td>
                   <td className="latin-digits" style={{ direction: 'ltr', fontSize: '.74rem' }}>{r.ip || '—'}</td>
+                  <td style={{ fontSize: '.74rem' }}>
+                    {r.deviceLabel || '—'}
+                    {r.deviceId && <div dir="ltr" style={{ color: 'var(--muted)' }} title={r.deviceId}>#{r.deviceId.slice(0, 8)}</div>}
+                    {r.location && <div style={{ color: 'var(--muted)' }}>{r.location}</div>}
+                  </td>
                 </tr>
               ))}
             </tbody>
