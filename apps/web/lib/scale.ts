@@ -8,12 +8,15 @@
  * - Capped by the window width so a half-screen window on a big monitor never overflows.
  * - Phones/tablets (window < 1024 CSS px) keep zoom 1 and use their responsive layouts.
  * - Exposes `--app-zoom`; full-window heights use `--zvh` (1vh corrected for the zoom).
+ * - The signed-in بیمه‌گزار panel (/customer, not its login) isn't scaled: its sizes are exact pixels
+ *   measured from the Sinad portal.
  */
 export const SCALE_BOOT_SCRIPT = `(function(){
   var BW=1440,BH=900,MINW=1100;
   function apply(){
     var d=document.documentElement,w=innerWidth,s=1;
-    if(w>=1024){
+    var p=location.pathname,exact=p==='/customer'||(p.indexOf('/customer/')===0&&p.indexOf('/customer/login')!==0);
+    if(w>=1024&&!exact){
       var sw=screen.width||w,sh=screen.height||innerHeight;
       s=Math.min(sw/BW,sh/BH,w/MINW);
       s=Math.max(0.8,Math.min(1.9,s));

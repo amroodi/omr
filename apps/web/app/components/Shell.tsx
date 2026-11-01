@@ -107,6 +107,14 @@ export function Shell({
     if (panel && item?.panels && !item.panels.includes(panel)) router.replace(realm === 'customer' ? '/customer' : '/org/work-desk');
   }, [nav, pathname, panel, realm, router]);
 
+  // The page zoom depends on the path (lib/scale.ts): re-apply on entering / leaving the بیمه‌گزار panel.
+  useEffect(() => {
+    if (realm !== 'customer') return;
+    const rescale = () => window.dispatchEvent(new Event('resize'));
+    rescale();
+    return () => { setTimeout(rescale, 0); };
+  }, [realm]);
+
   const toggleRail = () => setRail((r) => { const n = !r; try { localStorage.setItem(railKey, n ? '1' : '0'); } catch {} return n; });
   const visibleNav = nav.filter((n) => (!n.perm || (mounted && hasPerm(realm, n.perm))) && (!n.panels || !panel || n.panels.includes(panel)));
   const info = panel ? PANELS[panel] : null;
@@ -127,7 +135,7 @@ export function Shell({
   const OUT_ICON = 'M15 3H5a2 2 0 00-2 2v14a2 2 0 002 2h10M17 16l4-4-4-4M21 12H9';
 
   return (
-    <div className={`pshell${info ? ' has-panel' : ''}`} dir="rtl" style={info ? { ['--panel-accent' as any]: info.accent } : undefined}>
+    <div className={`pshell${info ? ' has-panel' : ''}${realm === 'customer' ? ' is-customer' : ''}`} dir="rtl" style={info ? { ['--panel-accent' as any]: info.accent } : undefined}>
       {/* ── Content column (top bar + scrolling content) ── */}
       <div className="pshell-main">
         <header className="ptopbar">
