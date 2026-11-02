@@ -22,6 +22,7 @@ export interface Checklist { claimType: string; complete: boolean; items: Checkl
 export interface FieldRow { key: string; label: string; type: string; options: string[]; required: boolean; value: string | null; source: string | null; confirmed: boolean; canEdit: boolean }
 export interface FieldsData { party: string; manual?: boolean; groups: Record<string, FieldRow[]> }
 export interface CaseClaim {
+  coverageStatus?: string | null; insuredLinkEnabled?: boolean;
   id: string; claimNumber: string; policyNumber?: string | null; status: string; claimType: string; insurerTenantId?: string;
   deceasedName: string | null; deceasedNationalCode?: string | null; deceasedBirthDate?: string | null; deceasedAge?: number | null;
   eventDate: string | null; createdAt?: string | null; paidDate?: string | null; noticeDeadline: string | null; lateNotice: boolean;

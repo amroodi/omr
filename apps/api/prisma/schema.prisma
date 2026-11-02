@@ -57,6 +57,7 @@ model Tenant {
   // (see claims/claim-notice.ts). null = the defaults.
   claimNoticeRules Json?
   workflowModel Json? // Model View: how this insurer's chain works (see claims/workflow.ts); set only in Super Admin
+  coverageConfig Json? // فن‌آوران coverage inquiry of this insurer; off until Super Admin fills it in
   // Reminders: may operators of this org get an SMS for a reminder (on top of the in-panel one)?
   reminderSms   Boolean  @default(false)
   // Every operator of this org must use two-step login (authenticator app); set by the org admin.
@@ -863,6 +864,8 @@ model Claim {
   status    ClaimStatus @default(DRAFT)
 
   // ── Workflow position ── where the claim sits in the chain right now (null once closed).
+  coverageStatus    String? // VALID | INVALID | NOT_FOUND | NOT_CHECKED (null: inquiry off for this insurer)
+  coverageCheckedAt DateTime?
   currentStage      WorkflowStage?
   flowDirection     FlowDirection?
   flowPurpose       FlowPurpose?
@@ -1188,6 +1191,7 @@ model CaseUploadLink {
   tokenHash String   @unique
   claimId   String
   phone     String? // ENCRYPTED — where its result SMS goes
+  docCodes  String[] // the بیمه‌شده's link: exactly these documents (empty: the AI re-upload link)
   expiresAt DateTime
   createdAt DateTime @default(now())
 

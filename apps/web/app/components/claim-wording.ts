@@ -11,6 +11,3 @@ export function causeLabel(claimType: string) {
   if (DEATH_TYPES.has(claimType)) return 'علت فوت';
   return claimType === 'DISABILITY_ILLNESS' ? 'علت از کار افتادگی' : 'علت حادثه';
 }
-
-/** The ticked causes; the form shows ticks only once this list is filled. */
-export const CAUSE_OPTIONS: string[] = [];

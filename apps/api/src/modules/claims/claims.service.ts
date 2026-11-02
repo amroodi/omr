@@ -24,7 +24,12 @@ import { nextClaimNumber } from './claim-number';
 import { isValidIban, isValidNationalCode } from '../../common/validation/field-validation';
 import { beneficiaryHiddenDoc } from '../required-docs/defaults';
 import { toAsciiDigits } from '../../common/jalali/jalali.util';
-import { above, actionsFor, modelFrom, WorkflowModel, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, physicalActionsFor, PhysicalActionKey, physicalBelow, PhysicalState, Purpose, ReviewDesk, Stage, STAGE_FA, WorkflowAction } from './workflow';
+import { randomBytes } from 'crypto';
+import { webBase } from '../ai-review/ai-review.queue';
+import { ModelStore } from '../model-view/model-store.service';
+import { CoverageService } from '../model-view/coverage.service';
+import { SmsService } from '../auth/sms.service';
+import { above, actionsFor, rulesOf, WorkflowModel, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, physicalActionsFor, PhysicalActionKey, physicalBelow, PhysicalState, Purpose, ReviewDesk, Stage, STAGE_FA, WorkflowAction } from './workflow';
 
 const CLAIM_DOC_MIME = new Set([
   'application/pdf', 'image/jpeg', 'image/png',
@@ -138,6 +143,9 @@ export class ClaimsService {
     private readonly aiSettings: AiReviewSettings,
     private readonly aiQueue: AiReviewQueue,
     private readonly rateLimit: RateLimitService,
+    private readonly store: ModelStore,
+    private readonly coverage: CoverageService,
+    private readonly sms: SmsService,
   ) {}
 
   // ── Notification helpers (in-panel + SMS via the relevant org's gateway) ──
@@ -238,6 +246,10 @@ export class ClaimsService {
       const contract = await this.policyholders.contractForClaim(companyId, input.contractId, input.claimType ?? null, eventDate);
       input.insurerTenantId = contract.insurerTenantId;
       input.policyNumber = contract.policyNumber ?? input.policyNumber ?? undefined;
+      // Model View may narrow which نوع پرونده this line takes at this insurer.
+      if (contract.line && input.claimType && !(await this.modelOf(contract.insurerTenantId)).form.lines[contract.line].claimTypes.includes(input.claimType)) {
+        throw new BadRequestException('این نوع پرونده برای این بیمه‌نامه فعال نیست');
+      }
     }
     if (companyId && !input.insurerTenantId) {
       const contract = await this.policyholders.resolveContract(companyId, eventDate, input.claimType ?? null);
@@ -249,6 +261,9 @@ export class ClaimsService {
     const insurer = await db.tenant.findUnique({ where: { id: input.insurerTenantId }, select: { id: true, kind: true, noticeDays: true } });
     if (!insurer || insurer.kind !== 'INSURER') throw new BadRequestException('بیمه‌گر نامعتبر است');
     const insurerTenantId = insurer.id;
+    const form = (await this.modelOf(insurerTenantId)).form;
+    if (form.birthDate === 'required' && !input.deceasedBirthDate) throw new BadRequestException('تاریخ تولد بیمه‌شده الزامی است');
+    if (form.cause === 'required' && !input.causeOfDeath?.trim()) throw new BadRequestException('علت را مشخص کنید');
 
     // 30-day (configurable) notice deadline: event date + insurer.noticeDays.
     let noticeDeadline: Date | null = null;
@@ -361,6 +376,8 @@ export class ClaimsService {
       await this.notifyOrg(firstStage === 'BROKER' ? moarefTenantId : insurerTenantId, 'پرونده خسارت جدید', `پرونده ${claim.claimNumber} برای بررسی به میز کار شما رسید.`);
       await this.notifyPolicyHolder(claim.policyHolderId, 'ثبت پرونده خسارت', `پرونده ${claim.claimNumber} ثبت شد و در حال بررسی است.`);
     }
+    // Coverage inquiry (off unless Super Admin enabled it): never holds up the filing.
+    if (nid) void this.coverage.onFiled(claim.id, insurerTenantId, nid).catch(() => undefined);
     return this.present(claim);
   }
 
@@ -393,16 +410,6 @@ export class ClaimsService {
       kind: t.kind,
       sources: Object.keys(rules).map((s) => ({ key: s, label: SOURCE_FA[s as NoticeSource], allowed: TARGETS_OF[s as NoticeSource].map((k) => ({ key: k, label: TARGET_FA[k] })), rule: rules[s as NoticeSource] })),
     };
-  }
-
-  async saveNoticeRules(input: Record<string, unknown>) {
-    const id = getTenantIdOrThrow();
-    const t = await this.db().tenant.findUnique({ where: { id }, select: { kind: true } });
-    if (!t) throw new NotFoundException('سازمان یافت نشد');
-    const rules = rulesFor(t.kind, input); // keeps only valid sources / desks
-    await this.db().tenant.update({ where: { id }, data: { claimNoticeRules: rules as Prisma.InputJsonValue } });
-    await this.audit.record({ action: AuditAction.EDIT, tenantId: id, targetType: 'ClaimNoticeRules', metadata: rules as Record<string, unknown> });
-    return this.noticeRules();
   }
 
   // ─────────────────────────── Workflow (v2 engine) ───────────────────────────
@@ -485,9 +492,8 @@ export class ClaimsService {
     return ctx.customerRepresentative ? model.panels.REPRESENTATIVE : model.panels.COMPANY;
   }
 
-  private async modelOf(insurerTenantId: string): Promise<WorkflowModel> {
-    const t = await this.db().tenant.findUnique({ where: { id: insurerTenantId }, select: { workflowModel: true } });
-    return modelFrom(t?.workflowModel);
+  private modelOf(insurerTenantId: string): Promise<WorkflowModel> {
+    return this.store.load(insurerTenantId);
   }
 
   /** Actions the caller may take on the claim right now (empty unless they hold its desk). */
@@ -496,13 +502,13 @@ export class ClaimsService {
     const db = this.db();
     const [docs, insurer, branches, physical] = await Promise.all([
       this.deskDocFacts(claim),
-      db.tenant.findUnique({ where: { id: claim.insurerTenantId }, select: { hqCeiling: true, workflowModel: true } }),
+      db.tenant.findUnique({ where: { id: claim.insurerTenantId }, select: { hqCeiling: true } }),
       claim.currentStage === 'BROKER'
         ? db.branch.findMany({ where: { tenantId: claim.insurerTenantId }, orderBy: { code: 'asc' }, select: { id: true, name: true, code: true } })
         : Promise.resolve([]),
       this.physicalState(claim),
     ]);
-    const model = modelFrom(insurer?.workflowModel);
+    const model = await this.modelOf(claim.insurerTenantId);
     const submitBlocked = this.panelRights(model)?.submit === false ? 'ارسال پرونده از این پنل غیرفعال است' : undefined;
     return actionsFor({ claim, isAdmin: desk.isAdmin, hqCeiling: insurer?.hqCeiling ?? null, docs, branches, physical, model, submitBlocked });
   }
@@ -513,13 +519,13 @@ export class ClaimsService {
     const s = claim.currentStage as Stage | null;
     const holds = this.holdsDesk(claim, desk);
     return {
-      chain: chainOf(claim, await this.modelOf(claim.insurerTenantId)).map((st) => ({ stage: st, label: STAGE_FA[st] })),
+      chain: chainOf(claim, await this.modelOf(claim.insurerTenantId)).map((st) => ({ stage: st, label: this.store.labels(claim.insurerTenantId)[st] })),
       currentStage: s,
-      currentStageLabel: s ? STAGE_FA[s] : null,
+      currentStageLabel: s ? this.store.labels(claim.insurerTenantId)[s] : null,
       direction: claim.flowDirection ?? null,
       purpose: claim.flowPurpose ?? null,
       returnTargetStage: claim.returnTargetStage ?? null,
-      returnTargetLabel: claim.returnTargetStage ? STAGE_FA[claim.returnTargetStage as Stage] : null,
+      returnTargetLabel: claim.returnTargetStage ? this.store.labels(claim.insurerTenantId)[claim.returnTargetStage as Stage] : null,
       myStage: desk.stage,
       holdsDesk: holds,
       lossNotice: claim.lossNoticeNumber ? { number: claim.lossNoticeNumber, date: claim.lossNoticeDate ? toJalali(claim.lossNoticeDate, false) : null } : null,
@@ -579,7 +585,7 @@ export class ClaimsService {
         if (claim.returnTargetStage === s) extra.returnTargetStage = null;
         await this.move(claim, step, { ...base, closeState: 'FORWARDED', to: up!, direction: 'UP', purpose: 'REVIEW', status: ClaimStatus.UNDER_REVIEW, extra, branchId });
         await this.audit.record({ action: AuditAction.CLAIM_FORWARD, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { from: s, to: up } });
-        await this.notifyHolder(claim, up!, 'پرونده برای بررسی ارسال شد', `پروندهٔ ${claim.claimNumber} از ${STAGE_FA[s]} برای بررسی به شما ارسال شد.`);
+        await this.notifyHolder(claim, up!, 'پرونده برای بررسی ارسال شد', `پروندهٔ ${claim.claimNumber} از ${this.store.labels(claim.insurerTenantId)[s]} برای بررسی به شما ارسال شد.`);
         break;
       }
       case 'REFER_COUNCIL': {
@@ -592,7 +598,7 @@ export class ClaimsService {
       case 'PAY_ORDER': {
         await this.move(claim, step, { ...base, closeState: 'APPROVED', to: dn!, direction: 'DOWN', purpose: 'PAYMENT', status: ClaimStatus.APPROVED, extra: { returnTargetStage: null } });
         await this.audit.record({ action: AuditAction.CLAIM_APPROVE, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { by: s } });
-        await this.notifyHolder(claim, dn!, 'دستور پرداخت', `برای پروندهٔ ${claim.claimNumber} از سوی ${STAGE_FA[s]} دستور پرداخت صادر شد.`);
+        await this.notifyHolder(claim, dn!, 'دستور پرداخت', `برای پروندهٔ ${claim.claimNumber} از سوی ${this.store.labels(claim.insurerTenantId)[s]} دستور پرداخت صادر شد.`);
         await this.notifyPolicyHolder(claim.policyHolderId, 'تایید پرونده خسارت', `پروندهٔ ${claim.claimNumber} تایید شد و دستور پرداخت صادر شده است.`);
         break;
       }
@@ -605,7 +611,7 @@ export class ClaimsService {
         await db.claimDeficiency.create({ data: { claimId, raisedByTenantId: getContext()?.tenantId ?? null, raisedByStepId: step.id, items: JSON.stringify(items) } });
         await this.move(claim, step, { ...base, closeState: 'RETURNED_INCOMPLETE', to, direction: 'DOWN', purpose: 'DEFICIENCY', status: ClaimStatus.RETURNED_INCOMPLETE, extra: { returnTargetStage: higher(claim.returnTargetStage as Stage | null, s) } });
         await this.audit.record({ action: AuditAction.CLAIM_RETURN_INCOMPLETE, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { by: s, to, items } });
-        await this.notifyHolder(claim, to, 'عودت پرونده برای رفع نقص', `پروندهٔ ${claim.claimNumber} از سوی ${STAGE_FA[s]} برای رفع نقص عودت شد: ${items.join('، ')}`);
+        await this.notifyHolder(claim, to, 'عودت پرونده برای رفع نقص', `پروندهٔ ${claim.claimNumber} از سوی ${this.store.labels(claim.insurerTenantId)[s]} برای رفع نقص عودت شد: ${items.join('، ')}`);
         break;
       }
       case 'DOWN_FORWARD':
@@ -616,7 +622,7 @@ export class ClaimsService {
         await this.audit.record({ action: AuditAction.CLAIM_FORWARD, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { from: s, to, purpose } });
         await this.notifyHolder(claim, to, purpose === 'PAYMENT' ? 'دستور پرداخت' : 'عودت پرونده برای رفع نقص', purpose === 'PAYMENT'
           ? `دستور پرداخت پروندهٔ ${claim.claimNumber} برای اقدام به شما ارسال شد.`
-          : `پروندهٔ ${claim.claimNumber} برای رفع نقص از ${STAGE_FA[s]} به شما ارسال شد.`);
+          : `پروندهٔ ${claim.claimNumber} برای رفع نقص از ${this.store.labels(claim.insurerTenantId)[s]} به شما ارسال شد.`);
         break;
       }
       case 'MARK_PAID': {
@@ -633,14 +639,14 @@ export class ClaimsService {
         const ev = await db.claimPhysicalEvent.create({ data: { requestId: req.id, claimId, stage: s, action: 'REQUEST', note, actorId: this.actor() } });
         if (input.letterId) await db.claimLetter.update({ where: { id: input.letterId }, data: { physicalEventId: ev.id } });
         await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'ClaimPhysicalRequest', targetId: req.id, metadata: { claimId, requester: s, holder } });
-        await this.notifyHolder(claim, holder, 'درخواست اصل مدارک', `${STAGE_FA[s]} اصل مدارک پروندهٔ ${claim.claimNumber} را درخواست کرده است.`);
+        await this.notifyHolder(claim, holder, 'درخواست اصل مدارک', `${this.store.labels(claim.insurerTenantId)[s]} اصل مدارک پروندهٔ ${claim.claimNumber} را درخواست کرده است.`);
         break;
       }
       case 'REJECT_FINAL': {
         await this.move(claim, step, { ...base, closeState: 'REJECTED', to: null, status: ClaimStatus.REJECTED });
         await this.audit.record({ action: AuditAction.CLAIM_REJECT, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { by: s } });
         await this.notifyPolicyHolder(claim.policyHolderId, 'رد پرونده خسارت', `پروندهٔ ${claim.claimNumber} رد شد${note ? `: ${note}` : '.'}`);
-        if (claim.brokerTenantId) await this.notifyOrg(claim.brokerTenantId, 'رد پرونده خسارت', `پروندهٔ ${claim.claimNumber} توسط ${STAGE_FA[s]} رد شد.`, `/org/claims/${claimId}`);
+        if (claim.brokerTenantId) await this.notifyOrg(claim.brokerTenantId, 'رد پرونده خسارت', `پروندهٔ ${claim.claimNumber} توسط ${this.store.labels(claim.insurerTenantId)[s]} رد شد.`, `/org/claims/${claimId}`);
         break;
       }
     }
@@ -711,7 +717,7 @@ export class ClaimsService {
   private async notifyHolder(claim: any, to: Stage, title: string, body: string) {
     if (to === 'POLICYHOLDER') return this.notifyPolicyHolder(claim.policyHolderId, title, body);
     const tenantId = to === 'BROKER' ? claim.brokerTenantId : claim.insurerTenantId;
-    if (tenantId) await this.notifyOrg(tenantId, title, `${body} (مرحله: ${STAGE_FA[to]})`, `/org/claims/${claim.id}`);
+    if (tenantId) await this.notifyOrg(tenantId, title, `${body} (مرحله: ${this.store.labels(claim.insurerTenantId)[to]})`, `/org/claims/${claim.id}`);
   }
 
   /** بیمه‌گزار sends the claim on — initial submission or after رفع نقص. */
@@ -766,7 +772,7 @@ export class ClaimsService {
     const db = this.db();
     const state = await this.physicalState(claim);
     const seats = this.physicalSeats(claim, desk);
-    const actions = seats.flatMap((st) => physicalActionsFor(st, state).map((a) => ({ ...a, seat: st })));
+    const actions = seats.flatMap((st) => physicalActionsFor(st, state, this.store.labels(claim.insurerTenantId)).map((a) => ({ ...a, seat: st })));
     const [events, letters] = await Promise.all([
       db.claimPhysicalEvent.findMany({ where: { claimId: claim.id }, orderBy: { createdAt: 'asc' } }),
       db.claimLetter.findMany({ where: { claimId: claim.id, physicalEventId: { not: null } } }),
@@ -778,12 +784,12 @@ export class ClaimsService {
     const o = state.open;
     return {
       at: state.at ?? 'POLICYHOLDER',
-      atLabel: STAGE_FA[state.at ?? 'POLICYHOLDER'],
+      atLabel: this.store.labels(claim.insurerTenantId)[state.at ?? 'POLICYHOLDER'],
       collected: !!state.at,
-      open: o ? { ...o, requesterLabel: STAGE_FA[o.requesterStage], holderLabel: STAGE_FA[o.holderStage] } : null,
+      open: o ? { ...o, requesterLabel: this.store.labels(claim.insurerTenantId)[o.requesterStage], holderLabel: this.store.labels(claim.insurerTenantId)[o.holderStage] } : null,
       actions,
       events: events.map((e) => ({
-        id: e.id, stage: e.stage, stageLabel: STAGE_FA[e.stage as Stage], action: e.action, note: e.note, trackingNo: e.trackingNo,
+        id: e.id, stage: e.stage, stageLabel: this.store.labels(claim.insurerTenantId)[e.stage as Stage], action: e.action, note: e.note, trackingNo: e.trackingNo,
         at: toJalali(e.createdAt), by: e.actorId ? (uMap.get(e.actorId) ?? null) : null,
         letters: letters.filter((l) => l.physicalEventId === e.id).map((l) => ({ id: l.id, number: l.number, subject: l.subject, date: l.letterDate ? toJalali(l.letterDate, false) : null, hasFile: !!l.storageKey, fileName: l.fileName })),
       })),
@@ -805,7 +811,7 @@ export class ClaimsService {
     assertNotPaid(claim); // archived once paid
     const desk = await this.myDesk();
     const state = await this.physicalState(claim);
-    const seat = this.physicalSeats(claim, desk).find((st) => physicalActionsFor(st, state).some((a) => a.key === input.action));
+    const seat = this.physicalSeats(claim, desk).find((st) => physicalActionsFor(st, state, this.store.labels(claim.insurerTenantId)).some((a) => a.key === input.action));
     if (!seat) throw new ForbiddenException('این اقدام برای شما در دسترس نیست');
     await this.assertLetterFree(claimId, input.letterId);
     const note = input.note?.trim() || null;
@@ -821,13 +827,13 @@ export class ClaimsService {
         const next = physicalBelow(seat)!;
         await db.claimPhysicalRequest.update({ where: { id: open!.id }, data: { holderStage: next } });
         await event(open!.id, 'RELAY');
-        await this.notifyHolder(claim, next, 'درخواست اصل مدارک', `${STAGE_FA[open!.requesterStage as Stage]} اصل مدارک پروندهٔ ${claim.claimNumber} را درخواست کرده است (ارسال از طریق ${STAGE_FA[seat]}).`);
+        await this.notifyHolder(claim, next, 'درخواست اصل مدارک', `${this.store.labels(claim.insurerTenantId)[open!.requesterStage as Stage]} اصل مدارک پروندهٔ ${claim.claimNumber} را درخواست کرده است (ارسال از طریق ${this.store.labels(claim.insurerTenantId)[seat]}).`);
         break;
       }
       case 'PHYSICAL_SEND': {
         await db.claimPhysicalRequest.update({ where: { id: open!.id }, data: { status: 'SENT', sentAt: new Date() } });
         await event(open!.id, 'SEND');
-        await this.notifyHolder(claim, open!.requesterStage as Stage, 'ارسال اصل مدارک', `اصل مدارک پروندهٔ ${claim.claimNumber} توسط ${STAGE_FA[seat]} ارسال شد${trackingNo ? ` (کد رهگیری ${trackingNo})` : ''}.`);
+        await this.notifyHolder(claim, open!.requesterStage as Stage, 'ارسال اصل مدارک', `اصل مدارک پروندهٔ ${claim.claimNumber} توسط ${this.store.labels(claim.insurerTenantId)[seat]} ارسال شد${trackingNo ? ` (کد رهگیری ${trackingNo})` : ''}.`);
         break;
       }
       case 'PHYSICAL_RECEIVE': {
@@ -840,12 +846,12 @@ export class ClaimsService {
         // ستاد / شورا sends the originals back to شعبه, where they are kept.
         const req = await db.claimPhysicalRequest.create({ data: { claimId, requesterStage: 'BRANCH', holderStage: seat, status: 'SENT', sentAt: new Date(), createdById: this.actor() } });
         await event(req.id, 'RETURN');
-        await this.notifyHolder(claim, 'BRANCH', 'بازگشت اصل مدارک', `اصل مدارک پروندهٔ ${claim.claimNumber} از ${STAGE_FA[seat]} به شعبه بازگردانده شد.`);
+        await this.notifyHolder(claim, 'BRANCH', 'بازگشت اصل مدارک', `اصل مدارک پروندهٔ ${claim.claimNumber} از ${this.store.labels(claim.insurerTenantId)[seat]} به شعبه بازگردانده شد.`);
         break;
       }
     }
     await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'ClaimPhysical', targetId: claimId, metadata: { action: input.action, seat, trackingNo } });
-    await this.notifyAdminsActivity('اصل مدارک', `${await this.actorLabel()} روی پروندهٔ ${claim.claimNumber}: «${physicalActionsFor(seat, state).find((a) => a.key === input.action)?.label}».`, `/org/claims/${claimId}`);
+    await this.notifyAdminsActivity('اصل مدارک', `${await this.actorLabel()} روی پروندهٔ ${claim.claimNumber}: «${physicalActionsFor(seat, state, this.store.labels(claim.insurerTenantId)).find((a) => a.key === input.action)?.label}».`, `/org/claims/${claimId}`);
     return this.get(claimId);
   }
 
@@ -1322,7 +1328,8 @@ export class ClaimsService {
   /** Review columns shown per document: the desks on this claim's chain (شورای فنی once it was referred). */
   private async reviewDesks(claim: any): Promise<ReviewDesk[]> {
     const referred = claim.currentStage === 'COUNCIL' || (await this.db().claimStep.count({ where: { claimId: claim.id, stage: 'COUNCIL' } })) > 0;
-    return chainOf(claim).filter((s): s is ReviewDesk => s !== 'POLICYHOLDER' && (s !== 'COUNCIL' || referred));
+    const model = await this.modelOf(claim.insurerTenantId);
+    return chainOf(claim, model).filter((s): s is ReviewDesk => s !== 'POLICYHOLDER' && model.stages[s].reviewDocs && (s !== 'COUNCIL' || referred));
   }
 
   /**
@@ -1350,7 +1357,7 @@ export class ClaimsService {
       const who = (l.actorId && name.get(l.actorId)) || (l.actorType === 'CUSTOMER' || l.actorType === 'INSURED' ? 'بیمه‌گزار' : 'کاربر سامانه');
       let text: string;
       if (l.targetType === 'ClaimDocumentReview') {
-        const stage = STAGE_FA[m.stage as Stage] ?? m.stage ?? '—';
+        const stage = this.store.labels(claim.insurerTenantId)[m.stage as Stage] ?? m.stage ?? '—';
         text = `${who} در مرحلهٔ «${stage}» این مدرک را ${STATE_VERB[m.state] ?? m.state}${m.note ? ` — توضیح: «${m.note}»` : ''}.`;
       } else if (l.action === 'UPLOAD') {
         text = `${who} این فایل را بارگذاری کرد.`;
@@ -1359,7 +1366,7 @@ export class ClaimsService {
       } else {
         text = `${who} این مدرک را ویرایش کرد.`;
       }
-      return { at: toJalali(l.createdAt), stage: m.stage ?? null, stageLabel: m.stage ? STAGE_FA[m.stage as Stage] ?? null : null, state: m.state ?? null, by: who, text };
+      return { at: toJalali(l.createdAt), stage: m.stage ?? null, stageLabel: m.stage ? this.store.labels(claim.insurerTenantId)[m.stage as Stage] ?? null : null, state: m.state ?? null, by: who, text };
     });
     return { documentId: doc.id, fileName: doc.fileName, entries };
   }
@@ -1390,7 +1397,7 @@ export class ClaimsService {
     await this.recomputeDocStatus(docId, claim);
     await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'ClaimDocumentReview', targetId: docId, metadata: { stage, state, note } });
     const stateFa = { PENDING: 'در دست بررسی', APPROVED: 'تایید', REJECTED: 'رد' }[state] ?? state;
-    await this.notifyAdminsActivity('بررسی مدرک (مرحله‌ای)', `${await this.actorLabel()} در مرحلهٔ «${STAGE_FA[stage]}» یکی از مدارک پروندهٔ ${claim.claimNumber} را «${stateFa}» کرد.`, `/org/claims/${claimId}`);
+    await this.notifyAdminsActivity('بررسی مدرک (مرحله‌ای)', `${await this.actorLabel()} در مرحلهٔ «${this.store.labels(claim.insurerTenantId)[stage]}» یکی از مدارک پروندهٔ ${claim.claimNumber} را «${stateFa}» کرد.`, `/org/claims/${claimId}`);
     return { ok: true };
   }
 
@@ -1492,9 +1499,41 @@ export class ClaimsService {
     return { link, claim };
   }
 
+  /** Model View: the بیمه‌گزار / نماینده sends the بیمه‌شده or a dependent a link for their own documents. */
+  async sendInsuredLink(claimId: string, rawPhone: string) {
+    const db = this.db();
+    const claim = await db.claim.findUnique({ where: { id: claimId } });
+    if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
+    this.assertParticipant(claim);
+    assertNotPaid(claim);
+    const { insured } = await this.modelOf(claim.insurerTenantId);
+    if (!insured.enabled) throw new ForbiddenException('پنل بیمه‌شده برای این بیمه‌گر فعال نیست');
+    const phone = rawPhone.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).replace(/\s/g, '');
+    if (!/^09\d{9}$/.test(phone)) throw new BadRequestException('شماره موبایل نامعتبر است');
+    if (!(await this.rateLimit.hit(`insuredlink:${claimId}`, 5, 3600))) throw new TooManyRequestsException('تعداد ارسال‌ها زیاد است. بعداً تلاش کنید');
+    const token = randomBytes(24).toString('base64url');
+    await this.prisma.unscoped().caseUploadLink.create({ data: { tokenHash: sha256(token), claimId, phone: this.crypto.encrypt(phone), docCodes: insured.docCodes, expiresAt: new Date(Date.now() + insured.linkDays * 86_400_000) } });
+    await this.sms.send(phone, `پروندهٔ ${claim.claimNumber}: لطفاً مدارک خود را از این پیوند بارگذاری کنید: ${webBase()}/fix/${token}`, claim.brokerTenantId ?? claim.insurerTenantId);
+    await this.audit.record({ action: AuditAction.CREATE, tenantId: claim.insurerTenantId, targetType: 'InsuredUploadLink', targetId: claimId });
+    return { ok: true };
+  }
+
+  /** The insurer behind a بیمه‌نامه of the caller's own company (or brokerage, for the «broker» login). */
+  async insurerOfContract(contractId: string): Promise<string> {
+    const ctx = getContext();
+    const k = await this.prisma.unscoped().policyholderContract.findFirst({ where: { id: contractId, isActive: true, company: ctx?.customerBrokerPanel ? { tenantId: ctx.tenantId } : { id: ctx?.customerCompanyId ?? (await this.prisma.unscoped().customerAccount.findUnique({ where: { id: ctx?.actorId ?? '' }, select: { companyId: true } }))?.companyId ?? '' } }, select: { insurerTenantId: true } });
+    if (!k) throw new NotFoundException('بیمه‌نامه یافت نشد');
+    if (!(await this.rateLimit.hit(`coverage:${ctx?.actorId ?? 'x'}`, 30, 3600))) throw new TooManyRequestsException('تعداد استعلام‌ها زیاد است. بعداً تلاش کنید');
+    return k.insurerTenantId;
+  }
+
   /** What the link page shows: the case number and its refused documents (label + why). */
   async uploadLinkInfo(token: string, ip: string) {
     const { link, claim } = await this.linkClaim(token, ip);
+    if (link.docCodes.length) {
+      const rows = await this.prisma.unscoped().requiredDocument.findMany({ where: { tenantId: claim.insurerTenantId, code: { in: link.docCodes }, isActive: true, appliesToTypes: { has: claim.claimType } }, orderBy: { order: 'asc' }, select: { code: true, label: true } });
+      return { claimNumber: claim.claimNumber, archived: claim.status === 'PAID', expiresAt: toJalali(link.expiresAt), checking: 0, insured: true, items: rows.map((r) => ({ ...r, reason: null })) };
+    }
     const refused = await this.aiQueue.refusedSlots(claim.id);
     const reqs = await this.prisma.unscoped().requiredDocument.findMany({ where: { tenantId: claim.insurerTenantId, code: { in: refused.map((r) => r.code) } }, select: { code: true, label: true } });
     const label = new Map(reqs.map((r) => [r.code, r.label]));
@@ -1514,8 +1553,12 @@ export class ClaimsService {
     assertNotPaid(claim);
     if (!file?.buffer?.length) throw new BadRequestException('فایلی دریافت نشد');
     if (!claimDocOk(file)) throw new BadRequestException(CLAIM_DOC_TYPES_FA);
-    const refused = await this.aiQueue.refusedSlots(claim.id);
-    if (!refused.some((r) => r.code === docCode)) throw new BadRequestException('این مدرک نیازی به بارگذاری دوباره ندارد');
+    if (link.docCodes.length) {
+      if (!link.docCodes.includes(docCode)) throw new BadRequestException('این مدرک در این پیوند نیست');
+    } else {
+      const refused = await this.aiQueue.refusedSlots(claim.id);
+      if (!refused.some((r) => r.code === docCode)) throw new BadRequestException('این مدرک نیازی به بارگذاری دوباره ندارد');
+    }
     const phone = link.phone ? this.crypto.decrypt(link.phone) : null;
     return this.storeDocument(claim, file, docCode, null, async () => phone);
   }
@@ -1668,7 +1711,7 @@ export class ClaimsService {
         status: STATUS_FA[c.status] ?? c.status,
         claimType: TYPE_FA[c.claimType] ?? c.claimType,
         channel: c.channel === 'BROKER' ? 'کارگزاری' : 'مستقیم (شعبه)',
-        stage: c.currentStage ? STAGE_FA[c.currentStage as Stage] : 'بسته‌شده',
+        stage: c.currentStage ? this.store.labels(c.insurerTenantId)[c.currentStage as Stage] : 'بسته‌شده',
         direction: !c.currentStage ? '—' : c.flowPurpose === 'PAYMENT' ? 'در مسیر پرداخت' : c.flowDirection === 'DOWN' ? 'عودت برای رفع نقص' : 'در حال بررسی',
         insurer: tName.get(c.insurerTenantId) ?? null,
         broker: c.brokerTenantId ? tName.get(c.brokerTenantId) ?? null : null,
@@ -1690,7 +1733,7 @@ export class ClaimsService {
         payableAmount: num(c.finalizedAmount ?? c.claimedAmount),
         lossNoticeNumber: c.lossNoticeNumber ?? null,
         lossNoticeDate: jd(c.lossNoticeDate),
-        physicalAt: STAGE_FA[(c.physicalAt as Stage | null) ?? 'POLICYHOLDER'],
+        physicalAt: this.store.labels(c.insurerTenantId)[(c.physicalAt as Stage | null) ?? 'POLICYHOLDER'],
         docsRequired: required.length,
         docsUploaded: uploaded,
         docsApproved: approved,
@@ -1825,7 +1868,7 @@ export class ClaimsService {
     return {
       userName: user?.displayName || user?.username || null,
       role: desk.stage,
-      roleLabel: desk.insurerAdmin ? 'مدیر بیمه‌گر (همهٔ مراحل)' : desk.stage ? STAGE_FA[desk.stage] : '—',
+      roleLabel: desk.insurerAdmin ? 'مدیر بیمه‌گر (همهٔ مراحل)' : desk.stage ? this.store.labels(desk.tenantId)[desk.stage] : '—',
       tiles,
       summary: { pendingActions, queues: tiles.filter((t) => t.mine > 0).length },
     };
@@ -1951,6 +1994,8 @@ export class ClaimsService {
 
   private present(c: any, full = false) {
     const base = {
+      coverageStatus: c.coverageStatus ?? null,
+      insuredLinkEnabled: this.store.get(c.insurerTenantId).insured.enabled,
       id: c.id,
       claimNumber: c.claimNumber,
       status: c.status,
@@ -1975,7 +2020,7 @@ export class ClaimsService {
       lateNotice: c.lateNotice,
       createdAt: c.createdAt ? toJalali(c.createdAt) : null,
       currentStage: c.currentStage ?? null,
-      currentStageLabel: c.currentStage ? STAGE_FA[c.currentStage as Stage] : null,
+      currentStageLabel: c.currentStage ? this.store.labels(c.insurerTenantId)[c.currentStage as Stage] : null,
       flowDirection: c.flowDirection ?? null,
       flowPurpose: c.flowPurpose ?? null,
     };
@@ -1985,7 +2030,7 @@ export class ClaimsService {
       ...base,
       paidDate: paid ? toJalali(paid.decidedAt, false) : null, // تاریخ پرداخت
       steps: (c.steps ?? []).map((s: any) => ({
-        order: s.order, partyType: s.partyType, stage: s.stage ?? null, stageLabel: s.stage ? STAGE_FA[s.stage as Stage] : null,
+        order: s.order, partyType: s.partyType, stage: s.stage ?? null, stageLabel: s.stage ? this.store.labels(c.insurerTenantId)[s.stage as Stage] : null,
         direction: s.direction, purpose: s.purpose ?? null, state: s.state, action: s.action ?? null,
         levelId: s.levelId, holderTenantId: s.holderTenantId, note: s.note, decidedAt: s.decidedAt ? toJalali(s.decidedAt) : null,
         letters: (c.letters ?? []).filter((l: any) => l.stepId === s.id).map((l: any) => ({

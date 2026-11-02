@@ -7,7 +7,8 @@ import { fromJalali, toJalali } from '../../common/jalali/jalali.util';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { customerOwnsClaim, getContext } from '../../common/tenant/tenant-context';
 import { validateField } from '../../common/validation/field-validation';
-import { Stage, STAGE_FA } from '../claims/workflow';
+import { Stage } from '../claims/workflow';
+import { ModelStore } from '../model-view/model-store.service';
 
 /** What each hand-off did, for «تاریخچه وضعیت پرونده» of a case moved by the hierarchy. */
 const STEP_ACTION_FA: Record<string, string> = {
@@ -44,6 +45,7 @@ export interface OcrDraftField {
 @Injectable()
 export class ClaimFieldsService {
   constructor(
+    private readonly store: ModelStore,
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly crypto: FieldCryptoService,
@@ -185,7 +187,7 @@ export class ClaimFieldsService {
       ...(claim.imported && (claim.status === 'PAID' || claim.status === 'REJECTED') ? [] : [{ at: toJalali(claim.createdAt, true, true), title: 'ثبت پرونده', detail: null as string | null }]),
       ...steps.map((s) => ({
         at: toJalali(s.decidedAt!, true, true),
-        title: `${s.stage ? STAGE_FA[s.stage as Stage] : 'مرحله'}: ${STEP_ACTION_FA[s.action ?? ''] ?? STEP_STATE_FA[s.state] ?? s.state}`,
+        title: `${s.stage ? this.store.labels(claim.insurerTenantId)[s.stage as Stage] : 'مرحله'}: ${STEP_ACTION_FA[s.action ?? ''] ?? STEP_STATE_FA[s.state] ?? s.state}`,
         detail: s.note ?? null,
       })),
     ];
@@ -231,7 +233,7 @@ export class ClaimFieldsService {
     const at = (s: { decidedAt: Date | null } | null) => (s?.decidedAt ? jd(s.decidedAt) : null);
     const stageNow = claim.status === 'PAID' ? 'پرداخت شده' : claim.status === 'REJECTED' ? 'رد شده'
       : claim.flowPurpose === 'PAYMENT' ? 'در انتظار پرداخت'
-      : claim.currentStage ? `نزد ${claim.currentStage === 'POLICYHOLDER' ? 'بیمه‌گزار' : claim.currentStage === 'HQ' ? 'مدیریت ستاد' : STAGE_FA[claim.currentStage as Stage]}` : null;
+      : claim.currentStage ? `نزد ${this.store.labels(claim.insurerTenantId)[claim.currentStage as Stage]}` : null;
     const manual = await this.isManual(claim.id);
     const hierarchy: Record<string, string | null> = {
       // The death is reported when the case is filed (by the بیمه‌گزار, or by staff for them).

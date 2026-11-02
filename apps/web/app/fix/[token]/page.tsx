@@ -6,7 +6,7 @@ import { FancyLoader } from '../../components/ui';
 import { OnProgress, UploadButton } from '../../components/upload';
 
 interface LinkInfo {
-  claimNumber: string; archived: boolean; expiresAt: string; checking: number;
+  claimNumber: string; archived: boolean; expiresAt: string; checking: number; insured?: boolean;
   items: { code: string; label: string; reason: string | null }[];
 }
 
@@ -33,7 +33,7 @@ export default function FixDocuments() {
   return (
     <div className="min-h-screen flex items-start justify-center p-4" style={{ background: 'var(--bg)' }}>
       <div className="card p-5 space-y-4 w-full" style={{ maxWidth: 560, marginTop: 32 }}>
-        <h1 className="text-xl font-extrabold">بارگذاری دوبارهٔ مدارک</h1>
+        <h1 className="text-xl font-extrabold">{info?.insured ? 'بارگذاری مدارک' : 'بارگذاری دوبارهٔ مدارک'}</h1>
         {error ? <div className="alert-error">{error}</div> : !info ? <div className="flex justify-center p-8"><FancyLoader label="در حال بارگذاری" /></div> : (
           <>
             <p className="text-sm" style={{ color: 'var(--muted)' }}>پروندهٔ {info.claimNumber}</p>
@@ -46,7 +46,7 @@ export default function FixDocuments() {
                   </div>
                 ) : (
                   <>
-                    <p className="text-sm">مدارک زیر در جای درست بارگذاری نشده بود. برای هر کدام، همان مدرکی را که عنوانش آمده است بارگذاری کنید:</p>
+                    <p className="text-sm">{info.insured ? 'برای هر مدرک، فایل همان مدرک را انتخاب کنید.' : `مدارک زیر در جای درست بارگذاری نشده بود.${' '}برای هر کدام، همان مدرکی را که عنوانش آمده است بارگذاری کنید:`}</p>
                     <div className="space-y-3">
                       {info.items.map((it) => (
                         <div key={it.code} className="p-3 rounded-lg space-y-2" style={{ border: '1px solid var(--border)' }}>

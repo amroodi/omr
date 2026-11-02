@@ -7,7 +7,7 @@ import { CLAIM_TYPE_LABELS, ErrorBox } from '../../../components/ui';
 import { JalaliDatePicker } from '../../../components/JalaliDatePicker';
 import { Shell } from '../../../components/Shell';
 import { CUSTOMER_NAV, POLICY_KEY, PolicyRow } from '../../nav';
-import { CAUSE_OPTIONS, causeLabel, EVENT_DATE_LABEL, insuredNameLabel } from '../../../components/claim-wording';
+import { causeLabel, EVENT_DATE_LABEL, insuredNameLabel } from '../../../components/claim-wording';
 
 const toAscii = (s: string) => s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
 // Death claims ask for the date of death; accident disability / medical claims for the accident date.
@@ -57,6 +57,8 @@ export default function CustomerNewClaim() {
   const [notice, setNotice] = useState<{ enabled: boolean; targets: string[]; default: string; labels: Record<string, string> } | null>(null);
   useEffect(() => { client.get<any>('/customer/notice-options', 'customer').then(setNotice).catch(() => setNotice(null)); }, []);
   const [causes, setCauses] = useState<string[]>([]);
+  // فن‌آوران coverage inquiry; stays null while Super Admin has it off for this insurer.
+  const [coverage, setCoverage] = useState<{ status: string; name: string } | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -84,6 +86,11 @@ export default function CustomerNewClaim() {
   }, []);
 
   const policy = policies?.find((p) => p.id === policyId) ?? null;
+  // Model View: the wording and fields this insurer set for this بیمه‌نامه.
+  const form = policy?.form;
+  const eventLabel = form?.eventLabel ?? EVENT_DATE_LABEL;
+  const causeOptions = form?.causes ?? [];
+  const cause = [...causes, f.causeOfDeath.trim()].filter(Boolean).join('، ');
   const types = policy?.claimTypes ?? Object.keys(CLAIM_TYPE_LABELS);
   /** Select a بیمه‌نامه; keep the claim type only if that policy's line covers it. */
   const choosePolicy = (p: PolicyRow) => {
@@ -102,6 +109,14 @@ export default function CustomerNewClaim() {
     if (other) choosePolicy(other);
   };
 
+  const checkCoverage = async () => {
+    setCoverage(null);
+    const code = toAscii(f.deceasedNationalCode).trim();
+    if (!policyId || !/^\d{10}$/.test(code)) return;
+    const r = await client.post<any>('/customer/coverage-check', { contractId: policyId, nationalCode: code }, 'customer').catch(() => null);
+    if (r?.enabled) setCoverage({ status: r.status, name: [r.person?.firstName, r.person?.lastName].filter(Boolean).join(' ') });
+  };
+
   const submit = async () => {
     setError('');
     const iso = f.eventDate ? jalaliToIso(f.eventDate) : null;
@@ -109,6 +124,8 @@ export default function CustomerNewClaim() {
     const birthIso = f.birthDate ? jalaliToIso(f.birthDate) : null;
     if (f.birthDate && !birthIso) return setError('تاریخ تولد نامعتبر است (نمونه: ۱۳۴۵/۰۵/۱۲)');
     if (birthIso && iso && new Date(birthIso) > new Date(iso)) return setError(`تاریخ تولد بعد از ${eventLabel} است`);
+    if (form?.birthDate === 'required' && !birthIso) return setError('تاریخ تولد بیمه‌شده را وارد کنید');
+    if (form?.cause === 'required' && !cause) return setError(`${causeLabel(f.claimType)} را مشخص کنید`);
     setBusy(true);
     try {
       const payload: Record<string, string> = {
@@ -120,7 +137,6 @@ export default function CustomerNewClaim() {
       };
       if (iso) payload.eventDate = iso;
       if (birthIso) payload.deceasedBirthDate = birthIso;
-      const cause = [...causes, f.causeOfDeath.trim()].filter(Boolean).join('، ');
       if (cause) payload.causeOfDeath = cause;
       if (f.startStage) payload.startStage = f.startStage;
       if (f.description.trim()) payload.description = f.description.trim();
@@ -130,7 +146,6 @@ export default function CustomerNewClaim() {
   };
 
   const isDeath = DEATH_TYPES.has(f.claimType);
-  const eventLabel = EVENT_DATE_LABEL;
   const age = ageBetween(f.birthDate ? jalaliToIso(f.birthDate) : null, f.eventDate ? jalaliToIso(f.eventDate) : null);
 
   return (
@@ -169,34 +184,46 @@ export default function CustomerNewClaim() {
             </select>
           </PField>
 
-          <PField label={`${insuredNameLabel(policy?.line)} *`}>
+          <PField label={`${form?.insuredLabel ?? insuredNameLabel(policy?.line)} *`}>
             <input className="input" value={f.deceasedFullName} onChange={(e) => setF({ ...f, deceasedFullName: e.target.value })} />
           </PField>
 
           <PField label="کد ملی بیمه‌شده *" help="کد ملی ۱۰ رقمی بیمه‌شده.">
-            <input className="input" value={f.deceasedNationalCode} onChange={(e) => setF({ ...f, deceasedNationalCode: e.target.value })} inputMode="numeric" style={{ direction: 'ltr', textAlign: 'right' }} />
+            <input className="input" value={f.deceasedNationalCode} onChange={(e) => setF({ ...f, deceasedNationalCode: e.target.value })} onBlur={checkCoverage} inputMode="numeric" style={{ direction: 'ltr', textAlign: 'right' }} />
+            {coverage && (
+              <div className={`text-xs mt-1 ${coverage.status === 'VALID' ? 'alert-success' : coverage.status === 'NOT_CHECKED' ? '' : 'alert-error'}`}>
+                {coverage.status === 'VALID' ? `پوشش بیمه معتبر است${coverage.name ? ` — ${coverage.name}` : ''}`
+                  : coverage.status === 'INVALID' ? 'پوشش این فرد در سامانهٔ بیمه‌گر معتبر نیست'
+                  : coverage.status === 'NOT_FOUND' ? 'این کد ملی در سامانهٔ بیمه‌گر یافت نشد'
+                  : 'سامانهٔ بیمه‌گر در دسترس نیست؛ می‌توانید ثبت کنید و بررسی بعداً خودکار انجام می‌شود'}
+              </div>
+            )}
           </PField>
 
-          <PField label="تاریخ تولد بیمه‌شده (شمسی)" help="تاریخ تولد بیمه‌شده؛ سن او به‌طور خودکار محاسبه می‌شود.">
+          {form?.birthDate !== 'hidden' && (
+          <PField label={`تاریخ تولد بیمه‌شده (شمسی)${form?.birthDate === 'required' ? ' *' : ''}`} help="تاریخ تولد بیمه‌شده؛ سن او به‌طور خودکار محاسبه می‌شود.">
             <JalaliDatePicker value={f.birthDate} onChange={(v) => setF({ ...f, birthDate: v })} placeholder="۱۳۴۵/۰۵/۱۲" />
           </PField>
+          )}
 
           <PField label={`${eventLabel} (شمسی) *`} help="تاریخ وقوع فوت یا حادثه به تقویم شمسی؛ بیمه‌گر بر اساس قرارداد معتبر در این تاریخ تعیین می‌شود.">
             <JalaliDatePicker value={f.eventDate} onChange={onEventDate} placeholder="۱۴۰۵/۰۷/۰۱" />
           </PField>
 
-          <PField label={causeLabel(f.claimType)} help="علت را همان‌طور که می‌دانید بنویسید؛ مثلاً «ایست قلبی»، «تصادف رانندگی» یا «سقوط از ارتفاع».">
-            {CAUSE_OPTIONS.length > 0 && (
+          {form?.cause !== 'hidden' && (
+          <PField label={`${causeLabel(f.claimType)}${form?.cause === 'required' ? ' *' : ''}`} help="علت را همان‌طور که می‌دانید بنویسید؛ مثلاً «ایست قلبی»، «تصادف رانندگی» یا «سقوط از ارتفاع».">
+            {causeOptions.length > 0 && (
               <div className="flex flex-wrap gap-x-4 gap-y-1 mb-2">
-                {CAUSE_OPTIONS.map((c) => (
+                {causeOptions.map((c) => (
                   <label key={c} className="flex items-center gap-1.5 text-sm cursor-pointer">
                     <input type="checkbox" checked={causes.includes(c)} onChange={(e) => setCauses(e.target.checked ? [...causes, c] : causes.filter((x) => x !== c))} /> {c}
                   </label>
                 ))}
               </div>
             )}
-            <input className="input" value={f.causeOfDeath} onChange={(e) => setF({ ...f, causeOfDeath: e.target.value })} maxLength={300} placeholder={CAUSE_OPTIONS.length > 0 ? 'علت دیگر…' : 'شرح علت'} />
+            <input className="input" value={f.causeOfDeath} onChange={(e) => setF({ ...f, causeOfDeath: e.target.value })} maxLength={300} placeholder={causeOptions.length > 0 ? 'علت دیگر…' : 'شرح علت'} />
           </PField>
+          )}
 
           <PField label={isDeath ? 'سن متوفی (هنگام فوت)' : 'سن بیمه‌شده (هنگام حادثه)'} help="از روی تاریخ تولد و تاریخ وقوع محاسبه می‌شود.">
             <input className="input" readOnly value={age != null ? `${age.toLocaleString('fa-IR')} سال` : ''} placeholder="(پس از ورود تاریخ‌ها)" style={{ background: 'var(--surface-2)' }} />

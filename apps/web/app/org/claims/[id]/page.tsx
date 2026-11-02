@@ -78,6 +78,7 @@ export default function ClaimDetail() {
                 <Link href={`/org/claims/${id}/documents`} className="cs-act"><Icon path={ICONS.doc} /> بررسی وضعیت مدارک</Link>
                 <Link href={`/org/claims/${id}/workflow`} className="cs-act is-alt"><Icon path={ICONS.list} /> مراحل و وضعیت گردش کار</Link>
               </div>
+              {claim.coverageStatus && <div className={claim.coverageStatus === 'VALID' ? 'alert-success' : 'alert-error'}>استعلام پوشش: {({ VALID: 'معتبر', INVALID: 'نامعتبر', NOT_FOUND: 'یافت نشد', NOT_CHECKED: 'بررسی‌نشده؛ به‌محض در دسترس بودن سامانهٔ بیمه‌گر خودکار بررسی می‌شود' } as Record<string, string>)[claim.coverageStatus] ?? claim.coverageStatus}</div>}
               <HeirsCard claimId={id} realm="org" />
               {claim.description && (
                 <div className="card p-4 text-sm whitespace-pre-wrap"><b>توضیحات ثبت پرونده: </b><span style={{ color: 'var(--muted)' }}>{claim.description}</span></div>

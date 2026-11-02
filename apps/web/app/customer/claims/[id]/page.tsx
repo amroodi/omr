@@ -40,6 +40,29 @@ function docStory(it: ChecklistItem, manual = false): { tone: 'ok' | 'bad' | 'wa
  * بیمه‌گزار — «جزئیات پرونده»: the case header card, every required document with its precise review
  * trail and an upload ring, then «روند پرونده» (its own page) and «ثبت نهایی» (send the documents on).
  */
+/** Model View: a link for the بیمه‌شده or a dependent. The API refuses it where the insurer has it off (the card then hides). */
+function InsuredLink({ claimId }: { claimId: string }) {
+  const [phone, setPhone] = useState('');
+  const [state, setState] = useState<{ t: 'ok' | 'err'; m: string } | null>(null);
+  const [off, setOff] = useState(false);
+  const send = async () => {
+    setState(null);
+    try { await client.post(`/customer/claims/${claimId}/insured-link`, { phone }, 'customer'); setState({ t: 'ok', m: 'پیوند پیامک شد.' }); setPhone(''); }
+    catch (e: any) { if (/فعال نیست/.test(e.message)) setOff(true); else setState({ t: 'err', m: e.message }); }
+  };
+  if (off) return <div className="pcard p-4 text-sm" style={{ color: 'var(--muted)' }}>بارگذاری مدارک توسط بیمه‌شده برای این بیمه‌گر فعال نیست.</div>;
+  return (
+    <div className="pcard p-6 space-y-2">
+      <h3 className="font-extrabold">پیوند بارگذاری برای بیمه‌شده</h3>
+      {state && <div className={state.t === 'ok' ? 'alert-success' : 'alert-error'}>{state.m}</div>}
+      <div className="flex gap-2 flex-wrap">
+        <input className="input max-w-xs" inputMode="numeric" style={{ direction: 'ltr', textAlign: 'right' }} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="09xxxxxxxxx" aria-label="موبایل بیمه‌شده" />
+        <button type="button" className="btn btn-primary" disabled={phone.length < 10} onClick={send}>ارسال پیامک</button>
+      </div>
+    </div>
+  );
+}
+
 export default function CustomerClaim() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -123,6 +146,7 @@ export default function CustomerClaim() {
                 notesLabel="وضعیت پرونده:" notes={STATUS_FA[claim.status] ?? claim.status}
                 steps back="/customer/claims" exitHref={`/customer/claims/${id}/workflow`} />
             </div>
+            {claim.coverageStatus && <div className={claim.coverageStatus === 'VALID' ? 'alert-success' : 'alert-error'}>استعلام پوشش: {({ VALID: 'معتبر', INVALID: 'نامعتبر', NOT_FOUND: 'یافت نشد', NOT_CHECKED: 'بررسی‌نشده؛ به‌محض در دسترس بودن سامانهٔ بیمه‌گر خودکار بررسی می‌شود' } as Record<string, string>)[claim.coverageStatus] ?? claim.coverageStatus}</div>}
             {claim.lateNotice && lateWarn && <div className="alert-error">⚠ اعلام خسارت خارج از مهلت مقرر بوده است (مهلت: {claim.noticeDeadline}).</div>}
             {claim.description && <div className="pcard p-4 text-sm whitespace-pre-wrap" style={{ color: 'var(--muted)' }}><b style={{ color: 'var(--text)' }}>توضیحات: </b>{claim.description}</div>}
 
@@ -141,6 +165,7 @@ export default function CustomerClaim() {
               <div className="pcard p-6"><h3 className="font-extrabold mb-3">اصل مدارک</h3><WorkflowPanel claimId={id} workflow={{ ...claim.workflow, actions: claim.workflow.actions.filter((a) => a.key !== 'SUBMIT') }} realm="customer" onDone={reload} /></div>
             )}
 
+            {claim.insuredLinkEnabled && <InsuredLink claimId={id} />}
             <div className="pcard p-6">
               <div className="flex justify-between items-center mb-3">
                 <h3 className="font-extrabold">مدارک مورد نیاز</h3>
