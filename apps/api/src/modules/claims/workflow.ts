@@ -61,7 +61,7 @@ export type Line = 'LIFE' | 'ACCIDENT';
 /** One نوع پرونده. causeGroup: which cause list it shows; death: the case speaks of a متوفی and takes the ذینفع step. */
 export interface CaseType { code: string; label: string; causeGroup: 'DEATH' | 'ACCIDENT'; death: boolean }
 /** بیمه‌گزار companies that file different نوع پرونده than the insurer's usual ones (a ticked company covers its subsidiaries). */
-export interface CompanyGroup { id: string; label: string; companyIds: string[]; lines: Record<Line, string[]> }
+export interface CompanyGroup { id: string; label: string; companyIds: string[]; lines: Record<Line, string[]>; dependents: boolean }
 export interface WorkflowModel extends CaseRules {
   stages: Record<Stage, { label: string; reviewDocs: boolean }>; // reviewDocs: must this desk ✓ every document before sending on?
   byType: Record<string, Partial<CaseRules>>; // نوع پرونده → what differs from the rules above
@@ -75,6 +75,7 @@ export interface WorkflowModel extends CaseRules {
     lines: Record<Line, LineForm>;
     caseTypes: CaseType[];
     groups: CompanyGroup[];
+    dependents: boolean; // «نوع بیمه‌شده» (اصلی / همسر / فرزند) on the filing form, for companies outside a group
     docsNote: string; // shown above the document uploads
   };
 }
@@ -142,7 +143,8 @@ export const DEFAULT_WORKFLOW_MODEL: WorkflowModel = {
       ACCIDENT: { insuredLabel: 'نام بیمه‌شده (مصدوم/متوفی)', claimTypes: ACCIDENT_TYPES },
     },
     caseTypes: DEFAULT_CASE_TYPES,
-    groups: [{ id: 'copper', label: 'شرکت‌های زیرمجموعه صنایع ملی مس ایران', companyIds: [], lines: { LIFE: LIFE_TYPES, ACCIDENT: ['DEATH_ACCIDENT', 'DISABILITY_ACCIDENT'] } }],
+    groups: [{ id: 'copper', label: 'شرکت‌های زیرمجموعه صنایع ملی مس ایران', companyIds: [], lines: { LIFE: LIFE_TYPES, ACCIDENT: ['DEATH_ACCIDENT', 'DISABILITY_ACCIDENT'] }, dependents: false }],
+    dependents: true,
     docsNote: 'تصاویر مدارک موجود در پرونده باید خوانا و ممهور به مهر برابر اصل توسط مراجع یا مقامات ذی‌صلاح قانونی باشد.',
   },
 };
@@ -208,7 +210,9 @@ export function modelFrom(stored: unknown): WorkflowModel {
       groups: (Array.isArray(raw.form?.groups) ? raw.form.groups : d.form.groups).filter((g: any) => typeof g?.id === 'string' && g.id).slice(0, 20).map((g: any): CompanyGroup => ({
         id: g.id.slice(0, 40), label: text(g.label, 'گروه بیمه‌گزاران', 120), companyIds: list(g.companyIds, 2000),
         lines: { LIFE: typeList(g.lines?.LIFE, d.form.lines.LIFE.claimTypes), ACCIDENT: typeList(g.lines?.ACCIDENT, d.form.lines.ACCIDENT.claimTypes) },
+        dependents: flag(g.dependents, false),
       })),
+      dependents: flag(raw.form?.dependents, d.form.dependents),
       docsNote: typeof raw.form?.docsNote === 'string' ? raw.form.docsNote.trim().slice(0, 500) : d.form.docsNote,
     },
   };
@@ -219,6 +223,11 @@ export function typesFor(model: WorkflowModel, line: Line | null | undefined, co
   const group = model.form.groups.find((g) => g.companyIds.some((id) => companyChain.includes(id)));
   const of = (l: Line) => group?.lines[l] ?? model.form.lines[l].claimTypes;
   return line ? of(line) : [...new Set([...of('LIFE'), ...of('ACCIDENT')])];
+}
+
+/** Does this company's filing form ask for «نوع بیمه‌شده»? Its group decides, else the insurer's setting. */
+export function dependentsFor(model: WorkflowModel, companyChain: string[] = []): boolean {
+  return model.form.groups.find((g) => g.companyIds.some((id) => companyChain.includes(id)))?.dependents ?? model.form.dependents;
 }
 
 export const caseTypeOf = (model: WorkflowModel, code: string | null | undefined): CaseType | null => model.form.caseTypes.find((t) => t.code === code) ?? null;

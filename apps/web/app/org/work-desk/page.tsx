@@ -5,19 +5,20 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { client, getToken, hasPerm } from '../../../lib/client';
 import { Shell, Icon } from '../../components/Shell';
 import { ORG_NAV } from '../nav';
-import { ClaimTypeBadge, CLAIM_TYPE_LABELS, claimTypeLabel, ErrorBox, FancyLoader, NoticeModal, Overlay, STATUS_MAP, StatusBadge } from '../../components/ui';
+import { CLAIM_TYPE_LABELS, claimTypeLabel, ErrorBox, FancyLoader, NoticeModal, Overlay, STATUS_MAP, StatusBadge } from '../../components/ui';
 import { JalaliDatePicker } from '../../components/JalaliDatePicker';
 import { RangeSlider } from '../../components/RangeSlider';
 import { toGregorian } from 'jalaali-js';
 import { caseTitle } from '../../../lib/caseTitle';
+import { INSURED_RELATIONS } from '../../components/claim-wording';
 
 interface Tile { key: string; label: string; count: number; actionable: boolean; href?: string }
 interface WorkDesk { userName: string | null; role: string; roleLabel: string; tiles: Tile[]; summary: { pendingActions: number; queues: number } }
-interface QueueRow { id: string; claimNumber: string; policyNumber?: string | null; deceasedNationalCode?: string | null; status: string; claimType: string; deceasedName: string | null; claimedAmount: string; payableAmount?: string; finalizedAmount?: string | null; insurerTenantId?: string }
+interface QueueRow { id: string; claimNumber: string; policyNumber?: string | null; deceasedNationalCode?: string | null; status: string; claimType: string; deceasedName: string | null; claimedAmount: string; payableAmount?: string; finalizedAmount?: string | null; insurerTenantId?: string; claimTypeLabel?: string | null; insuredRelation?: string | null; mainInsuredName?: string | null; mainInsuredNationalCode?: string | null; companyName?: string | null; policyStart?: string | null; policyEnd?: string | null }
 
 const fa = (n: number) => n.toLocaleString('fa-IR');
 const EMPTY = {
-  policyNumber: '', deceasedNationalCode: '', deceasedName: '', claimType: '', insurerTenantId: '',
+  policyNumber: '', mainNationalCode: '', subNationalCode: '', deceasedName: '', claimType: '', insurerTenantId: '',
   eventFrom: '', eventTo: '', status: '', channel: '', createdFrom: '', createdTo: '', estMin: '', estMax: '', finMin: '', finMax: '', docCode: '', beneficiaryType: '',
 };
 const STATUS_OPTIONS: [string, string][] = [
@@ -96,9 +97,9 @@ function WorkDesk() {
     try {
       await client.downloadPost('/exports/table.xlsx', {
         title: `میز کار — ${active.label}`,
-        headers: ['ردیف', 'شماره پرونده', 'شماره بیمه‌نامه', 'کد ملی متوفی', 'نوع', 'بیمه‌گر', 'بیمه‌شده (متوفی)', 'مبلغ (ریال)', 'وضعیت'],
-        rows: list.map((r, i) => [String(i + 1), r.claimNumber, r.policyNumber ?? '', r.deceasedNationalCode ?? '', claimTypeLabel(r),
-          (r.insurerTenantId && insurerMap[r.insurerTenantId]) || '', r.deceasedName ?? '', String(Number(r.payableAmount || r.claimedAmount || 0)), STATUS_MAP[r.status]?.label ?? r.status]),
+        headers: ['ردیف', 'شماره پرونده', 'شماره بیمه‌نامه', 'آغاز پوشش', 'پایان پوشش', 'کد ملی', 'نسبت', 'کد ملی بیمه‌شده اصلی', 'نوع', 'بیمه‌گر', 'بیمه‌گزار', 'نام و نام خانوادگی', 'مبلغ (ریال)', 'وضعیت'],
+        rows: list.map((r, i) => [String(i + 1), r.claimNumber, r.policyNumber ?? '', r.policyStart ?? '', r.policyEnd ?? '', r.deceasedNationalCode ?? '', INSURED_RELATIONS[r.insuredRelation ?? 'MAIN'], r.mainInsuredNationalCode ?? '', claimTypeLabel(r),
+          (r.insurerTenantId && insurerMap[r.insurerTenantId]) || '', r.companyName ?? '', r.deceasedName ?? '', String(Number(r.payableAmount || r.claimedAmount || 0)), STATUS_MAP[r.status]?.label ?? r.status]),
       }, 'org', 'work-desk.xlsx');
     } catch (e: any) { setError(e.message); } finally { setExporting(false); }
   };
@@ -148,7 +149,8 @@ function WorkDesk() {
     const p = new URLSearchParams();
     const set = (k: string, v: string) => { if (v) p.set(k, v); };
     set('policyNumber', toAscii(f.policyNumber).trim());
-    set('deceasedNationalCode', toAscii(f.deceasedNationalCode).replace(/\D/g, ''));
+    set('mainNationalCode', toAscii(f.mainNationalCode).replace(/\D/g, ''));
+    set('subNationalCode', toAscii(f.subNationalCode).replace(/\D/g, ''));
     set('deceasedName', f.deceasedName.trim());
     set('claimType', f.claimType);
     set('insurerTenantId', f.insurerTenantId);
@@ -165,7 +167,6 @@ function WorkDesk() {
       .then((r) => { setRows(r); setActive((a) => (a ? { ...a, count: r.length } : a)); })
       .catch((e) => setError(e.message)).finally(() => setQLoading(false));
   };
-  const tilesJoined = !loading && !!data && arrangedTiles.length > 0;
   const clear = () => { setF({ ...EMPTY }); setActive(null); };
   const upd = (k: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement>) => setF((s) => ({ ...s, [k]: e.target.value }));
 
@@ -185,11 +186,12 @@ function WorkDesk() {
       <ErrorBox message={error} />
 
       {/* ── Search panel ── (queue tiles attach flush underneath) */}
-      <div className={`pcard p-5 pform mb-5 ${tilesJoined ? 'wd-search-joined' : ''}`}>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      <div className="pcard p-5 pform sn-search">
+        <div className="sn-fields">
           <input className="input" placeholder="شماره بیمه‌نامه" value={f.policyNumber} onChange={upd('policyNumber')} style={{ direction: 'ltr', textAlign: 'right' }} />
-          <input className="input" placeholder="کد ملی بیمه‌شده (متوفی)" value={f.deceasedNationalCode} onChange={upd('deceasedNationalCode')} inputMode="numeric" />
-          <input className="input" placeholder="نام بیمه‌شده (متوفی)" value={f.deceasedName} onChange={upd('deceasedName')} />
+          <input className="input" placeholder="کد ملی بیمه‌شده اصلی" value={f.mainNationalCode} onChange={upd('mainNationalCode')} inputMode="numeric" title="پرونده‌های بیمه‌شدهٔ اصلی و زیرمجموعهٔ او" />
+          <input className="input" placeholder="کد ملی بیمه‌شده فرعی" value={f.subNationalCode} onChange={upd('subNationalCode')} inputMode="numeric" title="فقط پرونده‌های همین همسر یا فرزند" />
+          <input className="input" placeholder="نام بیمه‌شده" value={f.deceasedName} onChange={upd('deceasedName')} />
           <select className="input" value={f.claimType} onChange={(e) => setF({ ...f, claimType: e.target.value })}>
             <option value="">— نوع پرونده —</option>
             {Object.entries(caseTypes).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -206,7 +208,7 @@ function WorkDesk() {
 
         {/* Advanced fields (جستجوی پیشرفته) */}
         {adv && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-3 pt-3 border-t" style={{ borderColor: 'var(--border)' }}>
+          <div className="sn-fields mt-2 pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
             <select className="input" value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}>
               <option value="">— وضعیت پرونده —</option>
               {STATUS_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -228,7 +230,7 @@ function WorkDesk() {
               <option value="">— نوع مدرک —</option>
               {docTypes.map((d) => <option key={d.code} value={d.code}>{d.label}</option>)}
             </select>
-            <div className="sm:col-span-2 lg:col-span-3 grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <div className="sn-wide grid grid-cols-1 lg:grid-cols-2 gap-2">
               <RangeSlider label="مبلغ خسارت برآوردی" min={f.estMin} max={f.estMax} onChange={(a, b) => setF((s) => ({ ...s, estMin: a, estMax: b }))} />
               <RangeSlider label="مبلغ خسارت قطعی" min={f.finMin} max={f.finMax} onChange={(a, b) => setF((s) => ({ ...s, finMin: a, finMax: b }))} />
             </div>
@@ -236,7 +238,7 @@ function WorkDesk() {
         )}
 
         {/* Phones: wrap and centre; from sm up: advanced toggle on the side, buttons centred. */}
-        <div className="flex flex-wrap justify-center sm:grid items-center gap-2 mt-4" style={{ gridTemplateColumns: '1fr auto 1fr' }}>
+        <div className="flex flex-wrap justify-center sm:grid items-center gap-2 mt-2" style={{ gridTemplateColumns: '1fr auto 1fr' }}>
           <span>
             <button onClick={() => setAdv((a) => !a)} className="btn btn-ghost btn-sm">
               <Icon path={adv ? 'M18 15l-6-6-6 6' : 'M6 9l6 6 6-6'} /> جستجوی پیشرفته
@@ -262,12 +264,11 @@ function WorkDesk() {
           {arrangedTiles.length === 0 ? (
             <div className="pcard p-6 text-center text-sm" style={{ color: 'var(--muted)' }}>همهٔ برگه‌ها پنهان شده‌اند. از «شخصی‌سازی میز کار» در منو می‌توانید دوباره نمایش دهید.</div>
           ) : (
-          <div className="wd-tiles wd-tiles-joined">
+          <div className={`wd-tiles sn-tabs${active ? ' has-open' : ''}`}>
             {arrangedTiles.map((t) => (
               <div
                 key={t.key}
-                className={`wd-tile ${t.count === 0 ? 'is-zero' : ''}`}
-                style={active?.key === t.key ? { background: 'var(--brand-soft)' } : t.actionable ? { boxShadow: 'inset 0 -3px 0 var(--brand)' } : undefined}
+                className={`wd-tile ${t.count === 0 ? 'is-zero' : ''}${active?.key === t.key ? ' is-on' : ''}${t.actionable ? ' is-action' : ''}`}
                 title={t.actionable ? `${t.label} — قابل اقدام شما` : t.label}
                 onClick={() => openQueue(t)}
               >
@@ -284,9 +285,9 @@ function WorkDesk() {
 
           {/* Queue list for the selected tile */}
           {active && (
-            <div className="pcard mt-5 overflow-hidden">
-              <div className="flex items-center justify-between gap-2 p-4 border-b flex-wrap" style={{ borderColor: 'var(--border)' }}>
-                <h3 className="font-extrabold">{active.label} <span style={{ color: 'var(--muted)' }}>({fa(active.count)})</span></h3>
+            <div className="sn-panel">
+              <div className="sn-bar">
+                <h3 className="font-bold">{active.label} <span style={{ color: 'var(--muted)' }}>({fa(active.count)})</span></h3>
                 <span className="flex items-center gap-2">
                   {picked.size > 0 && <span className="text-xs" style={{ color: 'var(--muted)' }}>{fa(picked.size)} انتخاب‌شده</span>}
                   <button onClick={exportExcel} disabled={!rows.length || exporting} className="wd-xls" title={picked.size ? 'خروجی اکسل ردیف‌های انتخاب‌شده' : 'خروجی اکسل همهٔ ردیف‌های این برگه'} aria-label="خروجی اکسل">
@@ -302,13 +303,13 @@ function WorkDesk() {
                 <div className="p-8 text-center text-sm" style={{ color: 'var(--muted)' }}>موردی یافت نشد.</div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="table">
+                  <table className="table sn-table">
                     <thead><tr>
-                      <th style={{ width: 44 }}>
+                      <th style={{ width: 28 }}>
                         <input type="checkbox" aria-label="انتخاب همهٔ ردیف‌های این صفحه" checked={pageRows.length > 0 && pageRows.every((r) => picked.has(r.id))}
                           onChange={(e) => setPicked((cur) => { const n = new Set(cur); pageRows.forEach((r) => (e.target.checked ? n.add(r.id) : n.delete(r.id))); return n; })} />
                       </th>
-                      {['#', 'کد ملی متوفی', 'نوع', 'بیمه‌گر', 'بیمه‌شده (متوفی)', 'مبلغ (ریال)', 'وضعیت', 'عملیات'].map((h) => <th key={h}>{h}</th>)}
+                      {['#', 'عملیات', 'نام و نام خانوادگی', 'کد ملی', 'نسبت', 'بیمه‌گزار', 'شماره بیمه‌نامه', 'نوع پرونده', 'آغاز پوشش', 'پایان پوشش', 'مبلغ (ریال)', 'وضعیت'].map((h) => <th key={h}>{h}</th>)}
                     </tr></thead>
                     <tbody>
                       {/* Rows don't open on click (too many mis-clicks) — only the «مشاهده» / «ارزیابی» buttons do. */}
@@ -317,21 +318,25 @@ function WorkDesk() {
                           <td><input type="checkbox" aria-label={`انتخاب ردیف ${fa((page - 1) * pageSize + i + 1)}`} checked={picked.has(r.id)}
                             onChange={() => setPicked((cur) => { const n = new Set(cur); if (n.has(r.id)) n.delete(r.id); else n.add(r.id); return n; })} /></td>
                           <td>{fa((page - 1) * pageSize + i + 1)}</td>
-                          <td className="font-semibold" style={{ direction: 'ltr', textAlign: 'right' }} title={caseTitle(r)}>{r.deceasedNationalCode || '—'}</td>
-                          <td><ClaimTypeBadge type={r.claimType} /></td>
-                          <td>{(r.insurerTenantId && insurerMap[r.insurerTenantId]) || '—'}</td>
+                          <td>
+                            <span className="flex items-center gap-1">
+                              <a href={`/org/claims/${r.id}/assess`} target="_blank" rel="noopener" className="sn-act" title="باز شدن در زبانهٔ جدید">ارزیابی</a>
+                              <a href={`/org/claims/${r.id}`} target="_blank" rel="noopener" className="sn-act is-ghost" title="باز شدن در زبانهٔ جدید">مشاهده</a>
+                            </span>
+                          </td>
                           <td>{r.deceasedName || '—'}</td>
-                          <td style={{ direction: 'ltr', textAlign: 'right' }}>
+                          <td className="ltr-num" title={caseTitle(r)}>{r.deceasedNationalCode || '—'}</td>
+                          <td title={r.mainInsuredName ? `بیمه‌شدهٔ اصلی: ${r.mainInsuredName} — ${r.mainInsuredNationalCode ?? ''}` : undefined}>{INSURED_RELATIONS[r.insuredRelation ?? 'MAIN']}</td>
+                          <td>{r.companyName || '—'}</td>
+                          <td className="ltr-num">{r.policyNumber || '—'}</td>
+                          <td>{claimTypeLabel(r)}</td>
+                          <td className="ltr-num">{r.policyStart || '—'}</td>
+                          <td className="ltr-num">{r.policyEnd || '—'}</td>
+                          <td className="ltr-num">
                             {Number(r.payableAmount || r.claimedAmount || 0).toLocaleString('fa-IR')}
                             {r.finalizedAmount ? <span className="badge badge-success mr-1" style={{ fontSize: '0.6rem' }}>قطعی</span> : null}
                           </td>
                           <td><StatusBadge status={r.status} /></td>
-                          <td>
-                            <span className="flex items-center gap-1.5">
-                              <a href={`/org/claims/${r.id}`} target="_blank" rel="noopener" className="btn btn-ghost btn-sm" title="باز شدن در زبانهٔ جدید">مشاهده</a>
-                              <a href={`/org/claims/${r.id}/assess`} target="_blank" rel="noopener" className="btn btn-solid btn-sm" title="باز شدن در زبانهٔ جدید">ارزیابی</a>
-                            </span>
-                          </td>
                         </tr>
                       ))}
                     </tbody>

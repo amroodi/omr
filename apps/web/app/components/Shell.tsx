@@ -107,14 +107,6 @@ export function Shell({
     if (panel && item?.panels && !item.panels.includes(panel)) router.replace(realm === 'customer' ? '/customer' : '/org/work-desk');
   }, [nav, pathname, panel, realm, router]);
 
-  // The page zoom depends on the path (lib/scale.ts): re-apply on entering / leaving the بیمه‌گزار panel.
-  useEffect(() => {
-    if (realm !== 'customer') return;
-    const rescale = () => window.dispatchEvent(new Event('resize'));
-    rescale();
-    return () => { setTimeout(rescale, 0); };
-  }, [realm]);
-
   const toggleRail = () => setRail((r) => { const n = !r; try { localStorage.setItem(railKey, n ? '1' : '0'); } catch {} return n; });
   const visibleNav = nav.filter((n) => (!n.perm || (mounted && hasPerm(realm, n.perm))) && (!n.panels || !panel || n.panels.includes(panel)));
   const info = panel ? PANELS[panel] : null;

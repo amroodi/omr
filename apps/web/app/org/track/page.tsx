@@ -6,6 +6,7 @@ import { Shell, Icon } from '../../components/Shell';
 import { ORG_NAV } from '../nav';
 import { ClaimTypeBadge, claimTypeLabel, ErrorBox, FancyLoader, StatusBadge } from '../../components/ui';
 import { caseTitle } from '../../../lib/caseTitle';
+import { INSURED_RELATIONS } from '../../components/claim-wording';
 
 interface Row { id: string; claimNumber: string; policyNumber?: string | null; deceasedNationalCode?: string | null; status: string; claimType: string; deceasedName: string | null; insurerTenantId?: string }
 interface DocReview { stage: string; state: string }
@@ -15,6 +16,7 @@ interface Checklist { complete: boolean; items: Item[]; otherDocuments?: Doc[] }
 interface Step { order: number; partyType: string; stageLabel?: string | null; state: string; holderName?: string | null; branchName?: string | null; decidedByName?: string | null; decidedAt?: string | null }
 interface Claim {
   id: string; claimNumber: string; policyNumber?: string | null; deceasedNationalCode?: string | null; status: string; claimType: string; deceasedName: string | null;
+  insuredRelation?: string | null; mainInsuredName?: string | null; mainInsuredNationalCode?: string | null;
   estimatedAmount?: string; claimedAmount: string; finalizedAmount?: string | null; payableAmount?: string;
   eventDate: string | null; noticeDeadline: string | null; createdAt: string | null;
   insurer?: { name: string } | null; broker?: { name: string } | null; sellingBranchName?: string | null;
@@ -34,6 +36,7 @@ const amt = (v?: string | null) => (v ? `${Number(v).toLocaleString('fa-IR')} ر
 export default function TrackClaim() {
   const router = useRouter();
   const [nid, setNid] = useState('');
+  const [subNid, setSubNid] = useState('');
   const [name, setName] = useState('');
   const [results, setResults] = useState<Row[] | null>(null);
   const [sel, setSel] = useState<Claim | null>(null);
@@ -51,9 +54,10 @@ export default function TrackClaim() {
   const toAscii = (s: string) => s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
   const search = () => {
     const p = new URLSearchParams();
-    const n = toAscii(nid).replace(/\D/g, ''); if (n) p.set('deceasedNationalCode', n);
+    const n = toAscii(nid).replace(/\D/g, ''); if (n) p.set('mainNationalCode', n);
+    const sn = toAscii(subNid).replace(/\D/g, ''); if (sn) p.set('subNationalCode', sn);
     if (name.trim()) p.set('deceasedName', name.trim());
-    if (![...p.keys()].length) { setError('کد ملی یا نام متوفی را وارد کنید'); return; }
+    if (![...p.keys()].length) { setError('کد ملی یا نام بیمه‌شده را وارد کنید'); return; }
     setError(''); setSel(null); setResults(null); setLoading(true);
     client.get<Row[]>(`/claims/search?${p.toString()}`, 'org').then(setResults).catch((e) => setError(e.message)).finally(() => setLoading(false));
   };
@@ -68,6 +72,8 @@ export default function TrackClaim() {
   const groups: { title: string; icon: string; amt?: boolean; fields: [string, any][] }[] = sel ? [
     { title: 'اطلاعات بیمه‌شده', icon: PERSON_ICON, fields: [
       ['بیمه‌شده (متوفی)', sel.deceasedName],
+      ['نوع بیمه‌شده', sel.insuredRelation ? INSURED_RELATIONS[sel.insuredRelation] : null],
+      ['بیمه‌شدهٔ اصلی', sel.mainInsuredName ? `${sel.mainInsuredName} — ${sel.mainInsuredNationalCode ?? ''}` : null],
       ['بیمه‌گزار', sel.policyHolder?.name],
     ] },
     { title: 'اطلاعات پرونده', icon: DOC_ICON, fields: [
@@ -88,8 +94,9 @@ export default function TrackClaim() {
     <Shell title="پیگیری آخرین وضعیت پرونده خسارت" breadcrumb="پیگیری پرونده" nav={ORG_NAV} realm="org">
       {/* Search */}
       <div className="pcard p-5 pform mb-5">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <input className="input" placeholder="کد ملی بیمه‌شده (متوفی)" value={nid} onChange={(e) => setNid(e.target.value)} inputMode="numeric" />
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <input className="input" placeholder="کد ملی بیمه‌شده اصلی" value={nid} onChange={(e) => setNid(e.target.value)} inputMode="numeric" />
+          <input className="input" placeholder="کد ملی بیمه‌شده فرعی" value={subNid} onChange={(e) => setSubNid(e.target.value)} inputMode="numeric" />
           <input className="input" placeholder="نام بیمه‌شده (متوفی)" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && search()} />
         </div>
         <div className="flex justify-end mt-3"><button onClick={search} className="btn btn-solid btn-sm px-8">جستجو</button></div>
@@ -228,7 +235,7 @@ export default function TrackClaim() {
           )}
         </div>
       ) : (
-        <div className="pcard p-10 text-center text-sm" style={{ color: 'var(--muted)' }}>برای پیگیری، کد ملی یا نام متوفی را جستجو کنید.</div>
+        <div className="pcard p-10 text-center text-sm" style={{ color: 'var(--muted)' }}>برای پیگیری، کد ملی یا نام بیمه‌شده را جستجو کنید.</div>
       )}
     </Shell>
   );

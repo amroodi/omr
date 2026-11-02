@@ -267,6 +267,9 @@ export class CustomerController {
       policyholderCompanyId: dto.companyId,
       deceasedFullName: dto.deceasedFullName,
       deceasedNationalCode: dto.deceasedNationalCode,
+      insuredRelation: dto.insuredRelation,
+      mainInsuredName: dto.mainInsuredName,
+      mainInsuredNationalCode: dto.mainInsuredNationalCode,
     });
   }
 

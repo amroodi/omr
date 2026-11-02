@@ -1,4 +1,5 @@
 'use client';
+import { INSURED_RELATIONS } from './claim-wording';
 import { ReactNode, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -24,7 +25,7 @@ export interface FieldsData { party: string; manual?: boolean; groups: Record<st
 export interface CaseClaim {
   coverageStatus?: string | null; insuredLinkEnabled?: boolean; causeOfDeath?: string | null; claimTypeLabel?: string | null; claimTypeDeath?: boolean;
   id: string; claimNumber: string; policyNumber?: string | null; status: string; claimType: string; insurerTenantId?: string;
-  deceasedName: string | null; deceasedNationalCode?: string | null; deceasedBirthDate?: string | null; deceasedAge?: number | null;
+  deceasedName: string | null; deceasedNationalCode?: string | null; insuredRelation?: string | null; mainInsuredName?: string | null; mainInsuredNationalCode?: string | null; deceasedBirthDate?: string | null; deceasedAge?: number | null;
   eventDate: string | null; createdAt?: string | null; paidDate?: string | null; noticeDeadline: string | null; lateNotice: boolean;
   claimedAmount: string; estimatedAmount?: string; finalizedAmount?: string | null; payableAmount?: string;
   currentStageLabel?: string | null; flowDirection?: string | null; flowPurpose?: string | null;
@@ -199,6 +200,8 @@ export function CaseSummary({ claim, fv }: { claim: CaseClaim; fv: Record<string
       <InfoCard title="اطلاعات بیمه‌شده" icon={ICONS.user}>
         <InfoRow label="نام و نام خانوادگی" value={name ? (isDeath && !name.startsWith('مرحوم') ? `مرحوم ${name}` : name) : null} />
         <InfoRow label="کد ملی" value={(claim.deceasedNationalCode || fv.national_code) ? <bdi className="ltr-val">{faD(claim.deceasedNationalCode || fv.national_code)}</bdi> : null} />
+        {claim.insuredRelation && <InfoRow label="نوع بیمه‌شده" value={INSURED_RELATIONS[claim.insuredRelation]} />}
+        {claim.mainInsuredName && <InfoRow label="بیمه‌شدهٔ اصلی" value={<>{claim.mainInsuredName} — <bdi className="ltr-val">{faD(claim.mainInsuredNationalCode ?? '')}</bdi></>} />}
         <InfoRow label="تاریخ تولد" value={claim.deceasedBirthDate || d('birth_date')} />
         <InfoRow label="نام شرکت / محل فعالیت" value={claim.policyholderCompany?.name || fv.company_name} />
       </InfoCard>

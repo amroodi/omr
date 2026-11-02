@@ -11,14 +11,14 @@ type RuleKey = 'councilEnabled' | 'requireLossNotice' | 'requireOriginals';
 interface Rights { upload: boolean; submit: boolean }
 interface LineForm { insuredLabel: string; claimTypes: string[] }
 interface CaseType { code: string; label: string; causeGroup: 'DEATH' | 'ACCIDENT'; death: boolean }
-interface CompanyGroup { id: string; label: string; companyIds: string[]; lines: { LIFE: string[]; ACCIDENT: string[] } }
+interface CompanyGroup { id: string; label: string; companyIds: string[]; lines: { LIFE: string[]; ACCIDENT: string[] }; dependents: boolean }
 interface Model {
   councilEnabled: boolean; requireLossNotice: boolean; requireOriginals: boolean;
   stages: Record<Stage, { label: string; reviewDocs: boolean }>;
   byType: Record<string, Partial<Record<RuleKey, boolean>>>;
   panels: { COMPANY: Rights; REPRESENTATIVE: Rights };
   insured: { enabled: boolean; docCodes: string[]; linkDays: number };
-  form: { eventLabel: string; birthDate: Mode; cause: Mode; causeLists: { DEATH: string[]; ACCIDENT: string[] }; lines: { LIFE: LineForm; ACCIDENT: LineForm }; caseTypes: CaseType[]; groups: CompanyGroup[]; docsNote: string };
+  form: { eventLabel: string; birthDate: Mode; cause: Mode; causeLists: { DEATH: string[]; ACCIDENT: string[] }; lines: { LIFE: LineForm; ACCIDENT: LineForm }; caseTypes: CaseType[]; groups: CompanyGroup[]; dependents: boolean; docsNote: string };
 }
 interface Doc { code: string; label: string; isActive: boolean; appliesToTypes: string[]; requiredTypes: string[] }
 interface Coverage { enabled: boolean; url: string; nationalCodeParam: string; authHeader: string; hasSecret: boolean; perMinute: number; notChecked: number; secret?: string }
@@ -220,6 +220,9 @@ export default function ModelView() {
                   </div>
                 </Card>
               ))}
+              <Card title="نوع بیمه‌شده">
+                <Toggle on={m.form.dependents} onChange={(v) => setForm({ dependents: v })}>سایر بیمه‌گزاران «نوع بیمه‌شده» (اصلی / همسر / فرزند) را در فرم ثبت پرونده انتخاب می‌کنند</Toggle>
+              </Card>
               <Card title="گروه‌های بیمه‌گزار">
                 <p className="text-xs" style={{ color: 'var(--muted)' }}>بیمه‌گزار، نماینده و بیمه‌شدهٔ شرکت‌های تیک‌خورده (و شرکت‌های زیرمجموعهٔ آن‌ها) به‌جای فهرست‌های بالا، نوع پرونده‌های این گروه را می‌بینند.</p>
                 {m.form.groups.map((g) => (
@@ -228,6 +231,7 @@ export default function ModelView() {
                       <input className="input" aria-label="نام گروه" value={g.label} maxLength={120} onChange={(e) => setGroup(g.id, { label: e.target.value })} />
                       <button className="btn btn-ghost btn-sm" onClick={() => setForm({ groups: m.form.groups.filter((x) => x.id !== g.id) })}>حذف گروه</button>
                     </div>
+                    <Toggle on={g.dependents} onChange={(v) => setGroup(g.id, { dependents: v })}>«نوع بیمه‌شده» (اصلی / همسر / فرزند) در فرم ثبت پرونده</Toggle>
                     <div className="text-sm font-bold">شرکت‌ها</div>
                     {cur.companies.length === 0 ? <div className="text-xs" style={{ color: 'var(--muted)' }}>هنوز شرکتی با این بیمه‌گر بیمه‌نامه ندارد.</div> : (
                       <div className="grid sm:grid-cols-2 gap-1 max-h-56 overflow-y-auto">
@@ -244,7 +248,7 @@ export default function ModelView() {
                     ))}
                   </div>
                 ))}
-                <button className="btn btn-ghost btn-sm" onClick={() => setForm({ groups: [...m.form.groups, { id: `g${Date.now().toString(36)}`, label: 'گروه جدید', companyIds: [], lines: { LIFE: m.form.lines.LIFE.claimTypes, ACCIDENT: m.form.lines.ACCIDENT.claimTypes } }] })}>افزودن گروه</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setForm({ groups: [...m.form.groups, { id: `g${Date.now().toString(36)}`, label: 'گروه جدید', companyIds: [], lines: { LIFE: m.form.lines.LIFE.claimTypes, ACCIDENT: m.form.lines.ACCIDENT.claimTypes }, dependents: m.form.dependents }] })}>افزودن گروه</button>
               </Card>
               <Card title="فیلدها">
                 <div className="grid sm:grid-cols-3 gap-3">

@@ -96,6 +96,21 @@ export class CustomerFileClaimDto {
   @Length(8, 12)
   deceasedNationalCode!: string;
 
+  // نوع بیمه‌شده: the subject above is the main insured, or a dependent of the main insured named here.
+  @IsOptional()
+  @IsIn(['MAIN', 'SPOUSE', 'CHILD'])
+  insuredRelation?: 'MAIN' | 'SPOUSE' | 'CHILD';
+
+  @IsOptional()
+  @IsString()
+  @Length(2, 120)
+  mainInsuredName?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(8, 12)
+  mainInsuredNationalCode?: string;
+
   // «broker» login only: the company the claim is filed for.
   @IsOptional()
   @IsUUID()

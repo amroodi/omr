@@ -6,7 +6,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { customerClaimWhere, getContext, getTenantIdOrThrow } from '../../common/tenant/tenant-context';
 import { LINE_FA } from '../policyholders/policyholders.service';
 import { ModelStore } from '../model-view/model-store.service';
-import { typesFor } from '../claims/workflow';
+import { dependentsFor, typesFor } from '../claims/workflow';
 import { toAsciiDigits, toJalali } from '../../common/jalali/jalali.util';
 import { NotificationsService } from '../notifications/notifications.service';
 import { HashService } from '../../common/crypto/hash.service';
@@ -309,20 +309,20 @@ export class CustomerService {
     const inForce = (k: { startDate: Date | null; endDate: Date | null }) => (!k.startDate || k.startDate <= now) && (!k.endDate || k.endDate >= now);
     const selected = contracts.find((k) => k.id === contractId) ?? contracts.find(inForce) ?? contracts[0] ?? null;
 
-    let stats = { total: 0, open: 0, waiting: 0, approvedCount: 0, approvedAmount: '0' };
+    let stats = { total: 0, open: 0, waiting: 0, approvedCount: 0, paidAmount: '0' };
     if (selected) {
       const claims = await db.claim.findMany({
         where: { ...customerClaimWhere(), ...(ctx.customerBrokerPanel && co ? { policyholderCompanyId: co.id } : {}), deletedAt: null, insurerTenantId: selected.insurerTenantId, policyNumber: selected.policyNumber },
         select: { status: true, currentStage: true, claimedAmount: true, finalizedAmount: true },
       });
       const approved = claims.filter((c) => c.status === 'APPROVED' || c.status === 'PAID');
-      const sum = approved.reduce((t, c) => t + BigInt(Math.round(Number(c.finalizedAmount ?? c.claimedAmount ?? 0))), 0n);
+      const sum = claims.filter((c) => c.status === 'PAID').reduce((t, c) => t + BigInt(Math.round(Number(c.finalizedAmount ?? c.claimedAmount ?? 0))), 0n);
       stats = {
         total: claims.length,
         open: claims.filter((c) => !['APPROVED', 'PAID', 'REJECTED'].includes(c.status)).length,
         waiting: claims.filter((c) => c.currentStage === 'POLICYHOLDER').length,
         approvedCount: approved.length,
-        approvedAmount: sum.toString(),
+        paidAmount: sum.toString(),
       };
     }
     // The company and its parents: a Model View company group covers a ticked company's subsidiaries.
@@ -340,17 +340,17 @@ export class CustomerService {
         startDate: k.startDate ? toJalali(k.startDate, false) : null, endDate: k.endDate ? toJalali(k.endDate, false) : null,
         startIso: k.startDate?.toISOString() ?? null, endIso: k.endDate?.toISOString() ?? null,
         inForce: inForce(k), claimTypes: k.line ? typesFor(this.store.get(k.insurerTenantId), k.line, chain) : null,
-        form: this.formOf(k.insurerTenantId, k.line),
+        form: this.formOf(k.insurerTenantId, k.line, chain),
       })),
       selectedId: selected?.id ?? null,
       stats,
     };
   }
 
-  private formOf(insurerId: string, line: 'LIFE' | 'ACCIDENT' | null) {
+  private formOf(insurerId: string, line: 'LIFE' | 'ACCIDENT' | null, chain: string[]) {
     const m = this.store.get(insurerId);
     return {
-      insuredLabel: m.form.lines[line ?? 'ACCIDENT'].insuredLabel, eventLabel: m.form.eventLabel, birthDate: m.form.birthDate, cause: m.form.cause, causeLists: m.form.causeLists, caseTypes: m.form.caseTypes,
+      insuredLabel: m.form.lines[line ?? 'ACCIDENT'].insuredLabel, eventLabel: m.form.eventLabel, birthDate: m.form.birthDate, cause: m.form.cause, causeLists: m.form.causeLists, caseTypes: m.form.caseTypes, dependents: dependentsFor(m, chain),
     };
   }
 
