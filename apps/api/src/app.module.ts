@@ -29,6 +29,8 @@ import { BrandingModule } from './modules/branding/branding.module';
 import { CasesModule } from './modules/cases/cases.module';
 import { ClaimFieldsModule } from './modules/claim-fields/claim-fields.module';
 import { ClaimsModule } from './modules/claims/claims.module';
+import { ModelViewModule } from './modules/model-view/model-view.module';
+import { InsuredModule } from './modules/insured/insured.module';
 import { LevelsModule } from './modules/levels/levels.module';
 import { RequiredDocsModule } from './modules/required-docs/required-docs.module';
 import { CustomerModule } from './modules/customer/customer.module';
@@ -78,7 +80,9 @@ import { SecurityModule } from './modules/security/security.module';
     AuditLogsModule,
     BrandingModule,
     PaymentsModule,
+    ModelViewModule,
     ClaimsModule,
+    InsuredModule,
     ClaimFieldsModule,
     LevelsModule,
     RequiredDocsModule,

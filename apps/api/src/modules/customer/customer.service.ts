@@ -4,7 +4,8 @@ import { AuditService } from '../../common/audit/audit.service';
 import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { customerClaimWhere, getContext, getTenantIdOrThrow } from '../../common/tenant/tenant-context';
-import { LINE_CLAIM_TYPES, LINE_FA } from '../policyholders/policyholders.service';
+import { LINE_FA } from '../policyholders/policyholders.service';
+import { ModelStore } from '../model-view/model-store.service';
 import { toAsciiDigits, toJalali } from '../../common/jalali/jalali.util';
 import { NotificationsService } from '../notifications/notifications.service';
 import { HashService } from '../../common/crypto/hash.service';
@@ -27,6 +28,7 @@ export class CustomerService {
     private readonly notifications: NotificationsService,
     private readonly hash: HashService,
     private readonly shahkar: ShahkarService,
+    private readonly store: ModelStore,
   ) {}
 
   private validatePair(nationalCode: string, phone: string): { nid: string; phone: string } {
@@ -330,10 +332,18 @@ export class CustomerService {
         insurerName: iName.get(k.insurerTenantId) ?? '—',
         startDate: k.startDate ? toJalali(k.startDate, false) : null, endDate: k.endDate ? toJalali(k.endDate, false) : null,
         startIso: k.startDate?.toISOString() ?? null, endIso: k.endDate?.toISOString() ?? null,
-        inForce: inForce(k), claimTypes: k.line ? LINE_CLAIM_TYPES[k.line] : null,
+        inForce: inForce(k), claimTypes: k.line ? this.store.get(k.insurerTenantId).form.lines[k.line].claimTypes : null,
+        form: this.formOf(k.insurerTenantId, k.line),
       })),
       selectedId: selected?.id ?? null,
       stats,
+    };
+  }
+
+  private formOf(insurerId: string, line: 'LIFE' | 'ACCIDENT' | null) {
+    const m = this.store.get(insurerId);
+    return {
+      insuredLabel: m.form.lines[line ?? 'ACCIDENT'].insuredLabel, eventLabel: m.form.eventLabel, birthDate: m.form.birthDate, cause: m.form.cause, causes: m.form.causes,
     };
   }
 

@@ -61,6 +61,12 @@ export class JwtAuthGuard implements CanActivate {
       ctx.scopedClaimId = payload.claimId;
       ctx.scopedPhone = payload.ph;
       ctx.permissions = ['case:read'];
+    } else if (payload.kind === 'insured') {
+      // Otherwise it would fall through to the org branch below.
+      if (!/\/insured\//.test(req.path)) throw new ForbiddenException('دسترسی ندارید');
+      ctx.actorType = 'INSURED';
+      ctx.insuredPhoneHash = payload.sub;
+      ctx.permissions = [];
     } else if (payload.kind === 'customer') {
       ctx.actorType = 'CUSTOMER';
       ctx.customerNidHash = payload.nidHash;

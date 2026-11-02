@@ -56,6 +56,8 @@ model Tenant {
   // «اعلام خسارت» rules: who may file a claim from which panel and on which desk it starts
   // (see claims/claim-notice.ts). null = the defaults.
   claimNoticeRules Json?
+  workflowModel Json? // Model View: how this insurer's chain works (see claims/workflow.ts); set only in Super Admin
+  coverageConfig Json? // فن‌آوران coverage inquiry of this insurer; off until Super Admin fills it in
   // Reminders: may operators of this org get an SMS for a reminder (on top of the in-panel one)?
   reminderSms   Boolean  @default(false)
   // Every operator of this org must use two-step login (authenticator app); set by the org admin.
@@ -862,6 +864,8 @@ model Claim {
   status    ClaimStatus @default(DRAFT)
 
   // ── Workflow position ── where the claim sits in the chain right now (null once closed).
+  coverageStatus    String? // VALID | INVALID | NOT_FOUND | NOT_CHECKED (null: inquiry off for this insurer)
+  coverageCheckedAt DateTime?
   currentStage      WorkflowStage?
   flowDirection     FlowDirection?
   flowPurpose       FlowPurpose?
@@ -887,6 +891,7 @@ model Claim {
   letters      ClaimLetter[]
   physicalRequests ClaimPhysicalRequest[]
   heirs        ClaimHeir[]
+  insuredAccess ClaimInsuredAccess[]
 
   @@index([insurerTenantId, status])
   @@index([brokerTenantId])
@@ -1182,6 +1187,24 @@ model AiReviewJob {
 
 // One-tap re-upload link sent by SMS when the AI refused files: opens the case's refused slots only,
 // no login. Only a SHA-256 of the token is stored.
+// «پنل بیمه‌شده»: a mobile number invited onto one case. It signs in with an SMS code and uploads only
+// the documents Model View names for that insurer.
+model ClaimInsuredAccess {
+  id          String    @id @default(uuid())
+  claimId     String
+  claim       Claim     @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  phoneHash   String // blind index of the mobile (how sign-in finds it)
+  phone       String // ENCRYPTED
+  fullName    String? // ENCRYPTED — who it is (the insured, a dependent…)
+  invitedById String?
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([phoneHash])
+  @@index([claimId])
+}
+
 model CaseUploadLink {
   id        String   @id @default(uuid())
   tokenHash String   @unique

@@ -16,7 +16,6 @@ const TABS = [
   ['levels', 'سطوح تایید و سقف اختیار'],
   ['docs', 'مدارک مورد نیاز'],
   ['fields', 'فیلدهای پرونده'],
-  ['notice', 'اعلام خسارت'],
 ] as const;
 
 export default function Settings() {
@@ -34,79 +33,15 @@ export default function Settings() {
       {tab === 'levels' && <LevelsTab />}
       {tab === 'docs' && <DocsTab />}
       {tab === 'fields' && <FieldsTab />}
-      {tab === 'notice' && <NoticeTab />}
     </Shell>
   );
 }
 
-interface NoticeSourceRow { key: string; label: string; allowed: { key: string; label: string }[]; rule: { enabled: boolean; targets: string[]; default: string } }
 
 /**
  * «اعلام خسارت»: who may report a claim from which panel, and on which desk the case starts. A
  * کارگزاری decides for its بیمه‌گزاران, نمایندگان and operators; a بیمه‌گر for its desks and نمایندگان.
  */
-function NoticeTab() {
-  const [d, setD] = useState<{ kind: string; sources: NoticeSourceRow[] } | null>(null);
-  const [msg, setMsg] = useState<{ t: 'ok' | 'err'; m: string } | null>(null);
-  const [busy, setBusy] = useState(false);
-  useEffect(() => { client.get<any>('/claims/notice-rules', 'org').then(setD).catch((e) => setMsg({ t: 'err', m: e.message })); }, []);
-  const upd = (key: string, p: Partial<NoticeSourceRow['rule']>) => setD((x) => x && ({ ...x, sources: x.sources.map((r) => {
-    if (r.key !== key) return r;
-    const rule = { ...r.rule, ...p };
-    if (!rule.targets.includes(rule.default)) rule.default = rule.targets[0] ?? r.rule.default;
-    return { ...r, rule };
-  }) }));
-  const save = async () => {
-    if (!d) return;
-    setMsg(null); setBusy(true);
-    try {
-      const body = Object.fromEntries(d.sources.map((r) => [r.key, r.rule]));
-      setD(await client.put<any>('/claims/notice-rules', body, 'org'));
-      setMsg({ t: 'ok', m: 'تنظیمات اعلام خسارت ذخیره شد' });
-    } catch (e: any) { setMsg({ t: 'err', m: e.message }); } finally { setBusy(false); }
-  };
-  if (!d) return msg ? <div className="alert-error">{msg.m}</div> : null;
-  return (
-    <div className="space-y-4 max-w-4xl">
-      <div className="card p-4 text-sm" style={{ color: 'var(--muted)' }}>
-        {d.kind === 'INSURER'
-          ? 'مشخص کنید کاربران شعبه، ستاد، شورای فنی و نمایندگان می‌توانند پرونده اعلام کنند یا نه، و پرونده به کدام مرحله برود. اعلام خسارت نماینده باید هم در تنظیمات کارگزاری و هم در تنظیمات بیمه‌گر مجاز باشد.'
-          : 'مشخص کنید بیمه‌گزاران، نمایندگان و کاربران کارگزاری می‌توانند پرونده اعلام کنند یا نه، و پرونده پس از ثبت به کدام مرحله برود.'}
-      </div>
-      {msg && <div className={msg.t === 'ok' ? 'alert-success' : 'alert-error'}>{msg.m}</div>}
-      {d.sources.map((r) => (
-        <div key={r.key} className="card p-4 space-y-3">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" checked={r.rule.enabled} onChange={(e) => upd(r.key, { enabled: e.target.checked })} />
-            <span className="font-bold">اعلام خسارت توسط {r.label}</span>
-            {!r.rule.enabled && <span className="badge badge-neutral">غیرفعال</span>}
-          </label>
-          <fieldset disabled={!r.rule.enabled} style={{ opacity: r.rule.enabled ? 1 : 0.5 }} className="space-y-2">
-            <legend className="text-xs mb-1" style={{ color: 'var(--muted)' }}>پرونده می‌تواند به این مرحله‌ها ارسال شود:</legend>
-            <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
-              {r.allowed.map((t) => (
-                <label key={t.key} className="flex items-center gap-1.5 cursor-pointer">
-                  <input type="checkbox" checked={r.rule.targets.includes(t.key)}
-                    onChange={(e) => upd(r.key, { targets: e.target.checked ? r.allowed.map((a) => a.key).filter((k) => k === t.key || r.rule.targets.includes(k)) : r.rule.targets.filter((k) => k !== t.key) })} />
-                  {t.label}
-                </label>
-              ))}
-            </div>
-            <div className="flex items-center gap-2 text-sm">
-              <span style={{ color: 'var(--muted)' }}>مرحلهٔ پیش‌فرض:</span>
-              <select className="input" style={{ maxWidth: 260 }} value={r.rule.default} onChange={(e) => upd(r.key, { default: e.target.value })}>
-                {r.allowed.filter((t) => r.rule.targets.includes(t.key)).map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
-              </select>
-            </div>
-          </fieldset>
-        </div>
-      ))}
-      <button onClick={save} disabled={busy || d.sources.some((r) => r.rule.enabled && r.rule.targets.length === 0)} className="btn btn-primary btn-sm">{busy ? '…' : 'ذخیره'}</button>
-    </div>
-  );
-}
-
-/** The org admin's own design endpoints (the super admin's are in /admin/orgs/[id]). */
 const ORG_DESIGN_API: DesignApi = {
   load: () => client.get<Design>('/tenant/design', 'org'),
   save: async (body) => { const d = await client.put<Design>('/tenant/design', body, 'org'); reapplyTheme(); return d; },

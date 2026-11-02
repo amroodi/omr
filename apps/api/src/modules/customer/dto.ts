@@ -147,3 +147,13 @@ export class RepresentativeLoginDto {
   @Length(1, 200)
   password!: string;
 }
+
+export class CoverageCheckDto {
+  @IsUUID()
+  contractId!: string;
+
+  @ToAsciiDigits()
+  @IsString()
+  @Matches(/^\d{10}$/, { message: 'کد ملی باید ۱۰ رقم باشد' })
+  nationalCode!: string;
+}

@@ -49,13 +49,120 @@ export interface WorkflowAction {
 
 const ORDER: Stage[] = ['POLICYHOLDER', 'BROKER', 'BRANCH', 'HQ', 'COUNCIL'];
 
+/**
+ * Model View: how one insurer's chain works, set only in Super Admin (`Tenant.workflowModel`).
+ * The defaults are the behaviour every insurer had before the model existed.
+ */
+export interface PanelRights { upload: boolean; submit: boolean }
+export interface CaseRules { councilEnabled: boolean; requireLossNotice: boolean; requireOriginals: boolean }
+export type FieldMode = 'required' | 'optional' | 'hidden';
+export interface LineForm { insuredLabel: string; claimTypes: string[] }
+export interface WorkflowModel extends CaseRules {
+  stages: Record<Stage, { label: string; reviewDocs: boolean }>; // reviewDocs: must this desk ✓ every document before sending on?
+  byType: Record<string, Partial<CaseRules>>; // نوع پرونده → what differs from the rules above
+  panels: { COMPANY: PanelRights; REPRESENTATIVE: PanelRights };
+  insured: { enabled: boolean; docCodes: string[]; linkDays: number }; // پنل بیمه‌شده: what they upload; how long an invitation lasts
+  form: {
+    eventLabel: string;
+    birthDate: FieldMode;
+    cause: FieldMode;
+    causes: string[]; // ticks above the typed cause
+    lines: Record<'LIFE' | 'ACCIDENT', LineForm>;
+  };
+}
+const LIFE_TYPES = ['DEATH_ILLNESS', 'DEATH_ACCIDENT', 'DISABILITY_ILLNESS'];
+const ACCIDENT_TYPES = ['DEATH_ACCIDENT', 'DISABILITY_ACCIDENT', 'MEDICAL_ACCIDENT'];
+export const DEFAULT_WORKFLOW_MODEL: WorkflowModel = {
+  councilEnabled: true,
+  requireLossNotice: true,
+  requireOriginals: true,
+  stages: {
+    POLICYHOLDER: { label: STAGE_FA.POLICYHOLDER, reviewDocs: false },
+    BROKER: { label: STAGE_FA.BROKER, reviewDocs: true },
+    BRANCH: { label: STAGE_FA.BRANCH, reviewDocs: true },
+    HQ: { label: STAGE_FA.HQ, reviewDocs: true },
+    COUNCIL: { label: STAGE_FA.COUNCIL, reviewDocs: true },
+  },
+  byType: {},
+  panels: { COMPANY: { upload: true, submit: true }, REPRESENTATIVE: { upload: true, submit: true } },
+  insured: { enabled: false, docCodes: [], linkDays: 7 },
+  form: {
+    eventLabel: 'تاریخ وقوع',
+    birthDate: 'optional',
+    cause: 'optional',
+    causes: [],
+    lines: {
+      LIFE: { insuredLabel: 'نام بیمه‌شده (متوفی/از کار افتاده)', claimTypes: LIFE_TYPES },
+      ACCIDENT: { insuredLabel: 'نام بیمه‌شده (مصدوم/متوفی)', claimTypes: ACCIDENT_TYPES },
+    },
+  },
+};
+
+/** The stored model over the defaults; anything missing or malformed keeps its default. */
+export function modelFrom(stored: unknown): WorkflowModel {
+  const raw = (stored && typeof stored === 'object' ? stored : {}) as Record<string, any>;
+  const d = DEFAULT_WORKFLOW_MODEL;
+  const flag = (v: unknown, def: boolean) => (typeof v === 'boolean' ? v : def);
+  const text = (v: unknown, def: string, max = 80) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : def);
+  const mode = (v: unknown, def: FieldMode): FieldMode => (v === 'required' || v === 'optional' || v === 'hidden' ? v : def);
+  const list = (v: unknown, max = 60) => (Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === 'string' && !!x.trim()).map((x) => x.trim().slice(0, 120)))].slice(0, max) : []);
+  const rights = (r: any, def: PanelRights): PanelRights => ({ upload: flag(r?.upload, def.upload), submit: flag(r?.submit, def.submit) });
+  const line = (r: any, def: LineForm): LineForm => {
+    const types = Array.isArray(r?.claimTypes) ? def.claimTypes.filter((t) => r.claimTypes.includes(t)) : def.claimTypes;
+    return { insuredLabel: text(r?.insuredLabel, def.insuredLabel), claimTypes: types.length ? types : def.claimTypes };
+  };
+  const byType: Record<string, Partial<CaseRules>> = {};
+  for (const t of new Set([...LIFE_TYPES, ...ACCIDENT_TYPES])) {
+    const r = raw.byType?.[t];
+    if (!r || typeof r !== 'object') continue;
+    const o: Partial<CaseRules> = {};
+    for (const k of ['councilEnabled', 'requireLossNotice', 'requireOriginals'] as const) if (typeof r[k] === 'boolean') o[k] = r[k];
+    if (Object.keys(o).length) byType[t] = o;
+  }
+  const stages = Object.fromEntries(ORDER.map((st) => [st, {
+    label: text(raw.stages?.[st]?.label, d.stages[st].label, 40),
+    reviewDocs: st === 'POLICYHOLDER' ? false : flag(raw.stages?.[st]?.reviewDocs, d.stages[st].reviewDocs),
+  }])) as WorkflowModel['stages'];
+  const days = Number(raw.insured?.linkDays);
+  return {
+    councilEnabled: flag(raw.councilEnabled, d.councilEnabled),
+    requireLossNotice: flag(raw.requireLossNotice, d.requireLossNotice),
+    requireOriginals: flag(raw.requireOriginals, d.requireOriginals),
+    stages,
+    byType,
+    panels: { COMPANY: rights(raw.panels?.COMPANY, d.panels.COMPANY), REPRESENTATIVE: rights(raw.panels?.REPRESENTATIVE, d.panels.REPRESENTATIVE) },
+    insured: { enabled: flag(raw.insured?.enabled, false), docCodes: list(raw.insured?.docCodes), linkDays: days >= 1 && days <= 60 ? Math.round(days) : d.insured.linkDays },
+    form: {
+      eventLabel: text(raw.form?.eventLabel, d.form.eventLabel),
+      birthDate: mode(raw.form?.birthDate, d.form.birthDate),
+      cause: mode(raw.form?.cause, d.form.cause),
+      causes: list(raw.form?.causes),
+      lines: { LIFE: line(raw.form?.lines?.LIFE, d.form.lines.LIFE), ACCIDENT: line(raw.form?.lines?.ACCIDENT, d.form.lines.ACCIDENT) },
+    },
+  };
+}
+
+/** The rules of one case: the insurer's, with what its نوع پرونده changes on top. */
+export function rulesOf(model: WorkflowModel, claimType?: string | null): CaseRules {
+  const o = (claimType && model.byType[claimType]) || {};
+  return {
+    councilEnabled: o.councilEnabled ?? model.councilEnabled,
+    requireLossNotice: o.requireLossNotice ?? model.requireLossNotice,
+    requireOriginals: o.requireOriginals ?? model.requireOriginals,
+  };
+}
+
+export const stageLabels = (model: WorkflowModel): Record<Stage, string> =>
+  Object.fromEntries(ORDER.map((st) => [st, model.stages[st].label])) as Record<Stage, string>;
+
 export function rank(s: Stage): number {
   return ORDER.indexOf(s);
 }
 
-/** The desks this claim passes through, bottom → top. */
-export function chainOf(claim: { brokerTenantId: string | null }): Stage[] {
-  return claim.brokerTenantId ? ORDER : ORDER.filter((s) => s !== 'BROKER');
+/** The desks this claim passes through, bottom → top. A case already at شورای فنی stays on it if the desk is switched off. */
+export function chainOf(claim: { brokerTenantId: string | null; currentStage?: Stage | string | null; claimType?: string | null }, model: WorkflowModel = DEFAULT_WORKFLOW_MODEL): Stage[] {
+  const council = rulesOf(model, claim.claimType).councilEnabled;
+  return ORDER.filter((s) => (s !== 'BROKER' || !!claim.brokerTenantId) && (s !== 'COUNCIL' || council || claim.currentStage === 'COUNCIL'));
 }
 
 export function below(claim: { brokerTenantId: string | null }, s: Stage): Stage | null {
@@ -85,6 +192,7 @@ export interface DeskDocFacts {
 export interface ActionContext {
   claim: {
     brokerTenantId: string | null;
+    claimType?: string | null;
     status: string;
     currentStage: Stage | null;
     flowDirection: Direction | null;
@@ -100,6 +208,9 @@ export interface ActionContext {
   docs: DeskDocFacts;
   branches: { id: string; name: string; code: string }[]; // insurer branches (for کارگزاری → شعبه)
   physical: PhysicalState;
+  model?: WorkflowModel;
+  /** Why this login can't send the case on from the بیمه‌گزار desk (Model View). */
+  submitBlocked?: string;
 }
 
 // ── Original (physical) documents ──
@@ -129,13 +240,13 @@ export function custodyOf(p: PhysicalState): Stage {
 }
 
 /** Physical-document actions for the desk `me` sits at on this claim (independent of the claim's position). */
-export function physicalActionsFor(me: Stage | null, p: PhysicalState): PhysicalAction[] {
+export function physicalActionsFor(me: Stage | null, p: PhysicalState, fa: Record<Stage, string> = STAGE_FA): PhysicalAction[] {
   if (!me) return [];
   const o = p.open;
   if (o?.status === 'REQUESTED' && o.holderStage === me) {
-    if (custodyOf(p) === me) return [{ key: 'PHYSICAL_SEND', label: `ارسال اصل مدارک به ${STAGE_FA[o.requesterStage]}` }];
+    if (custodyOf(p) === me) return [{ key: 'PHYSICAL_SEND', label: `ارسال اصل مدارک به ${fa[o.requesterStage]}` }];
     const next = physicalBelow(me);
-    return next ? [{ key: 'PHYSICAL_RELAY', label: `ارسال درخواست اصل مدارک به ${STAGE_FA[next]}` }] : [];
+    return next ? [{ key: 'PHYSICAL_RELAY', label: `ارسال درخواست اصل مدارک به ${fa[next]}` }] : [];
   }
   if (o?.status === 'SENT' && o.requesterStage === me) return [{ key: 'PHYSICAL_RECEIVE', label: 'تایید دریافت اصل مدارک' }];
   if (!o && (me === 'HQ' || me === 'COUNCIL') && p.at === me) return [{ key: 'PHYSICAL_RETURN', label: 'بازگرداندن اصل مدارک به شعبه' }];
@@ -148,30 +259,33 @@ export function physicalActionsFor(me: Stage | null, p: PhysicalState): Physical
  */
 export function actionsFor(ctx: ActionContext): WorkflowAction[] {
   const { claim, docs } = ctx;
+  const model = ctx.model ?? DEFAULT_WORKFLOW_MODEL;
+  const rules = rulesOf(model, claim.claimType);
+  const fa = stageLabels(model);
   const s = claim.currentStage;
   if (!s || ['PAID', 'REJECTED'].includes(claim.status)) return [];
   const out: WorkflowAction[] = [];
   const dn = below(claim, s);
   const up = above(claim, s);
-  const notApproved = docs.count === 0 ? 'مدرکی بارگذاری نشده است' : !docs.allApproved ? `ابتدا همهٔ مدارک را در مرحلهٔ ${STAGE_FA[s]} تایید کنید` : undefined;
+  const notApproved = !model.stages[s].reviewDocs ? undefined : docs.count === 0 ? 'مدرکی بارگذاری نشده است' : !docs.allApproved ? `ابتدا همهٔ مدارک را در مرحلهٔ ${fa[s]} تایید کنید` : undefined;
 
   if (s === 'POLICYHOLDER') {
-    const disabled = docs.count === 0
+    const disabled = ctx.submitBlocked ? ctx.submitBlocked : docs.count === 0
       ? 'ابتدا مدارک را بارگذاری کنید'
       : docs.rejectedAnywhere.length
         ? `مدارک ردشده را جایگزین کنید: ${docs.rejectedAnywhere.join('، ')}`
         : undefined;
-    if (up) out.push({ key: 'SUBMIT', label: `ارسال به ${STAGE_FA[up]}`, tone: 'primary', disabled });
+    if (up) out.push({ key: 'SUBMIT', label: `ارسال به ${fa[up]}`, tone: 'primary', disabled });
     return out;
   }
 
   if (claim.flowDirection === 'DOWN') {
     if (claim.flowPurpose === 'PAYMENT') {
       if (s === 'BRANCH') out.push({ key: 'MARK_PAID', label: 'ثبت پرداخت به ذینفع', tone: 'primary' });
-      else if (dn) out.push({ key: 'DOWN_FORWARD', label: `ارسال به ${STAGE_FA[dn]} برای پرداخت`, tone: 'primary' });
+      else if (dn) out.push({ key: 'DOWN_FORWARD', label: `ارسال به ${fa[dn]} برای پرداخت`, tone: 'primary' });
       return out;
     }
-    if (dn) out.push({ key: 'DOWN_FORWARD', label: `ارسال به ${STAGE_FA[dn]}`, tone: 'primary' });
+    if (dn) out.push({ key: 'DOWN_FORWARD', label: `ارسال به ${fa[dn]}`, tone: 'primary' });
     if (ctx.isAdmin && dn && dn !== 'POLICYHOLDER') {
       out.push({ key: 'DOWN_DIRECT', label: 'ارسال مستقیم به بیمه‌گزار (اختیار مدیریت)', tone: 'ghost', adminOnly: true });
     }
@@ -183,12 +297,12 @@ export function actionsFor(ctx: ActionContext): WorkflowAction[] {
   const waitingOriginals = ph.open?.requesterStage === s ? 'در انتظار دریافت اصل مدارک' : undefined;
   if (s === 'BROKER' || s === 'BRANCH') {
     let disabled = notApproved;
-    if (!disabled && s === 'BRANCH' && !claim.lossNoticeNumber) disabled = 'ابتدا اعلام خسارت را ثبت کنید';
-    if (!disabled && s === 'BRANCH' && !ph.at) disabled = waitingOriginals ?? 'ابتدا اصل مدارک را از بیمه‌گزار دریافت کنید';
+    if (!disabled && s === 'BRANCH' && rules.requireLossNotice && !claim.lossNoticeNumber) disabled = 'ابتدا اعلام خسارت را ثبت کنید';
+    if (!disabled && s === 'BRANCH' && !ph.at && (rules.requireOriginals || waitingOriginals)) disabled = waitingOriginals ?? 'ابتدا اصل مدارک را از بیمه‌گزار دریافت کنید';
     if (!disabled && s === 'BROKER' && !ctx.branches.length) disabled = 'بیمه‌گر هیچ شعبه‌ای تعریف نکرده است';
     out.push({
       key: 'FORWARD',
-      label: `ارسال به ${STAGE_FA[up!]}`,
+      label: `ارسال به ${fa[up!]}`,
       tone: 'primary',
       disabled,
       ...(s === 'BROKER' ? { branchOptions: ctx.branches, selectedBranchId: claim.handlingBranchId } : {}),
@@ -203,9 +317,9 @@ export function actionsFor(ctx: ActionContext): WorkflowAction[] {
       const ceiling = ctx.hqCeiling != null ? Number(ctx.hqCeiling.toString()) : null;
       let disabled = notApproved ?? waitingOriginals;
       if (!disabled && claim.finalizedAmount == null) disabled = 'ابتدا مبلغ خسارت قطعی را ثبت کنید';
-      if (!disabled && ceiling != null && payable > ceiling) disabled = 'مبلغ بیش از سقف اختیار مدیریت ستاد است؛ پرونده را به شورای فنی ارجاع دهید';
+      if (!disabled && rules.councilEnabled && ceiling != null && payable > ceiling) disabled = 'مبلغ بیش از سقف اختیار مدیریت ستاد است؛ پرونده را به شورای فنی ارجاع دهید';
       out.push({ key: 'PAY_ORDER', label: 'دستور پرداخت — ارسال به شعبه', tone: 'primary', disabled });
-      out.push(council);
+      if (rules.councilEnabled) out.push(council);
     }
   } else if (s === 'COUNCIL') {
     let disabled = notApproved ?? waitingOriginals;
@@ -221,11 +335,11 @@ export function actionsFor(ctx: ActionContext): WorkflowAction[] {
 
   if (dn) {
     // ستاد (سرپرستی) sends a case back to شعبه as «برگشت از سرپرستی به شعبه».
-    const back = s === 'HQ' && dn === 'BRANCH' ? 'برگشت از سرپرستی به شعبه' : `ارسال به ${STAGE_FA[dn]} (عودت برای رفع نقص)`;
+    const back = s === 'HQ' && dn === 'BRANCH' ? 'برگشت از سرپرستی به شعبه' : `ارسال به ${fa[dn]} (عودت برای رفع نقص)`;
     out.push({ key: 'RETURN', label: back, tone: 'warning', needsDeficiencies: true });
     if (ctx.isAdmin && dn !== 'POLICYHOLDER') {
       // Skips every desk below — the panel asks the operator to confirm (yes / no) before it goes.
-      const from = s === 'HQ' ? 'سرپرستی' : STAGE_FA[s] ?? '';
+      const from = s === 'HQ' ? 'سرپرستی' : fa[s] ?? '';
       out.push({ key: 'RETURN_DIRECT', label: `برگشت از ${from} به بیمه‌گزار`, tone: 'ghost', adminOnly: true, needsDeficiencies: true, confirm: true });
     }
   }

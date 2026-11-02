@@ -69,7 +69,7 @@ export function Shell({
     setMounted(true);
     // Every panel starts as an icon rail (like Sinad); each remembers its own choice after that.
     try { const v = localStorage.getItem(railKey); setRail(v !== '0'); } catch {}
-    if (realm !== 'super') setPanel(lastPanel(realm));
+    if (realm === 'org' || realm === 'customer') setPanel(lastPanel(realm));
   }, []);
   useEffect(() => { setOpen(false); }, [pathname]);
   useEffect(() => {

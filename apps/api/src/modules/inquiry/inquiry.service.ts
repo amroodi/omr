@@ -19,7 +19,8 @@ import { getContext, getTenantIdOrThrow } from '../../common/tenant/tenant-conte
 import { toJalali, toPersianDigits } from '../../common/jalali/jalali.util';
 import { SmsService } from '../auth/sms.service';
 import { RequestOtpDto, VerifyOtpDto } from './dto';
-import { chainOf, Stage, STAGE_FA } from '../claims/workflow';
+import { chainOf, Stage } from '../claims/workflow';
+import { ModelStore } from '../model-view/model-store.service';
 import { ageAt } from '../claims/claims.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ClaimFieldsService } from '../claim-fields/claim-fields.service';
@@ -42,6 +43,7 @@ import { beneficiaryHiddenDoc } from '../required-docs/defaults';
 export class InquiryService {
   private readonly logger = new Logger(InquiryService.name);
   constructor(
+    private readonly store: ModelStore,
     private readonly prisma: PrismaService,
     private readonly crypto: FieldCryptoService,
     private readonly hash: HashService,
@@ -406,14 +408,14 @@ export class InquiryService {
       paidDate: manual ? (fv.payment_order_date ? toPersianDigits(fv.payment_order_date) : null)
         : (() => { const p = (c.steps ?? []).find((s: any) => s.action === 'MARK_PAID' && s.decidedAt); return p?.decidedAt ? toJalali(p.decidedAt, false) : fv.payment_order_date ?? null; })(),
       // Where the claim is now + every hand-off (desk names only — operator names stay internal).
-      currentStageLabel: manual ? story.caseStage : c.currentStage ? STAGE_FA[c.currentStage as Stage] : null,
-      physicalAtLabel: STAGE_FA[(c.physicalAt as Stage | null) ?? 'POLICYHOLDER'], // where the original documents are
+      currentStageLabel: manual ? story.caseStage : c.currentStage ? this.store.labels(c.insurerTenantId)[c.currentStage as Stage] : null,
+      physicalAtLabel: this.store.labels(c.insurerTenantId)[(c.physicalAt as Stage | null) ?? 'POLICYHOLDER'], // where the original documents are
       steps: (manual ? [] : c.steps ?? []).map((s: any) => ({
-        order: s.order, partyType: s.partyType, stage: s.stage ?? null, stageLabel: s.stage ? STAGE_FA[s.stage as Stage] : null,
+        order: s.order, partyType: s.partyType, stage: s.stage ?? null, stageLabel: s.stage ? this.store.labels(c.insurerTenantId)[s.stage as Stage] : null,
         direction: s.direction, purpose: s.purpose ?? null, state: s.state, action: s.action ?? null, decidedAt: s.decidedAt ? toJalali(s.decidedAt) : null,
       })),
       deficiencies: (c.deficiencies ?? []).map((d: any) => ({ items: this.safeParse(d.items), resolvedAt: d.resolvedAt ? toJalali(d.resolvedAt, false) : null })),
-      chain: chainOf(c).map((st) => ({ stage: st, label: STAGE_FA[st] })),
+      chain: chainOf(c, this.store.get(c.insurerTenantId)).map((st) => ({ stage: st, label: this.store.labels(c.insurerTenantId)[st] })),
       currentStage: manual ? null : c.currentStage ?? null,
       flowDirection: manual ? null : c.flowDirection ?? null,
       flowPurpose: manual ? null : c.flowPurpose ?? null,

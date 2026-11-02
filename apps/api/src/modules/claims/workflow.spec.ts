@@ -1,4 +1,4 @@
-import { above, actionsFor, ActionContext, below, chainOf, higher, physicalActionsFor } from './workflow';
+import { above, actionsFor, ActionContext, below, chainOf, DEFAULT_WORKFLOW_MODEL, higher, modelFrom, physicalActionsFor, rulesOf, stageLabels, WorkflowModel } from './workflow';
 
 const broker = { brokerTenantId: 'b1' };
 const direct = { brokerTenantId: null };
@@ -119,5 +119,66 @@ describe('physical documents', () => {
     expect(physicalActionsFor('HQ', open('BRANCH'))).toEqual([]);
     expect(physicalActionsFor('POLICYHOLDER', { at: null, open: { requesterStage: 'BRANCH', holderStage: 'POLICYHOLDER', status: 'REQUESTED' } })[0].label).toBe('ارسال اصل مدارک به شعبه');
     expect(physicalActionsFor('COUNCIL', { at: 'COUNCIL', open: null })[0].key).toBe('PHYSICAL_RETURN');
+  });
+});
+
+describe('Model View', () => {
+  const off = (over: Partial<WorkflowModel>): WorkflowModel => ({ ...DEFAULT_WORKFLOW_MODEL, ...over });
+  const keys = (c: ActionContext) => actionsFor(c).map((a) => a.key);
+  const docsOk = { docs: { count: 1, allApproved: true, rejectedLabels: [], rejectedAnywhere: [] } };
+
+  it('keeps today\'s behaviour when nothing is stored', () => {
+    expect(modelFrom(null)).toEqual(DEFAULT_WORKFLOW_MODEL);
+    expect(modelFrom({ councilEnabled: 'no', panels: { COMPANY: { upload: false } } }).councilEnabled).toBe(true);
+    expect(modelFrom({ panels: { COMPANY: { upload: false } } }).panels.COMPANY).toEqual({ upload: false, submit: true });
+  });
+
+  it('council off: ستاد has no referral, no ceiling, and the chain drops the desk', () => {
+    const m = off({ councilEnabled: false });
+    const hq = ctx({ currentStage: 'HQ', flowDirection: 'UP', finalizedAmount: 100, claimedAmount: 100 } as any, { ...docsOk, hqCeiling: 1, physical: { at: 'HQ', open: null }, model: m });
+    expect(keys(hq)).not.toContain('REFER_COUNCIL');
+    expect(actionsFor(hq).find((a) => a.key === 'PAY_ORDER')?.disabled).toBeUndefined();
+    expect(chainOf(broker, m)).not.toContain('COUNCIL');
+  });
+
+  it('council off: a case already at the council stays on the chain', () => {
+    expect(chainOf({ ...broker, currentStage: 'COUNCIL' }, off({ councilEnabled: false }))).toContain('COUNCIL');
+  });
+
+  it('شعبه can forward without loss notice or originals when not required', () => {
+    const base = { currentStage: 'BRANCH', flowDirection: 'UP', lossNoticeNumber: null } as any;
+    const forward = (model: WorkflowModel) => actionsFor(ctx(base, { ...docsOk, physical: { at: null, open: null }, model })).find((a) => a.key === 'FORWARD');
+    expect(forward(DEFAULT_WORKFLOW_MODEL)?.disabled).toBeTruthy();
+    expect(forward(off({ requireLossNotice: false, requireOriginals: false }))?.disabled).toBeUndefined();
+  });
+
+  it('a blocked panel can\'t submit', () => {
+    const a = actionsFor(ctx({ currentStage: 'POLICYHOLDER' } as any, { ...docsOk, submitBlocked: 'x' })).find((k) => k.key === 'SUBMIT');
+    expect(a?.disabled).toBe('x');
+  });
+});
+
+describe('Model View: stages, types and forms', () => {
+  it('uses the insurer\'s stage names in action labels', () => {
+    const m = modelFrom({ stages: { BROKER: { label: 'معرف' } } });
+    expect(stageLabels(m).BROKER).toBe('معرف');
+    const a = actionsFor(ctx({ currentStage: 'POLICYHOLDER' } as any, { docs: { count: 1, allApproved: true, rejectedLabels: [], rejectedAnywhere: [] }, model: m }));
+    expect(a[0].label).toContain('معرف');
+  });
+  it('a desk that needn\'t review documents can forward without approvals', () => {
+    const m = modelFrom({ requireLossNotice: false, requireOriginals: false, stages: { BRANCH: { reviewDocs: false } } });
+    const a = actionsFor(ctx({ currentStage: 'BRANCH', flowDirection: 'UP' } as any, { docs: { count: 1, allApproved: false, rejectedLabels: [], rejectedAnywhere: [] }, physical: { at: null, open: null }, model: m }));
+    expect(a.find((x) => x.key === 'FORWARD')?.disabled).toBeUndefined();
+  });
+  it('a نوع پرونده overrides the insurer\'s rule', () => {
+    const m = modelFrom({ councilEnabled: true, byType: { MEDICAL_ACCIDENT: { councilEnabled: false }, NONSENSE: { councilEnabled: false } } });
+    expect(rulesOf(m, 'MEDICAL_ACCIDENT').councilEnabled).toBe(false);
+    expect(rulesOf(m, 'DEATH_ILLNESS').councilEnabled).toBe(true);
+    expect(m.byType.NONSENSE).toBeUndefined();
+    expect(chainOf({ ...broker, claimType: 'MEDICAL_ACCIDENT' }, m)).not.toContain('COUNCIL');
+  });
+  it('a line can\'t be given a claim type it doesn\'t cover, nor lose them all', () => {
+    expect(modelFrom({ form: { lines: { LIFE: { claimTypes: ['MEDICAL_ACCIDENT', 'DEATH_ILLNESS'] } } } }).form.lines.LIFE.claimTypes).toEqual(['DEATH_ILLNESS']);
+    expect(modelFrom({ form: { lines: { LIFE: { claimTypes: [] } } } }).form.lines.LIFE.claimTypes.length).toBe(3);
   });
 });

@@ -9,7 +9,7 @@ import { RateLimitService } from '../../common/rate-limit/rate-limit.service';
 import { getContext } from '../../common/tenant/tenant-context';
 import { SmsService } from '../auth/sms.service';
 
-export type Realm = 'ORG' | 'SUPER' | 'CUSTOMER';
+export type Realm = 'ORG' | 'SUPER' | 'CUSTOMER' | 'INSURED';
 export const ALERT_KINDS = ['NEW_DEVICE', 'CONCURRENT', 'IMPOSSIBLE_TRAVEL', 'SHARED_DEVICE', 'OFF_HOURS'] as const;
 export type AlertKind = (typeof ALERT_KINDS)[number];
 export const ALERT_FA: Record<AlertKind, string> = {
@@ -19,7 +19,7 @@ export const ALERT_FA: Record<AlertKind, string> = {
   SHARED_DEVICE: 'یک دستگاه برای چند حساب',
   OFF_HOURS: 'ورود خارج از ساعت کاری',
 };
-export const REALM_FA: Record<Realm, string> = { ORG: 'کاربران سازمان‌ها', SUPER: 'مدیر سامانه', CUSTOMER: 'بیمه‌گزار و نمایندگان' };
+export const REALM_FA: Record<Realm, string> = { INSURED: 'بیمه‌شده', ORG: 'کاربران سازمان‌ها', SUPER: 'مدیر سامانه', CUSTOMER: 'بیمه‌گزار و نمایندگان' };
 
 const ACTIVE_MIN = 15; // «هم‌زمان»: the other session was used within this many minutes
 const TRAVEL_HOURS = 3; // compare with the previous sign-in only if it was this recent

@@ -4,12 +4,13 @@ import { getDeviceId, getFingerprint } from './device';
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:4000/api/v1';
 
-export type Realm = 'org' | 'super' | 'customer';
+export type Realm = 'org' | 'super' | 'customer' | 'insured';
 
 const TOKEN_KEYS: Record<Realm, string> = {
   org: 'omr_org_token',
   super: 'omr_super_token',
   customer: 'omr_customer_token',
+  insured: 'omr_insured_token',
 };
 
 export function getTenantSlug(): string {
@@ -98,7 +99,7 @@ function headers(realm?: Realm, json = true): Record<string, string> {
 }
 
 // Signed out → the login page of the panel last used (شعبه → /branch/login, نماینده → /representative/login…).
-const loginPath = (realm: Realm): string => (realm === 'super' ? '/admin/login' : panelLogin(realm));
+const loginPath = (realm: Realm): string => (realm === 'super' ? '/admin/login' : realm === 'insured' ? '/insured/login' : panelLogin(realm));
 
 /** On a 401 the stored token is stale/invalid — clear it and bounce to the realm's login instead
  * of surfacing a raw "Invalid or expired token" on an empty panel. */

@@ -7,14 +7,14 @@ class AlertSettingsDto {
   @IsOptional() @IsBoolean() smsEnabled?: boolean;
   @IsOptional() @IsArray() @ArrayMaxSize(5) @IsString({ each: true }) phones?: string[];
   @IsOptional() @IsArray() @IsIn(ALERT_KINDS as unknown as string[], { each: true }) kinds?: string[];
-  @IsOptional() @IsArray() @IsIn(['ORG', 'SUPER', 'CUSTOMER'], { each: true }) realms?: string[];
+  @IsOptional() @IsArray() @IsIn(['ORG', 'SUPER', 'CUSTOMER', 'INSURED'], { each: true }) realms?: string[];
   @IsOptional() @IsInt() @Min(0) @Max(24) workHoursStart?: number;
   @IsOptional() @IsInt() @Min(0) @Max(24) workHoursEnd?: number;
   @IsOptional() @IsBoolean() offHoursFriday?: boolean;
 }
 
 class EndAllDto {
-  @IsIn(['ORG', 'SUPER', 'CUSTOMER']) realm!: string;
+  @IsIn(['ORG', 'SUPER', 'CUSTOMER', 'INSURED']) realm!: string;
   @IsString() actorId!: string;
 }
 

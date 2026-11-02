@@ -23,6 +23,8 @@ export interface RequestContext {
   customerCompanyId?: string;
   /** For the customer realm, the brokerage's own «broker» login: acts for every بیمه‌گزار of the brokerage. */
   customerBrokerPanel?: boolean;
+  /** «پنل بیمه‌شده»: the signed-in mobile's blind index. */
+  insuredPhoneHash?: string;
   /** For the customer realm: a نماینده (person, کد ملی + password) acting for their company. */
   customerRepresentative?: boolean;
   /** Org user: which panel the session signed in to (کارگزاری / شعبه / ستاد / شورای فنی) — display only. */

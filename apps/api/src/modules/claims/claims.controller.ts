@@ -42,12 +42,6 @@ export class ClaimsController {
     return this.claims.noticeRules();
   }
 
-  @Permissions(PERMISSIONS.TENANT_SETTINGS)
-  @Put('notice-rules')
-  saveNoticeRules(@Body() body: Record<string, unknown>) {
-    return this.claims.saveNoticeRules(body ?? {});
-  }
-
   /** File a death claim (بیمه‌گزار / broker on their behalf). */
   @Permissions(PERMISSIONS.CLAIM_FILE)
   @Post()
