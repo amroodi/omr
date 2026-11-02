@@ -50,6 +50,12 @@ export class ClaimsController {
   }
 
   // Also feeds the «پرونده جدید» form (any staff who files claims), not only filing on behalf.
+  @Permissions(PERMISSIONS.CLAIM_READ)
+  @Get('case-types')
+  caseTypes() {
+    return this.claims.caseTypeOptions();
+  }
+
   @Permissions(PERMISSIONS.CLAIM_FILE)
   @Get('on-behalf/companies')
   onBehalfCompanies() {

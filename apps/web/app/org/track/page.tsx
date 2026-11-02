@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { client, getToken } from '../../../lib/client';
 import { Shell, Icon } from '../../components/Shell';
 import { ORG_NAV } from '../nav';
-import { ClaimTypeBadge, CLAIM_TYPE_LABELS, ErrorBox, FancyLoader, StatusBadge } from '../../components/ui';
+import { ClaimTypeBadge, claimTypeLabel, ErrorBox, FancyLoader, StatusBadge } from '../../components/ui';
 import { caseTitle } from '../../../lib/caseTitle';
 
 interface Row { id: string; claimNumber: string; policyNumber?: string | null; deceasedNationalCode?: string | null; status: string; claimType: string; deceasedName: string | null; insurerTenantId?: string }
@@ -118,7 +118,7 @@ export default function TrackClaim() {
               <span className="font-bold">{caseTitle(sel)}</span>
               <span className="flex items-center gap-2 flex-wrap">
                 <StatusBadge status={sel.status} />
-                <span className="trk-type-chip"><span className="dot" style={{ background: TYPE_DOT[sel.claimType] || '#888' }} />{CLAIM_TYPE_LABELS[sel.claimType] || sel.claimType}</span>
+                <span className="trk-type-chip"><span className="dot" style={{ background: TYPE_DOT[sel.claimType] || '#888' }} />{claimTypeLabel(sel)}</span>
               </span>
             </div>
             <div className="flex flex-wrap gap-2 mt-4">
@@ -152,7 +152,7 @@ export default function TrackClaim() {
           {/* Documents panel (filtered by claim kind) */}
           <div className="trk-panel">
             <div className="trk-panel-head">
-              <span>مدارک مورد نیاز — {CLAIM_TYPE_LABELS[sel.claimType] || sel.claimType}</span>
+              <span>مدارک مورد نیاز — {claimTypeLabel(sel)}</span>
               {checklist && <span className="trk-chip">{checklist.complete ? 'تکمیل شده' : 'ناقص'}</span>}
             </div>
             {!checklist || (checklist.items.length === 0 && (checklist.otherDocuments?.length ?? 0) === 0) ? (

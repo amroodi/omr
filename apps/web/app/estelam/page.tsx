@@ -61,7 +61,7 @@ function Result({ r }: { r: any }) {
           <InfoRow label="مبلغ قابل پرداخت" value={fmtAmt(r.payableAmount)} />
         </InfoCol>
         <InfoCol title={isDeath ? 'اطلاعات فوت' : 'اطلاعات حادثه'}>
-          {isDeath && <InfoRow label="علت فوت" value={r.causeOfDeath} />}
+          <InfoRow label="علت خسارت" value={r.causeOfDeath} />
           <InfoRow label={isDeath ? 'تاریخ فوت' : 'تاریخ حادثه'} value={r.eventDate} />
           <InfoRow label="ذینفع" value={r.beneficiaries?.type} />
           <InfoRow label="مرحلهٔ فعلی" value={r.currentStageLabel} />

@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { client, getToken } from '../../../../lib/client';
-import { CLAIM_TYPE_LABELS, ErrorBox, Spinner } from '../../../components/ui';
+import { claimTypeLabel, ErrorBox, Spinner } from '../../../components/ui';
 import { Icon, Shell } from '../../../components/Shell';
 import { CUSTOMER_NAV } from '../../nav';
 import { WorkflowPanel } from '../../../components/WorkflowPanel';
@@ -128,7 +128,7 @@ export default function CustomerClaim() {
   /** «ثبت نهایی»: check the documents, send the case on, and show the outcome on its own page. */
   const finalSubmit = async () => {
     if (!checklist || !claim) return;
-    const missing = checklist.items.filter((it) => !it.uploaded).map((it) => it.label);
+    const missing = checklist.items.filter((it) => !it.uploaded && it.required).map((it) => it.label);
     const rejected = checklist.items.filter((it) => it.documents[0]?.reviews?.some((r) => r.state === 'REJECTED')).map((it) => it.label);
     const fail = (reason: string, items: string[] = []) => {
       try { sessionStorage.setItem(RESULT_KEY(id), JSON.stringify({ ok: false, reason, items })); } catch { /* ignore */ }
@@ -136,7 +136,7 @@ export default function CustomerClaim() {
     };
     if (uploading) return fail('بارگذاری یک یا چند مدرک هنوز تمام نشده است؛ پس از پایان بارگذاری دوباره «ثبت نهایی» را بزنید.');
     if (heirsMissing) return fail('نام، کد ملی و شماره شبای ذینفعان را بنویسید و «ذخیرهٔ ذینفعان» را بزنید.');
-    if (missing.length) return fail('مدارک زیر هنوز بارگذاری نشده‌اند؛ پس از بارگذاری همهٔ مدارک دوباره «ثبت نهایی» را بزنید:', missing);
+    if (missing.length) return fail('مدارک الزامی زیر هنوز بارگذاری نشده‌اند؛ پس از بارگذاری آن‌ها دوباره «ثبت نهایی» را بزنید:', missing);
     if (rejected.length) return fail('مدارک زیر رد شده‌اند و باید مدرک صحیح جایگزین شود:', rejected);
     if (submitAction?.disabled) return fail(submitAction.disabled);
     setSending(true);
@@ -160,7 +160,7 @@ export default function CustomerClaim() {
             <div className="cs-sheet">
               <CaseHero
                 title={caseTitle(claim)} claim={claim}
-                sub={`${CLAIM_TYPE_LABELS[claim.claimType] || claim.claimType} — ${claim.deceasedName || '—'}`}
+                sub={`${claimTypeLabel(claim)} — ${claim.deceasedName || '—'}`}
                 chips={claim.insurerTenantId && insurers[claim.insurerTenantId] ? [{ label: 'بیمه‌گر', value: insurers[claim.insurerTenantId], icon: ICONS.policy }] : []}
                 notesLabel="وضعیت پرونده:" notes={STATUS_FA[claim.status] ?? claim.status}
                 steps back="/customer/claims" exitHref={`/customer/claims/${id}/workflow`} />
@@ -190,6 +190,7 @@ export default function CustomerClaim() {
                 <h3 className="font-extrabold">مدارک مورد نیاز</h3>
                 {checklist && <span className={`badge ${checklist.complete ? 'badge-success' : 'badge-warning'}`}>{checklist.complete ? 'کامل' : 'ناقص'}</span>}
               </div>
+              <p className="text-xs mb-3" style={{ color: 'var(--muted)' }}>مدارک ستاره‌دار (*) الزامی است؛ بقیه را برحسب مورد بارگذاری کنید.{checklist?.note ? ` ${checklist.note}` : ''}</p>
               {aiNote && <div className="alert-success mb-3 text-sm">{AI_QUEUED_FA}</div>}
               <div className="space-y-2.5">
                 {checklist?.items.map((it) => {
@@ -205,12 +206,12 @@ export default function CustomerClaim() {
                     <div key={it.code} className={`doc-row cu-doc tone-${story.tone}`}>
                       <div className="cu-doc-head">
                         <div className="text-sm min-w-0">
-                          <div className="font-bold">{it.label}</div>
+                          <div className="font-bold">{it.label}{it.required && <span style={{ color: 'var(--danger)' }}> *</span>}</div>
                           <div className="cu-story">{story.text}</div>
                         </div>
                         <div className="cu-doc-up">
                           {claim.status !== 'PAID' && !(unchosen && isBeneficiary) && (
-                            <DocUploadTile label={it.label} {...(it.code === INHERITANCE_CERT ? { addText: 'بارگزاری فرم انحصار وراثت' } : {})} uploaded={it.uploaded} rejected={story.tone === 'bad' || !!it.aiRefused}
+                            <DocUploadTile label={it.label} required={!!it.required} {...(it.code === INHERITANCE_CERT ? { addText: 'بارگزاری فرم انحصار وراثت' } : {})} uploaded={it.uploaded} rejected={story.tone === 'bad' || !!it.aiRefused}
                               cameraOnly onUpload={(f, onP) => upload(it.code, f, onP)} />
                           )}
                         </div>

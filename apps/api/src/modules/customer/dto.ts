@@ -1,4 +1,3 @@
-import { ClaimType } from '@prisma/client';
 import { Type } from 'class-transformer';
 import { ArrayMaxSize, IsArray, IsEnum, IsIn, IsISO8601, IsOptional, IsString, IsUUID, Length, Matches, ValidateNested } from 'class-validator';
 import { BENEFICIARY_KINDS, HeirDto } from '../claims/dto';
@@ -81,8 +80,9 @@ export class CustomerFileClaimDto {
   deceasedBirthDate?: string;
 
   @IsOptional()
-  @IsEnum(ClaimType)
-  claimType?: ClaimType;
+  @IsString()
+  @Matches(/^[A-Z0-9_]{2,40}$/)
+  claimType?: string;
 
   @IsOptional()
   @IsISO8601()
@@ -111,10 +111,10 @@ export class CustomerFileClaimDto {
   @IsIn(['POLICYHOLDER', 'BROKER', 'BRANCH', 'HQ', 'COUNCIL'])
   startStage?: 'POLICYHOLDER' | 'BROKER' | 'BRANCH' | 'HQ' | 'COUNCIL';
 
-  // علت فوت as the بیمه‌گزار knows it (free text, e.g. «ایست قلبی»).
+  // علت خسارت: the ticked causes and/or typed text.
   @IsOptional()
   @IsString()
-  @Length(0, 300)
+  @Length(0, 1500)
   causeOfDeath?: string;
 
   // «ذینفع / وراث قانونی» named on the deceased's form (the form itself is uploaded right after filing).

@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { client, Realm } from '../../lib/client';
 import { Icon } from './Shell';
-import { CLAIM_TYPE_LABELS, Overlay } from './ui';
+import { claimTypeLabel, Overlay } from './ui';
 import type { Workflow, TimelineStep } from './WorkflowPanel';
 
 /**
@@ -17,12 +17,12 @@ export interface DocReview { stage: string; state: string; canEdit: boolean; cha
 /** «بررسی هوشمند مدارک» verdict on one file (null = not checked). */
 export interface DocAi { status: string; reason: string | null; detected: string | null }
 export interface ClaimDoc { id: string; fileName: string; status: string; statusLabel: string; note: string | null; uploadedAt: string | null; version: number; isLatest: boolean; reviews?: DocReview[]; ai?: DocAi | null }
-export interface ChecklistItem { code: string; label: string; uploaded: boolean; aiRefused?: boolean; latestStatus: string | null; documents: ClaimDoc[] }
-export interface Checklist { claimType: string; complete: boolean; items: ChecklistItem[]; otherDocuments?: ClaimDoc[] }
+export interface ChecklistItem { code: string; label: string; required?: boolean; uploaded: boolean; aiRefused?: boolean; latestStatus: string | null; documents: ClaimDoc[] }
+export interface Checklist { claimType: string; complete: boolean; note?: string; items: ChecklistItem[]; otherDocuments?: ClaimDoc[] }
 export interface FieldRow { key: string; label: string; type: string; options: string[]; required: boolean; value: string | null; source: string | null; confirmed: boolean; canEdit: boolean }
 export interface FieldsData { party: string; manual?: boolean; groups: Record<string, FieldRow[]> }
 export interface CaseClaim {
-  coverageStatus?: string | null; insuredLinkEnabled?: boolean;
+  coverageStatus?: string | null; insuredLinkEnabled?: boolean; causeOfDeath?: string | null; claimTypeLabel?: string | null; claimTypeDeath?: boolean;
   id: string; claimNumber: string; policyNumber?: string | null; status: string; claimType: string; insurerTenantId?: string;
   deceasedName: string | null; deceasedNationalCode?: string | null; deceasedBirthDate?: string | null; deceasedAge?: number | null;
   eventDate: string | null; createdAt?: string | null; paidDate?: string | null; noticeDeadline: string | null; lateNotice: boolean;
@@ -188,7 +188,7 @@ export function InfoRow({ label, value, tone }: { label: string; value: ReactNod
 
 /** Group 873: the three info cards of the case. */
 export function CaseSummary({ claim, fv }: { claim: CaseClaim; fv: Record<string, string> }) {
-  const isDeath = DEATH_TYPES.has(claim.claimType);
+  const isDeath = claim.claimTypeDeath ?? DEATH_TYPES.has(claim.claimType);
   const name = claim.deceasedName || fv.full_name;
   const statusText = claim.story?.manual
     ? (claim.story.caseStage || STATUS_FA[claim.status] || claim.status) // typed in «ویرایش»
@@ -209,8 +209,8 @@ export function CaseSummary({ claim, fv }: { claim: CaseClaim; fv: Record<string
         <InfoRow label="سرمایه حادثه" value={fmtAmount(fv.accident_capital)} />
         <InfoRow label="مبلغ قابل پرداخت" value={fmtAmount(fv.payable_amount || claim.payableAmount)} tone="amount" />
       </InfoCard>
-      <InfoCard title={isDeath ? 'اطلاعات فوت' : 'اطلاعات حادثه'} icon={ICONS.doc} aside={CLAIM_TYPE_LABELS[claim.claimType] || 'پرونده خسارت'}>
-        {isDeath && <InfoRow label="علت فوت" value={fv.cause_of_death || fv.death_kind} />}
+      <InfoCard title={isDeath ? 'اطلاعات فوت' : 'اطلاعات حادثه'} icon={ICONS.doc} aside={claimTypeLabel(claim)}>
+        <InfoRow label="علت خسارت" value={fv.cause_of_death || claim.causeOfDeath || fv.death_kind} />
         <InfoRow label={isDeath ? 'تاریخ فوت' : 'تاریخ حادثه'} value={claim.eventDate || d('death_date')} />
         <InfoRow label={isDeath ? 'سن متوفی' : 'سن بیمه‌شده'} value={claim.deceasedAge != null ? `${claim.deceasedAge.toLocaleString('fa-IR')} سال` : null} />
         <InfoRow label="وضعیت پرونده" value={statusText} />
@@ -221,7 +221,7 @@ export function CaseSummary({ claim, fv }: { claim: CaseClaim; fv: Record<string
 
 /** Group 874/875: the deceased's name and the company, as two white cards under the header. */
 export function PersonCards({ claim, fv }: { claim: CaseClaim; fv: Record<string, string> }) {
-  const isDeath = DEATH_TYPES.has(claim.claimType);
+  const isDeath = claim.claimTypeDeath ?? DEATH_TYPES.has(claim.claimType);
   const name = claim.deceasedName || fv.full_name || '—';
   return (
     <div className="cs-people">

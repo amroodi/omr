@@ -19,8 +19,8 @@ import { DEFAULT_REQUIRED_DOCS } from '../src/modules/required-docs/defaults';
     for (const d of DEFAULT_REQUIRED_DOCS) {
       await prisma.requiredDocument.upsert({
         where: { tenantId_code: { tenantId: t.id, code: d.code } },
-        update: { label: d.label, appliesToTypes: d.appliesToTypes, order: d.order },
-        create: { tenantId: t.id, code: d.code, label: d.label, appliesToTypes: d.appliesToTypes, order: d.order },
+        update: { label: d.label, appliesToTypes: d.appliesToTypes, requiredTypes: d.requiredTypes, order: d.order },
+        create: { tenantId: t.id, code: d.code, label: d.label, appliesToTypes: d.appliesToTypes, requiredTypes: d.requiredTypes, order: d.order },
       });
       upserts++;
     }

@@ -185,12 +185,17 @@ export function StatusBadge({ status }: { status: string }) {
 }
 
 export const CLAIM_TYPE_LABELS: Record<string, string> = {
-  DEATH_ILLNESS: 'فوت ناشی از بیماری',
-  DEATH_ACCIDENT: 'فوت ناشی از حادثه',
-  DISABILITY_ACCIDENT: 'نقص عضو / ازکارافتادگی ناشی از حادثه',
-  MEDICAL_ACCIDENT: 'جبران هزینه‌های پزشکی ناشی از حادثه',
-  DISABILITY_ILLNESS: 'از کار افتادگی ناشی از بیماری',
+  DEATH_ILLNESS: 'فوت به هر علت',
+  DISABILITY_ILLNESS: 'از کار افتادگی دائم و کامل ناشی از بیماری',
+  DEATH_ACCIDENT: 'فوت بر اثر حادثه',
+  DISABILITY_ACCIDENT: 'نقص عضو و از کار افتادگی بر اثر حادثه',
+  MEDICAL_ACCIDENT: 'جبران هزینه‌های ناشی از حادثه',
+  DAILY_GENERAL: 'غرامت روزانه عمومی',
+  DAILY_HOSPITAL: 'غرامت روزانه بیمارستانی',
 };
+
+/** A case's نوع پرونده as its insurer names it in Model View; the standard name for anything else. */
+export const claimTypeLabel = (c: { claimType: string; claimTypeLabel?: string | null }) => c.claimTypeLabel ?? CLAIM_TYPE_LABELS[c.claimType] ?? c.claimType;
 
 // A distinct color per claim type, for at-a-glance recognition in lists and headers.
 const CLAIM_TYPE_STYLE: Record<string, { fg: string; bg: string; dot: string }> = {
@@ -199,6 +204,8 @@ const CLAIM_TYPE_STYLE: Record<string, { fg: string; bg: string; dot: string }> 
   DISABILITY_ACCIDENT: { fg: '#b45309', bg: 'rgba(217,119,6,0.14)', dot: '#d97706' }, // amber — نقص عضو
   MEDICAL_ACCIDENT: { fg: '#047857', bg: 'rgba(5,150,105,0.12)', dot: '#059669' }, // teal — هزینه پزشکی
   DISABILITY_ILLNESS: { fg: '#6d28d9', bg: 'rgba(124,58,237,0.12)', dot: '#7c3aed' }, // purple — ازکارافتادگی بیماری
+  DAILY_GENERAL: { fg: '#0e7490', bg: 'rgba(8,145,178,0.12)', dot: '#0891b2' }, // cyan — غرامت روزانه
+  DAILY_HOSPITAL: { fg: '#be185d', bg: 'rgba(219,39,119,0.12)', dot: '#db2777' }, // pink — غرامت بیمارستانی
 };
 
 /** Colored, dotted chip for a claim (death) type. */

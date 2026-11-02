@@ -64,6 +64,7 @@ export default function NewClaim() {
   const [notice, setNotice] = useState<{ enabled: boolean; targets: string[]; default: string; labels: Record<string, string> } | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [caseTypes, setCaseTypes] = useState<Record<string, string>>(CLAIM_TYPE_LABELS);
 
   useEffect(() => {
     if (!getToken('org')) { router.push('/org/login'); return; }
@@ -71,6 +72,7 @@ export default function NewClaim() {
     client.get<{ id: string; name: string }[]>('/claims/insurers', 'org').then(setInsurers).catch((e) => setError(e.message));
     client.get<{ id: string; name: string; code: string }[]>('/branches', 'org').then(setBranches).catch(() => {});
     client.get<any>('/claims/notice-options', 'org').then(setNotice).catch(() => setNotice(null));
+    client.get<{ code: string; label: string }[]>('/claims/case-types', 'org').then((l) => { if (l.length) setCaseTypes(Object.fromEntries(l.map((t) => [t.code, t.label]))); }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -170,9 +172,9 @@ export default function NewClaim() {
             </>
           )}
 
-          <PField label="نوع پرونده *" help="علت فوت یا نوع خسارت را مشخص کنید.">
+          <PField label="نوع پرونده *" help="نوع خسارت را مشخص کنید.">
             <select className="input" value={f.claimType} onChange={set('claimType')}>
-              {Object.entries(CLAIM_TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              {Object.entries(caseTypes).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
           </PField>
           <PField label={`${insuredNameLabel()} *`}>

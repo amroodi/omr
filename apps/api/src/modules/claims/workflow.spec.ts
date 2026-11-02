@@ -178,7 +178,20 @@ describe('Model View: stages, types and forms', () => {
     expect(chainOf({ ...broker, claimType: 'MEDICAL_ACCIDENT' }, m)).not.toContain('COUNCIL');
   });
   it('a line can\'t be given a claim type it doesn\'t cover, nor lose them all', () => {
-    expect(modelFrom({ form: { lines: { LIFE: { claimTypes: ['MEDICAL_ACCIDENT', 'DEATH_ILLNESS'] } } } }).form.lines.LIFE.claimTypes).toEqual(['DEATH_ILLNESS']);
-    expect(modelFrom({ form: { lines: { LIFE: { claimTypes: [] } } } }).form.lines.LIFE.claimTypes.length).toBe(3);
+    expect(modelFrom({ form: { lines: { LIFE: { claimTypes: ['NOPE', 'DEATH_ILLNESS'] } } } }).form.lines.LIFE.claimTypes).toEqual(['DEATH_ILLNESS']);
+    expect(modelFrom({ form: { lines: { LIFE: { claimTypes: [] } } } }).form.lines.LIFE.claimTypes.length).toBe(2);
+  });
+});
+
+describe('Model View: cause lists', () => {
+  it('starts with both lists', () => {
+    expect(DEFAULT_WORKFLOW_MODEL.form.causeLists.DEATH).toContain('سرطان');
+    expect(DEFAULT_WORKFLOW_MODEL.form.causeLists.ACCIDENT).toContain('حادثه ناشی از کار');
+    expect(modelFrom({ form: {} }).form.causeLists.DEATH.length).toBe(18);
+  });
+  it('a saved empty list stays empty; an old single list serves both', () => {
+    expect(modelFrom({ form: { causeLists: { DEATH: [] } } }).form.causeLists.DEATH).toEqual([]);
+    expect(modelFrom({ form: { causes: ['x'] } }).form.causeLists).toEqual({ DEATH: ['x'], ACCIDENT: ['x'] });
+    expect(modelFrom({ form: { causes: [] } }).form.causeLists.ACCIDENT.length).toBe(6);
   });
 });

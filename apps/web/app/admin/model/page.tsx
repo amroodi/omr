@@ -3,31 +3,32 @@ import { ReactNode, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { client, getToken } from '../../../lib/client';
-import { CLAIM_TYPE_LABELS, Spinner } from '../../components/ui';
+import { Spinner } from '../../components/ui';
 
 type Stage = 'POLICYHOLDER' | 'BROKER' | 'BRANCH' | 'HQ' | 'COUNCIL';
 type Mode = 'required' | 'optional' | 'hidden';
 type RuleKey = 'councilEnabled' | 'requireLossNotice' | 'requireOriginals';
 interface Rights { upload: boolean; submit: boolean }
 interface LineForm { insuredLabel: string; claimTypes: string[] }
+interface CaseType { code: string; label: string; causeGroup: 'DEATH' | 'ACCIDENT'; death: boolean }
+interface CompanyGroup { id: string; label: string; companyIds: string[]; lines: { LIFE: string[]; ACCIDENT: string[] } }
 interface Model {
   councilEnabled: boolean; requireLossNotice: boolean; requireOriginals: boolean;
   stages: Record<Stage, { label: string; reviewDocs: boolean }>;
   byType: Record<string, Partial<Record<RuleKey, boolean>>>;
   panels: { COMPANY: Rights; REPRESENTATIVE: Rights };
   insured: { enabled: boolean; docCodes: string[]; linkDays: number };
-  form: { eventLabel: string; birthDate: Mode; cause: Mode; causes: string[]; lines: { LIFE: LineForm; ACCIDENT: LineForm } };
+  form: { eventLabel: string; birthDate: Mode; cause: Mode; causeLists: { DEATH: string[]; ACCIDENT: string[] }; lines: { LIFE: LineForm; ACCIDENT: LineForm }; caseTypes: CaseType[]; groups: CompanyGroup[]; docsNote: string };
 }
-interface Doc { code: string; label: string; isActive: boolean; appliesToTypes: string[] }
+interface Doc { code: string; label: string; isActive: boolean; appliesToTypes: string[]; requiredTypes: string[] }
 interface Coverage { enabled: boolean; url: string; nationalCodeParam: string; authHeader: string; hasSecret: boolean; perMinute: number; notChecked: number; secret?: string }
-interface Insurer { id: string; name: string; customized: boolean; casesAtCouncil: number; model: Model; docs: Doc[]; coverage: Coverage }
+interface Insurer { id: string; name: string; customized: boolean; casesAtCouncil: number; model: Model; docs: Doc[]; companies: { id: string; name: string; parentId: string | null }[]; coverage: Coverage }
 interface NoticeRule { enabled: boolean; targets: string[]; default: string }
 interface NoticeOrg { id: string; name: string; kind: string; sources: { key: string; label: string; allowed: string[]; rule: NoticeRule }[] }
 interface Data { defaults: Model; insurers: Insurer[]; notice: NoticeOrg[]; targets: { key: string; label: string }[] }
 
 const STAGES: Stage[] = ['POLICYHOLDER', 'BROKER', 'BRANCH', 'HQ', 'COUNCIL'];
-const TYPES = Object.keys(CLAIM_TYPE_LABELS);
-const LINE_ALL = { LIFE: ['DEATH_ILLNESS', 'DEATH_ACCIDENT', 'DISABILITY_ILLNESS'], ACCIDENT: ['DEATH_ACCIDENT', 'DISABILITY_ACCIDENT', 'MEDICAL_ACCIDENT'] };
+const LINE_FA = { LIFE: 'عمر', ACCIDENT: 'حوادث' } as const;
 const RULE_FA: Record<RuleKey, string> = { councilEnabled: 'شورای فنی', requireLossNotice: 'الزام اعلام خسارت', requireOriginals: 'الزام اصل مدارک' };
 const TABS = [['stages', 'مراحل'], ['types', 'قوانین نوع پرونده'], ['form', 'فرم ثبت پرونده'], ['docs', 'مدارک'], ['panels', 'پنل‌ها'], ['notice', 'اعلام خسارت'], ['coverage', 'استعلام فن‌آوران']] as const;
 const tabStyle = (on: boolean) => (on ? { background: 'var(--brand)', color: '#fff' } : { background: 'var(--surface-2)', color: 'var(--muted)', border: '1px solid var(--border)' });
@@ -50,6 +51,7 @@ export default function ModelView() {
   const [tab, setTab] = useState<(typeof TABS)[number][0]>('stages');
   const [m, setM] = useState<Model | null>(null);
   const [docs, setDocs] = useState<Doc[]>([]);
+  const [docType, setDocType] = useState('DEATH_ILLNESS');
   const [cov, setCov] = useState<Coverage | null>(null);
   const [noticeOrg, setNoticeOrg] = useState('');
   const [notice, setNotice] = useState<NoticeOrg | null>(null);
@@ -98,6 +100,14 @@ export default function ModelView() {
       {data && m && <button className="btn btn-ghost" disabled={busy || JSON.stringify(m) === JSON.stringify(data.defaults)} onClick={() => setM(data.defaults)}>بازگشت به پیش‌فرض</button>}
     </div>
   );
+  const toggled = (list: string[], v: string, on: boolean) => (on ? [...list, v] : list.filter((x) => x !== v));
+  const setType = (code: string, p: Partial<CaseType>) => m && setForm({ caseTypes: m.form.caseTypes.map((t) => (t.code === code ? { ...t, ...p } : t)) });
+  const setGroup = (gid: string, p: Partial<CompanyGroup>) => m && setForm({ groups: m.form.groups.map((g) => (g.id === gid ? { ...g, ...p } : g)) });
+  const setDocMode = (code: string, mode: string) => setDocs(docs.map((d) => (d.code !== code ? d : {
+    ...d,
+    appliesToTypes: mode === 'off' ? d.appliesToTypes.filter((x) => x !== docType) : [...new Set([...d.appliesToTypes, docType])],
+    requiredTypes: mode === 'required' ? [...new Set([...d.requiredTypes, docType])] : d.requiredTypes.filter((x) => x !== docType),
+  })));
   const chain = m ? STAGES.filter((s) => s !== 'COUNCIL' || m.councilEnabled).map((s) => m.stages[s].label) : [];
 
   return (
@@ -160,13 +170,13 @@ export default function ModelView() {
                   <table className="table text-sm w-full">
                     <thead><tr><th>نوع پرونده</th>{(Object.keys(RULE_FA) as RuleKey[]).map((k) => <th key={k}>{RULE_FA[k]}</th>)}</tr></thead>
                     <tbody>
-                      {TYPES.map((t) => (
+                      {m.form.caseTypes.map(({ code: t, label: tl }) => (
                         <tr key={t}>
-                          <td className="font-semibold">{CLAIM_TYPE_LABELS[t]}</td>
+                          <td className="font-semibold">{tl}</td>
                           {(Object.keys(RULE_FA) as RuleKey[]).map((k) => {
                             const v = m.byType[t]?.[k];
                             return (
-                              <td key={k}><select className="input" aria-label={`${RULE_FA[k]} — ${CLAIM_TYPE_LABELS[t]}`} value={v === undefined ? '' : v ? 'on' : 'off'} onChange={(e) => setOverride(t, k, e.target.value)}>
+                              <td key={k}><select className="input" aria-label={`${RULE_FA[k]} — ${tl}`} value={v === undefined ? '' : v ? 'on' : 'off'} onChange={(e) => setOverride(t, k, e.target.value)}>
                                 <option value="">مانند بیمه‌گر ({m[k] ? 'روشن' : 'خاموش'})</option><option value="on">روشن</option><option value="off">خاموش</option>
                               </select></td>
                             );
@@ -183,54 +193,110 @@ export default function ModelView() {
 
           {tab === 'form' && (
             <>
+              <Card title="نوع پرونده‌ها">
+                <p className="text-xs" style={{ color: 'var(--muted)' }}>نام هر نوع در همهٔ پنل‌های این بیمه‌گر نشان داده می‌شود. انواع استاندارد حذف نمی‌شوند؛ برای پنهان‌کردن، آن‌ها را از فهرست بیمه‌نامه بردارید.</p>
+                <div className="space-y-2">
+                  {m.form.caseTypes.map((t) => (
+                    <div key={t.code} className="grid sm:grid-cols-[1fr_12rem_auto_auto] gap-2 items-center">
+                      <input className="input" aria-label="نام نوع پرونده" value={t.label} maxLength={120} onChange={(e) => setType(t.code, { label: e.target.value })} />
+                      <select className="input" aria-label="فهرست علت خسارت" value={t.causeGroup} onChange={(e) => setType(t.code, { causeGroup: e.target.value as CaseType['causeGroup'] })}><option value="DEATH">فهرست علت: فوت</option><option value="ACCIDENT">فهرست علت: حادثه</option></select>
+                      <Toggle on={t.death} onChange={(v) => setType(t.code, { death: v })}>پروندهٔ فوت</Toggle>
+                      {data.defaults.form.caseTypes.some((x) => x.code === t.code) ? <span /> : <button className="btn btn-ghost btn-sm" onClick={() => setForm({ caseTypes: m.form.caseTypes.filter((x) => x.code !== t.code), lines: { LIFE: { ...m.form.lines.LIFE, claimTypes: m.form.lines.LIFE.claimTypes.filter((x) => x !== t.code) }, ACCIDENT: { ...m.form.lines.ACCIDENT, claimTypes: m.form.lines.ACCIDENT.claimTypes.filter((x) => x !== t.code) } } })}>حذف</button>}
+                    </div>
+                  ))}
+                </div>
+                <button className="btn btn-ghost btn-sm" onClick={() => setForm({ caseTypes: [...m.form.caseTypes, { code: `T_${Date.now().toString(36).toUpperCase()}`, label: 'نوع پروندهٔ جدید', causeGroup: 'ACCIDENT', death: false }] })}>افزودن نوع پرونده</button>
+              </Card>
               {(['LIFE', 'ACCIDENT'] as const).map((l) => (
                 <Card key={l} title={l === 'LIFE' ? 'بیمه‌نامهٔ عمر' : 'بیمه‌نامهٔ حوادث'}>
                   <label className="text-sm block">عنوان نام بیمه‌شده
                     <input className="input mt-1" value={m.form.lines[l].insuredLabel} maxLength={80} onChange={(e) => setLine(l, { insuredLabel: e.target.value })} />
                   </label>
-                  <div className="text-sm font-bold">نوع پرونده‌های مجاز</div>
+                  <div className="text-sm font-bold">نوع پرونده‌های مجاز برای سایر بیمه‌گزاران</div>
                   <div className="flex flex-wrap gap-4">
-                    {LINE_ALL[l].map((t) => (
-                      <Toggle key={t} on={m.form.lines[l].claimTypes.includes(t)} onChange={(v) => setLine(l, { claimTypes: v ? [...m.form.lines[l].claimTypes, t] : m.form.lines[l].claimTypes.filter((x) => x !== t) })}>{CLAIM_TYPE_LABELS[t]}</Toggle>
+                    {m.form.caseTypes.map((t) => (
+                      <Toggle key={t.code} on={m.form.lines[l].claimTypes.includes(t.code)} onChange={(v) => setLine(l, { claimTypes: toggled(m.form.lines[l].claimTypes, t.code, v) })}>{t.label}</Toggle>
                     ))}
                   </div>
                 </Card>
               ))}
+              <Card title="گروه‌های بیمه‌گزار">
+                <p className="text-xs" style={{ color: 'var(--muted)' }}>بیمه‌گزار، نماینده و بیمه‌شدهٔ شرکت‌های تیک‌خورده (و شرکت‌های زیرمجموعهٔ آن‌ها) به‌جای فهرست‌های بالا، نوع پرونده‌های این گروه را می‌بینند.</p>
+                {m.form.groups.map((g) => (
+                  <div key={g.id} className="rounded-lg p-3 space-y-3" style={{ border: '1px solid var(--border)' }}>
+                    <div className="flex gap-2">
+                      <input className="input" aria-label="نام گروه" value={g.label} maxLength={120} onChange={(e) => setGroup(g.id, { label: e.target.value })} />
+                      <button className="btn btn-ghost btn-sm" onClick={() => setForm({ groups: m.form.groups.filter((x) => x.id !== g.id) })}>حذف گروه</button>
+                    </div>
+                    <div className="text-sm font-bold">شرکت‌ها</div>
+                    {cur.companies.length === 0 ? <div className="text-xs" style={{ color: 'var(--muted)' }}>هنوز شرکتی با این بیمه‌گر بیمه‌نامه ندارد.</div> : (
+                      <div className="grid sm:grid-cols-2 gap-1 max-h-56 overflow-y-auto">
+                        {cur.companies.map((c) => <Toggle key={c.id} on={g.companyIds.includes(c.id)} onChange={(v) => setGroup(g.id, { companyIds: toggled(g.companyIds, c.id, v) })}>{c.name}</Toggle>)}
+                      </div>
+                    )}
+                    {(['LIFE', 'ACCIDENT'] as const).map((l) => (
+                      <div key={l} className="space-y-1">
+                        <div className="text-sm font-bold">نوع پرونده‌های {LINE_FA[l]}</div>
+                        <div className="flex flex-wrap gap-4">
+                          {m.form.caseTypes.map((t) => <Toggle key={t.code} on={g.lines[l].includes(t.code)} onChange={(v) => setGroup(g.id, { lines: { ...g.lines, [l]: toggled(g.lines[l], t.code, v) } })}>{t.label}</Toggle>)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+                <button className="btn btn-ghost btn-sm" onClick={() => setForm({ groups: [...m.form.groups, { id: `g${Date.now().toString(36)}`, label: 'گروه جدید', companyIds: [], lines: { LIFE: m.form.lines.LIFE.claimTypes, ACCIDENT: m.form.lines.ACCIDENT.claimTypes } }] })}>افزودن گروه</button>
+              </Card>
               <Card title="فیلدها">
                 <div className="grid sm:grid-cols-3 gap-3">
                   <label className="text-sm">عنوان تاریخ<input className="input mt-1" value={m.form.eventLabel} maxLength={80} onChange={(e) => setForm({ eventLabel: e.target.value })} /></label>
-                  {([['birthDate', 'تاریخ تولد'], ['cause', 'علت']] as const).map(([k, l]) => (
+                  {([['birthDate', 'تاریخ تولد'], ['cause', 'علت خسارت']] as const).map(([k, l]) => (
                     <label key={k} className="text-sm">{l}
                       <select className="input mt-1" value={m.form[k]} onChange={(e) => setForm({ [k]: e.target.value as Mode })}><option value="required">الزامی</option><option value="optional">اختیاری</option><option value="hidden">پنهان</option></select>
                     </label>
                   ))}
                 </div>
-                <label className="text-sm block">گزینه‌های علت (هر خط یک گزینه؛ کادر تایپ همیشه می‌ماند)
-                  <textarea className="input mt-1" rows={5} value={m.form.causes.join('\n')} onChange={(e) => setForm({ causes: e.target.value.split('\n') })} onBlur={() => setForm({ causes: m.form.causes.map((c) => c.trim()).filter(Boolean) })} />
-                </label>
+                <div className="grid md:grid-cols-2 gap-3">
+                  {([['DEATH', 'گزینه‌های علت خسارت — فوت و ازکارافتادگی ناشی از بیماری'], ['ACCIDENT', 'گزینه‌های علت خسارت — حادثه']] as const).map(([g, l]) => (
+                    <label key={g} className="text-sm block">{l} (هر خط یک گزینه؛ کادر تایپ همیشه می‌ماند)
+                      <textarea className="input mt-1" rows={12} value={m.form.causeLists[g].join('\n')} onChange={(e) => setForm({ causeLists: { ...m.form.causeLists, [g]: e.target.value.split('\n') } })} onBlur={() => setForm({ causeLists: { ...m.form.causeLists, [g]: m.form.causeLists[g].map((c) => c.trim()).filter(Boolean) } })} />
+                    </label>
+                  ))}
+                </div>
               </Card>
               {saveBar}
             </>
           )}
 
           {tab === 'docs' && (
-            <Card title="مدارک هر نوع پرونده">
-              <div className="overflow-x-auto">
-                <table className="table text-xs w-full">
-                  <thead><tr><th>مدرک</th><th>فعال</th>{TYPES.map((t) => <th key={t}>{CLAIM_TYPE_LABELS[t]}</th>)}</tr></thead>
-                  <tbody>
-                    {docs.map((d) => (
-                      <tr key={d.code}>
-                        <td style={{ minWidth: 260 }}>{d.label}</td>
-                        <td><input type="checkbox" aria-label="فعال" checked={d.isActive} onChange={(e) => setDocs(docs.map((x) => (x.code === d.code ? { ...x, isActive: e.target.checked } : x)))} /></td>
-                        {TYPES.map((t) => <td key={t}><input type="checkbox" aria-label={CLAIM_TYPE_LABELS[t]} checked={d.appliesToTypes.includes(t)} onChange={(e) => setDocs(docs.map((x) => (x.code === d.code ? { ...x, appliesToTypes: e.target.checked ? [...x.appliesToTypes, t] : x.appliesToTypes.filter((y) => y !== t) } : x)))} /></td>)}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <button className="btn btn-primary" disabled={busy || JSON.stringify(docs) === JSON.stringify(cur.docs)} onClick={() => run(() => client.put(`/admin/workflow-model/${id}/docs`, { docs: docs.map(({ code, isActive, appliesToTypes }) => ({ code, isActive, appliesToTypes })) }, 'super'), 'مدارک ذخیره شد.')}>ذخیرهٔ مدارک</button>
-            </Card>
+            <>
+              <Card title="مدارک هر نوع پرونده">
+                <label className="text-sm block max-w-md">نوع پرونده
+                  <select className="input mt-1" value={docType} onChange={(e) => setDocType(e.target.value)}>
+                    {m.form.caseTypes.map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}
+                  </select>
+                </label>
+                <p className="text-xs" style={{ color: 'var(--muted)' }}>بدون مدارک «الزامی» پرونده ارسال نمی‌شود؛ «برحسب نیاز» در فهرست می‌آید ولی مانع ارسال نیست. غیرفعال‌کردن مدرک آن را از همهٔ نوع پرونده‌ها برمی‌دارد و فایل‌های قبلی در «سایر مدارک» می‌ماند.</p>
+                <div className="space-y-2">
+                  {[...docs.filter((d) => d.appliesToTypes.includes(docType)), ...docs.filter((d) => !d.appliesToTypes.includes(docType))].map((d) => (
+                    <div key={d.code} className="grid md:grid-cols-[1fr_9rem_auto] gap-2 items-start">
+                      <textarea className="input text-sm" rows={2} aria-label="عنوان مدرک" value={d.label} maxLength={500} onChange={(e) => setDocs(docs.map((x) => (x.code === d.code ? { ...x, label: e.target.value } : x)))} />
+                      <select className="input" aria-label="وضعیت در این نوع پرونده" value={!d.appliesToTypes.includes(docType) ? 'off' : d.requiredTypes.includes(docType) ? 'required' : 'optional'} onChange={(e) => setDocMode(d.code, e.target.value)}>
+                        <option value="off">نیاز نیست</option><option value="optional">برحسب نیاز</option><option value="required">الزامی</option>
+                      </select>
+                      <Toggle on={d.isActive} onChange={(v) => setDocs(docs.map((x) => (x.code === d.code ? { ...x, isActive: v } : x)))}>فعال</Toggle>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  <button className="btn btn-ghost btn-sm" onClick={() => setDocs([{ code: `other_${Date.now().toString(36)}`, label: 'مدرک جدید', isActive: true, appliesToTypes: [docType], requiredTypes: [] }, ...docs])}>افزودن مدرک</button>
+                  <button className="btn btn-primary" disabled={busy || docs.some((d) => d.label.trim().length < 2) || JSON.stringify(docs) === JSON.stringify(cur.docs)} onClick={() => run(() => client.put(`/admin/workflow-model/${id}/docs`, { docs }, 'super'), 'مدارک ذخیره شد.')}>ذخیرهٔ مدارک</button>
+                </div>
+              </Card>
+              <Card title="یادآوری بالای فهرست مدارک">
+                <textarea className="input" rows={2} maxLength={500} aria-label="یادآوری" value={m.form.docsNote} onChange={(e) => setForm({ docsNote: e.target.value })} />
+                {saveBar}
+              </Card>
+            </>
           )}
 
           {tab === 'panels' && (

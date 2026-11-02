@@ -32,7 +32,7 @@ export const DEFAULT_CLAIM_FIELDS: FieldDefSeed[] = [
   { key: 'birth_date', label: 'تاریخ تولد', type: 'DATE', group: 'CLAIM_DATA', editableBy: BOTH, order: 3 },
   { key: 'company_name', label: 'نام شرکت محل فعالیت', type: 'TEXT', group: 'CLAIM_DATA', editableBy: BOTH, order: 4 },
   { key: 'death_date', label: 'تاریخ فوت', type: 'DATE', group: 'CLAIM_DATA', editableBy: BOTH, order: 5 },
-  { key: 'cause_of_death', label: 'علت فوت', type: 'TEXT', group: 'CLAIM_DATA', editableBy: BOTH, order: 6 },
+  { key: 'cause_of_death', label: 'علت خسارت', type: 'TEXT', group: 'CLAIM_DATA', editableBy: BOTH, order: 6 },
   { key: 'policy_number', label: 'شماره بیمه‌نامه', type: 'TEXT', group: 'CLAIM_DATA', editableBy: BOTH, order: 7 },
   { key: 'policy_start_date', label: 'تاریخ شروع بیمه‌نامه', type: 'DATE', group: 'CLAIM_DATA', editableBy: BOTH, order: 8 },
   { key: 'death_capital', label: 'سرمایه فوت', type: 'AMOUNT', group: 'CLAIM_DATA', editableBy: BOTH, order: 9 },

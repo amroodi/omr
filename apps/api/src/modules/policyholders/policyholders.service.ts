@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { AuditAction, ClaimType, InsuranceLine } from '@prisma/client';
+import { AuditAction, InsuranceLine } from '@prisma/client';
 import { AuditService } from '../../common/audit/audit.service';
 import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
 import { toJalali } from '../../common/jalali/jalali.util';
@@ -8,15 +8,12 @@ import { StorageService } from '../../common/storage/storage.service';
 import { getContext, getTenantIdOrThrow } from '../../common/tenant/tenant-context';
 import { SmsService } from '../auth/sms.service';
 import { RateLimitService } from '../../common/rate-limit/rate-limit.service';
+import { typesFor } from '../claims/workflow';
+import { ModelStore } from '../model-view/model-store.service';
 import { TooManyRequestsException } from '../inquiry/http-exceptions';
 
 const LOGO_MIME = new Set(['image/png', 'image/jpeg', 'image/webp']);
 
-/** Which claim types each policy line covers: عمر pays on death (any cause) and illness disability; حوادث on accidents. */
-export const LINE_CLAIM_TYPES: Record<InsuranceLine, ClaimType[]> = {
-  LIFE: ['DEATH_ILLNESS', 'DEATH_ACCIDENT', 'DISABILITY_ILLNESS'],
-  ACCIDENT: ['DEATH_ACCIDENT', 'DISABILITY_ACCIDENT', 'MEDICAL_ACCIDENT'],
-};
 export const LINE_FA: Record<InsuranceLine, string> = { LIFE: 'عمر', ACCIDENT: 'حوادث' };
 
 export interface CompanyInput {
@@ -54,6 +51,7 @@ export class PolicyholdersService {
     private readonly audit: AuditService,
     private readonly sms: SmsService,
     private readonly rateLimit: RateLimitService,
+    private readonly store: ModelStore,
   ) {}
 
   private db() {
@@ -263,19 +261,27 @@ export class PolicyholdersService {
    * The insurer contract that covered `date` (latest start wins); used to route a new claim. With a
    * claim type, contracts of a line that doesn't cover it are skipped (unlined contracts always fit).
    */
-  async resolveContract(companyId: string, date: Date | null, claimType: ClaimType | null = null) {
+  async resolveContract(companyId: string, date: Date | null, claimType: string | null = null) {
     const contracts = await this.db().policyholderContract.findMany({ where: { companyId, isActive: true } });
-    const fits = contracts.filter((c) => !claimType || !c.line || LINE_CLAIM_TYPES[c.line].includes(claimType));
+    const chain = claimType ? await this.companyChain(companyId) : [];
+    const fits = contracts.filter((c) => !claimType || !c.line || typesFor(this.store.get(c.insurerTenantId), c.line, chain).includes(claimType));
     return this.pickContract(fits, date ?? new Date());
   }
 
-  /** A بیمه‌نامه the بیمه‌گزار chose for a new claim: theirs, active, of a fitting line, covering the date. */
-  async contractForClaim(companyId: string, contractId: string, claimType: ClaimType | null, date: Date | null) {
+  /** The company and its parents: a Model View company group covers a ticked company's subsidiaries. */
+  async companyChain(companyId: string): Promise<string[]> {
+    const chain: string[] = [];
+    for (let id: string | null = companyId; id && !chain.includes(id) && chain.length < 10;) {
+      chain.push(id);
+      id = (await this.db().policyholderCompany.findUnique({ where: { id }, select: { parentId: true } }))?.parentId ?? null;
+    }
+    return chain;
+  }
+
+  /** A بیمه‌نامه the بیمه‌گزار chose for a new claim: theirs, active, covering the date. The service checks its نوع پرونده. */
+  async contractForClaim(companyId: string, contractId: string, date: Date | null) {
     const c = await this.db().policyholderContract.findFirst({ where: { id: contractId, companyId, isActive: true } });
     if (!c) throw new BadRequestException('بیمه‌نامهٔ انتخاب‌شده یافت نشد');
-    if (claimType && c.line && !LINE_CLAIM_TYPES[c.line].includes(claimType)) {
-      throw new BadRequestException(`نوع خسارت انتخاب‌شده در بیمه‌نامهٔ ${LINE_FA[c.line]} پوشش داده نمی‌شود`);
-    }
     if (date && ((c.startDate && date < c.startDate) || (c.endDate && date > c.endDate))) {
       throw new BadRequestException(`تاریخ وقوع در دورهٔ این بیمه‌نامه (${c.startDate ? toJalali(c.startDate, false) : '…'} تا ${c.endDate ? toJalali(c.endDate, false) : '…'}) نیست؛ بیمه‌نامهٔ همان سال را انتخاب کنید.`);
     }

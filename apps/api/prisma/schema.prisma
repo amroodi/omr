@@ -767,14 +767,6 @@ enum SalesChannel {
 }
 
 // Claim scenarios from the policy contract (clause ج). A claim is one of these.
-enum ClaimType {
-  DEATH_ILLNESS // ج-۱ فوت ناشی از بیماری (طبیعی)
-  DEATH_ACCIDENT // ج-۲ فوت ناشی از حادثه
-  DISABILITY_ACCIDENT // ج-۴ نقص عضو / ازکارافتادگی ناشی از حادثه
-  MEDICAL_ACCIDENT // جبران هزینه‌های پزشکی ناشی از حادثه (فرم اختصاصی بعداً اضافه می‌شود)
-  DISABILITY_ILLNESS // از کار افتادگی ناشی از بیماری (فرم اختصاصی بعداً اضافه می‌شود)
-}
-
 // Per-insurer configurable catalog of required claim documents. Each document applies to one or
 // more claim types. The business list is edited here (or via the API) with no code change.
 model RequiredDocument {
@@ -783,7 +775,8 @@ model RequiredDocument {
   tenant         Tenant      @relation(fields: [tenantId], references: [id])
   code           String // stable key, e.g. "death_cert_cause"
   label          String // Persian label
-  appliesToTypes ClaimType[] // which claim scenarios require this document
+  appliesToTypes String[] // نوع پرونده codes (Model View) that list this document
+  requiredTypes  String[] @default([]) // of those, where it must be uploaded before sending; the rest are «برحسب نیاز»
   order          Int         @default(0)
   isActive       Boolean     @default(true)
   createdAt      DateTime    @default(now())
@@ -842,7 +835,7 @@ model Claim {
   deceasedFullName         String // ENCRYPTED
   deceasedNationalCode     String // ENCRYPTED
   deceasedNationalCodeHash String // blind index
-  claimType                ClaimType @default(DEATH_ILLNESS)
+  claimType                String @default("DEATH_ILLNESS") // نوع پرونده code, defined per insurer in Model View
   deceasedBirthDate        DateTime? // تاریخ تولد بیمه‌شده (age at death is derived from it + eventDate)
   eventDate                DateTime? // date of death/accident (the risk event)
   noticeDeadline           DateTime? // eventDate + insurer.noticeDays (snapshot)

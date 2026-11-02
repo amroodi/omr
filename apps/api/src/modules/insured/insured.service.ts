@@ -141,7 +141,7 @@ export class InsuredService {
       });
       const docs = await this.db().document.findMany({ where: { claimId: c.id, docCode: { in: reqs.map((x) => x.code) } }, orderBy: { createdAt: 'desc' }, select: { docCode: true, fileName: true, verificationStatus: true, aiStatus: true, aiReason: true, verificationNote: true } });
       out.push({
-        id: c.id, claimNumber: c.claimNumber, claimType: c.claimType, closed: c.status === 'PAID' || c.status === 'REJECTED',
+        id: c.id, claimNumber: c.claimNumber, claimType: c.claimType, claimTypeLabel: m.form.caseTypes.find((t) => t.code === c.claimType)?.label ?? c.claimType, closed: c.status === 'PAID' || c.status === 'REJECTED',
         where: STATUS_FA[c.status] ?? (c.currentStage ? `نزد ${m.stages[c.currentStage].label}` : '—'),
         accessUntil: r.expiresAt.toISOString(),
         documents: reqs.map((x) => {
