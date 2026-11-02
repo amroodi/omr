@@ -37,6 +37,7 @@ import { CustomerModule } from './modules/customer/customer.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { ExportsModule } from './modules/exports/exports.module';
 import { ImportModule } from './modules/import/import.module';
+import { SpareModule } from './modules/spare/spare.module';
 import { InquiryModule } from './modules/inquiry/inquiry.module';
 import { PolicyholdersModule } from './modules/policyholders/policyholders.module';
 import { PaymentsModule } from './modules/payments/payments.module';
@@ -77,6 +78,7 @@ import { SecurityModule } from './modules/security/security.module';
     TenantsModule,
     ExportsModule,
     ImportModule,
+    SpareModule,
     AuditLogsModule,
     BrandingModule,
     PaymentsModule,

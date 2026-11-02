@@ -1869,7 +1869,7 @@ code, kbd, pre, samp, .latin-digits { font-family: 'Vazirmatn', ui-monospace, SF
 .is-customer .cu-card-s, .is-customer .cu-card-k { font-size: 12px; line-height: 1.6; margin: 0; }
 .is-customer .cu-card-ico svg { width: 30px; height: 30px; }
 .cu-launch { padding: 8px 12px; }
-.is-customer .cu-tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.is-customer .cu-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 6px; }
 @media (max-width: 900px) { .is-customer .cu-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .is-customer .pdiamond-wrap { width: auto; min-height: 0; margin: 0; padding: 6px 8px; flex-direction: row; gap: 12px; justify-content: flex-start; text-align: start; }
 .is-customer .pdiamond { width: 30px; height: 30px; border-radius: 7px; margin: 5px; }
@@ -1914,3 +1914,17 @@ code, kbd, pre, samp, .latin-digits { font-family: 'Vazirmatn', ui-monospace, SF
 .sn-act:hover { filter: brightness(1.07); }
 .sn-act.is-ghost { background: transparent; color: var(--text) !important; box-shadow: inset 0 0 0 1px var(--border-strong); }
 .wd-pager { padding: 6px 2px 0; font-size: 12px; }
+
+/* «ویرایش» form (hierarchy and «میز کار مستقل»), and the document list of «میز کار مستقل» */
+.ce-wrap { padding: 10px 12px; }
+.ce-title { font-size: 13px; margin-bottom: 6px; }
+.ce-cols { gap: 8px 12px; }
+.ce-col { gap: 4px; }
+.ce-head { padding: 4px 10px; font-size: 12px; border-radius: 4px; margin-bottom: 4px; }
+.ce-grid { gap: 4px 12px; }
+.ce-field { margin: 0 0 4px; gap: 1px; }
+.ce-label { font-size: 11.5px; margin-bottom: 1px; }
+.ce-btns { margin-top: 8px; }
+.spare-doc { display: flex; flex-direction: column; gap: 3px; border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; }
+.spare-doc-t { font-size: 11.5px; line-height: 1.5; flex: 1; }
+@media (min-width: 1024px) { .ce-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); } }

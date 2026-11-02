@@ -21,6 +21,8 @@ export interface NavItem {
   special?: 'password';
   /** Only in these panels (e.g. «ثبت پرونده برای بیمه‌گزار» is a کارگزاری job). Omit = every panel. */
   panels?: PanelKey[];
+  /** Only while Super Admin has this switched on for the organization. */
+  feature?: 'spareDesk';
 }
 
 /**
@@ -64,6 +66,7 @@ export function Shell({
   const [card, setCard] = useState<{ broker: string; period: string | null } | null>(null);
   // Which separate panel this is (پنل کارگزاری / شعبه / ستاد / شورای فنی / بیمه‌گزار / نماینده).
   const [panel, setPanel] = useState<PanelKey | null>(null);
+  const [spareDesk, setSpareDesk] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -78,9 +81,10 @@ export function Shell({
       .then((b) => { if (active) setBrand({ name: b.name, hasLogo: !!b.logoUrl, slug: getTenantSlug() }); })
       .catch(() => { if (active) setBrand(null); });
     // «نام کاربر» in the top bar: the operator (org / super) or the بیمه‌گزار company.
-    if (realm !== 'customer') client.get<{ name: string | null; panel?: PanelKey | null }>('/auth/me', realm).then((m) => {
+    if (realm !== 'customer') client.get<{ name: string | null; panel?: PanelKey | null; spareDesk?: boolean }>('/auth/me', realm).then((m) => {
       if (!active) return;
       setUserName(m.name);
+      setSpareDesk(!!m.spareDesk);
       if (realm === 'org' && m.panel) { setPanel(m.panel); rememberPanel('org', m.panel); }
     }).catch(() => {});
     if (realm === 'customer') {
@@ -108,7 +112,7 @@ export function Shell({
   }, [nav, pathname, panel, realm, router]);
 
   const toggleRail = () => setRail((r) => { const n = !r; try { localStorage.setItem(railKey, n ? '1' : '0'); } catch {} return n; });
-  const visibleNav = nav.filter((n) => (!n.perm || (mounted && hasPerm(realm, n.perm))) && (!n.panels || !panel || n.panels.includes(panel)));
+  const visibleNav = nav.filter((n) => (!n.perm || (mounted && hasPerm(realm, n.perm))) && (!n.panels || !panel || n.panels.includes(panel)) && (n.feature !== 'spareDesk' || spareDesk));
   const info = panel ? PANELS[panel] : null;
   const homeHref = realm === 'customer' ? '/customer' : realm === 'super' ? '/admin' : '/org/work-desk';
   // «بازگشت»: one step back when the user arrived from inside the site, otherwise to the panel home.

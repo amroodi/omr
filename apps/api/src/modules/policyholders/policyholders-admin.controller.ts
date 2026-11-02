@@ -24,6 +24,7 @@ class AdminPartnerDto {
 class BrokerSettingsDto {
   @IsUUID() brokerTenantId!: string;
   @IsOptional() @IsBoolean() manualCompletion?: boolean;
+  @IsOptional() @IsBoolean() spareDesk?: boolean;
   @IsOptional() @IsString() @Length(8, 200) brokerPassword?: string;
 }
 class AdminCompanyEditDto {

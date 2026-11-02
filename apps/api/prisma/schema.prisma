@@ -48,6 +48,8 @@ model Tenant {
   // BROKER only: may the brokerage's own staff complete a case by hand from «ویرایش» (fill every stage
   // field, which also moves the case's status), outside the insurer hierarchy? Super admin can lock it.
   manualCompletion Boolean @default(true)
+  spareDeskEnabled Boolean @default(false) // «میز کار مستقل» (brokerages; set only by Super Admin)
+  spareCases SpareCase[]
   // BROKER only: password of the «broker» login on the بیمه‌گزار panel (sees every company). Set by super admin.
   brokerPanelPasswordHash String?
   // «دلایل رد مدارک»: the checklist an operator ticks when rejecting a document (one reason per entry).
@@ -703,6 +705,47 @@ enum FieldSource {
   MANUAL // typed by a human
   OCR // extracted by OCR, not yet confirmed
   OCR_CORRECTED // OCR value edited by a human
+}
+
+// «میز کار مستقل»: a brokerage's own case, outside the hierarchy. No insurer, desk or claim screen reads
+// these tables. `values` is the ENCRYPTED JSON of the «ویرایش» fields (key → value).
+model SpareCase {
+  id               String    @id @default(uuid())
+  seq              Int       @default(autoincrement())
+  tenantId         String
+  tenant           Tenant    @relation(fields: [tenantId], references: [id])
+  claimType        String
+  values           String
+  nationalCodeHash String? // blind index
+  imported         Boolean   @default(false)
+  sharedCompanyId  String? // the بیمه‌گزار company the operator shared it with (read-only there)
+  sharedAt         DateTime?
+  createdById      String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+
+  documents SpareDocument[]
+
+  @@index([tenantId, deletedAt])
+  @@index([nationalCodeHash])
+  @@index([sharedCompanyId])
+}
+
+model SpareDocument {
+  id         String    @id @default(uuid())
+  caseId     String
+  case       SpareCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  tenantId   String
+  docCode    String
+  fileName   String
+  mimeType   String
+  sizeBytes  Int
+  storageKey String
+  uploadedBy String?
+  createdAt  DateTime  @default(now())
+
+  @@index([caseId])
 }
 
 model ClaimFieldDef {

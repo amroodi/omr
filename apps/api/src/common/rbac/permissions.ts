@@ -40,6 +40,9 @@ export const PERMISSIONS = {
   // Import
   IMPORT_BATCH: 'import:batch',
 
+  // «میز کار مستقل» of a brokerage (only while Super Admin has it on)
+  SPARE_WORK: 'spare:work',
+
   // Org administration
   CUSTOMER_MANAGE: 'customer:manage', // create/manage بیمه‌گزار (policyholder) accounts
   USER_MANAGE: 'user:manage',
