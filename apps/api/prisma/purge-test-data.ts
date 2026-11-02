@@ -14,7 +14,8 @@
  *   --tenant=damuon        brokerage whose test companies are removed (default damuon)
  *   --include-imported     also delete claims brought in by «ورود دسته‌ای» (kept by default)
  *   --keep-companies       delete claims only
- * The audit log is kept untouched (it is hash-chained).
+ * The audit log is kept untouched (it is hash-chained). «میز کار مستقل» (SpareCase, SpareDocument and
+ * their files) is never deleted here: only a share with a deleted company is taken back.
  */
 import { PrismaClient } from '@prisma/client';
 import { unlink } from 'fs/promises';
@@ -59,6 +60,10 @@ async function main() {
   console.log(`Test بیمه‌گزار companies (no کد بیمه‌گزار) to delete in "${broker?.name ?? TENANT}": ${companies.length}`);
   for (const c of companies) console.log(`  - ${c.name}  (${c._count.contracts} contract(s), ${c._count.accounts} representative account(s))`);
 
+  const spare = await prisma.spareCase.count({ where: { deletedAt: null } });
+  const spareDocs = await prisma.spareDocument.count();
+  console.log(`«میز کار مستقل» kept untouched: ${spare} case(s), ${spareDocs} document(s)`);
+
   if (!CONFIRM) { console.log('\nRun again with --confirm to delete the above.'); return; }
 
   // ── Claims (same order as ClaimsService.hardDelete: no DB cascades exist) ──
@@ -93,12 +98,14 @@ async function main() {
       prisma.inquiryMessage.deleteMany({ where: { companyId: co.id } }),
       prisma.customerAccount.deleteMany({ where: { id: { in: ids } } }),
       prisma.policyholderContract.deleteMany({ where: { companyId: co.id } }),
+      prisma.spareCase.updateMany({ where: { sharedCompanyId: co.id }, data: { sharedCompanyId: null, sharedAt: null } }),
       prisma.policyholderCompany.updateMany({ where: { parentId: co.id }, data: { parentId: null } }),
       prisma.policyholderCompany.delete({ where: { id: co.id } }),
     ]);
   }
 
   console.log(`\nDone: ${claims.length} claim(s), ${files} stored file(s), ${companies.length} company(ies) deleted.`);
+  console.log(`«میز کار مستقل» still has ${await prisma.spareCase.count({ where: { deletedAt: null } })} case(s), ${await prisma.spareDocument.count()} document(s).`);
 }
 
 main()

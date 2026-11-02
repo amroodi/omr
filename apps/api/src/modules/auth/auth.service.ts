@@ -30,12 +30,12 @@ const PANEL_FA: Record<Panel, string> = { BROKER: 'پنل کارگزاری', BRA
 @Injectable()
 export class AuthService {
   /** Display name of the signed-in org user / super admin (the panel's top bar). */
-  async me(actorType?: string, actorId?: string, panel?: string): Promise<{ name: string | null; panel?: string | null }> {
+  async me(actorType?: string, actorId?: string, panel?: string): Promise<{ name: string | null; panel?: string | null; spareDesk?: boolean }> {
     if (!actorId) return { name: null };
     const db = this.prisma.unscoped();
     if (actorType === 'ORG_USER') {
-      const u = await db.orgUser.findUnique({ where: { id: actorId }, select: { displayName: true, username: true } });
-      return { name: u?.displayName || u?.username || null, panel: panel ?? null };
+      const u = await db.orgUser.findUnique({ where: { id: actorId }, select: { displayName: true, username: true, tenant: { select: { spareDeskEnabled: true } } } });
+      return { name: u?.displayName || u?.username || null, panel: panel ?? null, spareDesk: !!u?.tenant?.spareDeskEnabled };
     }
     if (actorType === 'SUPER_ADMIN') {
       const a = await db.superAdmin.findUnique({ where: { id: actorId }, select: { email: true } });

@@ -263,7 +263,7 @@ export class ImportService {
   }
 
   /** Map a parsed import row to claim-field (key → value) pairs, skipping blanks. */
-  private importedFieldValues(r: ParsedRow): { key: string; value: string }[] {
+  importedFieldValues(r: ParsedRow): { key: string; value: string }[] {
     const d = r.data;
     const raw = r.raw;
     const date = (v?: string | null) => (v ? toAsciiDigits(String(v)).trim() : '');
@@ -319,6 +319,15 @@ export class ImportService {
   }
 
   // ─────────────────────────── parsing / classification ───────────────────────────
+
+  /** Rows of a file, validated; for «میز کار مستقل», whose rows are always cases. */
+  parseRows(file: Express.Multer.File): Promise<ParsedRow[]> {
+    return this.parse(file);
+  }
+
+  fieldValuesOf(r: ParsedRow) {
+    return this.importedFieldValues(r);
+  }
 
   private summarize(rows: ParsedRow[]) {
     const valid = rows.filter((r) => r.errors.length === 0);

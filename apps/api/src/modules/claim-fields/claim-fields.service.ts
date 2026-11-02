@@ -8,6 +8,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { customerOwnsClaim, getContext } from '../../common/tenant/tenant-context';
 import { validateField } from '../../common/validation/field-validation';
 import { Stage } from '../claims/workflow';
+import { DEFAULT_CLAIM_FIELDS } from './defaults';
 import { ModelStore } from '../model-view/model-store.service';
 
 /** What each hand-off did, for «تاریخچه وضعیت پرونده» of a case moved by the hierarchy. */
@@ -74,15 +75,22 @@ export class ClaimFieldsService {
   }
 
   /**
-   * «تکمیل دستی پرونده»: the brokerage's own staff (the claim's معرف) may fill every field — the
-   * insurer-side stage fields too — when super admin hasn't locked it for the brokerage. Insurer
-   * staff never get this; their rights stay exactly as the field catalog says.
+   * «تکمیل دستی پرونده», for register cases only: an imported case, or one already completed by hand.
+   * There the brokerage's own staff (the claim's معرف) may fill every field — the insurer-side stage
+   * fields too — when super admin hasn't locked it. A case moving through the hierarchy never gets this:
+   * its «ویرایش» corrects the data and the desks' own hand-offs fill the stages. Brokerages that want
+   * hand-kept cases use «میز کار مستقل». Insurer staff's rights stay exactly as the field catalog says.
    */
-  async manualMode(claim: { brokerTenantId: string | null }): Promise<boolean> {
+  async manualMode(claim: { id: string; imported?: boolean; brokerTenantId: string | null }): Promise<boolean> {
     const ctx = getContext();
     if (ctx?.actorType !== 'ORG_USER' || !ctx.tenantId || ctx.tenantId !== claim.brokerTenantId) return false;
     const t = await this.db().tenant.findUnique({ where: { id: ctx.tenantId }, select: { kind: true, manualCompletion: true } });
-    return t?.kind === 'BROKER' && t.manualCompletion;
+    return t?.kind === 'BROKER' && t.manualCompletion && this.handKept(claim);
+  }
+
+  /** A register case: stage fields are typed by hand. Everything else takes them from the hierarchy. */
+  private async handKept(claim: { id: string; imported?: boolean }): Promise<boolean> {
+    return !!claim.imported || this.isManual(claim.id);
   }
 
   private party(claim: any): ClaimPartyType {
@@ -91,11 +99,23 @@ export class ClaimFieldsService {
     return p;
   }
 
+  /** An insurer with no field catalog yet gets the default one, so «ویرایش» is never empty. */
+  private async ensureCatalog(insurerTenantId: string) {
+    const db = this.prisma.unscoped();
+    if (await db.claimFieldDef.count({ where: { tenantId: insurerTenantId } })) return;
+    await db.claimFieldDef.createMany({
+      data: DEFAULT_CLAIM_FIELDS.map((d) => ({ tenantId: insurerTenantId, key: d.key, label: d.label, type: d.type, group: d.group, options: d.options ?? [], editableBy: d.editableBy, order: d.order, required: !!d.required })),
+      skipDuplicates: true,
+    });
+  }
+
   /** Field definitions (grouped) with the claim's current values, provenance, and edit rights. */
   async listForClaim(claimId: string) {
     const claim = await this.loadClaim(claimId);
     const party = this.party(claim);
     const manual = await this.manualMode(claim);
+    const handKept = await this.handKept(claim);
+    await this.ensureCatalog(claim.insurerTenantId);
     const defs = await this.db().claimFieldDef.findMany({ where: { tenantId: claim.insurerTenantId, isActive: true }, orderBy: { order: 'asc' } });
     const values = await this.db().claimFieldValue.findMany({ where: { claimId } });
     const vmap = new Map(values.map((v) => [v.key, v]));
@@ -120,7 +140,7 @@ export class ClaimFieldsService {
         source: fb ? fbSource : v?.source ?? null,
         confidence: v?.confidence ?? null,
         confirmed: !!v?.confirmedAt,
-        canEdit: claim.status !== 'PAID' && (manual || d.editableBy.includes(party)), // archived once paid
+        canEdit: claim.status !== 'PAID' && (handKept || !MANUAL_FLOW_KEYS.has(d.key)) && (manual || d.editableBy.includes(party)), // archived once paid; the hierarchy fills its own stages
       });
     }
     return { claimId, party, manual, groups, archived: claim.status === 'PAID' };
@@ -286,9 +306,11 @@ export class ClaimFieldsService {
     const claim = await this.loadClaim(claimId);
     assertNotPaid(claim); // archived once paid
     const party = this.party(claim);
+    await this.ensureCatalog(claim.insurerTenantId);
     const def = await this.db().claimFieldDef.findFirst({ where: { tenantId: claim.insurerTenantId, key } });
     if (!def) throw new NotFoundException('فیلد تعریف نشده است');
     if (!def.editableBy.includes(party) && !(await this.manualMode(claim))) throw new ForbiddenException('اجازه ویرایش این فیلد را ندارید');
+    if (MANUAL_FLOW_KEYS.has(key) && !(await this.handKept(claim))) throw new ForbiddenException('این فیلد از گردش کار سلسله‌مراتب پر می‌شود');
 
     const maxAmount = key === 'payable_amount' ? await this.sumInsuredCeiling(claimId) : undefined;
     const check = validateField(def.type, value, { options: def.options, maxAmount });
@@ -303,6 +325,7 @@ export class ClaimFieldsService {
       create: { claimId, key, value, source, confirmedById: actor, confirmedAt: new Date(), updatedById: actor },
     });
     await this.syncPolicyNumber(claimId, key, saved.value);
+    await this.syncClaimData(claimId, key, saved.value);
     if (MANUAL_FLOW_KEYS.has(key) && (existing?.value ?? '') !== (saved.value ?? '')) {
       await this.db().claimFieldLog.create({ data: { claimId, key, value: saved.value, byId: actor } });
     }
@@ -333,6 +356,20 @@ export class ClaimFieldsService {
   private async syncPolicyNumber(claimId: string, key: string, value: string | null) {
     if (key !== 'policy_number') return;
     await this.db().claim.update({ where: { id: claimId }, data: { policyNumber: value?.trim() || null } });
+  }
+
+  /** A correction in «ویرایش» reaches the case itself, so every list and view shows the same data. */
+  private async syncClaimData(claimId: string, key: string, value: string | null) {
+    const v = value?.trim() || null;
+    if (!v) return; // the case keeps what it was filed with
+    const date = () => this.isoOfJalali(v);
+    const data = key === 'full_name' ? { deceasedFullName: this.crypto.encrypt(v)! }
+      : key === 'national_code' ? { deceasedNationalCode: this.crypto.encrypt(v)!, deceasedNationalCodeHash: this.crypto.blindIndex(v)! }
+      : key === 'birth_date' && date() ? { deceasedBirthDate: date() }
+      : key === 'death_date' && date() ? { eventDate: date() }
+      : key === 'cause_of_death' ? { causeOfDeath: v }
+      : null;
+    if (data) await this.db().claim.update({ where: { id: claimId }, data });
   }
 
   /**

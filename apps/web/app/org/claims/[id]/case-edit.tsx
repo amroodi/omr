@@ -33,7 +33,7 @@ const faD = (s: string) => s.replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[+d]);
 const toAsciiNum = (s: string) => s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d))).replace(/[^\d]/g, '');
 const groupFa = (raw: string) => { const a = toAsciiNum(raw); return a ? faD(a.replace(/\B(?=(\d{3})+(?!\d))/g, ',')) : ''; };
 
-export function CaseEditForm({ claimId, title, onSaved }: { claimId: string; title: string; onSaved: () => void }) {
+export function CaseEditForm({ claimId, title, onSaved, base = `/claims/${claimId}` }: { claimId: string; title: string; onSaved: () => void; base?: string }) {
   const [data, setData] = useState<FieldsData | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -42,12 +42,12 @@ export function CaseEditForm({ claimId, title, onSaved }: { claimId: string; tit
   const [benFile, setBenFile] = useState<{ id: string; fileName: string } | null>(null);
 
   const load = async () => {
-    const d = await client.get<FieldsData>(`/claims/${claimId}/fields`, 'org');
+    const d = await client.get<FieldsData>(`${base}/fields`, 'org');
     setData(d);
     const dr: Record<string, string> = {};
     Object.values(d.groups).flat().forEach((f) => { dr[f.key] = f.value ?? ''; });
     setDrafts(dr); setErrors({});
-    const docs = await client.get<{ id: string; docCode: string | null; fileName: string }[]>(`/claims/${claimId}/documents`, 'org').catch(() => []);
+    const docs = await client.get<{ id: string; docCode: string | null; fileName: string }[]>(`${base}/documents`, 'org').catch(() => []);
     const b = docs.find((x) => x.docCode === BENEFICIARY_FILE);
     setBenFile(b ? { id: b.id, fileName: b.fileName } : null);
   };
@@ -67,7 +67,7 @@ export function CaseEditForm({ claimId, title, onSaved }: { claimId: string; tit
     const errs: Record<string, string> = {};
     const LAST = new Set(['payment_order_status', 'council_approve_status']); // these can close the case
     for (const f of [...dirty.filter((x) => !LAST.has(x.key)), ...dirty.filter((x) => LAST.has(x.key))]) {
-      try { await client.put(`/claims/${claimId}/fields/${f.key}`, { value: drafts[f.key] ?? '' }, 'org'); }
+      try { await client.put(`${base}/fields/${f.key}`, { value: drafts[f.key] ?? '' }, 'org'); }
       catch (e: any) { errs[f.key] = e.message; }
     }
     setBusy(false);
@@ -81,7 +81,7 @@ export function CaseEditForm({ claimId, title, onSaved }: { claimId: string; tit
   const uploadBen = async (file: File, onProgress: OnProgress) => {
     setMsg(null);
     const fd = new FormData(); fd.append('file', file);
-    await client.upload(`/claims/${claimId}/documents?docCode=${BENEFICIARY_FILE}`, fd, 'org', onProgress);
+    await client.upload(`${base}/documents?docCode=${BENEFICIARY_FILE}`, fd, 'org', onProgress);
     await load();
     setMsg({ ok: true, text: 'فایل ذینفع بارگذاری شد' });
   };
@@ -156,7 +156,7 @@ export function CaseEditForm({ claimId, title, onSaved }: { claimId: string; tit
                 <div><DocUploadTile label="فایل PDF/EXCEL ذینفع" addText="افزودن فایل ذینفع" required={false} uploaded={!!benFile} disabled={busy} accept=".pdf,.doc,.docx,.xlsx,.xls" camera={false}
                   help="فهرست ذینفعان را به صورت فایل PDF، Word یا اکسل بارگذاری کنید؛ حداکثر ۱۵ مگابایت." onUpload={uploadBen} /></div>
                 {benFile && (
-                  <button type="button" className="ce-link" onClick={() => client.download(`/claims/${claimId}/documents/${benFile.id}/file`, 'org', benFile.fileName).catch((e) => setMsg({ ok: false, text: e.message }))}>
+                  <button type="button" className="ce-link" onClick={() => client.download(`${base}/documents/${benFile.id}/file`, 'org', benFile.fileName).catch((e) => setMsg({ ok: false, text: e.message }))}>
                     دانلود فایل فعلی
                   </button>
                 )}

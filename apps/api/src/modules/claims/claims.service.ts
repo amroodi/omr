@@ -34,12 +34,12 @@ const CLAIM_DOC_MIME = new Set([
 ]);
 const CLAIM_DOC_EXT = /\.(pdf|jpe?g|png|docx?)$/i;
 /** PDF, image or Word. Some browsers send Word files as application/octet-stream, so the extension decides then. */
-const claimDocOk = (f: Express.Multer.File) =>
+export const claimDocOk = (f: Express.Multer.File) =>
   CLAIM_DOC_MIME.has(f.mimetype) || (f.mimetype === 'application/octet-stream' && CLAIM_DOC_EXT.test(f.originalname ?? ''));
-const CLAIM_DOC_TYPES_FA = 'فقط PDF، Word (DOC، DOCX)، JPG و PNG مجاز است';
+export const CLAIM_DOC_TYPES_FA = 'فقط PDF، Word (DOC، DOCX)، JPG و PNG مجاز است';
 // «فایل ذینفع» (list of heirs/beneficiaries and their shares) may also be an Excel sheet.
 export const BENEFICIARY_FILE_CODE = 'BENEFICIARY_FILE';
-const EXCEL_MIME = new Set(['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']);
+export const EXCEL_MIME = new Set(['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']);
 
 /** A ذینفع / وارث named on the deceased's beneficiary form. */
 export interface HeirInput { fullName: string; iban: string; nationalCode?: string; relation?: string }

@@ -75,6 +75,7 @@ function CompanyDashboard({ mustChangePassword }: { mustChangePassword: boolean 
   const [dash, setDash] = useState<Dashboard | null>(null);
   const [policyId, setPolicyId] = useState<string>('');
   const [claims, setClaims] = useState<MyClaim[]>([]);
+  const [sharedCount, setSharedCount] = useState(0);
   const [error, setError] = useState('');
   const [view, setView] = useState<View>(null);
   const [q, setQ] = useState('');
@@ -110,6 +111,7 @@ function CompanyDashboard({ mustChangePassword }: { mustChangePassword: boolean 
     try { saved = localStorage.getItem(POLICY_KEY) ?? undefined; } catch { /* ignore */ }
     loadDash(saved);
     client.get<MyClaim[]>('/customer/claims', 'customer').then(setClaims).catch(() => {});
+    client.get<unknown[]>('/customer/shared-cases', 'customer').then((r) => setSharedCount(r.length)).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -195,6 +197,7 @@ function CompanyDashboard({ mustChangePassword }: { mustChangePassword: boolean 
               <Diamond href="/customer/claims?tab=action" title="نیازمند اقدام" sub={action.length ? `${fa(action.length)} پرونده منتظر شماست` : 'رفع نقص مدارک'} icon={IC.alert} />
               <Diamond onClick={() => open('search')} active={view === 'search'} title="جستجوی پرونده" sub="کد ملی، نام یا شماره پرونده" icon={IC.search} />
               <Diamond onClick={() => open('faq')} active={view === 'faq'} title="سوالات متداول" sub="پاسخ پرسش‌های رایج" icon={IC.mail} />
+              {sharedCount > 0 && <Diamond href="/customer/shared" title="پرونده‌های اشتراکی" sub={`${fa(sharedCount)} پرونده از کارگزاری`} icon={IC.doc} />}
             </div>
             <div className="cu-notice">لطفاً نسبت به تعیین تکلیف پرونده‌های نیازمند اقدام، ظرف مدت حداکثر یک ماه اقدام فرمایید ( رفع نقص مدارک یا انصراف از درخواست )</div>
 

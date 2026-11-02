@@ -354,3 +354,22 @@ tar xzf omr_storage_YYYY-MM-DD.tar.gz -C /var/lib/omr
 9. Point the new domain's **DNS A record** at the new VPS IP.
 
 From then on, only the two commands above — `PUBLIC_API_BASE` comes from `/etc/omr/api.env`, so `deploy.sh` is never edited and `git pull --ff-only` never conflicts.
+
+## Cleaning test data while keeping «میز کار مستقل»
+
+`apps/api/prisma/purge-test-data.ts` deletes test claims and test companies and never touches the spare desk's cases or files. Run it without `--confirm` first: it lists what it would delete and how many spare cases stay.
+
+**Do not** run `prisma migrate reset`, drop the database, or empty `STORAGE_DIR`. Those delete the spare desk too. Spare cases need the same `Tenant` row and the same encryption keys to stay readable, so keep `/etc/omr/api.env` and don't recreate the brokerage.
+
+Back up the spare desk before any cleanup. The storage copy holds its files:
+
+```bash
+docker exec omr-postgres pg_dump -U omr --data-only -t '"SpareCase"' -t '"SpareDocument"' omr_damuon | gzip > /var/backups/omr_spare_$(date +%F).sql.gz
+tar -czf /var/backups/omr_storage_$(date +%F).tar.gz -C /var/lib/omr storage
+```
+
+To restore into the same database, after the spare tables have been emptied:
+
+```bash
+gunzip -c /var/backups/omr_spare_YYYY-MM-DD.sql.gz | docker exec -i omr-postgres psql -U omr omr_damuon
+```

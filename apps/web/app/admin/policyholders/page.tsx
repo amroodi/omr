@@ -11,7 +11,7 @@ import { UploadButton } from '../../components/upload';
 type Line = 'LIFE' | 'ACCIDENT';
 interface Contract { id: string; line: Line | null; lineLabel: string | null; policyNumber: string | null; startIso?: string | null; endIso?: string | null; insurerTenantId: string; insurerName: string; startDate: string | null; endDate: string | null; isActive: boolean; inForce: boolean }
 interface Company { id: string; name: string; code: string | null; isActive: boolean; brokerTenantId: string; brokerName: string; hasPassword: boolean; mustChangePassword?: boolean; passwordSetAt: string | null; lines: Line[]; contracts: Contract[] }
-interface Opt { id: string; name: string; slug: string; manualCompletion?: boolean; hasBrokerPassword?: boolean }
+interface Opt { id: string; name: string; slug: string; manualCompletion?: boolean; spareDesk?: boolean; hasBrokerPassword?: boolean }
 interface Cred { code: string; name: string; password: string }
 interface ImportResult {
   sheets: { name: string; line: Line; rows: number }[]; companiesCreated: number; companiesUpdated: number;
@@ -149,6 +149,8 @@ export default function AdminPolicyholders() {
   const reloadOpts = () => client.get<{ brokers: Opt[]; insurers: Opt[] }>('/admin/policyholders/options', 'super').then(setOpts).catch(() => {});
   const setManual = (on: boolean) => act(async () => { await client.post('/admin/policyholders/broker-settings', { brokerTenantId: broker, manualCompletion: on }, 'super'); await reloadOpts(); },
     on ? 'تکمیل دستی پرونده برای این کارگزاری باز شد' : 'تکمیل دستی پرونده برای این کارگزاری قفل شد');
+  const setSpare = (on: boolean) => act(async () => { await client.post('/admin/policyholders/broker-settings', { brokerTenantId: broker, spareDesk: on }, 'super'); await reloadOpts(); },
+    on ? 'میز کار مستقل برای این کارگزاری فعال شد' : 'میز کار مستقل برای این کارگزاری غیرفعال و پنهان شد');
   const saveBrokerPw = () => act(async () => { await client.post('/admin/policyholders/broker-settings', { brokerTenantId: broker, brokerPassword: brokerPw }, 'super'); setBrokerPw(''); await reloadOpts(); },
     'رمز ورود «broker» ذخیره شد');
 
@@ -222,6 +224,14 @@ export default function AdminPolicyholders() {
             <label className="flex items-center gap-2 text-sm cursor-pointer">
               <input type="checkbox" checked={brokerOpt.manualCompletion !== false} onChange={(e) => setManual(e.target.checked)} />
               {brokerOpt.manualCompletion !== false ? 'باز است' : 'قفل است'}
+            </label>
+          </div>
+          <div className="space-y-2">
+            <div className="font-bold text-sm">میز کار مستقل</div>
+            <p className="text-xs" style={{ color: 'var(--muted)' }}>پرونده‌های خود «{brokerOpt.name}» بیرون از سلسله‌مراتب. غیرفعال که باشد از همه پنهان است و داده‌هایش می‌ماند. کاربرانش با دسترسی «کار با میز کار مستقل» تعیین می‌شوند.</p>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="checkbox" checked={!!brokerOpt.spareDesk} onChange={(e) => setSpare(e.target.checked)} />
+              {brokerOpt.spareDesk ? 'فعال است' : 'غیرفعال است'}
             </label>
           </div>
           <div className="space-y-2">

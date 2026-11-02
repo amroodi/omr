@@ -17,6 +17,7 @@ const PERM_GROUPS: { title: string; items: [string, string][] }[] = [
     ['level:manage', 'تنظیم سطوح و سقف تایید'],
   ] },
   { title: 'مدارک', items: [['doc:upload', 'بارگذاری مدرک'], ['doc:read', 'مشاهدهٔ مدارک'], ['doc:verify', 'تایید/رد مدارک'], ['ocr:run', 'استخراج خودکار (OCR)']] },
+  { title: 'میز کار مستقل', items: [['spare:work', 'کار با میز کار مستقل (فقط وقتی مدیر سامانه فعال کرده باشد)']] },
   { title: 'پرونده‌های قدیمی و بیمه‌نامه', items: [
     ['case:read', 'مشاهده'], ['case:create', 'ایجاد'], ['case:edit', 'ویرایش'], ['case:delete', 'حذف'], ['policy:read', 'مشاهدهٔ بیمه‌نامه'], ['policy:edit', 'ویرایش بیمه‌نامه'],
   ] },

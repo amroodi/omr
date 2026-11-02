@@ -17,8 +17,8 @@ const ICON_ASSESS = 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 0
 /**
  * The case page. «پیش‌نمایش» opens with the policy summary (Group 873) and two buttons to the case's
  * sub-pages — «بررسی وضعیت مدارک» (documents, desk ✓/✕ and the workflow route) and «مراحل و وضعیت گردش
- * کار» (executive steps) — then the workflow actions. «ویرایش» is the field editor only; «ارزیابی»
- * opens the two-pane assessment page.
+ * کار» (executive steps) — then the workflow actions. «ویرایش» corrects and completes the case's data at
+ * any desk, as the field catalog allows; «ارزیابی» opens the two-pane assessment page.
  */
 export default function ClaimDetail() {
   const { id } = useParams<{ id: string }>();
@@ -29,9 +29,7 @@ export default function ClaimDetail() {
   const [perms, setPerms] = useState({ del: false, exp: false });
   useEffect(() => { setPerms({ del: hasPerm('org', 'claim:delete'), exp: hasPerm('org', 'export:list') }); }, []);
   const [lateWarn, setLateWarn] = useState(true); // org's "show late-notice warning" setting
-  // «ویرایش» (the hand-filled field editor) belongs to the brokerage; an insurer's panel doesn't have it.
-  const [isInsurer, setIsInsurer] = useState(false);
-  useEffect(() => { client.get<{ lateNoticeWarning?: boolean; kind?: string }>('/tenant/branding', 'org').then((b) => { setLateWarn(b.lateNoticeWarning !== false); setIsInsurer(b.kind === 'INSURER'); }).catch(() => {}); }, []);
+  useEffect(() => { client.get<{ lateNoticeWarning?: boolean }>('/tenant/branding', 'org').then((b) => setLateWarn(b.lateNoticeWarning !== false)).catch(() => {}); }, []);
 
   const removeClaim = async () => {
     if (!claim) return;
@@ -59,7 +57,7 @@ export default function ClaimDetail() {
           <div className="flex items-center justify-between gap-2 flex-wrap no-print">
             <div className="inline-flex rounded-xl p-1 text-sm" style={{ background: 'var(--surface-2)' }}>
               <button onClick={() => setMode('preview')} className={`btn btn-sm ${mode === 'preview' ? 'btn-primary' : 'btn-ghost'}`}>پیش‌نمایش</button>
-              {!isInsurer && claim.status !== 'PAID' && <button onClick={() => setMode('edit')} className={`btn btn-sm ${mode === 'edit' ? 'btn-primary' : 'btn-ghost'}`}>ویرایش</button>}
+              {claim.status !== 'PAID' && <button onClick={() => setMode('edit')} className={`btn btn-sm ${mode === 'edit' ? 'btn-primary' : 'btn-ghost'}`}>ویرایش</button>}
               <Link href={`/org/claims/${id}/assess`} className="btn btn-sm btn-ghost" title="ارزیابی و تایید مدارک در صفحهٔ دوستونه"><Icon path={ICON_ASSESS} /> ارزیابی پرونده</Link>
               <a href={`/org/reminders?claim=${id}&n=${encodeURIComponent(claim.claimNumber)}`} target="_blank" rel="noopener" className="btn btn-sm btn-ghost" title="یادآوری پیگیری این پرونده برای خودتان یا همکار"><Icon path="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0" /> یادآور</a>
             </div>
@@ -68,7 +66,7 @@ export default function ClaimDetail() {
             )}
           </div>
 
-          {mode === 'preview' || isInsurer || claim.status === 'PAID' ? (
+          {mode === 'preview' || claim.status === 'PAID' ? (
             <>
               <div className="cs-sheet">
                 <CaseHero title="مشخصات بیمه‌نامه" claim={claim} notes={fv.case_notes || phaseText(claim)} />
