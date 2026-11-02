@@ -15,6 +15,7 @@ import { ModelStore } from '../model-view/model-store.service';
 import { DEFAULT_REQUIRED_DOCS } from '../required-docs/defaults';
 
 const BENEFICIARY_FILE = 'BENEFICIARY_FILE';
+const SOURCE_ROW = '_sourceRow'; // not a field: the imported Excel row as it was
 
 /**
  * «میز کار مستقل»: a brokerage's own cases, kept outside the claim hierarchy. They live in their own
@@ -117,7 +118,7 @@ export class SpareService {
         ...(q.companyId ? { sharedCompanyId: q.companyId } : {}),
         ...(nid ? { nationalCodeHash: this.crypto.blindIndex(nid) } : {}),
       },
-      orderBy: { seq: 'desc' }, take: 1000,
+      orderBy: { seq: 'desc' }, take: 20000,
     });
     const [types, companies] = await Promise.all([this.caseTypes(tenantId), this.companyNames(tenantId)]);
     const out = rows.map((c) => this.present(c, types, companies.map));
@@ -266,7 +267,8 @@ export class SpareService {
     const seen = new Set(existing.map((c) => eventKey(this.valuesOf(c))));
     for (const r of rows) {
       if (r.errors.length) { invalid++; continue; }
-      const values = Object.fromEntries(this.importer.fieldValuesOf(r).map((f) => [f.key, f.value]));
+      const values: Record<string, string> = Object.fromEntries(this.importer.fieldValuesOf(r).map((f) => [f.key, f.value]));
+      values[SOURCE_ROW] = JSON.stringify(r.raw); // every column of the file, for the later move into the hierarchy
       if (seen.has(eventKey(values))) { duplicates++; continue; }
       seen.add(eventKey(values));
       await this.db().spareCase.create({ data: { tenantId, claimType, imported: true, ...this.sealed(values), createdById: getContext()?.actorId ?? null } });

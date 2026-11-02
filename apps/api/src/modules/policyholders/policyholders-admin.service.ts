@@ -185,6 +185,7 @@ export class PolicyholdersAdminService {
         db.inquiryMessage.deleteMany({ where: { companyId: co.id } }),
         db.customerAccount.deleteMany({ where: { id: { in: accounts } } }),
         db.policyholderContract.deleteMany({ where: { companyId: co.id } }),
+        db.spareCase.updateMany({ where: { sharedCompanyId: co.id }, data: { sharedCompanyId: null, sharedAt: null } }), // the case itself stays
         db.policyholderCompany.updateMany({ where: { parentId: co.id }, data: { parentId: null } }),
         db.policyholderCompany.delete({ where: { id: co.id } }),
       ]);
