@@ -6,7 +6,7 @@ import { client, getToken } from '../../lib/client';
 import { Shell } from '../components/Shell';
 import { Faq } from '../components/Faq';
 import { CUSTOMER_NAV, POLICY_KEY, PolicyRow } from './nav';
-import { BigIcon, CLAIM_TYPE_LABELS, ErrorBox, Spinner, StatusBadge } from '../components/ui';
+import { BigIcon, claimTypeLabel, ErrorBox, Spinner, StatusBadge } from '../components/ui';
 import { caseTitle } from '../../lib/caseTitle';
 import { BrokerHome } from './broker-home';
 
@@ -59,7 +59,7 @@ function ClaimRow({ c }: { c: MyClaim }) {
   return (
     <Link href={`/customer/claims/${c.id}`} target="_blank" rel="noopener" className="pcard p-4 flex items-center justify-between gap-3 card-hover">
       <div className="min-w-0">
-        <div className="font-bold">{caseTitle(c)} <span className="font-normal" style={{ color: 'var(--muted)' }}>— {CLAIM_TYPE_LABELS[c.claimType] || c.claimType}</span></div>
+        <div className="font-bold">{caseTitle(c)} <span className="font-normal" style={{ color: 'var(--muted)' }}>— {claimTypeLabel(c)}</span></div>
         <div className="text-sm mt-0.5" style={{ color: 'var(--muted)' }}>{c.deceasedName}{c.currentStageLabel ? ` · در اختیار: ${c.currentStageLabel}` : ''}</div>
       </div>
       <div className="flex items-center gap-2 flex-shrink-0">

@@ -19,7 +19,7 @@ import { getContext, getTenantIdOrThrow } from '../../common/tenant/tenant-conte
 import { toJalali, toPersianDigits } from '../../common/jalali/jalali.util';
 import { SmsService } from '../auth/sms.service';
 import { RequestOtpDto, VerifyOtpDto } from './dto';
-import { chainOf, Stage } from '../claims/workflow';
+import { caseTypeOf, chainOf, Stage } from '../claims/workflow';
 import { ModelStore } from '../model-view/model-store.service';
 import { ageAt } from '../claims/claims.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -383,6 +383,8 @@ export class InquiryService {
       claimNumber: c.claimNumber,
       status: c.status,
       claimType: c.claimType,
+      claimTypeLabel: caseTypeOf(this.store.get(c.insurerTenantId), c.claimType)?.label ?? c.claimType,
+      claimTypeDeath: caseTypeOf(this.store.get(c.insurerTenantId), c.claimType)?.death ?? false,
       insurerName: insurer?.name ?? null,
       deceasedName: dec(c.deceasedFullName),
       nationalCode: nid, // the requester typed it themselves (OTP-verified), so it is shown in full

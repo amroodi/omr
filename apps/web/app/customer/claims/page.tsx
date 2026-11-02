@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { client, getToken } from '../../../lib/client';
 import { Shell } from '../../components/Shell';
-import { CLAIM_TYPE_LABELS, ErrorBox, FancyLoader, STATUS_MAP } from '../../components/ui';
+import { claimTypeLabel, ErrorBox, FancyLoader, STATUS_MAP } from '../../components/ui';
 import { CUSTOMER_NAV, POLICY_KEY, PolicyRow } from '../nav';
 
 interface MyClaim {
@@ -62,7 +62,7 @@ export default function CustomerTrack() {
 
   const groups = useMemo(() => {
     const key = (c: MyClaim): [string, string] => {
-      if (groupBy === 'type') return [c.claimType, CLAIM_TYPE_LABELS[c.claimType] ?? c.claimType];
+      if (groupBy === 'type') return [c.claimType, claimTypeLabel(c)];
       if (groupBy === 'stage') return [c.currentStageLabel ?? 'بسته‌شده', c.currentStageLabel ? `نزد ${c.currentStageLabel}` : 'پرونده‌های بسته‌شده'];
       if (groupBy === 'month') { const m = (c.createdAt ?? '').slice(0, 7); return [m || '—', m ? `ثبت‌شده در ${m}` : 'بدون تاریخ']; }
       return [c.status, `پرونده‌های ${STATUS_MAP[c.status]?.label ?? c.status}`];
@@ -125,7 +125,7 @@ export default function CustomerTrack() {
                           <td><Link href={`/customer/claims/${c.id}/workflow`} target="_blank" rel="noopener" className="cu-more">جزئیات بیشتر</Link></td>
                           <td className="latin-digits" style={{ whiteSpace: 'nowrap' }}>{c.claimNumber}</td>
                           <td>{c.deceasedName ?? '—'}</td>
-                          <td>{CLAIM_TYPE_LABELS[c.claimType] ?? c.claimType}</td>
+                          <td>{claimTypeLabel(c)}</td>
                           <td>{c.eventDate ?? '—'}</td>
                           <td>{faN(Number(c.claimedAmount || 0))}</td>
                           <td>{c.finalizedAmount ? faN(Number(c.finalizedAmount)) : '—'}</td>

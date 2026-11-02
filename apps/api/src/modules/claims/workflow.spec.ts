@@ -178,8 +178,8 @@ describe('Model View: stages, types and forms', () => {
     expect(chainOf({ ...broker, claimType: 'MEDICAL_ACCIDENT' }, m)).not.toContain('COUNCIL');
   });
   it('a line can\'t be given a claim type it doesn\'t cover, nor lose them all', () => {
-    expect(modelFrom({ form: { lines: { LIFE: { claimTypes: ['MEDICAL_ACCIDENT', 'DEATH_ILLNESS'] } } } }).form.lines.LIFE.claimTypes).toEqual(['DEATH_ILLNESS']);
-    expect(modelFrom({ form: { lines: { LIFE: { claimTypes: [] } } } }).form.lines.LIFE.claimTypes.length).toBe(3);
+    expect(modelFrom({ form: { lines: { LIFE: { claimTypes: ['NOPE', 'DEATH_ILLNESS'] } } } }).form.lines.LIFE.claimTypes).toEqual(['DEATH_ILLNESS']);
+    expect(modelFrom({ form: { lines: { LIFE: { claimTypes: [] } } } }).form.lines.LIFE.claimTypes.length).toBe(2);
   });
 });
 

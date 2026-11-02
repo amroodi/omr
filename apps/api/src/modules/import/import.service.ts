@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { AuditAction, ClaimStatus, ClaimType, FieldSource, Prisma } from '@prisma/client';
+import { AuditAction, ClaimStatus, FieldSource, Prisma } from '@prisma/client';
 import * as ExcelJS from 'exceljs';
 import { AuditService } from '../../common/audit/audit.service';
 import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
@@ -465,10 +465,10 @@ export class ImportService {
     }
   }
 
-  private mapClaimType(cause?: string): ClaimType {
+  private mapClaimType(cause?: string): string {
     const c = cause || '';
-    if (/نقص\s*عضو|ازکارافتادگی|از\s*کار\s*افتادگی/.test(c)) return ClaimType.DISABILITY_ACCIDENT;
-    if (/حادثه/.test(c)) return ClaimType.DEATH_ACCIDENT;
-    return ClaimType.DEATH_ILLNESS;
+    if (/نقص\s*عضو|ازکارافتادگی|از\s*کار\s*افتادگی/.test(c)) return 'DISABILITY_ACCIDENT';
+    if (/حادثه/.test(c)) return 'DEATH_ACCIDENT';
+    return 'DEATH_ILLNESS';
   }
 }

@@ -53,7 +53,7 @@ export class EmbedService {
   var app = document.getElementById('app');
   var nid="", phone="", token="";
   var STATUS = { DRAFT:"پیش‌نویس", SUBMITTED:"ثبت‌شده", UNDER_REVIEW:"در حال بررسی", RETURNED_INCOMPLETE:"نقص مدارک", APPROVED:"تاییدشده", REJECTED:"ردشده", PAID:"پرداخت‌شده" };
-  var CTYPE = { DEATH_ILLNESS:"فوت ناشی از بیماری", DEATH_ACCIDENT:"فوت ناشی از حادثه", DISABILITY_ACCIDENT:"نقص عضو/ازکارافتادگی" };
+  var CTYPE = { DEATH_ILLNESS:"فوت به هر علت", DEATH_ACCIDENT:"فوت بر اثر حادثه", DISABILITY_ACCIDENT:"نقص عضو و از کار افتادگی بر اثر حادثه", DISABILITY_ILLNESS:"از کار افتادگی دائم و کامل ناشی از بیماری", MEDICAL_ACCIDENT:"جبران هزینه‌های ناشی از حادثه", DAILY_GENERAL:"غرامت روزانه عمومی", DAILY_HOSPITAL:"غرامت روزانه بیمارستانی" };
 
   function api(path, body, auth){
     var h = { "Content-Type":"application/json", "x-tenant-slug": SLUG };

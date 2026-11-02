@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { client, getToken, hasPerm } from '../../../../lib/client';
 import { Shell, Icon } from '../../../components/Shell';
-import { CLAIM_TYPE_LABELS, ErrorBox } from '../../../components/ui';
+import { claimTypeLabel, ErrorBox } from '../../../components/ui';
 import { ORG_NAV } from '../../nav';
 import { caseTitle } from '../../../../lib/caseTitle';
 
@@ -55,7 +55,7 @@ export default function ClaimsTrash() {
             ) : rows.map((c) => (
               <tr key={c.id}>
                 <td className="font-semibold" style={{ direction: 'ltr', textAlign: 'right' }} title={caseTitle(c)}>{c.deceasedNationalCode || '—'}</td>
-                <td>{CLAIM_TYPE_LABELS[c.claimType] || c.claimType}</td>
+                <td>{claimTypeLabel(c)}</td>
                 <td>{c.deceasedName}</td>
                 <td style={{ direction: 'ltr', textAlign: 'right' }}>{Number(c.claimedAmount).toLocaleString('fa-IR')}</td>
                 <td style={{ color: 'var(--muted)' }}>{c.deletedAt}</td>

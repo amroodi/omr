@@ -6,6 +6,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { customerClaimWhere, getContext, getTenantIdOrThrow } from '../../common/tenant/tenant-context';
 import { LINE_FA } from '../policyholders/policyholders.service';
 import { ModelStore } from '../model-view/model-store.service';
+import { typesFor } from '../claims/workflow';
 import { toAsciiDigits, toJalali } from '../../common/jalali/jalali.util';
 import { NotificationsService } from '../notifications/notifications.service';
 import { HashService } from '../../common/crypto/hash.service';
@@ -324,6 +325,12 @@ export class CustomerService {
         approvedAmount: sum.toString(),
       };
     }
+    // The company and its parents: a Model View company group covers a ticked company's subsidiaries.
+    const chain: string[] = [];
+    for (let id: string | null = co?.id ?? null; id && !chain.includes(id) && chain.length < 10;) {
+      chain.push(id);
+      id = (await this.prisma.unscoped().policyholderCompany.findUnique({ where: { id }, select: { parentId: true } }))?.parentId ?? null;
+    }
     return {
       company: co ? { id: co.id, name: co.name, code: co.code, hasLogo: !!co.logoKey } : null,
       brokerName: acc.tenant.name,
@@ -332,7 +339,7 @@ export class CustomerService {
         insurerName: iName.get(k.insurerTenantId) ?? '—',
         startDate: k.startDate ? toJalali(k.startDate, false) : null, endDate: k.endDate ? toJalali(k.endDate, false) : null,
         startIso: k.startDate?.toISOString() ?? null, endIso: k.endDate?.toISOString() ?? null,
-        inForce: inForce(k), claimTypes: k.line ? this.store.get(k.insurerTenantId).form.lines[k.line].claimTypes : null,
+        inForce: inForce(k), claimTypes: k.line ? typesFor(this.store.get(k.insurerTenantId), k.line, chain) : null,
         form: this.formOf(k.insurerTenantId, k.line),
       })),
       selectedId: selected?.id ?? null,
@@ -343,7 +350,7 @@ export class CustomerService {
   private formOf(insurerId: string, line: 'LIFE' | 'ACCIDENT' | null) {
     const m = this.store.get(insurerId);
     return {
-      insuredLabel: m.form.lines[line ?? 'ACCIDENT'].insuredLabel, eventLabel: m.form.eventLabel, birthDate: m.form.birthDate, cause: m.form.cause, causeLists: m.form.causeLists,
+      insuredLabel: m.form.lines[line ?? 'ACCIDENT'].insuredLabel, eventLabel: m.form.eventLabel, birthDate: m.form.birthDate, cause: m.form.cause, causeLists: m.form.causeLists, caseTypes: m.form.caseTypes,
     };
   }
 

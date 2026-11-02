@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { client, getToken, signOut } from '../../lib/client';
-import { CLAIM_TYPE_LABELS, Spinner } from '../components/ui';
+import { claimTypeLabel, Spinner } from '../components/ui';
 import { OnProgress, UploadButton } from '../components/upload';
 
 interface InsuredDoc { code: string; label: string; fileName: string | null; state: 'MISSING' | 'SENT' | 'APPROVED' | 'REFUSED'; reason: string | null }
@@ -46,7 +46,7 @@ export default function InsuredPanel() {
             <div key={c.id} className="card p-4 space-y-3">
               <div>
                 <div className="font-extrabold">پروندهٔ {c.claimNumber}</div>
-                <div className="text-sm" style={{ color: 'var(--muted)' }}>{CLAIM_TYPE_LABELS[c.claimType] ?? c.claimType} — وضعیت: {c.where}</div>
+                <div className="text-sm" style={{ color: 'var(--muted)' }}>{claimTypeLabel(c)} — وضعیت: {c.where}</div>
               </div>
               {c.documents.length === 0 && <p className="text-sm" style={{ color: 'var(--muted)' }}>مدرکی برای بارگذاری شما تعریف نشده است.</p>}
               {c.documents.map((d) => (

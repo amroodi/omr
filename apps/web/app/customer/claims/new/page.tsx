@@ -7,7 +7,7 @@ import { CLAIM_TYPE_LABELS, ErrorBox } from '../../../components/ui';
 import { JalaliDatePicker } from '../../../components/JalaliDatePicker';
 import { Shell } from '../../../components/Shell';
 import { CUSTOMER_NAV, POLICY_KEY, PolicyRow } from '../../nav';
-import { CAUSE_LABEL, causeGroup, EVENT_DATE_LABEL, insuredNameLabel } from '../../../components/claim-wording';
+import { CAUSE_LABEL, EVENT_DATE_LABEL, insuredNameLabel } from '../../../components/claim-wording';
 
 const toAscii = (s: string) => s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
 // Death claims ask for the date of death; accident disability / medical claims for the accident date.
@@ -89,7 +89,8 @@ export default function CustomerNewClaim() {
   // Model View: the wording and fields this insurer set for this بیمه‌نامه.
   const form = policy?.form;
   const eventLabel = form?.eventLabel ?? EVENT_DATE_LABEL;
-  const causeOptions = form?.causeLists[causeGroup(f.claimType)] ?? [];
+  const caseType = form?.caseTypes.find((t) => t.code === f.claimType);
+  const causeOptions = form?.causeLists[caseType?.causeGroup ?? 'ACCIDENT'] ?? [];
   // Ticks from the other list (the نوع پرونده changed) don't count.
   const cause = [...causes.filter((c) => causeOptions.includes(c)), f.causeOfDeath.trim()].filter(Boolean).join('، ');
   const types = policy?.claimTypes ?? Object.keys(CLAIM_TYPE_LABELS);
@@ -146,7 +147,7 @@ export default function CustomerNewClaim() {
     } catch (e: any) { setError(e.message); } finally { setBusy(false); }
   };
 
-  const isDeath = DEATH_TYPES.has(f.claimType);
+  const isDeath = caseType?.death ?? DEATH_TYPES.has(f.claimType);
   const age = ageBetween(f.birthDate ? jalaliToIso(f.birthDate) : null, f.eventDate ? jalaliToIso(f.eventDate) : null);
 
   return (
@@ -181,7 +182,7 @@ export default function CustomerNewClaim() {
 
           <PField label="نوع پرونده *" help="نوع خسارت را مشخص کنید؛ فقط خسارت‌هایی که بیمه‌نامهٔ انتخاب‌شده پوشش می‌دهد فهرست شده‌اند.">
             <select className="input" value={f.claimType} onChange={(e) => setF({ ...f, claimType: e.target.value })}>
-              {types.map((v) => <option key={v} value={v}>{CLAIM_TYPE_LABELS[v] ?? v}</option>)}
+              {types.map((v) => <option key={v} value={v}>{form?.caseTypes.find((t) => t.code === v)?.label ?? CLAIM_TYPE_LABELS[v] ?? v}</option>)}
             </select>
           </PField>
 

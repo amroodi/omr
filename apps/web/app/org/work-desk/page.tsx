@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { client, getToken, hasPerm } from '../../../lib/client';
 import { Shell, Icon } from '../../components/Shell';
 import { ORG_NAV } from '../nav';
-import { ClaimTypeBadge, CLAIM_TYPE_LABELS, ErrorBox, FancyLoader, NoticeModal, Overlay, STATUS_MAP, StatusBadge } from '../../components/ui';
+import { ClaimTypeBadge, CLAIM_TYPE_LABELS, claimTypeLabel, ErrorBox, FancyLoader, NoticeModal, Overlay, STATUS_MAP, StatusBadge } from '../../components/ui';
 import { JalaliDatePicker } from '../../components/JalaliDatePicker';
 import { RangeSlider } from '../../components/RangeSlider';
 import { toGregorian } from 'jalaali-js';
@@ -40,6 +40,8 @@ export default function WorkDeskPage() {
 }
 
 function WorkDesk() {
+  const [caseTypes, setCaseTypes] = useState<Record<string, string>>(CLAIM_TYPE_LABELS);
+  useEffect(() => { client.get<{ code: string; label: string }[]>('/claims/case-types', 'org').then((l) => { if (l.length) setCaseTypes(Object.fromEntries(l.map((t) => [t.code, t.label]))); }).catch(() => {}); }, []);
   const router = useRouter();
   const [data, setData] = useState<WorkDesk | null>(null);
   const [insurers, setInsurers] = useState<{ id: string; name: string }[]>([]);
@@ -95,7 +97,7 @@ function WorkDesk() {
       await client.downloadPost('/exports/table.xlsx', {
         title: `میز کار — ${active.label}`,
         headers: ['ردیف', 'شماره پرونده', 'شماره بیمه‌نامه', 'کد ملی متوفی', 'نوع', 'بیمه‌گر', 'بیمه‌شده (متوفی)', 'مبلغ (ریال)', 'وضعیت'],
-        rows: list.map((r, i) => [String(i + 1), r.claimNumber, r.policyNumber ?? '', r.deceasedNationalCode ?? '', CLAIM_TYPE_LABELS[r.claimType] ?? r.claimType,
+        rows: list.map((r, i) => [String(i + 1), r.claimNumber, r.policyNumber ?? '', r.deceasedNationalCode ?? '', claimTypeLabel(r),
           (r.insurerTenantId && insurerMap[r.insurerTenantId]) || '', r.deceasedName ?? '', String(Number(r.payableAmount || r.claimedAmount || 0)), STATUS_MAP[r.status]?.label ?? r.status]),
       }, 'org', 'work-desk.xlsx');
     } catch (e: any) { setError(e.message); } finally { setExporting(false); }
@@ -190,7 +192,7 @@ function WorkDesk() {
           <input className="input" placeholder="نام بیمه‌شده (متوفی)" value={f.deceasedName} onChange={upd('deceasedName')} />
           <select className="input" value={f.claimType} onChange={(e) => setF({ ...f, claimType: e.target.value })}>
             <option value="">— نوع پرونده —</option>
-            {Object.entries(CLAIM_TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            {Object.entries(caseTypes).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
           <select className="input" value={f.insurerTenantId} onChange={(e) => setF({ ...f, insurerTenantId: e.target.value })}>
             <option value="">— بیمه‌گر —</option>

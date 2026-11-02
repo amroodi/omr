@@ -3,7 +3,7 @@ import JSZip from 'jszip';
 import { uploadName } from '../../common/validation/upload-name';
 import { NoticeRule, NoticeSource, NoticeTarget, SOURCE_FA, TARGET_FA, TARGETS_OF, combine, rulesFor } from './claim-notice';
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { AuditAction, ClaimStatus, ClaimType, Prisma, SalesChannel } from '@prisma/client';
+import { AuditAction, ClaimStatus, Prisma, SalesChannel } from '@prisma/client';
 import { AuditService } from '../../common/audit/audit.service';
 import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -26,7 +26,7 @@ import { beneficiaryHiddenDoc } from '../required-docs/defaults';
 import { toAsciiDigits } from '../../common/jalali/jalali.util';
 import { ModelStore } from '../model-view/model-store.service';
 import { CoverageService } from '../model-view/coverage.service';
-import { above, actionsFor, rulesOf, WorkflowModel, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, physicalActionsFor, PhysicalActionKey, physicalBelow, PhysicalState, Purpose, ReviewDesk, Stage, STAGE_FA, WorkflowAction } from './workflow';
+import { above, actionsFor, rulesOf, WorkflowModel, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, physicalActionsFor, PhysicalActionKey, physicalBelow, PhysicalState, Purpose, ReviewDesk, Stage, STAGE_FA, WorkflowAction, caseTypeOf, typesFor } from './workflow';
 
 const CLAIM_DOC_MIME = new Set([
   'application/pdf', 'image/jpeg', 'image/png',
@@ -69,7 +69,7 @@ interface FileClaimInput {
   channel: SalesChannel;
   brokerTenantId?: string; // BROKER channel
   sellingBranchId?: string; // DIRECT channel (insurer branch)
-  claimType?: ClaimType;
+  claimType?: string;
   eventDate?: string; // ISO date of the death/accident
   policyNumber?: string;
   /** بیمه‌گزار panel: the company's بیمه‌نامه (PolicyholderContract) the claim is filed under. */
@@ -239,16 +239,17 @@ export class ClaimsService {
     }
     if (companyId && input.contractId) {
       // The بیمه‌نامه the بیمه‌گزار picked: it must be theirs, fit the claim type, and cover the date.
-      const contract = await this.policyholders.contractForClaim(companyId, input.contractId, input.claimType ?? null, eventDate);
+      const contract = await this.policyholders.contractForClaim(companyId, input.contractId, eventDate);
       input.insurerTenantId = contract.insurerTenantId;
       input.policyNumber = contract.policyNumber ?? input.policyNumber ?? undefined;
-      // Model View may narrow which نوع پرونده this line takes at this insurer.
-      if (contract.line && input.claimType && !(await this.modelOf(contract.insurerTenantId)).form.lines[contract.line].claimTypes.includes(input.claimType)) {
+      // Model View decides which نوع پرونده this line takes, for this company, at this insurer.
+      if (contract.line && input.claimType && !typesFor(await this.modelOf(contract.insurerTenantId), contract.line, await this.policyholders.companyChain(companyId)).includes(input.claimType)) {
         throw new BadRequestException('این نوع پرونده برای این بیمه‌نامه فعال نیست');
       }
     }
     if (companyId && !input.insurerTenantId) {
       const contract = await this.policyholders.resolveContract(companyId, eventDate, input.claimType ?? null);
+      if (!contract && input.claimType && await this.policyholders.resolveContract(companyId, eventDate)) throw new BadRequestException('این نوع پرونده برای این بیمه‌گزار فعال نیست');
       if (!contract) throw new BadRequestException('برای این تاریخ فوت، قرارداد فعالی میان کارگزاری و بیمه‌گر برای شرکت شما ثبت نشده است؛ لطفاً با کارگزاری تماس بگیرید.');
       input.insurerTenantId = contract.insurerTenantId;
       input.policyNumber = input.policyNumber ?? contract.policyNumber ?? undefined;
@@ -258,6 +259,7 @@ export class ClaimsService {
     if (!insurer || insurer.kind !== 'INSURER') throw new BadRequestException('بیمه‌گر نامعتبر است');
     const insurerTenantId = insurer.id;
     const form = (await this.modelOf(insurerTenantId)).form;
+    if (input.claimType && !form.caseTypes.some((t) => t.code === input.claimType)) throw new BadRequestException('نوع پرونده نامعتبر است');
     if (form.birthDate === 'required' && !input.deceasedBirthDate) throw new BadRequestException('تاریخ تولد بیمه‌شده الزامی است');
     if (form.cause === 'required' && !input.causeOfDeath?.trim()) throw new BadRequestException('علت را مشخص کنید');
 
@@ -1273,17 +1275,20 @@ export class ClaimsService {
         code: r.code,
         label: r.label,
         appliesToTypes: r.appliesToTypes,
+        required: r.requiredTypes.includes(claim.claimType),
         uploaded: !!latest && latest.aiStatus !== 'MISMATCH', // a refused newest file leaves the slot to fix
         aiRefused: latest?.aiStatus === 'MISMATCH',
         latestStatus: latest?.verificationStatus ?? null,
         documents: present(group),
       };
     });
+    items.sort((x, y) => Number(y.required) - Number(x.required)); // what blocks sending comes first
     const reqCodes = new Set(reqs.map((r) => r.code));
     return {
       claimType: claim.claimType,
       archived: claim.status === 'PAID', // a paid case takes no more uploads or reviews
-      complete: items.length > 0 && items.every((i) => i.uploaded),
+      complete: items.length > 0 && items.every((i) => i.uploaded || !i.required),
+      note: (await this.modelOf(claim.insurerTenantId)).form.docsNote,
       items,
       // Each «سایر مدارک» file stands on its own (a batch upload is many documents, not versions of one).
       otherDocuments: docs.filter((d) => !d.docCode || !reqCodes.has(d.docCode)).flatMap((d) => present([d])),
@@ -1655,7 +1660,7 @@ export class ClaimsService {
       branchIds.length ? db.branch.findMany({ where: { id: { in: branchIds } }, select: { id: true, name: true } }) : [],
       ids.length ? db.claimFieldValue.findMany({ where: { claimId: { in: ids } }, select: { claimId: true, key: true, value: true } }) : [],
       ids.length ? db.document.findMany({ where: { claimId: { in: ids } }, select: { claimId: true, docCode: true, verificationStatus: true }, orderBy: { createdAt: 'desc' } }) : [],
-      db.requiredDocument.findMany({ where: { isActive: true, tenantId: { in: insurerIds } }, select: { tenantId: true, code: true, appliesToTypes: true } }),
+      db.requiredDocument.findMany({ where: { isActive: true, tenantId: { in: insurerIds } }, select: { tenantId: true, code: true, requiredTypes: true } }),
       db.claimFieldDef.findMany({ where: { tenantId: { in: insurerIds }, isActive: true }, orderBy: { order: 'asc' }, select: { key: true, label: true, type: true } }),
     ]);
     const tName = new Map(tenants.map((t) => [t.id, t.name]));
@@ -1674,14 +1679,13 @@ export class ClaimsService {
     const jd = (d: Date | null | undefined) => (d ? ascii(toJalali(d, false)) : null);
     const num = (d: Prisma.Decimal | null | undefined) => (d != null ? Number(d.toString()) : null);
     const STATUS_FA: Record<string, string> = { DRAFT: 'پیش‌نویس', SUBMITTED: 'ثبت‌شده', UNDER_REVIEW: 'در حال بررسی', RETURNED_INCOMPLETE: 'نقص مدارک', APPROVED: 'تاییدشده', REJECTED: 'ردشده', PAID: 'پرداخت‌شده' };
-    const TYPE_FA: Record<string, string> = { DEATH_ILLNESS: 'فوت ناشی از بیماری', DEATH_ACCIDENT: 'فوت ناشی از حادثه', DISABILITY_ACCIDENT: 'نقص عضو / ازکارافتادگی ناشی از حادثه' };
     const now = Date.now();
 
     const rows = claims.map((c) => {
       const f = fv.get(c.id) ?? {};
       const cd = docsBy.get(c.id) ?? [];
       const hiddenDoc = beneficiaryHiddenDoc(c.beneficiaryType);
-      const required = reqs.filter((r) => r.tenantId === c.insurerTenantId && r.appliesToTypes.includes(c.claimType) && r.code !== hiddenDoc).map((r) => r.code);
+      const required = reqs.filter((r) => r.tenantId === c.insurerTenantId && r.requiredTypes.includes(c.claimType) && r.code !== hiddenDoc).map((r) => r.code);
       const latestByCode = new Map<string, string>();
       for (const d of cd) if (d.docCode && !latestByCode.has(d.docCode)) latestByCode.set(d.docCode, d.verificationStatus);
       const uploaded = required.filter((code) => latestByCode.has(code)).length;
@@ -1693,7 +1697,7 @@ export class ClaimsService {
         policyNumber: c.policyNumber ?? f.policy_number ?? null,
         claimNumber: c.claimNumber,
         status: STATUS_FA[c.status] ?? c.status,
-        claimType: TYPE_FA[c.claimType] ?? c.claimType,
+        claimType: caseTypeOf(this.store.get(c.insurerTenantId), c.claimType)?.label ?? c.claimType,
         channel: c.channel === 'BROKER' ? 'کارگزاری' : 'مستقیم (شعبه)',
         stage: c.currentStage ? this.store.labels(c.insurerTenantId)[c.currentStage as Stage] : 'بسته‌شده',
         direction: !c.currentStage ? '—' : c.flowPurpose === 'PAYMENT' ? 'در مسیر پرداخت' : c.flowDirection === 'DOWN' ? 'عودت برای رفع نقص' : 'در حال بررسی',
@@ -1895,7 +1899,7 @@ export class ClaimsService {
     }
     if (clean(q.insurerTenantId)) and.push({ insurerTenantId: clean(q.insurerTenantId) });
     if (clean(q.brokerTenantId)) and.push({ brokerTenantId: clean(q.brokerTenantId) });
-    if (q.claimType && (ClaimType as any)[q.claimType]) and.push({ claimType: q.claimType as ClaimType });
+    if (q.claimType) and.push({ claimType: q.claimType });
     if (q.status && (ClaimStatus as any)[q.status]) and.push({ status: q.status as ClaimStatus });
     if (q.channel && (SalesChannel as any)[q.channel]) and.push({ channel: q.channel as SalesChannel });
 
@@ -1957,6 +1961,18 @@ export class ClaimsService {
     return out;
   }
 
+  /** Every نوع پرونده of the insurers this organization works with, for the staff forms and filters. */
+  async caseTypeOptions() {
+    const tenantId = getTenantIdOrThrow();
+    const db = this.db();
+    const tenant = await db.tenant.findUnique({ where: { id: tenantId }, select: { kind: true } });
+    const insurerIds = tenant?.kind === 'INSURER' ? [tenantId]
+      : (await db.brokerInsurerPartnership.findMany({ where: { brokerTenantId: tenantId, isActive: true }, select: { insurerTenantId: true } })).map((p) => p.insurerTenantId);
+    const out = new Map<string, { code: string; label: string; causeGroup: string; death: boolean }>();
+    for (const id of insurerIds) for (const t of (await this.modelOf(id)).form.caseTypes) if (!out.has(t.code)) out.set(t.code, t);
+    return [...out.values()];
+  }
+
   // ─────────────────────────── Helpers ───────────────────────────
   private assertParticipant(claim: any) {
     const ctx = getContext();
@@ -1984,6 +2000,8 @@ export class ClaimsService {
       claimNumber: c.claimNumber,
       status: c.status,
       claimType: c.claimType,
+      claimTypeLabel: caseTypeOf(this.store.get(c.insurerTenantId), c.claimType)?.label ?? c.claimType,
+      claimTypeDeath: caseTypeOf(this.store.get(c.insurerTenantId), c.claimType)?.death ?? false,
       channel: c.channel,
       claimedAmount: c.claimedAmount?.toString(), // = estimatedAmount (مبلغ برآوردی); kept for back-compat
       estimatedAmount: c.claimedAmount?.toString(), // مبلغ خسارت برآوردی — set at filing

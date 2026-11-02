@@ -1,4 +1,4 @@
-import { ClaimType, SalesChannel } from '@prisma/client';
+import { SalesChannel } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -12,6 +12,7 @@ import {
   IsString,
   IsUUID,
   Length,
+  Matches,
   ValidateNested,
 } from 'class-validator';
 import { ToAsciiDigits } from '../../common/validation/to-ascii.decorator';
@@ -80,8 +81,9 @@ export class FileClaimDto {
   sellingBranchId?: string;
 
   @IsOptional()
-  @IsEnum(ClaimType)
-  claimType?: ClaimType;
+  @IsString()
+  @Matches(/^[A-Z0-9_]{2,40}$/)
+  claimType?: string;
 
   @IsOptional()
   @IsISO8601()
@@ -137,8 +139,9 @@ export class FileOnBehalfDto {
   policyHolderId?: string; // a representative account of that company, so it also sees the case in its panel
 
   @IsOptional()
-  @IsEnum(ClaimType)
-  claimType?: ClaimType;
+  @IsString()
+  @Matches(/^[A-Z0-9_]{2,40}$/)
+  claimType?: string;
 
   @IsISO8601()
   eventDate!: string;

@@ -1,5 +1,5 @@
 'use client';
-import { CLAIM_TYPE_LABELS } from './ui';
+import { claimTypeLabel } from './ui';
 import { ACTION_FA, STATE_FA, TimelineStep } from './WorkflowPanel';
 import { CaseClaim, DEATH_TYPES, STATUS_FA, StatusHistoryButton } from './case-ui';
 
@@ -40,9 +40,9 @@ export function ProcessTimeline({ c, fv }: { c: CaseClaim & { steps?: TimelineSt
         <li className="is-done">
           <div className="cu-node-t">ثبت پرونده :</div>
           <div className="cu-kv"><b>شماره پرونده :</b><span className="latin-digits">{c.claimNumber}</span></div>
-          <div className="cu-kv"><b>نوع خسارت :</b><span>{CLAIM_TYPE_LABELS[c.claimType] ?? c.claimType}</span></div>
+          <div className="cu-kv"><b>نوع خسارت :</b><span>{claimTypeLabel(c)}</span></div>
           {!(c.imported && (c.status === 'PAID' || c.status === 'REJECTED')) && <div className="cu-kv"><b>تاریخ ثبت پرونده :</b><span>{c.createdAt ?? '—'}</span></div>}
-          <div className="cu-kv"><b>{DEATH_TYPES.has(c.claimType) ? 'تاریخ فوت' : 'تاریخ وقوع'} :</b><span>{c.eventDate ?? '—'}</span></div>
+          <div className="cu-kv"><b>{(c.claimTypeDeath ?? DEATH_TYPES.has(c.claimType)) ? 'تاریخ فوت' : 'تاریخ وقوع'} :</b><span>{c.eventDate ?? '—'}</span></div>
           <div className="cu-kv"><b>علت خسارت :</b><span>{fv.cause_of_death || (c as { causeOfDeath?: string | null }).causeOfDeath || fv.death_kind || '—'}</span></div>
           <div className="cu-kv"><b>مبلغ برآوردی :</b><span>{rial(c.claimedAmount)}</span></div>
           <div className="cu-kv cu-kv-btns"><StatusHistoryButton story={c.story} /></div>

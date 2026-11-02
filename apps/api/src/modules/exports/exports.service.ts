@@ -1,3 +1,5 @@
+import { caseTypeOf } from '../claims/workflow';
+import { ModelStore } from '../model-view/model-store.service';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { AuditAction, CaseStatus, Prisma } from '@prisma/client';
 import * as ExcelJS from 'exceljs';
@@ -22,9 +24,6 @@ const CLAIM_STATUS_FA: Record<string, string> = {
   DRAFT: 'پیش‌نویس', SUBMITTED: 'ثبت‌شده', UNDER_REVIEW: 'در حال بررسی', RETURNED_INCOMPLETE: 'نقص مدارک',
   APPROVED: 'تاییدشده', REJECTED: 'ردشده', PAID: 'پرداخت‌شده',
 };
-const CLAIM_TYPE_FA: Record<string, string> = {
-  DEATH_ILLNESS: 'فوت ناشی از بیماری', DEATH_ACCIDENT: 'فوت ناشی از حادثه', DISABILITY_ACCIDENT: 'نقص عضو / ازکارافتادگی ناشی از حادثه',
-};
 
 @Injectable()
 export class ExportsService {
@@ -33,6 +32,7 @@ export class ExportsService {
     private readonly crypto: FieldCryptoService,
     private readonly audit: AuditService,
     private readonly notifications: NotificationsService,
+    private readonly store: ModelStore,
   ) {}
 
   private canSeePii(): boolean {
@@ -244,7 +244,7 @@ export class ExportsService {
       ws.addRow([
         i + 1,
         c.claimNumber,
-        CLAIM_TYPE_FA[c.claimType] ?? c.claimType,
+        caseTypeOf(this.store.get(c.insurerTenantId), c.claimType)?.label ?? c.claimType,
         c.deceasedFullName ? this.crypto.decrypt(c.deceasedFullName) : '',
         this.nid(c.deceasedNationalCode ?? null),
         tMap.get(c.insurerTenantId) ?? '',
@@ -317,7 +317,7 @@ export class ExportsService {
     ws.getCell('A1').alignment = { horizontal: 'center' };
 
     const pair = (k: string, v: string) => ws.addRow([k, v]);
-    pair('نوع', CLAIM_TYPE_FA[claim.claimType] ?? claim.claimType);
+    pair('نوع', caseTypeOf(this.store.get(claim.insurerTenantId), claim.claimType)?.label ?? claim.claimType);
     pair('وضعیت', CLAIM_STATUS_FA[claim.status] ?? claim.status);
     pair('بیمه‌گر', insurer?.name ?? '');
     pair('بیمه‌شده (متوفی)', claim.deceasedFullName ? (this.crypto.decrypt(claim.deceasedFullName) ?? '') : '');

@@ -57,6 +57,11 @@ export interface PanelRights { upload: boolean; submit: boolean }
 export interface CaseRules { councilEnabled: boolean; requireLossNotice: boolean; requireOriginals: boolean }
 export type FieldMode = 'required' | 'optional' | 'hidden';
 export interface LineForm { insuredLabel: string; claimTypes: string[] }
+export type Line = 'LIFE' | 'ACCIDENT';
+/** One نوع پرونده. causeGroup: which cause list it shows; death: the case speaks of a متوفی and takes the ذینفع step. */
+export interface CaseType { code: string; label: string; causeGroup: 'DEATH' | 'ACCIDENT'; death: boolean }
+/** بیمه‌گزار companies that file different نوع پرونده than the insurer's usual ones (a ticked company covers its subsidiaries). */
+export interface CompanyGroup { id: string; label: string; companyIds: string[]; lines: Record<Line, string[]> }
 export interface WorkflowModel extends CaseRules {
   stages: Record<Stage, { label: string; reviewDocs: boolean }>; // reviewDocs: must this desk ✓ every document before sending on?
   byType: Record<string, Partial<CaseRules>>; // نوع پرونده → what differs from the rules above
@@ -67,11 +72,23 @@ export interface WorkflowModel extends CaseRules {
     birthDate: FieldMode;
     cause: FieldMode;
     causeLists: { DEATH: string[]; ACCIDENT: string[] }; // ticks above the typed cause, by causeGroup
-    lines: Record<'LIFE' | 'ACCIDENT', LineForm>;
+    lines: Record<Line, LineForm>;
+    caseTypes: CaseType[];
+    groups: CompanyGroup[];
+    docsNote: string; // shown above the document uploads
   };
 }
-const LIFE_TYPES = ['DEATH_ILLNESS', 'DEATH_ACCIDENT', 'DISABILITY_ILLNESS'];
-const ACCIDENT_TYPES = ['DEATH_ACCIDENT', 'DISABILITY_ACCIDENT', 'MEDICAL_ACCIDENT'];
+const LIFE_TYPES = ['DEATH_ILLNESS', 'DISABILITY_ILLNESS'];
+const ACCIDENT_TYPES = ['DEATH_ACCIDENT', 'DISABILITY_ACCIDENT', 'MEDICAL_ACCIDENT', 'DAILY_GENERAL', 'DAILY_HOSPITAL'];
+export const DEFAULT_CASE_TYPES: CaseType[] = [
+  { code: 'DEATH_ILLNESS', label: 'فوت به هر علت', causeGroup: 'DEATH', death: true },
+  { code: 'DISABILITY_ILLNESS', label: 'از کار افتادگی دائم و کامل ناشی از بیماری', causeGroup: 'DEATH', death: false },
+  { code: 'DEATH_ACCIDENT', label: 'فوت بر اثر حادثه', causeGroup: 'DEATH', death: true },
+  { code: 'DISABILITY_ACCIDENT', label: 'نقص عضو و از کار افتادگی بر اثر حادثه', causeGroup: 'ACCIDENT', death: false },
+  { code: 'MEDICAL_ACCIDENT', label: 'جبران هزینه‌های ناشی از حادثه', causeGroup: 'ACCIDENT', death: false },
+  { code: 'DAILY_GENERAL', label: 'غرامت روزانه عمومی', causeGroup: 'ACCIDENT', death: false },
+  { code: 'DAILY_HOSPITAL', label: 'غرامت روزانه بیمارستانی', causeGroup: 'ACCIDENT', death: false },
+];
 export const DEFAULT_WORKFLOW_MODEL: WorkflowModel = {
   councilEnabled: true,
   requireLossNotice: true,
@@ -102,7 +119,7 @@ export const DEFAULT_WORKFLOW_MODEL: WorkflowModel = {
       'سکته مغزی-پرداخت در وجه بیمه گذار',
       'فوت در اثر حادثه-پرداخت در وجه "وکیل یا وراث"',
       'فوت در اثر حادثه-پرداخت در وجه "وراث قانونی"',
-      'ازکارافتادگی کلی ناشی از بیماری با رأی کمیسیون پزشکی تأمین اجتماعی و تائید بیمه البرز',
+      'ازکارافتادگی کلی ناشی از بیماری با رأی کمیسیون پزشکی تأمین اجتماعی و تائید بیمه‌گر',
       'ازکارافتادگی کلی ناشی از بیماری با رأی کمیسیون پزشکی بیمه گذار',
       'سکته قلبی با برگه ذینفع',
       'سکته مغزی با برگه ذینفع',
@@ -124,6 +141,9 @@ export const DEFAULT_WORKFLOW_MODEL: WorkflowModel = {
       LIFE: { insuredLabel: 'نام بیمه‌شده (متوفی/از کار افتاده)', claimTypes: LIFE_TYPES },
       ACCIDENT: { insuredLabel: 'نام بیمه‌شده (مصدوم/متوفی)', claimTypes: ACCIDENT_TYPES },
     },
+    caseTypes: DEFAULT_CASE_TYPES,
+    groups: [{ id: 'copper', label: 'شرکت‌های زیرمجموعه صنایع ملی مس ایران', companyIds: [], lines: { LIFE: LIFE_TYPES, ACCIDENT: ['DEATH_ACCIDENT', 'DISABILITY_ACCIDENT'] } }],
+    docsNote: 'تصاویر مدارک موجود در پرونده باید خوانا و ممهور به مهر برابر اصل توسط مراجع یا مقامات ذی‌صلاح قانونی باشد.',
   },
 };
 
@@ -136,12 +156,25 @@ export function modelFrom(stored: unknown): WorkflowModel {
   const mode = (v: unknown, def: FieldMode): FieldMode => (v === 'required' || v === 'optional' || v === 'hidden' ? v : def);
   const list = (v: unknown, max = 60) => (Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === 'string' && !!x.trim()).map((x) => x.trim().slice(0, 120)))].slice(0, max) : []);
   const rights = (r: any, def: PanelRights): PanelRights => ({ upload: flag(r?.upload, def.upload), submit: flag(r?.submit, def.submit) });
-  const line = (r: any, def: LineForm): LineForm => {
-    const types = Array.isArray(r?.claimTypes) ? def.claimTypes.filter((t) => r.claimTypes.includes(t)) : def.claimTypes;
-    return { insuredLabel: text(r?.insuredLabel, def.insuredLabel), claimTypes: types.length ? types : def.claimTypes };
+  // The standard types always exist (old cases carry their codes); an insurer can rename them and add its own.
+  const storedTypes: any[] = Array.isArray(raw.form?.caseTypes) ? raw.form.caseTypes : [];
+  const caseType = (r: any, def?: CaseType): CaseType => ({
+    code: def?.code ?? r.code, label: text(r?.label, def?.label ?? r.code, 120),
+    causeGroup: r?.causeGroup === 'DEATH' || r?.causeGroup === 'ACCIDENT' ? r.causeGroup : def?.causeGroup ?? 'ACCIDENT',
+    death: flag(r?.death, def?.death ?? false),
+  });
+  const caseTypes = [
+    ...DEFAULT_CASE_TYPES.map((def) => caseType(storedTypes.find((r) => r?.code === def.code), def)),
+    ...storedTypes.filter((r) => typeof r?.code === 'string' && /^[A-Z0-9_]{2,40}$/.test(r.code) && !DEFAULT_CASE_TYPES.some((x) => x.code === r.code)).slice(0, 40).map((r) => caseType(r)),
+  ];
+  const known = new Set(caseTypes.map((t) => t.code));
+  const typeList = (v: unknown, def: string[]) => {
+    const types = Array.isArray(v) ? [...new Set(v.filter((t): t is string => known.has(t)))] : def;
+    return types.length ? types : def;
   };
+  const line = (r: any, def: LineForm): LineForm => ({ insuredLabel: text(r?.insuredLabel, def.insuredLabel), claimTypes: typeList(r?.claimTypes, def.claimTypes) });
   const byType: Record<string, Partial<CaseRules>> = {};
-  for (const t of new Set([...LIFE_TYPES, ...ACCIDENT_TYPES])) {
+  for (const t of known) {
     const r = raw.byType?.[t];
     if (!r || typeof r !== 'object') continue;
     const o: Partial<CaseRules> = {};
@@ -171,9 +204,24 @@ export function modelFrom(stored: unknown): WorkflowModel {
         ACCIDENT: Array.isArray(raw.form?.causeLists?.ACCIDENT) ? list(raw.form.causeLists.ACCIDENT) : list(raw.form?.causes).length ? list(raw.form.causes) : d.form.causeLists.ACCIDENT,
       },
       lines: { LIFE: line(raw.form?.lines?.LIFE, d.form.lines.LIFE), ACCIDENT: line(raw.form?.lines?.ACCIDENT, d.form.lines.ACCIDENT) },
+      caseTypes,
+      groups: (Array.isArray(raw.form?.groups) ? raw.form.groups : d.form.groups).filter((g: any) => typeof g?.id === 'string' && g.id).slice(0, 20).map((g: any): CompanyGroup => ({
+        id: g.id.slice(0, 40), label: text(g.label, 'گروه بیمه‌گزاران', 120), companyIds: list(g.companyIds, 2000),
+        lines: { LIFE: typeList(g.lines?.LIFE, d.form.lines.LIFE.claimTypes), ACCIDENT: typeList(g.lines?.ACCIDENT, d.form.lines.ACCIDENT.claimTypes) },
+      })),
+      docsNote: typeof raw.form?.docsNote === 'string' ? raw.form.docsNote.trim().slice(0, 500) : d.form.docsNote,
     },
   };
 }
+
+/** The نوع پرونده a بیمه‌نامه line offers this company (`companyChain`: the company and its parents). */
+export function typesFor(model: WorkflowModel, line: Line | null | undefined, companyChain: string[] = []): string[] {
+  const group = model.form.groups.find((g) => g.companyIds.some((id) => companyChain.includes(id)));
+  const of = (l: Line) => group?.lines[l] ?? model.form.lines[l].claimTypes;
+  return line ? of(line) : [...new Set([...of('LIFE'), ...of('ACCIDENT')])];
+}
+
+export const caseTypeOf = (model: WorkflowModel, code: string | null | undefined): CaseType | null => model.form.caseTypes.find((t) => t.code === code) ?? null;
 
 /** The rules of one case: the insurer's, with what its نوع پرونده changes on top. */
 export function rulesOf(model: WorkflowModel, claimType?: string | null): CaseRules {

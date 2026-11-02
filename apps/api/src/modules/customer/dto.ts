@@ -1,4 +1,3 @@
-import { ClaimType } from '@prisma/client';
 import { Type } from 'class-transformer';
 import { ArrayMaxSize, IsArray, IsEnum, IsIn, IsISO8601, IsOptional, IsString, IsUUID, Length, Matches, ValidateNested } from 'class-validator';
 import { BENEFICIARY_KINDS, HeirDto } from '../claims/dto';
@@ -81,8 +80,9 @@ export class CustomerFileClaimDto {
   deceasedBirthDate?: string;
 
   @IsOptional()
-  @IsEnum(ClaimType)
-  claimType?: ClaimType;
+  @IsString()
+  @Matches(/^[A-Z0-9_]{2,40}$/)
+  claimType?: string;
 
   @IsOptional()
   @IsISO8601()

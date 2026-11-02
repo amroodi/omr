@@ -1,7 +1,7 @@
 import { BadRequestException, Body, Controller, Get, NotFoundException, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common';
-import { AuditAction, ClaimType, Prisma } from '@prisma/client';
+import { AuditAction, Prisma } from '@prisma/client';
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsBoolean, IsEnum, IsInt, IsOptional, IsString, Length, Max, Matches, Min, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsInt, IsOptional, IsString, Length, Max, Matches, Min, ValidateNested } from 'class-validator';
 import { AuditService } from '../../common/audit/audit.service';
 import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -13,8 +13,10 @@ import { ModelStore } from './model-store.service';
 
 class DocRowDto {
   @IsString() @Length(1, 80) code!: string;
+  @IsString() @Length(2, 500) label!: string;
   @IsBoolean() isActive!: boolean;
-  @IsArray() @IsEnum(ClaimType, { each: true }) appliesToTypes!: ClaimType[];
+  @IsArray() @IsString({ each: true }) appliesToTypes!: string[];
+  @IsArray() @IsString({ each: true }) requiredTypes!: string[];
 }
 class DocsDto {
   @IsArray() @ArrayMaxSize(200) @ValidateNested({ each: true }) @Type(() => DocRowDto) docs!: DocRowDto[];
@@ -51,8 +53,10 @@ export class ModelViewController {
     const [atCouncil, notChecked, docs] = await Promise.all([
       db.claim.groupBy({ by: ['insurerTenantId'], where: { currentStage: 'COUNCIL', deletedAt: null }, _count: true }),
       db.claim.groupBy({ by: ['insurerTenantId'], where: { coverageStatus: 'NOT_CHECKED', deletedAt: null }, _count: true }),
-      db.requiredDocument.findMany({ where: { tenantId: { in: insurers.map((i) => i.id) } }, orderBy: { order: 'asc' }, select: { tenantId: true, code: true, label: true, isActive: true, appliesToTypes: true } }),
+      db.requiredDocument.findMany({ where: { tenantId: { in: insurers.map((i) => i.id) } }, orderBy: { order: 'asc' }, select: { tenantId: true, code: true, label: true, isActive: true, appliesToTypes: true, requiredTypes: true } }),
     ]);
+    // Companies an insurer's Model View can group: those holding a contract with it, wherever the brokerage.
+    const contracts = await db.policyholderContract.findMany({ where: { insurerTenantId: { in: insurers.map((i) => i.id) } }, select: { insurerTenantId: true, company: { select: { id: true, name: true, parentId: true } } } });
     const count = (rows: { insurerTenantId: string; _count: number }[], id: string) => rows.find((r) => r.insurerTenantId === id)?._count ?? 0;
     return {
       defaults: DEFAULT_WORKFLOW_MODEL,
@@ -61,6 +65,7 @@ export class ModelViewController {
         return {
           id: t.id, name: t.name, customized: t.workflowModel != null, casesAtCouncil: count(atCouncil, t.id), model: modelFrom(t.workflowModel),
           docs: docs.filter((d) => d.tenantId === t.id).map(({ tenantId: _, ...d }) => d),
+          companies: [...new Map(contracts.filter((k) => k.insurerTenantId === t.id).map((k) => [k.company.id, k.company])).values()].sort((a, b) => a.name.localeCompare(b.name, 'fa')),
           coverage: { enabled: c.enabled, url: c.url, nationalCodeParam: c.nationalCodeParam, authHeader: c.authHeader, hasSecret: !!c.secret, perMinute: c.perMinute, notChecked: count(notChecked, t.id) },
         };
       }),
@@ -85,6 +90,8 @@ export class ModelViewController {
     // Someone must be able to move a case, or every new case would stop at the بیمه‌گزار desk.
     if (!model.panels.COMPANY.submit && !model.panels.REPRESENTATIVE.submit) throw new BadRequestException('دست‌کم یکی از پنل‌ها باید بتواند پرونده را ارسال کند');
     if (!model.panels.COMPANY.upload && !model.panels.REPRESENTATIVE.upload) throw new BadRequestException('دست‌کم یکی از پنل‌ها باید بتواند مدارک را بارگذاری کند');
+    const dropped = modelFrom(t.workflowModel).form.caseTypes.filter((x) => !model.form.caseTypes.some((y) => y.code === x.code)).map((x) => x.code);
+    if (dropped.length && await this.prisma.unscoped().claim.count({ where: { insurerTenantId: insurerId, claimType: { in: dropped } } })) throw new BadRequestException('نوع پرونده‌ای که پرونده دارد حذف نمی‌شود؛ آن را از فهرست‌های بیمه‌نامه بردارید');
     if (model.insured.enabled && !model.insured.docCodes.length) throw new BadRequestException('مدارکی را که بیمه‌شده بارگذاری می‌کند انتخاب کنید');
     await this.prisma.unscoped().tenant.update({ where: { id: insurerId }, data: { workflowModel: model as unknown as Prisma.InputJsonValue } });
     await this.store.load(insurerId);
@@ -92,12 +99,13 @@ export class ModelViewController {
     return model;
   }
 
-  /** Which documents exist and for which نوع پرونده (the insurer's required-document catalog). */
+  /** The insurer's documents: wording, order, and for each نوع پرونده whether listed and whether required. */
   @Put(':insurerId/docs')
   async saveDocs(@Param('insurerId', ParseUUIDPipe) insurerId: string, @Body() dto: DocsDto) {
     await this.insurer(insurerId);
     const db = this.prisma.unscoped();
-    await db.$transaction(dto.docs.map((d) => db.requiredDocument.updateMany({ where: { tenantId: insurerId, code: d.code }, data: { isActive: d.isActive, appliesToTypes: d.appliesToTypes } })));
+    const rows = dto.docs.map((d, i) => ({ code: d.code, label: d.label.trim(), isActive: d.isActive, appliesToTypes: d.appliesToTypes, requiredTypes: d.requiredTypes.filter((x) => d.appliesToTypes.includes(x)), order: i + 1 }));
+    await db.$transaction(rows.map((d) => db.requiredDocument.upsert({ where: { tenantId_code: { tenantId: insurerId, code: d.code } }, update: d, create: { ...d, tenantId: insurerId } })));
     await this.audit.record({ action: AuditAction.EDIT, tenantId: insurerId, targetType: 'RequiredDocument', targetId: insurerId, metadata: { docs: dto.docs } as any });
     return { ok: true };
   }

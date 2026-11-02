@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { AuditAction, ClaimType } from '@prisma/client';
+import { AuditAction } from '@prisma/client';
 import { AuditService } from '../../common/audit/audit.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { getTenantIdOrThrow } from '../../common/tenant/tenant-context';
@@ -8,7 +8,7 @@ import { DEFAULT_REQUIRED_DOCS } from './defaults';
 interface DocInput {
   code: string;
   label: string;
-  appliesToTypes?: ClaimType[];
+  appliesToTypes?: string[];
   order?: number;
 }
 
@@ -34,7 +34,7 @@ export class RequiredDocsService {
     return doc;
   }
 
-  async update(id: string, data: { label?: string; appliesToTypes?: ClaimType[]; order?: number; isActive?: boolean }) {
+  async update(id: string, data: { label?: string; appliesToTypes?: string[]; order?: number; isActive?: boolean }) {
     await this.prisma.scoped.requiredDocument.updateMany({ where: { id }, data });
     await this.audit.record({ action: AuditAction.EDIT, targetType: 'RequiredDocument', targetId: id, metadata: data as Record<string, unknown> });
     return { ok: true };

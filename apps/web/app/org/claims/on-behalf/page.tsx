@@ -38,11 +38,13 @@ export default function FileOnBehalf() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [allowed, setAllowed] = useState(true);
+  const [caseTypes, setCaseTypes] = useState<Record<string, string>>(CLAIM_TYPE_LABELS);
 
   useEffect(() => {
     if (!getToken('org')) { router.push('/org/login'); return; }
     if (!hasPerm('org', 'claim:file-on-behalf')) { setAllowed(false); return; }
     client.get<Company[]>('/claims/on-behalf/companies', 'org').then(setCompanies).catch((e) => { setError(e.message); setCompanies([]); });
+    client.get<{ code: string; label: string }[]>('/claims/case-types', 'org').then((l) => { if (l.length) setCaseTypes(Object.fromEntries(l.map((t) => [t.code, t.label]))); }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -132,7 +134,7 @@ export default function FileOnBehalf() {
             </Field>
             <Field label="نوع پرونده">
               <select className="input" value={f.claimType} onChange={(e) => setF({ ...f, claimType: e.target.value })}>
-                {Object.entries(CLAIM_TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                {Object.entries(caseTypes).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
             </Field>
             <Field label={`${insuredNameLabel()} *`}><input className="input" value={f.deceasedFullName} onChange={(e) => setF({ ...f, deceasedFullName: e.target.value })} /></Field>

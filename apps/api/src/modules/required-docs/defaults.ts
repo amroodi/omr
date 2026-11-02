@@ -1,54 +1,91 @@
-import { ClaimType } from '@prisma/client';
+// نوع پرونده codes. A stored code never changes meaning: labels live in Model View (workflow.ts).
+const DEATH_ANY = 'DEATH_ILLNESS'; // فوت به هر علت
+const DEATH_ACC = 'DEATH_ACCIDENT'; // فوت بر اثر حادثه
+const DIS_ILL = 'DISABILITY_ILLNESS'; // از کار افتادگی دائم و کامل ناشی از بیماری
+const DIS_ACC = 'DISABILITY_ACCIDENT'; // نقص عضو و از کار افتادگی بر اثر حادثه
+const MEDICAL = 'MEDICAL_ACCIDENT'; // جبران هزینه‌های ناشی از حادثه
+const DAILY_GEN = 'DAILY_GENERAL'; // غرامت روزانه عمومی
+const DAILY_HOSP = 'DAILY_HOSPITAL'; // غرامت روزانه بیمارستانی
 
-const ILLNESS: ClaimType = 'DEATH_ILLNESS';
-const ACCIDENT: ClaimType = 'DEATH_ACCIDENT';
-const DISABILITY: ClaimType = 'DISABILITY_ACCIDENT';
+const DEATH = [DEATH_ANY, DEATH_ACC];
+const ACCIDENT = [DIS_ACC, MEDICAL, DAILY_GEN, DAILY_HOSP];
+const INJURY = [...ACCIDENT, DIS_ILL];
 
-/**
- * Default required-document catalog seeded for a new INSURER. Transcribed from the insurer's
- * claim-document checklist: death from illness (ج-۱), death from accident (ج-۲), and
- * disability/dismemberment from accident (ج-۴). Each document lists the claim types that require
- * it. Business-editable afterwards via the API/panel — no code change needed.
- *
- * Note on mapping: the police report (کلانتری/انتظامی), EMS-115 report, final forensic opinion and
- * the traffic-crash items apply to ACCIDENTAL death only — a natural/illness death cannot produce
- * them, so requiring them on an illness claim would make it impossible to complete.
- */
-export const DEFAULT_REQUIRED_DOCS: {
+export interface DefaultDoc {
   code: string;
   label: string;
-  appliesToTypes: ClaimType[];
+  appliesToTypes: string[]; // the نوع پرونده that list it
+  requiredTypes: string[]; // of those, where the case can't be sent without it; the rest are «برحسب نیاز»
   order: number;
-}[] = [
-  // ── Core death-claim documents (both death-from-illness ج-۱ and death-from-accident ج-۲) ──
-  { code: 'last_personnel_order', label: 'آخرین حکم کارگزینی مربوط به قبل از فوت، با مهر و تأیید بیمه‌گزار (جهت کارکنان رسمی).', appliesToTypes: [ILLNESS, ACCIDENT], order: 1 },
-  { code: 'employment_contract_payslips', label: 'قرارداد کاری بین بیمه‌شده و بیمه‌گزار، معتبر در تاریخ وقوع فوت و تاریخ شروع پوشش بیمه‌ای، با مهر و تأیید بیمه‌گزار، به‌انضمام فیش‌های حقوقی چهار ماه منتهی به فوت بیمه‌شده (جهت کارکنان قراردادی).', appliesToTypes: [ILLNESS, ACCIDENT], order: 2 },
-  { code: 'social_security_history', label: 'پرینت استعلام سوابق تأمین اجتماعی بیمه‌شده (تا زمان فوت) با مهر و تأیید سازمان تأمین اجتماعی و یا بیمه‌گزار(جهت کارکنان قراردادی).', appliesToTypes: [ILLNESS, ACCIDENT], order: 3 },
-  { code: 'deceased_id_national_card', label: 'تصویر برابر با اصل کلیه صفحات شناسنامه باطل‌شده بانضمام کارت ملی بیمه‌شده.', appliesToTypes: [ILLNESS, ACCIDENT], order: 4 },
-  { code: 'death_certificate', label: 'تصویر برابر با اصل گواهی وفات.', appliesToTypes: [ILLNESS, ACCIDENT], order: 5 },
-  { code: 'burial_permit_cause', label: 'تصویر برابر با اصل جواز دفن با ذکر علت فوت که توسط پزشک معالج یا پزشک قانونی صادر شده باشد.', appliesToTypes: [ILLNESS, ACCIDENT], order: 6 },
-  { code: 'beneficiary_form', label: 'فرم تعیین/تغییر ذینفع بدون خط‌خوردگی و با امضاء بیمه‌شده و با مهر تأیید بیمه‌گزار.', appliesToTypes: [ILLNESS, ACCIDENT], order: 7 },
-  { code: 'inheritance_cert', label: 'در صورت فقدان و یا عدم تکمیل فرم ذینفع، ضمن اعلام کتبی توسط بیمه‌گزار، تصویر برابر با اصل گواهی انحصار وراثت با ارزش نامحدود و با ذکر درصد سهم هر یک از وراث.', appliesToTypes: [ILLNESS, ACCIDENT], order: 8 },
-  { code: 'heirs_id_national_card', label: 'تصویر برابر با اصل صفحه اول شناسنامه و کارت ملی کلیه وراث یا ذینفع‌ها.', appliesToTypes: [ILLNESS, ACCIDENT], order: 9 },
-  { code: 'beneficiary_iban', label: 'پرینت شماره شبای کلیه وراث یا ذینفع‌ها با مهر بانک مربوطه.', appliesToTypes: [ILLNESS, ACCIDENT], order: 10 },
+}
 
-  // ── Additional for accidental death (ج-۲) — not applicable to natural/illness deaths ──
-  { code: 'police_initial_report', label: 'تصویر برابر با اصل صورتجلسه اولیه کلانتری و یا گزارش مراجع انتظامی که نام بیمه‌شده، تاریخ حادثه و علت وقوع در آن قید شده باشد.', appliesToTypes: [ACCIDENT], order: 11 },
-  { code: 'emergency_115_report', label: 'تصویر برابر با اصل گزارش اورژانس ۱۱۵ مربوط به زمان فوت.', appliesToTypes: [ACCIDENT], order: 12 },
-  { code: 'autopsy_forensic', label: 'تصویر برابر با اصل شرح معاینه جسد و نظریه نهایی پزشکی قانونی در خصوص علت تامه فوت.', appliesToTypes: [ACCIDENT], order: 13 },
-  { code: 'traffic_crash_sketch', label: 'کروکی پلیس راهور (در صورت وقوع سانحه تصادف.)', appliesToTypes: [ACCIDENT], order: 14 },
-  { code: 'driver_license_valid', label: 'تصویر برابر با اصل گواهینامه رانندگی معتبر و متناسب با وسیله نقلیه، در صورتی که رانندگی بر عهده بیمه‌شده بوده است (در سانحه تصادف).', appliesToTypes: [ACCIDENT], order: 15 },
+/**
+ * Default catalog of a new INSURER, editable per insurer in Model View › مدارک. From Alborz's checklists
+ * 646/01 (فوت) and 645/03 (نقص عضو / ازکارافتادگی / هزینه پزشکی) and clauses ه-۱ and ه-۲ of the policy
+ * conditions, which decide what is required. Codes of the earlier catalog stay where the document is the
+ * same, so files already uploaded keep their slot. Alborz gave no list for غرامت روزانه or illness
+ * disability: those take the 645 items that can apply.
+ */
+const rows: [string, string, string[], string[]?][] = [
+  // ── فوت (646/01) ──
+  ['loss_notice_death', 'نامه اعلام خسارت بیمه‌گذار / معرف / ذینفع.', DEATH],
+  ['coverage_form_death', 'فرم تکمیل‌شده تعیین وضعیت پوشش بیمه‌ای بیمه‌شده توسط واحد صدور و تأیید واحد صدور سرپرستی.', DEATH],
+  ['police_initial_report', 'گزارش مشروح حادثه که توسط مراجع ذی‌صلاح انتظامی یا قضایی تنظیم و تأیید گردیده و نام بیمه‌شده و تاریخ دقیق وقوع حادثه در آن ذکر شده باشد (ممهور به مهر مراجع ذی‌صلاح).', DEATH],
+  ['workplace_report_death', 'گزارش مشروح حادثه با ذکر نام بیمه‌شده و تاریخ وقوع حادثه که در محل کار تنظیم و به تأیید کارشناس وزارت کار یا سازمان تأمین اجتماعی و یا واحد ایمنی و بهداشت کار بیمه‌گذار رسیده باشد.', DEATH],
+  ['traffic_crash_sketch', 'گزارش و کروکی نیروهای انتظامی درخصوص تصادفات و سوانح رانندگی.', DEATH],
+  ['witness_statement_death', 'استشهاد محلی تنظیمی مبنی بر شرح حادثه با ذکر نام بیمه‌شده و تاریخ دقیق وقوع حادثه و آدرس و شماره تلفن شهود که به تأیید شورای محل / مسجد محل / مقامات انتظامی رسیده باشد.', DEATH],
+  ['quarrel_verdict_death', 'رأی مقامات انتظامی و قضایی مبنی بر مقصر نبودن بیمه‌شده درخصوص حوادث ناشی از نزاع و درگیری.', DEATH],
+  ['physician_death_cert', 'گواهی پزشک معالج یا پزشک قانونی مبنی بر علت فوت.', DEATH, DEATH],
+  ['court_verdict_death', 'رأی نهایی دادگاه مبنی بر علت تامه فوت (برحسب مورد).', DEATH],
+  ['autopsy_forensic', 'گزارش معاینه جسد (برحسب نیاز).', DEATH],
+  ['death_certificate', 'تصویر خلاصه رونوشت وفات.', DEATH, DEATH],
+  ['burial_permit_cause', 'تصویر جواز دفن (پروانه دفن).', DEATH, DEATH],
+  ['deceased_id_national_card', 'تصویر کلیه صفحات شناسنامه باطل‌شده و کارت ملی متوفی.', DEATH, DEATH],
+  ['inheritance_cert', 'گواهی حصر وراثت که در آن سهم‌الارث هر یک از وراث قانونی مشخص شده باشد (با ارزش نامحدود و یا برابر با سرمایه فوت).', DEATH, DEATH],
+  ['beneficiary_form', 'اصل فرم تعیین ذینفع تکمیل‌شده توسط بیمه‌شده (ممهور به مهر بیمه‌گذار).', DEATH, DEATH],
+  ['medical_questionnaire', 'فرم پرسشنامه پزشکی بیمه‌شده که در زمان حیات تکمیل گردیده است (ممهور به مهر بیمه‌گذار).', DEATH],
+  ['heirs_id_national_card', 'تصویر کلیه صفحات شناسنامه وراث قانونی طبق گواهی حصر وراثت و یا ذینفع‌های مشخص‌شده در فرم تعیین ذینفع.', DEATH, DEATH],
+  ['driver_license_valid', 'تصویر گواهینامه رانندگی متناسب با وسیله نقلیه و معتبر در زمان وقوع فوت (در صورتی که بیمه‌شده رانندگی وسیله نقلیه را به عهده داشته است).', DEATH],
+  ['passport_deceased', 'تصویر کلیه صفحات گذرنامه متوفی که در آن تاریخ ورود و خروج از کشور قید شده باشد.', DEATH],
+  ['martyr_cert', 'گواهی شهادت متوفی (در صورت فوت بیمه‌شده در عتبات عالیات).', DEATH],
+  ['loan_form', 'فرم استعلام شرایط وام (برای بیمه‌های عمر مانده بدهکار).', DEATH],
+  ['retirement_list_death', 'تصویر لیست کسور حق بیمه بازنشستگی در ماه فوت بیمه‌شده / ماه قبل از آن.', DEATH],
+  ['retirement_list_start_death', 'تصویر لیست کسور حق بیمه بازنشستگی در زمان شروع پوشش بیمه‌ای بیمه‌شده.', DEATH],
+  ['last_personnel_order', 'حکم کارگزینی / قرارداد کاری / فیش حقوقی بیمه‌شده در ماه فوت.', DEATH],
+  ['employment_contract_payslips', 'حکم کارگزینی / قرارداد کاری / فیش حقوقی بیمه‌شده در زمان شروع پوشش بیمه‌ای بیمه‌شده.', DEATH],
+  ['retirement_order_death', 'حکم بازنشستگی / از کار افتادگی دائم و کامل بیمه‌شده که تاریخ بازنشستگی / از کار افتادگی وی در آن درج شده باشد.', [...DEATH, DIS_ILL]],
+  ['master_list_death', 'لیست ملاک عمل و الحاقیه مربوطه که به تأیید واحد صدور سرپرستی رسیده باشد (صفحه‌ای که نام بیمه‌شده در آن درج شده باشد).', DEATH],
+  ['report_voucher_death', 'گزارش و حواله.', DEATH],
+  ['policy_copy_death', 'تصویر بیمه‌نامه و شرایط خصوصی مهر و امضاءشده توسط بیمه‌گذار (برحسب مورد).', DEATH],
 
-  // ── Disability/dismemberment from accident (ج-۴) ──
-  { code: 'accident_report', label: '.گزارش مشروح حادثه تنظیم‌شده توسط مراجع ذی‌صلاح', appliesToTypes: [DISABILITY], order: 16 },
-  { code: 'disability_medical_cert', label: 'گواهی پزشک معالج/قانونی مبنی بر خاتمه معالجات و تأیید نقص عضو/ازکارافتادگی بانضمام سوابق پزشکی.، CT اسکن، MRI و کلیه رادیوگرافی‌ها', appliesToTypes: [DISABILITY], order: 17 },
-  { code: 'first_medical_facility_cert', label: 'گواهی اولین مرجع درمانی که بیمه‌شده بلافاصله پس از حادثه به آن مراجعه نموده است.', appliesToTypes: [DISABILITY], order: 18 },
-  { code: 'insured_id_national_card', label: 'رونوشت برابر اصل شناسنامه و کارت ملی بیمه‌شده.', appliesToTypes: [DISABILITY], order: 19 },
-  { code: 'personnel_order_payslip', label: 'رونوشت برابر اصل آخرین حکم کارگزینی و فیش حقوقی بیمه‌شده.', appliesToTypes: [DISABILITY], order: 20 },
-  { code: 'retirement_deductions_3m', label: 'لیست کسورات بازنشستگی ۳ ماه آخر منتهی به تاریخ وقوع حادثه.', appliesToTypes: [DISABILITY], order: 21 },
-  { code: 'driving_license', label: 'رونوشت برابر اصل گواهینامه رانندگی بیمه‌شده (در صورتی که راننده وسیله نقلیه بوده).', appliesToTypes: [DISABILITY], order: 22 },
-  { code: 'insured_iban', label: 'پرینت شماره شبای بیمه‌شده.', appliesToTypes: [DISABILITY], order: 23 },
+  // ── نقص عضو / ازکارافتادگی / هزینه پزشکی (645/03) ──
+  ['loss_notice_accident', 'نامه اعلام خسارت بیمه‌گذار / بیمه‌شده / معرف.', INJURY],
+  ['coverage_form_accident', 'فرم تکمیل‌شده تعیین وضعیت پوشش بیمه‌ای بیمه‌شده توسط واحد صدور و تأیید واحد صدور سرپرستی.', INJURY],
+  ['accident_report', 'گزارش مشروح حادثه که توسط مراجع ذی‌صلاح انتظامی یا قضایی تنظیم و تأیید گردیده و نام بیمه‌شده و تاریخ دقیق وقوع حادثه در آن ذکر شده باشد (ممهور به مهر مراجع مذکور).', ACCIDENT],
+  ['traffic_report_accident', 'گزارش و کروکی نیروهای انتظامی درخصوص تصادفات و سوانح رانندگی.', ACCIDENT],
+  ['workplace_report_accident', 'گزارش مشروح حادثه با ذکر نام بیمه‌شده و تاریخ وقوع حادثه که در محل کار تنظیم و به تأیید کارشناس وزارت کار یا سازمان تأمین اجتماعی و یا واحد ایمنی و بهداشت کار بیمه‌گذار رسیده باشد (برای حوادث ناشی از کار).', ACCIDENT],
+  ['witness_statement_accident', 'استشهاد محلی تنظیمی مبنی بر شرح حادثه با ذکر نام بیمه‌شده و تاریخ دقیق وقوع حادثه و آدرس و شماره تلفن شهود که به تأیید شورای محل / مسجد محل / مقامات انتظامی رسیده باشد.', ACCIDENT],
+  ['quarrel_verdict_accident', 'رأی مقامات انتظامی و قضایی مبنی بر مقصر نبودن بیمه‌شده درخصوص حوادث ناشی از نزاع و درگیری.', ACCIDENT],
+  ['first_medical_facility_cert', 'گواهی اولین مرجع درمانی که بیمه‌شده بلافاصله پس از مصدومیت به آن مراجعه نموده است.', ACCIDENT, ACCIDENT],
+  ['disability_medical_cert', 'گواهی پزشک معالج مبنی بر خاتمه معالجات و تأیید نقص عضو به انضمام سوابق پزشکی، کلیه رادیوگرافی‌ها و MRI انجام‌شده (مرتبط با موضوع بیمه‌نامه).', INJURY, [DIS_ACC, DIS_ILL]],
+  ['insured_id_national_card', 'تصویر شناسنامه / کارت ملی بیمه‌شده.', INJURY, INJURY],
+  ['driving_license', 'تصویر گواهینامه رانندگی متناسب با وسیله نقلیه و معتبر در زمان وقوع حادثه (در صورتی که بیمه‌شده رانندگی وسیله نقلیه را به عهده داشته است).', ACCIDENT],
+  ['retirement_deductions_3m', 'تصویر لیست کسور حق بیمه بازنشستگی در ماه وقوع حادثه / ماه قبل از آن.', INJURY],
+  ['retirement_list_start_accident', 'تصویر لیست کسور حق بیمه بازنشستگی در زمان شروع پوشش بیمه‌ای بیمه‌شده.', INJURY],
+  ['personnel_order_payslip', 'حکم کارگزینی / قرارداد کاری / فیش حقوقی بیمه‌شده در ماه وقوع حادثه.', INJURY],
+  ['personnel_order_start', 'حکم کارگزینی / قرارداد کاری / فیش حقوقی بیمه‌شده در زمان شروع پوشش بیمه‌ای بیمه‌شده.', INJURY],
+  ['retirement_order_accident', 'حکم بازنشستگی بیمه‌شده که تاریخ بازنشستگی وی در آن درج شده باشد.', ACCIDENT],
+  ['master_list_accident', 'لیست ملاک عمل و الحاقیه مربوطه که به تأیید واحد صدور سرپرستی رسیده باشد (صفحه‌ای که نام بیمه‌شده در آن درج شده باشد).', INJURY],
+  ['report_voucher_accident', 'گزارش و حواله.', INJURY],
+  ['policy_copy_accident', 'تصویر بیمه‌نامه و شرایط خصوصی مهر و امضاءشده توسط بیمه‌گذار (برحسب مورد).', INJURY],
 ];
+
+export const DEFAULT_REQUIRED_DOCS: DefaultDoc[] = rows.map(([code, label, appliesToTypes, requiredTypes], i) => ({
+  code, label, appliesToTypes, requiredTypes: requiredTypes ?? [], order: i + 1,
+}));
+
+/** Codes of the earlier catalog that Alborz's lists no longer ask for: switched off, their files kept under «سایر مدارک». */
+export const RETIRED_DOC_CODES = ['social_security_history', 'beneficiary_iban', 'emergency_115_report', 'insured_iban'];
 
 /**
  * «فرم تعیین/تغییر ذینفع»: دارد → the form and its people; ندارد → the انحصار وراثت certificate instead.
