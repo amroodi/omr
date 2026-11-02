@@ -836,6 +836,12 @@ model Claim {
   deceasedNationalCode     String // ENCRYPTED
   deceasedNationalCodeHash String // blind index
   claimType                String @default("DEATH_ILLNESS") // نوع پرونده code, defined per insurer in Model View
+  // نوع بیمه‌شده: null / MAIN = the subject above is the main insured; SPOUSE / CHILD = the subject is
+  // their dependent, and the main insured is named here.
+  insuredRelation             String?
+  mainInsuredName             String? // ENCRYPTED
+  mainInsuredNationalCode     String? // ENCRYPTED
+  mainInsuredNationalCodeHash String? // blind index
   deceasedBirthDate        DateTime? // تاریخ تولد بیمه‌شده (age at death is derived from it + eventDate)
   eventDate                DateTime? // date of death/accident (the risk event)
   noticeDeadline           DateTime? // eventDate + insurer.noticeDays (snapshot)
@@ -889,6 +895,7 @@ model Claim {
   @@index([insurerTenantId, status])
   @@index([brokerTenantId])
   @@index([deceasedNationalCodeHash])
+  @@index([mainInsuredNationalCodeHash])
   @@index([policyholderCompanyId])
   @@index([deletedAt])
   @@index([insurerTenantId, currentStage])
@@ -905,6 +912,7 @@ model ClaimHeir {
   fullName  String // ENCRYPTED
   iban      String // ENCRYPTED — شماره شبا (IR + 24 digits, checksum-validated)
   nationalCode String? // ENCRYPTED — کد ملی (rows from before it was asked for have none)
+  relation  String? // نسبت with the main insured (rows from before it was asked for have none)
   order     Int      @default(0)
   createdAt DateTime @default(now())
 

@@ -155,7 +155,8 @@ export class PolicyholdersAdminService {
     await this.ensurePartnership(co.tenantId, input.insurerTenantId);
     const startDate = input.startDate ? new Date(input.startDate) : null;
     const endDate = input.endDate ? new Date(input.endDate) : null;
-    if (startDate && endDate && endDate < startDate) throw new BadRequestException('تاریخ پایان قبل از تاریخ شروع است');
+    if (!startDate || !endDate) throw new BadRequestException('بازهٔ بیمه‌نامه را مشخص کنید: تاریخ شروع و تاریخ پایان');
+    if (endDate < startDate) throw new BadRequestException('تاریخ پایان قبل از تاریخ شروع است');
     const c = await this.db().policyholderContract.create({
       data: { companyId: id, insurerTenantId: input.insurerTenantId, line: input.line, policyNumber: toAsciiDigits(input.policyNumber).trim(), startDate, endDate },
       select: { id: true },
@@ -211,6 +212,7 @@ export class PolicyholdersAdminService {
     }
     const startDate = input.startDate !== undefined ? (input.startDate ? new Date(input.startDate) : null) : c.startDate;
     const endDate = input.endDate !== undefined ? (input.endDate ? new Date(input.endDate) : null) : c.endDate;
+    if ((input.startDate !== undefined || input.endDate !== undefined) && (!startDate || !endDate)) throw new BadRequestException('بازهٔ بیمه‌نامه را مشخص کنید: تاریخ شروع و تاریخ پایان');
     if (startDate && endDate && endDate < startDate) throw new BadRequestException('تاریخ پایان قبل از تاریخ شروع است');
     const number = input.policyNumber !== undefined ? toAsciiDigits(input.policyNumber).trim() : undefined;
     if (number === '') throw new BadRequestException('شماره بیمه‌نامه الزامی است');

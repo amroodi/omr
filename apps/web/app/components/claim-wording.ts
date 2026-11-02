@@ -4,6 +4,9 @@
 export const insuredNameLabel = (line?: string | null) =>
   (line === 'LIFE' ? 'نام بیمه‌شده (متوفی/از کار افتاده)' : 'نام بیمه‌شده (مصدوم/متوفی)');
 
+/** نوع بیمه‌شده of a case. */
+export const INSURED_RELATIONS: Record<string, string> = { MAIN: 'اصلی', SPOUSE: 'همسر', CHILD: 'فرزند' };
+
 export const EVENT_DATE_LABEL = 'تاریخ وقوع';
 
 export const CAUSE_LABEL = 'علت خسارت';

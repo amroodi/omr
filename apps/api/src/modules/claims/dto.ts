@@ -35,6 +35,11 @@ export class HeirDto {
   @IsString()
   @Length(24, 34)
   iban!: string; // checked (IR + 24 digits, mod-97) in the service
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 40)
+  relation?: string; // نسبت with the main insured
 }
 
 /** «ذینفع / وراث قانونی» of a case: the kind and the people named on the form. */

@@ -7,7 +7,7 @@ import { CLAIM_TYPE_LABELS, ErrorBox } from '../../../components/ui';
 import { JalaliDatePicker } from '../../../components/JalaliDatePicker';
 import { Shell } from '../../../components/Shell';
 import { CUSTOMER_NAV, POLICY_KEY, PolicyRow } from '../../nav';
-import { CAUSE_LABEL, EVENT_DATE_LABEL, insuredNameLabel } from '../../../components/claim-wording';
+import { CAUSE_LABEL, EVENT_DATE_LABEL, INSURED_RELATIONS, insuredNameLabel } from '../../../components/claim-wording';
 
 const toAscii = (s: string) => s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
 // Death claims ask for the date of death; accident disability / medical claims for the accident date.
@@ -52,7 +52,7 @@ export default function CustomerNewClaim() {
   // «broker» login: which company this claim is for (from ?company=…)
   const [brokerFor, setBrokerFor] = useState<{ id: string; name: string } | null | undefined>(undefined);
   const [isBroker, setIsBroker] = useState(false);
-  const [f, setF] = useState({ claimType: 'DEATH_ILLNESS', eventDate: '', birthDate: '', deceasedFullName: '', deceasedNationalCode: '', causeOfDeath: '', description: '', startStage: '' });
+  const [f, setF] = useState({ claimType: 'DEATH_ILLNESS', eventDate: '', birthDate: '', deceasedFullName: '', deceasedNationalCode: '', relation: '', mainName: '', mainCode: '', causeOfDeath: '', description: '', startStage: '' });
   // «اعلام خسارت»: is filing allowed from this login, and to which desks?
   const [notice, setNotice] = useState<{ enabled: boolean; targets: string[]; default: string; labels: Record<string, string> } | null>(null);
   useEffect(() => { client.get<any>('/customer/notice-options', 'customer').then(setNotice).catch(() => setNotice(null)); }, []);
@@ -93,6 +93,10 @@ export default function CustomerNewClaim() {
   const causeOptions = form?.causeLists[caseType?.causeGroup ?? 'ACCIDENT'] ?? [];
   // Ticks from the other list (the نوع پرونده changed) don't count.
   const cause = [...causes.filter((c) => causeOptions.includes(c)), f.causeOfDeath.trim()].filter(Boolean).join('، ');
+  // Model View: «نوع بیمه‌شده» for this company? A همسر / فرزند also names the main insured.
+  const askRelation = !!form?.dependents;
+  const dependent = askRelation && (f.relation === 'SPOUSE' || f.relation === 'CHILD');
+  const relationName = INSURED_RELATIONS[f.relation] ?? '';
   const types = policy?.claimTypes ?? Object.keys(CLAIM_TYPE_LABELS);
   /** Select a بیمه‌نامه; keep the claim type only if that policy's line covers it. */
   const choosePolicy = (p: PolicyRow) => {
@@ -128,6 +132,7 @@ export default function CustomerNewClaim() {
     if (birthIso && iso && new Date(birthIso) > new Date(iso)) return setError(`تاریخ تولد بعد از ${eventLabel} است`);
     if (form?.birthDate === 'required' && !birthIso) return setError('تاریخ تولد بیمه‌شده را وارد کنید');
     if (form?.cause === 'required' && !cause) return setError(`${CAUSE_LABEL} را مشخص کنید`);
+    if (askRelation && !f.relation) return setError('نوع بیمه‌شده را انتخاب کنید');
     setBusy(true);
     try {
       const payload: Record<string, string> = {
@@ -137,6 +142,10 @@ export default function CustomerNewClaim() {
         deceasedFullName: f.deceasedFullName.trim(),
         deceasedNationalCode: toAscii(f.deceasedNationalCode).trim(),
       };
+      if (askRelation) {
+        payload.insuredRelation = f.relation;
+        if (dependent) { payload.mainInsuredName = f.mainName.trim(); payload.mainInsuredNationalCode = toAscii(f.mainCode).trim(); }
+      }
       if (iso) payload.eventDate = iso;
       if (birthIso) payload.deceasedBirthDate = birthIso;
       if (cause) payload.causeOfDeath = cause;
@@ -152,11 +161,11 @@ export default function CustomerNewClaim() {
 
   return (
     <Shell title="ثبت پرونده خسارت" breadcrumb="ثبت پرونده خسارت" sectionLabel="خسارت عمر و حادثه" nav={CUSTOMER_NAV} realm="customer">
-      <div className="pcard p-6 md:p-8 pform max-w-4xl mx-auto">
+      <div className="pcard p-5 pform">
         {/* Guidance banner */}
-        <div className="pinfobox mb-6 text-center">
-          پس از ثبت پرونده، مدارک موردنیاز را در صفحهٔ پرونده بارگذاری کنید. لطفاً مشخصات بیمه‌شده و نوع پرونده را با دقت وارد نمایید.
-          <div className="text-xs mt-1 font-normal">
+        <div className="pinfobox mb-3 text-center">
+          پس از ثبت پرونده، مدارک موردنیاز را در صفحهٔ پرونده بارگذاری کنید.
+          <div className="text-xs font-normal">
             {company
               ? <>پرونده برای «{company.name}» ذیل بیمه‌نامهٔ انتخاب‌شده ثبت می‌شود و کارگزاری آن را به بیمه‌گر همان بیمه‌نامه ارسال می‌کند.</>
               : company === null ? (isBroker
@@ -168,9 +177,9 @@ export default function CustomerNewClaim() {
         <ErrorBox message={error} />
         {notice && !notice.enabled && <div className="alert-error mt-3">اعلام خسارت از این پنل غیرفعال است؛ برای ثبت پرونده با کارگزاری تماس بگیرید.</div>}
 
-        <div className="grid md:grid-cols-2 gap-5 mt-4">
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-2.5 mt-3">
           <div className="md:col-span-2">
-            <PField label="بیمه‌نامه *" help="بیمه‌نامهٔ عمر یا حوادث شرکت که خسارت ذیل آن اعلام می‌شود؛ بیمه‌نامهٔ همان سالی را انتخاب کنید که حادثه یا فوت در آن رخ داده است.">
+            <PField label="بیمه‌نامه و بازهٔ آن *" help="بیمه‌نامهٔ عمر یا حوادث شرکت که خسارت ذیل آن اعلام می‌شود؛ بیمه‌نامهٔ همان سالی را انتخاب کنید که حادثه یا فوت در آن رخ داده است.">
               <select className="input" value={policyId} onChange={(e) => { const p = policies?.find((x) => x.id === e.target.value); if (p) choosePolicy(p); }} disabled={!policies?.length}>
                 {!policies ? <option>در حال دریافت…</option> : policies.length === 0 ? <option>بیمه‌نامه‌ای ثبت نشده است</option> : policies.map((p) => (
                   <option key={p.id} value={p.id}>{p.lineLabel ? `${p.lineLabel} — ` : ''}شماره {p.policyNumber ?? '—'} — {p.startDate ?? '…'} تا {p.endDate ?? '…'}{p.inForce ? ' (جاری)' : ''}</option>
@@ -186,11 +195,32 @@ export default function CustomerNewClaim() {
             </select>
           </PField>
 
-          <PField label={`${form?.insuredLabel ?? insuredNameLabel(policy?.line)} *`}>
+          {askRelation && (
+            <PField label="نوع بیمه‌شده *" help="هر پرونده برای یک نفر است؛ برای هر فرزند پروندهٔ جداگانه ثبت کنید.">
+              <select className="input" value={f.relation} onChange={(e) => setF({ ...f, relation: e.target.value })}>
+                <option value="">انتخاب کنید…</option>
+                {Object.entries(INSURED_RELATIONS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+              </select>
+            </PField>
+          )}
+
+          {dependent && (
+            <>
+              <PField label="نام و نام خانوادگی بیمه‌شدهٔ اصلی *">
+                <input className="input" value={f.mainName} onChange={(e) => setF({ ...f, mainName: e.target.value })} />
+              </PField>
+              <PField label="کد ملی بیمه‌شدهٔ اصلی *">
+                <input className="input" value={f.mainCode} onChange={(e) => setF({ ...f, mainCode: e.target.value })} inputMode="numeric" maxLength={10} style={{ direction: 'ltr', textAlign: 'right' }} />
+              </PField>
+            </>
+          )}
+
+          {(!askRelation || f.relation) && <>
+          <PField label={dependent ? `نام و نام خانوادگی ${relationName} *` : `${form?.insuredLabel ?? insuredNameLabel(policy?.line)} *`}>
             <input className="input" value={f.deceasedFullName} onChange={(e) => setF({ ...f, deceasedFullName: e.target.value })} />
           </PField>
 
-          <PField label="کد ملی بیمه‌شده *" help="کد ملی ۱۰ رقمی بیمه‌شده.">
+          <PField label={dependent ? `کد ملی ${relationName} *` : 'کد ملی بیمه‌شده *'} help="کد ملی ۱۰ رقمی.">
             <input className="input" value={f.deceasedNationalCode} onChange={(e) => setF({ ...f, deceasedNationalCode: e.target.value })} onBlur={checkCoverage} inputMode="numeric" style={{ direction: 'ltr', textAlign: 'right' }} />
             {coverage && (
               <div className={`text-xs mt-1 ${coverage.status === 'VALID' ? 'alert-success' : coverage.status === 'NOT_CHECKED' ? '' : 'alert-error'}`}>
@@ -201,6 +231,7 @@ export default function CustomerNewClaim() {
               </div>
             )}
           </PField>
+          </>}
 
           {form?.birthDate !== 'hidden' && (
           <PField label={`تاریخ تولد بیمه‌شده (شمسی)${form?.birthDate === 'required' ? ' *' : ''}`} help="تاریخ تولد بیمه‌شده؛ سن او به‌طور خودکار محاسبه می‌شود.">
@@ -212,10 +243,14 @@ export default function CustomerNewClaim() {
             <JalaliDatePicker value={f.eventDate} onChange={onEventDate} placeholder="۱۴۰۵/۰۷/۰۱" />
           </PField>
 
+          <PField label={isDeath ? 'سن متوفی (هنگام فوت)' : 'سن بیمه‌شده (هنگام حادثه)'} help="از روی تاریخ تولد و تاریخ وقوع محاسبه می‌شود.">
+            <input className="input" readOnly value={age != null ? `${age.toLocaleString('fa-IR')} سال` : ''} placeholder="(پس از ورود تاریخ‌ها)" style={{ background: 'var(--surface-2)' }} />
+          </PField>
+
           {form?.cause !== 'hidden' && (
-          <div className="md:col-span-2"><PField label={`${CAUSE_LABEL}${form?.cause === 'required' ? ' *' : ''}`} help="علت را همان‌طور که می‌دانید بنویسید؛ مثلاً «ایست قلبی»، «تصادف رانندگی» یا «سقوط از ارتفاع».">
+          <div className="md:col-span-2 lg:col-span-3"><PField label={`${CAUSE_LABEL}${form?.cause === 'required' ? ' *' : ''}`} help="علت را همان‌طور که می‌دانید بنویسید؛ مثلاً «ایست قلبی»، «تصادف رانندگی» یا «سقوط از ارتفاع».">
             {causeOptions.length > 0 && (
-              <div className="grid sm:grid-cols-2 gap-x-4 gap-y-1.5 mb-2">
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1 mb-2">
                 {causeOptions.map((c) => (
                   <label key={c} className="flex items-start gap-1.5 text-sm cursor-pointer">
                     <input type="checkbox" className="mt-1" checked={causes.includes(c)} onChange={(e) => setCauses(e.target.checked ? [...causes, c] : causes.filter((x) => x !== c))} /> {c}
@@ -226,14 +261,10 @@ export default function CustomerNewClaim() {
             <input className="input" value={f.causeOfDeath} onChange={(e) => setF({ ...f, causeOfDeath: e.target.value })} maxLength={300} placeholder={causeOptions.length > 0 ? 'علت دیگر (تایپ کنید)…' : 'شرح علت'} />
           </PField></div>
           )}
-
-          <PField label={isDeath ? 'سن متوفی (هنگام فوت)' : 'سن بیمه‌شده (هنگام حادثه)'} help="از روی تاریخ تولد و تاریخ وقوع محاسبه می‌شود.">
-            <input className="input" readOnly value={age != null ? `${age.toLocaleString('fa-IR')} سال` : ''} placeholder="(پس از ورود تاریخ‌ها)" style={{ background: 'var(--surface-2)' }} />
-          </PField>
         </div>
 
         {notice && notice.enabled && notice.targets.length > 1 && (
-          <div className="mt-5 max-w-md">
+          <div className="mt-2.5 max-w-md">
             <label className="label">ارسال پرونده پس از ثبت به</label>
             <select className="input" value={f.startStage || notice.default} onChange={(e) => setF({ ...f, startStage: e.target.value })}>
               {notice.targets.map((t) => <option key={t} value={t}>{notice.labels[t] ?? t}</option>)}
@@ -241,13 +272,13 @@ export default function CustomerNewClaim() {
           </div>
         )}
 
-        <div className="mt-5">
+        <div className="mt-2.5">
           <label className="label">توضیحات (اختیاری)</label>
-          <textarea className="input" rows={4} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} placeholder="هر توضیح یا جزئیاتی که لازم می‌دانید بنویسید؛ مثلاً شرح حادثه، شماره تماس، یا موارد خاص پرونده." />
+          <textarea className="input" rows={2} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} placeholder="هر توضیح یا جزئیاتی که لازم می‌دانید بنویسید؛ مثلاً شرح حادثه، شماره تماس، یا موارد خاص پرونده." />
         </div>
 
-        <div className="flex justify-center mt-8">
-          <button onClick={submit} disabled={busy || !f.deceasedFullName || !f.deceasedNationalCode || !f.eventDate || company === null || (policies !== null && policies.length > 0 && !policyId)} className="btn btn-solid btn-solid-lg">
+        <div className="flex justify-center mt-3">
+          <button onClick={submit} disabled={busy || !f.deceasedFullName || !f.deceasedNationalCode || (dependent && (!f.mainName.trim() || !f.mainCode.trim())) || !f.eventDate || company === null || (policies !== null && policies.length > 0 && !policyId)} className="btn btn-solid btn-solid-lg">
             {busy ? 'در حال ثبت…' : 'ثبت پرونده و ادامه به بارگذاری مدارک'}
           </button>
         </div>

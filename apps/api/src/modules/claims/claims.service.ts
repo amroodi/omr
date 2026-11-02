@@ -26,7 +26,7 @@ import { beneficiaryHiddenDoc } from '../required-docs/defaults';
 import { toAsciiDigits } from '../../common/jalali/jalali.util';
 import { ModelStore } from '../model-view/model-store.service';
 import { CoverageService } from '../model-view/coverage.service';
-import { above, actionsFor, rulesOf, WorkflowModel, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, physicalActionsFor, PhysicalActionKey, physicalBelow, PhysicalState, Purpose, ReviewDesk, Stage, STAGE_FA, WorkflowAction, caseTypeOf, typesFor } from './workflow';
+import { above, actionsFor, rulesOf, WorkflowModel, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, physicalActionsFor, PhysicalActionKey, physicalBelow, PhysicalState, Purpose, ReviewDesk, Stage, STAGE_FA, WorkflowAction, caseTypeOf, dependentsFor, typesFor } from './workflow';
 
 const CLAIM_DOC_MIME = new Set([
   'application/pdf', 'image/jpeg', 'image/png',
@@ -42,7 +42,7 @@ export const BENEFICIARY_FILE_CODE = 'BENEFICIARY_FILE';
 const EXCEL_MIME = new Set(['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']);
 
 /** A ذینفع / وارث named on the deceased's beneficiary form. */
-export interface HeirInput { fullName: string; iban: string; nationalCode?: string }
+export interface HeirInput { fullName: string; iban: string; nationalCode?: string; relation?: string }
 /** شبا as typed («IR06 2960 …», Persian digits, or the 24 digits alone) → «IR» + 24 digits. */
 const normIban = (s: string) => {
   const a = toAsciiDigits(s ?? '').replace(/[\s-]/g, '').toUpperCase();
@@ -78,6 +78,10 @@ interface FileClaimInput {
   description?: string; // free-text details (used when بیمه‌گزار files, can't know amount/policy)
   deceasedFullName: string;
   deceasedNationalCode: string;
+  /** نوع بیمه‌شده; on SPOUSE / CHILD the deceased* fields are the dependent and these name the main insured. */
+  insuredRelation?: 'MAIN' | 'SPOUSE' | 'CHILD';
+  mainInsuredName?: string;
+  mainInsuredNationalCode?: string;
   deceasedBirthDate?: string; // ISO
   causeOfDeath?: string; // علت خسارت: the ticked causes and/or typed text
   policyHolderId?: string;
@@ -313,6 +317,20 @@ export class ClaimsService {
 
     const heirs = this.cleanHeirs(input.heirs);
     const nid = input.deceasedNationalCode;
+    // نوع بیمه‌شده: only where Model View asks for it (not the companies of a group without it).
+    let relation: string | null = null; let mainName: string | null = null; let mainNid: string | null = null;
+    if (input.insuredRelation) {
+      if (!dependentsFor(await this.modelOf(insurerTenantId), companyId ? await this.policyholders.companyChain(companyId) : [])) throw new BadRequestException('نوع بیمه‌شده برای این بیمه‌گزار فعال نیست');
+      relation = input.insuredRelation;
+      if (relation !== 'MAIN') {
+        mainName = input.mainInsuredName?.trim() || null;
+        mainNid = (input.mainInsuredNationalCode ?? '').trim();
+        if (!mainName) throw new BadRequestException('نام بیمه‌شدهٔ اصلی را بنویسید');
+        if (!isValidNationalCode(mainNid)) throw new BadRequestException('کد ملی بیمه‌شدهٔ اصلی نامعتبر است');
+        if (!isValidNationalCode(nid)) throw new BadRequestException('کد ملی بیمه‌شدهٔ فرعی نامعتبر است');
+        if (mainNid === nid) throw new BadRequestException('کد ملی بیمه‌شدهٔ فرعی و اصلی یکسان است');
+      }
+    }
     // Numbering must see every case with this policy number (other brokerages' too), or it could pick a
     // number already taken: the unrestricted client, which returns only numbers.
     const claimNumber = await nextClaimNumber(this.prisma.unscoped() as any, input.policyNumber); // «سال/شماره بیمه‌نامه/n»
@@ -330,6 +348,10 @@ export class ClaimsService {
         deceasedFullName: this.crypto.encrypt(input.deceasedFullName)!,
         deceasedNationalCode: this.crypto.encrypt(nid)!,
         deceasedNationalCodeHash: this.crypto.blindIndex(nid)!,
+        insuredRelation: relation,
+        mainInsuredName: mainName ? this.crypto.encrypt(mainName) : null,
+        mainInsuredNationalCode: mainNid ? this.crypto.encrypt(mainNid) : null,
+        mainInsuredNationalCodeHash: mainNid ? this.crypto.blindIndex(mainNid) : null,
         claimType: input.claimType ?? 'DEATH_ILLNESS',
         eventDate,
         noticeDeadline,
@@ -339,7 +361,7 @@ export class ClaimsService {
         description: input.description ?? null,
         causeOfDeath: input.causeOfDeath?.trim() || null,
         beneficiaryType: input.beneficiaryType || null,
-        ...(heirs.length ? { heirs: { create: heirs.map((h, i) => ({ fullName: this.crypto.encrypt(h.fullName)!, iban: this.crypto.encrypt(h.iban)!, nationalCode: h.nationalCode ? this.crypto.encrypt(h.nationalCode) : null, order: i })) } } : {}),
+        ...(heirs.length ? { heirs: { create: heirs.map((h, i) => ({ fullName: this.crypto.encrypt(h.fullName)!, iban: this.crypto.encrypt(h.iban)!, nationalCode: h.nationalCode ? this.crypto.encrypt(h.nationalCode) : null, relation: h.relation ?? null, order: i })) } } : {}),
         status: byPolicyHolder ? ClaimStatus.SUBMITTED : ClaimStatus.UNDER_REVIEW,
         currentStage: firstStage,
         flowDirection: 'UP',
@@ -1074,7 +1096,7 @@ export class ClaimsService {
       if (!isValidIban(iban)) throw new BadRequestException(`شماره شبای «${fullName}» نامعتبر است (IR و ۲۴ رقم).`);
       const nationalCode = h.nationalCode?.trim() || undefined;
       if (nationalCode && !isValidNationalCode(nationalCode)) throw new BadRequestException(`کد ملی «${fullName}» نامعتبر است.`);
-      return { fullName, iban, nationalCode };
+      return { fullName, iban, nationalCode, relation: h.relation?.trim() || undefined };
     });
   }
 
@@ -1103,7 +1125,7 @@ export class ClaimsService {
       heirs: claim.heirs.map((h) => {
         const iban = this.crypto.decrypt(h.iban) ?? '';
         const nationalCode = h.nationalCode ? this.crypto.decrypt(h.nationalCode) ?? '' : '';
-        return { id: h.id, nationalCode: full ? nationalCode : nationalCode ? `••••••${nationalCode.slice(-4)}` : '', fullName: this.crypto.decrypt(h.fullName) ?? '', iban: full ? iban : `IR••••••••••••••••••••${iban.slice(-4)}` };
+        return { id: h.id, relation: h.relation ?? '', nationalCode: full ? nationalCode : nationalCode ? `••••••${nationalCode.slice(-4)}` : '', fullName: this.crypto.decrypt(h.fullName) ?? '', iban: full ? iban : `IR••••••••••••••••••••${iban.slice(-4)}` };
       }),
     };
   }
@@ -1119,7 +1141,7 @@ export class ClaimsService {
     const heirs = this.cleanHeirs(input.heirs);
     await db.$transaction([
       db.claimHeir.deleteMany({ where: { claimId } }),
-      ...(heirs.length ? [db.claimHeir.createMany({ data: heirs.map((h, i) => ({ claimId, fullName: this.crypto.encrypt(h.fullName)!, iban: this.crypto.encrypt(h.iban)!, nationalCode: h.nationalCode ? this.crypto.encrypt(h.nationalCode) : null, order: i })) })] : []),
+      ...(heirs.length ? [db.claimHeir.createMany({ data: heirs.map((h, i) => ({ claimId, fullName: this.crypto.encrypt(h.fullName)!, iban: this.crypto.encrypt(h.iban)!, nationalCode: h.nationalCode ? this.crypto.encrypt(h.nationalCode) : null, relation: h.relation ?? null, order: i })) })] : []),
       db.claim.update({ where: { id: claimId }, data: { beneficiaryType: input.beneficiaryType || null } }),
     ]);
     await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { heirs: heirs.length, beneficiaryType: input.beneficiaryType ?? null } });
@@ -1708,6 +1730,8 @@ export class ClaimsService {
         sellingBranch: c.sellingBranchId ? brName.get(c.sellingBranchId) ?? null : null,
         deceasedName: c.deceasedFullName ? this.crypto.decrypt(c.deceasedFullName) : null,
         deceasedNationalCode: nid ? (showPii ? nid : `******${nid.slice(-4)}`) : null,
+        insuredRelation: c.insuredRelation === 'SPOUSE' ? 'همسر' : c.insuredRelation === 'CHILD' ? 'فرزند' : 'اصلی',
+        mainInsuredName: c.mainInsuredName ? this.crypto.decrypt(c.mainInsuredName) : null,
         birthDate: jd(c.deceasedBirthDate) ?? ascii(f.birth_date),
         age: ageAt(c.deceasedBirthDate, c.eventDate),
         eventDate: jd(c.eventDate) ?? ascii(f.death_date),
@@ -1760,13 +1784,13 @@ export class ClaimsService {
     const term = (q ?? '').trim().replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
     const nidHash = /^\d{8,10}$/.test(term) ? this.crypto.blindIndex(term.padStart(10, '0')) : null;
     const [rows, desk] = await Promise.all([
-      db.claim.findMany({ where: nidHash ? { AND: [where, { deceasedNationalCodeHash: nidHash }] } : where, orderBy: { updatedAt: 'desc' } }),
+      db.claim.findMany({ where: nidHash ? { AND: [where, { OR: [{ deceasedNationalCodeHash: nidHash }, { mainInsuredNationalCodeHash: nidHash }] }] } : where, orderBy: { updatedAt: 'desc' } }),
       this.myDesk(),
     ]);
     const claims = term && !nidHash
       ? rows.filter((c) => c.claimNumber.toLowerCase().includes(term.toLowerCase()) || (c.policyNumber ?? '').includes(term) || (this.crypto.decrypt(c.deceasedFullName) ?? '').includes(term))
       : rows;
-    return claims.map((c) => ({ ...(this.present(c) as object), needsAction: this.holdsDesk(c, desk) }));
+    return this.withPolicy(claims.map((c) => ({ ...(this.present(c) as object), needsAction: this.holdsDesk(c, desk) })));
   }
 
   /** Insurers the caller's brokerage is partnered with (only these can be filed against). */
@@ -1871,7 +1895,7 @@ export class ClaimsService {
     else if (key === 'all') where = scope;
     else throw new BadRequestException('صف نامعتبر است');
     const [claims, desk] = await Promise.all([this.prisma.replica().claim.findMany({ where, orderBy: { updatedAt: 'desc' }, take: 200 }), this.myDesk()]);
-    return claims.map((c) => ({ ...(this.present(c) as object), needsAction: this.holdsDesk(c, desk) }));
+    return this.withPolicy(claims.map((c) => ({ ...(this.present(c) as object), needsAction: this.holdsDesk(c, desk) })));
   }
 
   /**
@@ -1896,6 +1920,16 @@ export class ClaimsService {
     if (clean(q.deceasedNationalCode)) {
       const h = this.crypto.blindIndex(clean(q.deceasedNationalCode).replace(/\D/g, ''));
       if (h) and.push({ deceasedNationalCodeHash: h });
+    }
+    // کد ملی بیمه‌شده اصلی: the main insured's own cases and their dependents'.
+    if (clean(q.mainNationalCode)) {
+      const h = this.crypto.blindIndex(clean(q.mainNationalCode).replace(/\D/g, ''));
+      if (h) and.push({ OR: [{ mainInsuredNationalCodeHash: h }, { deceasedNationalCodeHash: h, insuredRelation: null }, { deceasedNationalCodeHash: h, insuredRelation: 'MAIN' }] });
+    }
+    // کد ملی بیمه‌شده فرعی: that dependent's cases only.
+    if (clean(q.subNationalCode)) {
+      const h = this.crypto.blindIndex(clean(q.subNationalCode).replace(/\D/g, ''));
+      if (h) and.push({ deceasedNationalCodeHash: h, insuredRelation: { in: ['SPOUSE', 'CHILD'] } });
     }
     if (clean(q.insurerTenantId)) and.push({ insurerTenantId: clean(q.insurerTenantId) });
     if (clean(q.brokerTenantId)) and.push({ brokerTenantId: clean(q.brokerTenantId) });
@@ -1934,7 +1968,7 @@ export class ClaimsService {
       const term = clean(q.deceasedName);
       claims = claims.filter((c) => { const n = c.deceasedFullName ? this.crypto.decrypt(c.deceasedFullName) : ''; return (n ?? '').includes(term); });
     }
-    return claims.map((c) => ({ ...(this.present(c) as object), needsAction: false }));
+    return this.withPolicy(claims.map((c) => ({ ...(this.present(c) as object), needsAction: false })));
   }
 
   /**
@@ -1992,6 +2026,30 @@ export class ClaimsService {
     return this.present(claim, true);
   }
 
+  /** Case rows + their بیمه‌گزار and the period of their بیمه‌نامه (آغاز / پایان پوشش), for the lists. */
+  private async withPolicy<T extends object>(rows: T[]) {
+    const list = rows as (T & { policyNumber?: string | null; policyholderCompanyId?: string | null })[];
+    const companyIds = [...new Set(list.map((r) => r.policyholderCompanyId).filter((x): x is string => !!x))];
+    const db = this.prisma.unscoped();
+    const [contracts, companies] = companyIds.length
+      ? await Promise.all([
+        db.policyholderContract.findMany({ where: { companyId: { in: companyIds } }, select: { companyId: true, policyNumber: true, startDate: true, endDate: true } }),
+        db.policyholderCompany.findMany({ where: { id: { in: companyIds } }, select: { id: true, name: true } }),
+      ])
+      : [[], []];
+    const period = new Map(contracts.map((k) => [`${k.companyId}|${k.policyNumber}`, k]));
+    const name = new Map(companies.map((co) => [co.id, co.name]));
+    return list.map((r) => {
+      const k = period.get(`${r.policyholderCompanyId}|${r.policyNumber}`);
+      return {
+        ...r,
+        companyName: (r.policyholderCompanyId && name.get(r.policyholderCompanyId)) || null,
+        policyStart: k?.startDate ? toJalali(k.startDate, false) : null,
+        policyEnd: k?.endDate ? toJalali(k.endDate, false) : null,
+      };
+    });
+  }
+
   private present(c: any, full = false) {
     const base = {
       coverageStatus: c.coverageStatus ?? null,
@@ -2014,6 +2072,9 @@ export class ClaimsService {
       insurerTenantId: c.insurerTenantId,
       brokerTenantId: c.brokerTenantId,
       eventDate: c.eventDate ? toJalali(c.eventDate, false) : null,
+      insuredRelation: c.insuredRelation ?? null,
+      mainInsuredName: c.mainInsuredName ? this.crypto.decrypt(c.mainInsuredName) : null,
+      mainInsuredNationalCode: c.mainInsuredNationalCode ? this.crypto.decrypt(c.mainInsuredNationalCode) : null,
       deceasedBirthDate: c.deceasedBirthDate ? toJalali(c.deceasedBirthDate, false) : null,
       deceasedAge: ageAt(c.deceasedBirthDate, c.eventDate),
       causeOfDeath: c.causeOfDeath ?? null,
@@ -2081,6 +2142,8 @@ const REPORT_COLUMNS: { key: string; label: string; group: string; type: 'text' 
   { key: 'sellingBranch', label: 'شعبهٔ فروش', group: 'طرفین', type: 'text' },
   { key: 'deceasedName', label: 'نام بیمه‌شده (متوفی)', group: 'بیمه‌شده', type: 'text' },
   { key: 'deceasedNationalCode', label: 'کد ملی متوفی', group: 'بیمه‌شده', type: 'text' },
+  { key: 'insuredRelation', label: 'نوع بیمه‌شده', group: 'بیمه‌شده', type: 'text' },
+  { key: 'mainInsuredName', label: 'نام بیمه‌شدهٔ اصلی', group: 'بیمه‌شده', type: 'text' },
   { key: 'birthDate', label: 'تاریخ تولد', group: 'بیمه‌شده', type: 'date' },
   { key: 'age', label: 'سن هنگام فوت/حادثه', group: 'بیمه‌شده', type: 'number' },
   { key: 'causeOfDeath', label: 'علت خسارت', group: 'بیمه‌شده', type: 'text' },

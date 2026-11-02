@@ -6,12 +6,8 @@ import { client, getToken } from '../../../lib/client';
 import { Shell } from '../../components/Shell';
 import { claimTypeLabel, ErrorBox, FancyLoader, STATUS_MAP } from '../../components/ui';
 import { CUSTOMER_NAV, POLICY_KEY, PolicyRow } from '../nav';
+import { CaseTable, MyClaim } from '../case-table';
 
-interface MyClaim {
-  id: string; claimNumber: string; policyNumber?: string | null; status: string; claimType: string; deceasedName: string | null;
-  needsAction: boolean; currentStageLabel?: string | null; eventDate?: string | null; createdAt?: string | null;
-  claimedAmount?: string; payableAmount?: string; finalizedAmount?: string | null; policyholderCompanyId?: string | null;
-}
 type GroupBy = 'status' | 'type' | 'stage' | 'month';
 const GROUPS: [GroupBy, string][] = [
   ['status', 'پرونده‌ها به تفکیک وضعیت'],
@@ -43,7 +39,9 @@ export default function CustomerTrack() {
 
   useEffect(() => {
     if (!getToken('customer')) { router.push('/customer/login'); return; }
-    const co = new URLSearchParams(window.location.search).get('company') ?? '';
+    const params = new URLSearchParams(window.location.search);
+    const co = params.get('company') ?? '';
+    if (params.get('tab') === 'action') setTab('action');
     setCompanyId(co);
     client.get<MyClaim[]>('/customer/claims', 'customer').then(setClaims).catch((e) => setError(e.message));
     client.get<{ contracts: PolicyRow[]; selectedId: string | null; brokerName: string }>(`/customer/dashboard${co ? `?companyId=${encodeURIComponent(co)}` : ''}`, 'customer').then((d) => {
@@ -116,25 +114,7 @@ export default function CustomerTrack() {
             return (
               <div key={g.key} className="cu-group">
                 <div className="cu-group-h"><span>{g.label} - ({faN(g.rows.length)}) عدد :</span><span>جمع: {faN(sum)} ریال</span></div>
-                <div className="overflow-x-auto">
-                  <table className="table cu-group-t">
-                    <thead><tr>{['عملیات', 'شماره پرونده', 'بیمه‌شده (متوفی)', 'نوع خسارت', 'تاریخ وقوع', 'مبلغ برآوردی (ریال)', 'مبلغ قابل پرداخت (ریال)', 'وضعیت پرونده'].map((h) => <th key={h}>{h}</th>)}</tr></thead>
-                    <tbody>
-                      {g.rows.map((c) => (
-                        <tr key={c.id} className={c.status === 'PAID' ? 'is-paid' : c.status === 'REJECTED' ? 'is-rejected' : undefined}>
-                          <td><Link href={`/customer/claims/${c.id}/workflow`} target="_blank" rel="noopener" className="cu-more">جزئیات بیشتر</Link></td>
-                          <td className="latin-digits" style={{ whiteSpace: 'nowrap' }}>{c.claimNumber}</td>
-                          <td>{c.deceasedName ?? '—'}</td>
-                          <td>{claimTypeLabel(c)}</td>
-                          <td>{c.eventDate ?? '—'}</td>
-                          <td>{faN(Number(c.claimedAmount || 0))}</td>
-                          <td>{c.finalizedAmount ? faN(Number(c.finalizedAmount)) : '—'}</td>
-                          <td>{STATUS_MAP[c.status]?.label ?? c.status}{c.currentStageLabel ? ` — نزد ${c.currentStageLabel}` : ''}{c.needsAction ? ' (نیازمند اقدام شما)' : ''}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <CaseTable rows={g.rows} />
               </div>
             );
           })}

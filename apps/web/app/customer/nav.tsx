@@ -18,5 +18,5 @@ export const POLICY_KEY = 'customer.policy';
 export interface PolicyRow {
   id: string; line: 'LIFE' | 'ACCIDENT' | null; lineLabel: string | null; policyNumber: string | null; insurerName: string;
   startDate: string | null; endDate: string | null; startIso: string | null; endIso: string | null; inForce: boolean; claimTypes: string[] | null;
-  form?: { insuredLabel: string; eventLabel: string; birthDate: 'required' | 'optional' | 'hidden'; cause: 'required' | 'optional' | 'hidden'; causeLists: { DEATH: string[]; ACCIDENT: string[] }; caseTypes: { code: string; label: string; causeGroup: 'DEATH' | 'ACCIDENT'; death: boolean }[] };
+  form?: { insuredLabel: string; eventLabel: string; birthDate: 'required' | 'optional' | 'hidden'; cause: 'required' | 'optional' | 'hidden'; causeLists: { DEATH: string[]; ACCIDENT: string[] }; caseTypes: { code: string; label: string; causeGroup: 'DEATH' | 'ACCIDENT'; death: boolean }[]; dependents?: boolean };
 }

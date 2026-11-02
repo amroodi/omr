@@ -1814,3 +1814,103 @@ code, kbd, pre, samp, .latin-digits { font-family: 'Vazirmatn', ui-monospace, SF
 .is-customer .ptopbar .ptopbar-spacer { flex: 1 1 0; }
 @media (max-width: 1300px) { .is-customer .pbreadcrumb { display: none; } }
 @media (max-width: 760px) { .is-customer .ptopbar > * { flex-shrink: 1; } }
+
+/* ═══════════ Compact panels (after Sinad: 12px text, 31px fields) — as little scrolling as possible ═══════════
+   Lowering the root size shrinks everything sized in rem (text, Tailwind padding and gaps) in every panel page. */
+@media (min-width: 1024px) {
+  html:has(.pshell) { font-size: 13.5px; }
+}
+.pshell { --topbar-h: 46px; --side-w: 220px; }
+.pshell.is-customer { --topbar-h: 46px; font-size: 13px; line-height: 1.6; }
+.pshell-wrap { max-width: none; }
+.pshell-content, .is-customer .pshell-content { padding: 8px 10px 12px; }
+.ptopbar-title, .is-customer .ptopbar-title { font-size: 1.15rem; font-weight: 700; }
+.ptopbar-logo { height: 30px; }
+.psidebar-logo { padding: 8px; gap: 4px; }
+.psidebar-logo .circle { width: 64px; height: 64px; }
+.pnav-item, .is-customer .pnav-item { padding: 8px 14px; min-height: 0; line-height: 1.5; }
+.is-customer .psidebar.is-rail .pnav-item { padding: 9px 0; }
+.psidebar-toggle { padding: 8px 14px; }
+.psidebar.is-rail .pnav-item, .psidebar.is-rail .pnav-section { padding: 9px 0; }
+
+.pcard, .pshell .card, .is-customer .pcard { border-radius: 8px; box-shadow: 0 1px 2px rgba(16,24,40,.06); }
+:root.dark .pcard, :root.dark .pshell .card { box-shadow: 0 1px 2px rgba(0,0,0,.4); }
+.pshell .pcard.p-5, .pshell .pcard.p-6, .pshell .pcard.p-8, .is-customer .pcard.p-6, .is-customer .pcard.p-5, .pshell .card.p-5, .pshell .card.p-6 { padding: 10px 12px; }
+
+.pshell .input, .pform .input, .is-customer .input, .is-customer .input.cu-pill { min-height: 31px; padding: 4px 10px; font-size: 12px; border-radius: 4px !important; border-width: 1px; }
+.pshell textarea.input, .is-customer textarea.input { border-radius: 4px; }
+.pform .label, .pshell .label { font-size: 12px; margin-bottom: 2px; }
+.pshell .btn, .is-customer .btn { padding: 4px 12px; font-size: 12px; line-height: 1.5; border-radius: 4px; box-shadow: none; }
+.pshell .btn-sm { padding: 2px 8px; font-size: 11.5px; }
+.btn-solid-lg { padding: 6px 22px; font-size: 13px; }
+.pinfobox { padding: 6px 12px; font-size: 12px; line-height: 1.7; border-radius: 6px; }
+.phelp { width: 20px; height: 20px; font-size: 11px; border-width: 1px; }
+.alert-error, .alert-success { padding: 5px 10px; font-size: 12px; }
+.table { font-size: 12px; }
+.table thead th { padding: 6px 8px; }
+.table tbody td { padding: 5px 8px; }
+
+/* بیمه‌گزار / نماینده پیشخوان */
+.is-customer .cu-home { gap: 8px; }
+.is-customer .cu-spec { border-radius: 8px; padding: 8px 12px; gap: 4px; }
+.is-customer .cu-spec-h { min-height: 0; font-size: 13px; }
+.is-customer .cu-spec-row { min-height: 0; align-items: center; gap: 4px 16px; }
+@media (min-width: 901px) { .is-customer .cu-spec-row { grid-template-columns: minmax(0, 1fr) auto; } }
+.is-customer .cu-select { min-height: 0; }
+.is-customer .cu-select select { height: 31px; line-height: 1.5; padding: 4px 10px; border-radius: 4px; }
+.is-customer .cu-spec-facts { display: flex; flex-wrap: wrap; gap: 2px 18px; font-size: 12px; padding: 0; }
+.is-customer .cu-spec-facts > span { min-height: 0; padding: 0; }
+.is-customer .cu-spec-facts svg { width: 18px; height: 18px; }
+.is-customer .cu-dot { width: 13px; height: 13px; }
+.is-customer .cu-cards { gap: 8px; }
+.is-customer .cu-card { border-radius: 8px; padding: 8px 12px; min-height: 0; }
+.is-customer .cu-card-t, .is-customer .cu-card-t.is-big { font-size: 12px; line-height: 1.6; font-weight: 700; margin: 0 0 2px; color: var(--muted); }
+.is-customer .cu-card-v { font-size: 13px; line-height: 1.5; }
+.is-customer .cu-card-s, .is-customer .cu-card-k { font-size: 12px; line-height: 1.6; margin: 0; }
+.is-customer .cu-card-ico svg { width: 30px; height: 30px; }
+.cu-launch { padding: 8px 12px; }
+.is-customer .cu-tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+@media (max-width: 900px) { .is-customer .cu-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.is-customer .pdiamond-wrap { width: auto; min-height: 0; margin: 0; padding: 6px 8px; flex-direction: row; gap: 12px; justify-content: flex-start; text-align: start; }
+.is-customer .pdiamond { width: 30px; height: 30px; border-radius: 7px; margin: 5px; }
+.is-customer .pdiamond svg { width: 18px; height: 18px; }
+.is-customer .pdiamond-title { font-size: 12.5px; line-height: 1.5; }
+.is-customer .pdiamond-sub { font-size: 11px; line-height: 1.4; }
+.is-customer .cu-notice { min-height: 0; margin-top: 6px; padding: 4px 10px; border-radius: 4px; font-size: 11.5px; line-height: 1.6; }
+.is-customer .cu-track, .is-customer .cu-pw { border-radius: 8px; padding: 8px 12px; gap: 8px; }
+.cu-radios { flex-direction: row; flex-wrap: wrap; gap: 2px 14px; font-size: 12px; }
+.cu-radios input { width: 14px; height: 14px; }
+.cu-track-policy { flex-direction: row; flex-wrap: wrap; gap: 8px; font-size: 12px; }
+.cu-outline { padding: 2px 10px; font-size: 12px; border-radius: 4px; border-width: 1px; }
+.cu-tabs button { padding: 4px 10px; font-size: 12px; }
+.cu-group-h { padding: 3px 10px; font-size: 12px; }
+.cu-group-t th { font-size: 11.5px; }
+.cu-group-t td { font-size: 12px; }
+
+/* Case tables and search of the work desk, as in the Sinad portal */
+.ltr-num { direction: ltr; text-align: right; white-space: nowrap; }
+.sn-search { margin-bottom: 8px; }
+.sn-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px 10px; }
+.sn-wide { grid-column: 1 / -1; }
+.sn-tabs.wd-tiles { grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); border-radius: 6px; background: #d9dde2; }
+:root.dark .sn-tabs.wd-tiles { background: var(--surface-2); }
+.sn-tabs.has-open { border-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.sn-tabs .wd-tile { background: transparent; outline: 0; padding: 5px 3px; gap: 3px; justify-content: space-between; }
+.sn-tabs .wd-tile-label { color: var(--text); font-size: 11.5px; min-height: 0; -webkit-line-clamp: 3; }
+.sn-tabs .wd-tile.is-action .wd-tile-label { font-weight: 700; }
+.sn-tabs .wd-tile-count { min-width: 30px; padding: 0 6px; border-radius: 999px; background: var(--surface); font-size: 11px; font-weight: 700; line-height: 18px; }
+.sn-tabs .wd-tile:hover, .sn-tabs .wd-tile.is-zero:hover { background: color-mix(in srgb, var(--surface) 55%, transparent); }
+.sn-tabs .wd-tile.is-on, .sn-tabs .wd-tile.is-on:hover { background: var(--surface); box-shadow: 0 0 3px rgba(16,24,40,.25); }
+.sn-panel { background: var(--surface); border: 1px solid var(--border); border-top: 0; border-radius: 0 0 6px 6px; padding: 6px 10px 8px; }
+.sn-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding: 4px 10px; background: #dcdfe3; border-radius: 4px 4px 0 0; font-size: 12px; }
+:root.dark .sn-bar { background: var(--surface-2); }
+.sn-bar h3 { font-size: 12.5px; }
+.sn-table { border: 1px solid var(--border-strong); }
+.sn-table thead th { background: #dcdfe3; color: var(--text); font-weight: 700; font-size: 11.5px; border-bottom-width: 1px; white-space: normal; padding: 5px 6px; }
+:root.dark .sn-table thead th { background: var(--surface-2); }
+.sn-table tbody td { padding: 4px 6px; font-size: 12px; }
+.sn-table tbody tr:nth-child(even) { background: transparent; }
+.sn-act { display: inline-block; background: var(--brand); color: #fff !important; border-radius: 4px; padding: 3px 9px; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.sn-act:hover { filter: brightness(1.07); }
+.sn-act.is-ghost { background: transparent; color: var(--text) !important; box-shadow: inset 0 0 0 1px var(--border-strong); }
+.wd-pager { padding: 6px 2px 0; font-size: 12px; }
