@@ -247,10 +247,10 @@ export default function ModelView() {
                 </div>
               </Card>
               <Card title="بیمه‌شده و افراد تحت تکفل">
-                <Toggle on={m.insured.enabled} onChange={(v) => setM({ ...m, insured: { ...m.insured, enabled: v } })} hint="بیمه‌گزار یا نماینده از صفحهٔ پرونده پیوندی پیامک می‌کند؛ گیرنده بدون ورود، فقط مدارک انتخاب‌شده را بارگذاری می‌کند و پرونده را نمی‌بیند.">بارگذاری مدارک توسط بیمه‌شده فعال است</Toggle>
+                <Toggle on={m.insured.enabled} onChange={(v) => setM({ ...m, insured: { ...m.insured, enabled: v } })} hint="بیمه‌گزار یا نماینده از صفحهٔ پرونده شماره‌ای را دعوت می‌کند؛ آن فرد با کد پیامکی وارد پنل می‌شود، وضعیت پرونده را می‌بیند و فقط مدارک انتخاب‌شده را بارگذاری می‌کند.">پنل بیمه‌شده فعال است</Toggle>
                 {m.insured.enabled && (
                   <>
-                    <label className="text-sm block max-w-[12rem]">اعتبار پیوند (روز)<input className="input mt-1" type="number" min={1} max={60} value={m.insured.linkDays} onChange={(e) => setM({ ...m, insured: { ...m.insured, linkDays: Number(e.target.value) } })} /></label>
+                    <label className="text-sm block max-w-[12rem]">اعتبار دعوت (روز)<input className="input mt-1" type="number" min={1} max={60} value={m.insured.linkDays} onChange={(e) => setM({ ...m, insured: { ...m.insured, linkDays: Number(e.target.value) } })} /></label>
                     <div className="text-sm font-bold">مدارکی که بیمه‌شده بارگذاری می‌کند</div>
                     <div className="space-y-1">
                       {cur.docs.filter((d) => d.isActive).map((d) => <Toggle key={d.code} on={m.insured.docCodes.includes(d.code)} onChange={(v) => setM({ ...m, insured: { ...m.insured, docCodes: v ? [...m.insured.docCodes, d.code] : m.insured.docCodes.filter((x) => x !== d.code) } })}>{d.label}</Toggle>)}

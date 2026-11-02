@@ -61,7 +61,7 @@ export interface WorkflowModel extends CaseRules {
   stages: Record<Stage, { label: string; reviewDocs: boolean }>; // reviewDocs: must this desk ✓ every document before sending on?
   byType: Record<string, Partial<CaseRules>>; // نوع پرونده → what differs from the rules above
   panels: { COMPANY: PanelRights; REPRESENTATIVE: PanelRights };
-  insured: { enabled: boolean; docCodes: string[]; linkDays: number }; // upload link for the بیمه‌شده or dependents
+  insured: { enabled: boolean; docCodes: string[]; linkDays: number }; // پنل بیمه‌شده: what they upload; how long an invitation lasts
   form: {
     eventLabel: string;
     birthDate: FieldMode;

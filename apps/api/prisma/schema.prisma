@@ -891,6 +891,7 @@ model Claim {
   letters      ClaimLetter[]
   physicalRequests ClaimPhysicalRequest[]
   heirs        ClaimHeir[]
+  insuredAccess ClaimInsuredAccess[]
 
   @@index([insurerTenantId, status])
   @@index([brokerTenantId])
@@ -1186,12 +1187,29 @@ model AiReviewJob {
 
 // One-tap re-upload link sent by SMS when the AI refused files: opens the case's refused slots only,
 // no login. Only a SHA-256 of the token is stored.
+// «پنل بیمه‌شده»: a mobile number invited onto one case. It signs in with an SMS code and uploads only
+// the documents Model View names for that insurer.
+model ClaimInsuredAccess {
+  id          String    @id @default(uuid())
+  claimId     String
+  claim       Claim     @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  phoneHash   String // blind index of the mobile (how sign-in finds it)
+  phone       String // ENCRYPTED
+  fullName    String? // ENCRYPTED — who it is (the insured, a dependent…)
+  invitedById String?
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([phoneHash])
+  @@index([claimId])
+}
+
 model CaseUploadLink {
   id        String   @id @default(uuid())
   tokenHash String   @unique
   claimId   String
   phone     String? // ENCRYPTED — where its result SMS goes
-  docCodes  String[] // the بیمه‌شده's link: exactly these documents (empty: the AI re-upload link)
   expiresAt DateTime
   createdAt DateTime @default(now())
 

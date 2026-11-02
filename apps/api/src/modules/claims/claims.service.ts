@@ -24,11 +24,8 @@ import { nextClaimNumber } from './claim-number';
 import { isValidIban, isValidNationalCode } from '../../common/validation/field-validation';
 import { beneficiaryHiddenDoc } from '../required-docs/defaults';
 import { toAsciiDigits } from '../../common/jalali/jalali.util';
-import { randomBytes } from 'crypto';
-import { webBase } from '../ai-review/ai-review.queue';
 import { ModelStore } from '../model-view/model-store.service';
 import { CoverageService } from '../model-view/coverage.service';
-import { SmsService } from '../auth/sms.service';
 import { above, actionsFor, rulesOf, WorkflowModel, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, physicalActionsFor, PhysicalActionKey, physicalBelow, PhysicalState, Purpose, ReviewDesk, Stage, STAGE_FA, WorkflowAction } from './workflow';
 
 const CLAIM_DOC_MIME = new Set([
@@ -145,7 +142,6 @@ export class ClaimsService {
     private readonly rateLimit: RateLimitService,
     private readonly store: ModelStore,
     private readonly coverage: CoverageService,
-    private readonly sms: SmsService,
   ) {}
 
   // ── Notification helpers (in-panel + SMS via the relevant org's gateway) ──
@@ -1499,23 +1495,19 @@ export class ClaimsService {
     return { link, claim };
   }
 
-  /** Model View: the بیمه‌گزار / نماینده sends the بیمه‌شده or a dependent a link for their own documents. */
-  async sendInsuredLink(claimId: string, rawPhone: string) {
-    const db = this.db();
-    const claim = await db.claim.findUnique({ where: { id: claimId } });
+  /** A case the caller is a party to (for the پنل بیمه‌شده invitations). Only the بیمه‌گزار side invites. */
+  async claimForParty(claimId: string) {
+    if (getContext()?.actorType !== 'CUSTOMER') throw new ForbiddenException('دسترسی ندارید');
+    const claim = await this.db().claim.findUnique({ where: { id: claimId } });
     if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
     this.assertParticipant(claim);
-    assertNotPaid(claim);
-    const { insured } = await this.modelOf(claim.insurerTenantId);
-    if (!insured.enabled) throw new ForbiddenException('پنل بیمه‌شده برای این بیمه‌گر فعال نیست');
-    const phone = rawPhone.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).replace(/\s/g, '');
-    if (!/^09\d{9}$/.test(phone)) throw new BadRequestException('شماره موبایل نامعتبر است');
-    if (!(await this.rateLimit.hit(`insuredlink:${claimId}`, 5, 3600))) throw new TooManyRequestsException('تعداد ارسال‌ها زیاد است. بعداً تلاش کنید');
-    const token = randomBytes(24).toString('base64url');
-    await this.prisma.unscoped().caseUploadLink.create({ data: { tokenHash: sha256(token), claimId, phone: this.crypto.encrypt(phone), docCodes: insured.docCodes, expiresAt: new Date(Date.now() + insured.linkDays * 86_400_000) } });
-    await this.sms.send(phone, `پروندهٔ ${claim.claimNumber}: لطفاً مدارک خود را از این پیوند بارگذاری کنید: ${webBase()}/fix/${token}`, claim.brokerTenantId ?? claim.insurerTenantId);
-    await this.audit.record({ action: AuditAction.CREATE, tenantId: claim.insurerTenantId, targetType: 'InsuredUploadLink', targetId: claimId });
-    return { ok: true };
+    return claim;
+  }
+
+  /** A file from the پنل بیمه‌شده: the caller has already checked the access; the file rules are the panels'. */
+  async storeInsuredDocument(claim: { id: string; insurerTenantId: string; brokerTenantId: string | null }, file: Express.Multer.File, docCode: string, phone: string | null) {
+    if (!claimDocOk(file)) throw new BadRequestException(CLAIM_DOC_TYPES_FA);
+    return this.storeDocument(claim, file, docCode, null, async () => phone);
   }
 
   /** The insurer behind a بیمه‌نامه of the caller's own company (or brokerage, for the «broker» login). */
@@ -1530,10 +1522,6 @@ export class ClaimsService {
   /** What the link page shows: the case number and its refused documents (label + why). */
   async uploadLinkInfo(token: string, ip: string) {
     const { link, claim } = await this.linkClaim(token, ip);
-    if (link.docCodes.length) {
-      const rows = await this.prisma.unscoped().requiredDocument.findMany({ where: { tenantId: claim.insurerTenantId, code: { in: link.docCodes }, isActive: true, appliesToTypes: { has: claim.claimType } }, orderBy: { order: 'asc' }, select: { code: true, label: true } });
-      return { claimNumber: claim.claimNumber, archived: claim.status === 'PAID', expiresAt: toJalali(link.expiresAt), checking: 0, insured: true, items: rows.map((r) => ({ ...r, reason: null })) };
-    }
     const refused = await this.aiQueue.refusedSlots(claim.id);
     const reqs = await this.prisma.unscoped().requiredDocument.findMany({ where: { tenantId: claim.insurerTenantId, code: { in: refused.map((r) => r.code) } }, select: { code: true, label: true } });
     const label = new Map(reqs.map((r) => [r.code, r.label]));
@@ -1553,12 +1541,8 @@ export class ClaimsService {
     assertNotPaid(claim);
     if (!file?.buffer?.length) throw new BadRequestException('فایلی دریافت نشد');
     if (!claimDocOk(file)) throw new BadRequestException(CLAIM_DOC_TYPES_FA);
-    if (link.docCodes.length) {
-      if (!link.docCodes.includes(docCode)) throw new BadRequestException('این مدرک در این پیوند نیست');
-    } else {
-      const refused = await this.aiQueue.refusedSlots(claim.id);
-      if (!refused.some((r) => r.code === docCode)) throw new BadRequestException('این مدرک نیازی به بارگذاری دوباره ندارد');
-    }
+    const refused = await this.aiQueue.refusedSlots(claim.id);
+    if (!refused.some((r) => r.code === docCode)) throw new BadRequestException('این مدرک نیازی به بارگذاری دوباره ندارد');
     const phone = link.phone ? this.crypto.decrypt(link.phone) : null;
     return this.storeDocument(claim, file, docCode, null, async () => phone);
   }

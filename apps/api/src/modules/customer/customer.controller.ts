@@ -53,7 +53,7 @@ import { CustomerSignupStatus } from '@prisma/client';
 import { ClaimsService } from '../claims/claims.service';
 import { HeirsDto, PhysicalDto } from '../claims/dto';
 import { CoverageService } from '../model-view/coverage.service';
-import { CoverageCheckDto, InsuredLinkDto } from './dto';
+import { CoverageCheckDto } from './dto';
 import { CustomerAuthService } from './customer-auth.service';
 import { CustomerService } from './customer.service';
 import { RepresentativeLoginDto, CustomerChangePasswordDto, CustomerCompanyLoginDto, CustomerFileClaimDto, CustomerRequestOtpDto, CustomerSignupDto, CustomerSignupVerifyDto, CustomerVerifyOtpDto } from './dto';
@@ -277,12 +277,6 @@ export class CustomerController {
     const insurerId = await this.claims.insurerOfContract(dto.contractId);
     const r = await this.coverage.lookup(insurerId, dto.nationalCode);
     return r ? { enabled: true, ...r } : { enabled: false };
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @Post('claims/:id/insured-link')
-  insuredLink(@Param('id') id: string, @Body() dto: InsuredLinkDto) {
-    return this.claims.sendInsuredLink(id, dto.phone);
   }
 
   @UseGuards(JwtAuthGuard)

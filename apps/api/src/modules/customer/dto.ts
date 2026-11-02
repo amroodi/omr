@@ -157,10 +157,3 @@ export class CoverageCheckDto {
   @Matches(/^\d{10}$/, { message: 'کد ملی باید ۱۰ رقم باشد' })
   nationalCode!: string;
 }
-
-export class InsuredLinkDto {
-  @ToAsciiDigits()
-  @IsString()
-  @Length(10, 14)
-  phone!: string;
-}

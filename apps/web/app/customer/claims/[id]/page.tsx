@@ -40,25 +40,44 @@ function docStory(it: ChecklistItem, manual = false): { tone: 'ok' | 'bad' | 'wa
  * بیمه‌گزار — «جزئیات پرونده»: the case header card, every required document with its precise review
  * trail and an upload ring, then «روند پرونده» (its own page) and «ثبت نهایی» (send the documents on).
  */
-/** Model View: a link for the بیمه‌شده or a dependent. The API refuses it where the insurer has it off (the card then hides). */
-function InsuredLink({ claimId }: { claimId: string }) {
+/** Model View: who else may sign in to the پنل بیمه‌شده for this case (the insured, a dependent). */
+function InsuredAccess({ claimId }: { claimId: string }) {
+  const base = `/customer/claims/${claimId}/insured-access`;
+  const [rows, setRows] = useState<{ id: string; fullName: string | null; phone: string; expiresAt: string }[]>([]);
   const [phone, setPhone] = useState('');
+  const [name, setName] = useState('');
   const [state, setState] = useState<{ t: 'ok' | 'err'; m: string } | null>(null);
-  const [off, setOff] = useState(false);
-  const send = async () => {
+  const load = () => client.get<typeof rows>(base, 'customer').then(setRows).catch(() => setRows([]));
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [claimId]);
+  const invite = async () => {
     setState(null);
-    try { await client.post(`/customer/claims/${claimId}/insured-link`, { phone }, 'customer'); setState({ t: 'ok', m: 'پیوند پیامک شد.' }); setPhone(''); }
-    catch (e: any) { if (/فعال نیست/.test(e.message)) setOff(true); else setState({ t: 'err', m: e.message }); }
+    try { await client.post(base, { phone, fullName: name || undefined }, 'customer'); setState({ t: 'ok', m: 'دعوت پیامک شد.' }); setPhone(''); setName(''); await load(); }
+    catch (e: any) { setState({ t: 'err', m: e.message }); }
   };
-  if (off) return <div className="pcard p-4 text-sm" style={{ color: 'var(--muted)' }}>بارگذاری مدارک توسط بیمه‌شده برای این بیمه‌گر فعال نیست.</div>;
+  const revoke = async (id: string) => {
+    if (!window.confirm('دسترسی این شماره قطع شود؟')) return;
+    try { await client.del(`${base}/${id}`, 'customer'); await load(); } catch (e: any) { setState({ t: 'err', m: e.message }); }
+  };
   return (
-    <div className="pcard p-6 space-y-2">
-      <h3 className="font-extrabold">پیوند بارگذاری برای بیمه‌شده</h3>
+    <div className="pcard p-6 space-y-3">
+      <h3 className="font-extrabold">پنل بیمه‌شده</h3>
+      <p className="text-sm" style={{ color: 'var(--muted)' }}>بیمه‌شده یا افراد تحت تکفل با این شماره وارد می‌شوند و فقط مدارک خود را بارگذاری می‌کنند.</p>
       {state && <div className={state.t === 'ok' ? 'alert-success' : 'alert-error'}>{state.m}</div>}
       <div className="flex gap-2 flex-wrap">
-        <input className="input max-w-xs" inputMode="numeric" style={{ direction: 'ltr', textAlign: 'right' }} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="09xxxxxxxxx" aria-label="موبایل بیمه‌شده" />
-        <button type="button" className="btn btn-primary" disabled={phone.length < 10} onClick={send}>ارسال پیامک</button>
+        <input className="input max-w-xs" value={name} onChange={(e) => setName(e.target.value)} placeholder="نام (اختیاری)" maxLength={120} aria-label="نام" />
+        <input className="input max-w-xs" inputMode="numeric" style={{ direction: 'ltr', textAlign: 'right' }} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="09xxxxxxxxx" aria-label="موبایل" />
+        <button type="button" className="btn btn-primary" disabled={phone.length < 10} onClick={invite}>دعوت با پیامک</button>
       </div>
+      {rows.length > 0 && (
+        <ul className="space-y-1.5 text-sm">
+          {rows.map((r) => (
+            <li key={r.id} className="flex items-center justify-between gap-2">
+              <span>{r.fullName ?? 'بدون نام'} — <bdi className="latin-digits">{r.phone}</bdi></span>
+              <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => revoke(r.id)}>قطع دسترسی</button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -165,7 +184,7 @@ export default function CustomerClaim() {
               <div className="pcard p-6"><h3 className="font-extrabold mb-3">اصل مدارک</h3><WorkflowPanel claimId={id} workflow={{ ...claim.workflow, actions: claim.workflow.actions.filter((a) => a.key !== 'SUBMIT') }} realm="customer" onDone={reload} /></div>
             )}
 
-            {claim.insuredLinkEnabled && <InsuredLink claimId={id} />}
+            {claim.insuredLinkEnabled && <InsuredAccess claimId={id} />}
             <div className="pcard p-6">
               <div className="flex justify-between items-center mb-3">
                 <h3 className="font-extrabold">مدارک مورد نیاز</h3>
