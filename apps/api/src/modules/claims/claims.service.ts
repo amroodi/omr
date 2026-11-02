@@ -21,7 +21,8 @@ import { RateLimitService } from '../../common/rate-limit/rate-limit.service';
 import { TooManyRequestsException } from '../inquiry/http-exceptions';
 import { PERMISSIONS } from '../../common/rbac/permissions';
 import { nextClaimNumber } from './claim-number';
-import { isValidIban } from '../../common/validation/field-validation';
+import { isValidIban, isValidNationalCode } from '../../common/validation/field-validation';
+import { beneficiaryHiddenDoc } from '../required-docs/defaults';
 import { toAsciiDigits } from '../../common/jalali/jalali.util';
 import { above, actionsFor, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, physicalActionsFor, PhysicalActionKey, physicalBelow, PhysicalState, Purpose, ReviewDesk, Stage, STAGE_FA, WorkflowAction } from './workflow';
 
@@ -39,7 +40,7 @@ export const BENEFICIARY_FILE_CODE = 'BENEFICIARY_FILE';
 const EXCEL_MIME = new Set(['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']);
 
 /** A ذینفع / وارث named on the deceased's beneficiary form. */
-export interface HeirInput { fullName: string; iban: string }
+export interface HeirInput { fullName: string; iban: string; nationalCode?: string }
 /** شبا as typed («IR06 2960 …», Persian digits, or the 24 digits alone) → «IR» + 24 digits. */
 const normIban = (s: string) => {
   const a = toAsciiDigits(s ?? '').replace(/[\s-]/g, '').toUpperCase();
@@ -325,7 +326,7 @@ export class ClaimsService {
         description: input.description ?? null,
         causeOfDeath: input.causeOfDeath?.trim() || null,
         beneficiaryType: input.beneficiaryType || null,
-        ...(heirs.length ? { heirs: { create: heirs.map((h, i) => ({ fullName: this.crypto.encrypt(h.fullName)!, iban: this.crypto.encrypt(h.iban)!, order: i })) } } : {}),
+        ...(heirs.length ? { heirs: { create: heirs.map((h, i) => ({ fullName: this.crypto.encrypt(h.fullName)!, iban: this.crypto.encrypt(h.iban)!, nationalCode: h.nationalCode ? this.crypto.encrypt(h.nationalCode) : null, order: i })) } } : {}),
         status: byPolicyHolder ? ClaimStatus.SUBMITTED : ClaimStatus.UNDER_REVIEW,
         currentStage: firstStage,
         flowDirection: 'UP',
@@ -1053,7 +1054,9 @@ export class ClaimsService {
       const iban = normIban(h.iban);
       if (fullName.length < 2) throw new BadRequestException('نام هر ذینفع / وارث را بنویسید.');
       if (!isValidIban(iban)) throw new BadRequestException(`شماره شبای «${fullName}» نامعتبر است (IR و ۲۴ رقم).`);
-      return { fullName, iban };
+      const nationalCode = h.nationalCode?.trim() || undefined;
+      if (nationalCode && !isValidNationalCode(nationalCode)) throw new BadRequestException(`کد ملی «${fullName}» نامعتبر است.`);
+      return { fullName, iban, nationalCode };
     });
   }
 
@@ -1081,7 +1084,8 @@ export class ClaimsService {
       form,
       heirs: claim.heirs.map((h) => {
         const iban = this.crypto.decrypt(h.iban) ?? '';
-        return { id: h.id, fullName: this.crypto.decrypt(h.fullName) ?? '', iban: full ? iban : `IR••••••••••••••••••••${iban.slice(-4)}` };
+        const nationalCode = h.nationalCode ? this.crypto.decrypt(h.nationalCode) ?? '' : '';
+        return { id: h.id, nationalCode: full ? nationalCode : nationalCode ? `••••••${nationalCode.slice(-4)}` : '', fullName: this.crypto.decrypt(h.fullName) ?? '', iban: full ? iban : `IR••••••••••••••••••••${iban.slice(-4)}` };
       }),
     };
   }
@@ -1097,7 +1101,7 @@ export class ClaimsService {
     const heirs = this.cleanHeirs(input.heirs);
     await db.$transaction([
       db.claimHeir.deleteMany({ where: { claimId } }),
-      ...(heirs.length ? [db.claimHeir.createMany({ data: heirs.map((h, i) => ({ claimId, fullName: this.crypto.encrypt(h.fullName)!, iban: this.crypto.encrypt(h.iban)!, order: i })) })] : []),
+      ...(heirs.length ? [db.claimHeir.createMany({ data: heirs.map((h, i) => ({ claimId, fullName: this.crypto.encrypt(h.fullName)!, iban: this.crypto.encrypt(h.iban)!, nationalCode: h.nationalCode ? this.crypto.encrypt(h.nationalCode) : null, order: i })) })] : []),
       db.claim.update({ where: { id: claimId }, data: { beneficiaryType: input.beneficiaryType || null } }),
     ]);
     await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { heirs: heirs.length, beneficiaryType: input.beneficiaryType ?? null } });
@@ -1175,7 +1179,7 @@ export class ClaimsService {
     this.assertParticipant(claim);
 
     const reqs = await db.requiredDocument.findMany({
-      where: { tenantId: claim.insurerTenantId, isActive: true, appliesToTypes: { has: claim.claimType } },
+      where: { tenantId: claim.insurerTenantId, isActive: true, appliesToTypes: { has: claim.claimType }, code: { not: beneficiaryHiddenDoc(claim.beneficiaryType) ?? undefined } },
       orderBy: { order: 'asc' },
     });
     const docs = await db.document.findMany({
@@ -1634,7 +1638,8 @@ export class ClaimsService {
     const rows = claims.map((c) => {
       const f = fv.get(c.id) ?? {};
       const cd = docsBy.get(c.id) ?? [];
-      const required = reqs.filter((r) => r.tenantId === c.insurerTenantId && r.appliesToTypes.includes(c.claimType)).map((r) => r.code);
+      const hiddenDoc = beneficiaryHiddenDoc(c.beneficiaryType);
+      const required = reqs.filter((r) => r.tenantId === c.insurerTenantId && r.appliesToTypes.includes(c.claimType) && r.code !== hiddenDoc).map((r) => r.code);
       const latestByCode = new Map<string, string>();
       for (const d of cd) if (d.docCode && !latestByCode.has(d.docCode)) latestByCode.set(d.docCode, d.verificationStatus);
       const uploaded = required.filter((code) => latestByCode.has(code)).length;

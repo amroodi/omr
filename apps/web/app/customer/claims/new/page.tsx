@@ -7,7 +7,7 @@ import { CLAIM_TYPE_LABELS, ErrorBox } from '../../../components/ui';
 import { JalaliDatePicker } from '../../../components/JalaliDatePicker';
 import { Shell } from '../../../components/Shell';
 import { CUSTOMER_NAV, POLICY_KEY, PolicyRow } from '../../nav';
-import { EMPTY_HEIRS, HeirsFields, heirsBody, heirsProblem, uploadHeirsForm } from '../../../components/heirs';
+import { CAUSE_OPTIONS, causeLabel, EVENT_DATE_LABEL, insuredNameLabel } from '../../../components/claim-wording';
 
 const toAscii = (s: string) => s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
 // Death claims ask for the date of death; accident disability / medical claims for the accident date.
@@ -56,7 +56,7 @@ export default function CustomerNewClaim() {
   // «اعلام خسارت»: is filing allowed from this login, and to which desks?
   const [notice, setNotice] = useState<{ enabled: boolean; targets: string[]; default: string; labels: Record<string, string> } | null>(null);
   useEffect(() => { client.get<any>('/customer/notice-options', 'customer').then(setNotice).catch(() => setNotice(null)); }, []);
-  const [heirs, setHeirs] = useState(EMPTY_HEIRS);
+  const [causes, setCauses] = useState<string[]>([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -109,8 +109,6 @@ export default function CustomerNewClaim() {
     const birthIso = f.birthDate ? jalaliToIso(f.birthDate) : null;
     if (f.birthDate && !birthIso) return setError('تاریخ تولد نامعتبر است (نمونه: ۱۳۴۵/۰۵/۱۲)');
     if (birthIso && iso && new Date(birthIso) > new Date(iso)) return setError(`تاریخ تولد بعد از ${eventLabel} است`);
-    const hp = heirsProblem(heirs);
-    if (hp) return setError(hp);
     setBusy(true);
     try {
       const payload: Record<string, string> = {
@@ -122,17 +120,17 @@ export default function CustomerNewClaim() {
       };
       if (iso) payload.eventDate = iso;
       if (birthIso) payload.deceasedBirthDate = birthIso;
-      if (f.causeOfDeath.trim()) payload.causeOfDeath = f.causeOfDeath.trim();
+      const cause = [...causes, f.causeOfDeath.trim()].filter(Boolean).join('، ');
+      if (cause) payload.causeOfDeath = cause;
       if (f.startStage) payload.startStage = f.startStage;
       if (f.description.trim()) payload.description = f.description.trim();
-      const c = await client.post<{ id: string }>('/customer/claims', { ...payload, ...heirsBody(heirs) }, 'customer');
-      await uploadHeirsForm(heirs, c.id, 'customer').catch(() => window.alert('پرونده ثبت شد اما فرم ذینفع بارگذاری نشد؛ آن را در صفحهٔ پرونده، بخش «ذینفع / وراث قانونی» دوباره بارگذاری کنید.'));
+      const c = await client.post<{ id: string }>('/customer/claims', payload, 'customer');
       router.push(`/customer/claims/${c.id}`);
     } catch (e: any) { setError(e.message); } finally { setBusy(false); }
   };
 
   const isDeath = DEATH_TYPES.has(f.claimType);
-  const eventLabel = isDeath ? 'تاریخ فوت' : 'تاریخ وقوع حادثه';
+  const eventLabel = EVENT_DATE_LABEL;
   const age = ageBetween(f.birthDate ? jalaliToIso(f.birthDate) : null, f.eventDate ? jalaliToIso(f.eventDate) : null);
 
   return (
@@ -140,7 +138,7 @@ export default function CustomerNewClaim() {
       <div className="pcard p-6 md:p-8 pform max-w-4xl mx-auto">
         {/* Guidance banner */}
         <div className="pinfobox mb-6 text-center">
-          پس از ثبت پرونده، مدارک موردنیاز را در صفحهٔ پرونده بارگذاری کنید. لطفاً مشخصات بیمه‌شدهٔ متوفی و نوع پرونده را با دقت وارد نمایید.
+          پس از ثبت پرونده، مدارک موردنیاز را در صفحهٔ پرونده بارگذاری کنید. لطفاً مشخصات بیمه‌شده و نوع پرونده را با دقت وارد نمایید.
           <div className="text-xs mt-1 font-normal">
             {company
               ? <>پرونده برای «{company.name}» ذیل بیمه‌نامهٔ انتخاب‌شده ثبت می‌شود و کارگزاری آن را به بیمه‌گر همان بیمه‌نامه ارسال می‌کند.</>
@@ -171,27 +169,36 @@ export default function CustomerNewClaim() {
             </select>
           </PField>
 
-          <PField label="نام بیمه‌شده (متوفی) *">
+          <PField label={`${insuredNameLabel(policy?.line)} *`}>
             <input className="input" value={f.deceasedFullName} onChange={(e) => setF({ ...f, deceasedFullName: e.target.value })} />
           </PField>
 
-          <PField label="کد ملی بیمه‌شده *" help="کد ملی ۱۰ رقمی بیمه‌شدهٔ متوفی.">
+          <PField label="کد ملی بیمه‌شده *" help="کد ملی ۱۰ رقمی بیمه‌شده.">
             <input className="input" value={f.deceasedNationalCode} onChange={(e) => setF({ ...f, deceasedNationalCode: e.target.value })} inputMode="numeric" style={{ direction: 'ltr', textAlign: 'right' }} />
           </PField>
 
-          <PField label="تاریخ تولد بیمه‌شده (شمسی)" help="تاریخ تولد متوفی؛ سن او به‌طور خودکار محاسبه می‌شود.">
+          <PField label="تاریخ تولد بیمه‌شده (شمسی)" help="تاریخ تولد بیمه‌شده؛ سن او به‌طور خودکار محاسبه می‌شود.">
             <JalaliDatePicker value={f.birthDate} onChange={(v) => setF({ ...f, birthDate: v })} placeholder="۱۳۴۵/۰۵/۱۲" />
           </PField>
 
-          <PField label={`${eventLabel} (شمسی) *`} help={isDeath ? 'تاریخ فوت بیمه‌شده به تقویم شمسی؛ بیمه‌گر بر اساس قرارداد معتبر در این تاریخ تعیین می‌شود.' : 'تاریخ وقوع حادثه به تقویم شمسی.'}>
+          <PField label={`${eventLabel} (شمسی) *`} help="تاریخ وقوع فوت یا حادثه به تقویم شمسی؛ بیمه‌گر بر اساس قرارداد معتبر در این تاریخ تعیین می‌شود.">
             <JalaliDatePicker value={f.eventDate} onChange={onEventDate} placeholder="۱۴۰۵/۰۷/۰۱" />
           </PField>
 
-          <PField label="علت فوت" help="علت فوت بیمه‌شده همان‌طور که می‌دانید؛ مثلاً «ایست قلبی»، «تصادف رانندگی» یا «سقوط از ارتفاع».">
-            <input className="input" value={f.causeOfDeath} onChange={(e) => setF({ ...f, causeOfDeath: e.target.value })} maxLength={300} placeholder="شرح علت فوت" />
+          <PField label={causeLabel(f.claimType)} help="علت را همان‌طور که می‌دانید بنویسید؛ مثلاً «ایست قلبی»، «تصادف رانندگی» یا «سقوط از ارتفاع».">
+            {CAUSE_OPTIONS.length > 0 && (
+              <div className="flex flex-wrap gap-x-4 gap-y-1 mb-2">
+                {CAUSE_OPTIONS.map((c) => (
+                  <label key={c} className="flex items-center gap-1.5 text-sm cursor-pointer">
+                    <input type="checkbox" checked={causes.includes(c)} onChange={(e) => setCauses(e.target.checked ? [...causes, c] : causes.filter((x) => x !== c))} /> {c}
+                  </label>
+                ))}
+              </div>
+            )}
+            <input className="input" value={f.causeOfDeath} onChange={(e) => setF({ ...f, causeOfDeath: e.target.value })} maxLength={300} placeholder={CAUSE_OPTIONS.length > 0 ? 'علت دیگر…' : 'شرح علت'} />
           </PField>
 
-          <PField label={isDeath ? 'سن متوفی (هنگام فوت)' : 'سن بیمه‌شده (هنگام حادثه)'} help="از روی تاریخ تولد و تاریخ فوت محاسبه می‌شود.">
+          <PField label={isDeath ? 'سن متوفی (هنگام فوت)' : 'سن بیمه‌شده (هنگام حادثه)'} help="از روی تاریخ تولد و تاریخ وقوع محاسبه می‌شود.">
             <input className="input" readOnly value={age != null ? `${age.toLocaleString('fa-IR')} سال` : ''} placeholder="(پس از ورود تاریخ‌ها)" style={{ background: 'var(--surface-2)' }} />
           </PField>
         </div>
@@ -204,8 +211,6 @@ export default function CustomerNewClaim() {
             </select>
           </div>
         )}
-
-        <HeirsFields value={heirs} onChange={setHeirs} cameraOnly />
 
         <div className="mt-5">
           <label className="label">توضیحات (اختیاری)</label>

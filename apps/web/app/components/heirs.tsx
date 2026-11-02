@@ -4,17 +4,18 @@ import { client, Realm } from '../../lib/client';
 import { UploadButton } from './upload';
 
 /**
- * «ذینفع / وراث قانونی»: when the deceased filled a beneficiary (inheritance) form, the filer uploads
- * the form (into the checklist's «فرم تعیین ذینفع» slot) and types each person's name and شبا.
- * `HeirsFields` sits in every filing form; `HeirsCard` shows (and lets the right people edit) them on the case.
+ * «فرم تعیین/تغییر ذینفع» on a case: دارد → the form and each ذینفع (name, کد ملی, شبا);
+ * ندارد → the انحصار وراثت certificate. The choice is `beneficiaryType`, and the API takes the other
+ * document off the checklist. `BeneficiaryChoice` sits in the بیمه‌گزار's checklist, `HeirsCard` on the staff case page.
  */
-export const BENEFICIARY_FORM = 'beneficiary_form'; // required document «اصل فرم تعیین ذینفع»
-export const BENEFICIARY_KINDS = ['ذینفع قانونی', 'وراث قانونی'];
+export const BENEFICIARY_FORM = 'beneficiary_form'; // required document «فرم تعیین/تغییر ذینفع»
+export const INHERITANCE_CERT = 'inheritance_cert'; // required document «گواهی انحصار وراثت»
+const HAS_FORM = 'ذینفع قانونی'; const NO_FORM = 'وراث قانونی';
+export const BENEFICIARY_KINDS = [HAS_FORM, NO_FORM];
 const FORM_ACCEPT = '.pdf,.jpg,.jpeg,.png,.doc,.docx';
 
-export interface HeirRow { fullName: string; iban: string }
-export interface HeirsValue { beneficiaryType: string; hasForm: boolean; file: File | null; heirs: HeirRow[] }
-export const EMPTY_HEIRS: HeirsValue = { beneficiaryType: '', hasForm: false, file: null, heirs: [{ fullName: '', iban: '' }] };
+export interface HeirRow { fullName: string; nationalCode: string; iban: string }
+const EMPTY_ROW: HeirRow = { fullName: '', nationalCode: '', iban: '' };
 
 const toAscii = (s: string) => s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
 /** «IR06 2960 …», Persian digits or the 24 digits alone → «IR» + 24 digits. */
@@ -31,100 +32,117 @@ export function ibanOk(input: string): boolean {
   for (const ch of r) rem = (rem * 10 + Number(ch)) % 97;
   return rem === 1;
 }
-const filled = (rows: HeirRow[]) => rows.filter((h) => h.fullName.trim() || h.iban.trim());
-
-/** Why the section can't be sent yet (null = fine). */
-export function heirsProblem(v: HeirsValue, needFile = true): string | null {
-  if (!v.hasForm) return null;
-  if (needFile && !v.file) return 'فرم تعیین ذینفع / وراث را بارگذاری کنید.';
-  const rows = filled(v.heirs);
-  if (!rows.length) return 'نام و شماره شبای دست‌کم یک ذینفع / وارث را بنویسید.';
+/** کد ملی checksum (the server checks it again). */
+export function nationalCodeOk(input: string): boolean {
+  const c = toAscii(input).trim();
+  if (!/^\d{10}$/.test(c) || /^(\d)\1{9}$/.test(c)) return false;
+  const sum = c.slice(0, 9).split('').reduce((t, d, i) => t + Number(d) * (10 - i), 0);
+  const r = sum % 11;
+  return Number(c[9]) === (r < 2 ? r : 11 - r);
+}
+const filled = (rows: HeirRow[]) => rows.filter((h) => h.fullName.trim() || h.iban.trim() || h.nationalCode.trim());
+/** Why these rows can't be saved (null = fine). */
+function rowsProblem(rows: HeirRow[]): string | null {
   for (const h of rows) {
-    if (h.fullName.trim().length < 2) return 'نام هر ذینفع / وارث را بنویسید.';
+    if (h.fullName.trim().length < 2) return 'نام و نام خانوادگی هر ذینفع را بنویسید.';
+    if (!nationalCodeOk(h.nationalCode)) return `کد ملی «${h.fullName.trim()}» نامعتبر است.`;
     if (!ibanOk(h.iban)) return `شماره شبای «${h.fullName.trim()}» نامعتبر است (IR و ۲۴ رقم).`;
   }
   return null;
 }
+const rowsBody = (rows: HeirRow[]) => rows.map((h) => ({ fullName: h.fullName.trim(), nationalCode: toAscii(h.nationalCode).trim(), iban: normIban(h.iban) }));
 
-/** The part of the filing request: kind + people (only when the form was filled). */
-export function heirsBody(v: HeirsValue): { beneficiaryType?: string; heirs?: HeirRow[] } {
-  return {
-    ...(v.beneficiaryType ? { beneficiaryType: v.beneficiaryType } : {}),
-    ...(v.hasForm ? { heirs: filled(v.heirs).map((h) => ({ fullName: h.fullName.trim(), iban: normIban(h.iban) })) } : {}),
-  };
-}
-
-/** After the case is created: upload the form into its «فایل ذینفع» slot. */
-export async function uploadHeirsForm(v: HeirsValue, claimId: string, realm: Realm) {
-  if (!v.hasForm || !v.file) return;
-  const fd = new FormData(); fd.append('file', v.file);
-  await client.upload(`${realm === 'customer' ? '/customer/claims' : '/claims'}/${claimId}/documents?docCode=${BENEFICIARY_FORM}`, fd, realm, () => {});
-}
-
-/** Name + شبا rows with add / remove. */
+/** Name, کد ملی + شبا rows with add / remove. */
 function HeirRows({ rows, onChange, disabled }: { rows: HeirRow[]; onChange: (rows: HeirRow[]) => void; disabled?: boolean }) {
   const set = (i: number, k: keyof HeirRow, x: string) => onChange(rows.map((h, j) => (j === i ? { ...h, [k]: x } : h)));
   return (
     <div className="space-y-2">
       {rows.map((h, i) => {
-        const bad = h.iban.trim().length >= 10 && !ibanOk(h.iban);
+        const badIban = h.iban.trim().length >= 10 && !ibanOk(h.iban);
+        const badCode = h.nationalCode.trim().length >= 10 && !nationalCodeOk(h.nationalCode);
+        const ltr = { direction: 'ltr', textAlign: 'right' } as const;
         return (
-          <div key={i} className="grid gap-2 items-start" style={{ gridTemplateColumns: 'minmax(0,1fr) minmax(0,1.3fr) auto' }}>
-            <input className="input" value={h.fullName} disabled={disabled} onChange={(e) => set(i, 'fullName', e.target.value)} placeholder={`نام و نام خانوادگی ذینفع ${(i + 1).toLocaleString('fa-IR')}`} maxLength={120} />
+          <div key={i} className="grid gap-2 items-start grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,.8fr)_minmax(0,1.3fr)_auto]">
+            <input className="input" value={h.fullName} disabled={disabled} onChange={(e) => set(i, 'fullName', e.target.value)} placeholder="نام و نام خانوادگی" maxLength={120} />
+            <div>
+              <input className="input latin-digits" value={h.nationalCode} disabled={disabled} onChange={(e) => set(i, 'nationalCode', e.target.value)} placeholder="کد ملی" inputMode="numeric" maxLength={10}
+                style={{ ...ltr, ...(badCode ? { borderColor: 'var(--danger)' } : {}) }} />
+              {badCode && <div className="text-xs mt-1" style={{ color: 'var(--danger)' }}>کد ملی نامعتبر است</div>}
+            </div>
             <div>
               <input className="input latin-digits" value={h.iban} disabled={disabled} onChange={(e) => set(i, 'iban', e.target.value)} placeholder="شماره شبا: IR000000000000000000000000" maxLength={34}
-                style={{ direction: 'ltr', textAlign: 'right', ...(bad ? { borderColor: 'var(--danger)' } : {}) }} />
-              {bad && <div className="text-xs mt-1" style={{ color: 'var(--danger)' }}>شماره شبا نامعتبر است</div>}
+                style={{ ...ltr, ...(badIban ? { borderColor: 'var(--danger)' } : {}) }} />
+              {badIban && <div className="text-xs mt-1" style={{ color: 'var(--danger)' }}>شماره شبا نامعتبر است</div>}
             </div>
             <button type="button" className="btn btn-ghost btn-sm" disabled={disabled || rows.length === 1} onClick={() => onChange(rows.filter((_, j) => j !== i))} title="حذف این ردیف" style={{ color: 'var(--danger)' }}>✕</button>
           </div>
         );
       })}
-      <button type="button" className="btn btn-ghost btn-sm" disabled={disabled || rows.length >= 30} onClick={() => onChange([...rows, { fullName: '', iban: '' }])}>+ افزودن ذینفع / وارث</button>
+      <button type="button" className="btn btn-ghost btn-sm" disabled={disabled || rows.length >= 30} onClick={() => onChange([...rows, { ...EMPTY_ROW }])}>+ افزودن ذینفع</button>
     </div>
   );
 }
 
-/** Section of a filing form. `cameraOnly`: on a phone the form is photographed (بیمه‌گزار panel). */
-export function HeirsFields({ value, onChange, cameraOnly = false }: { value: HeirsValue; onChange: (v: HeirsValue) => void; cameraOnly?: boolean }) {
-  const [phone, setPhone] = useState(false);
-  useEffect(() => { if (cameraOnly) setPhone(window.matchMedia('(max-width: 639px)').matches); }, [cameraOnly]);
-  const set = (p: Partial<HeirsValue>) => onChange({ ...value, ...p });
+interface HeirsData { beneficiaryType: string | null; canEdit: boolean; form: { id: string; fileName: string } | null; heirs: { id: string; fullName: string; nationalCode: string; iban: string }[] }
+
+/**
+ * In the checklist's beneficiary row: asks دارد / ندارد; on دارد also takes each ذینفع.
+ * `onChosen` reloads the checklist, `onMissing` tells the page that دارد was chosen with nobody saved yet.
+ */
+export function BeneficiaryChoice({ claimId, realm, onChosen, onMissing }: { claimId: string; realm: Realm; onChosen: () => void; onMissing?: (missing: boolean) => void }) {
+  const base = `${realm === 'customer' ? '/customer/claims' : '/claims'}/${claimId}`;
+  const [d, setD] = useState<HeirsData | null>(null);
+  const [rows, setRows] = useState<HeirRow[]>([{ ...EMPTY_ROW }]);
+  const [dirty, setDirty] = useState(false);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const show = (x: HeirsData) => {
+    setD(x); setDirty(false);
+    setRows(x.heirs.length ? x.heirs.map((h) => ({ fullName: h.fullName, nationalCode: h.nationalCode, iban: h.iban })) : [{ ...EMPTY_ROW }]);
+    onMissing?.(x.beneficiaryType === HAS_FORM && x.heirs.length === 0);
+  };
+  useEffect(() => { client.get<HeirsData>(`${base}/heirs`, realm).then(show).catch(() => setD(null)); /* eslint-disable-next-line */ }, [claimId]);
+  if (!d) return null;
+
+  const put = async (beneficiaryType: string, list: HeirRow[]) => {
+    setBusy(true); setError('');
+    try { show(await client.put<HeirsData>(`${base}/heirs`, { beneficiaryType, heirs: rowsBody(list) }, realm)); onChosen(); } catch (e: any) { setError(e.message); } finally { setBusy(false); }
+  };
+  const choose = (kind: string) => {
+    if (kind === d.beneficiaryType) return;
+    if (kind === NO_FORM && d.heirs.length && !window.confirm('ذینفعان ثبت‌شده حذف می‌شوند. ادامه می‌دهید؟')) return;
+    put(kind, kind === NO_FORM ? [] : filled(rows).filter((h) => !rowsProblem([h])));
+  };
+  const save = () => {
+    const list = filled(rows);
+    const problem = list.length ? rowsProblem(list) : 'مشخصات دست‌کم یک ذینفع را بنویسید.';
+    if (problem) return setError(problem);
+    put(HAS_FORM, list);
+  };
+
   return (
-    <div className="mt-6 rounded-xl p-4 md:p-5" style={{ border: '1px solid var(--border)' }}>
-      <h3 className="font-extrabold mb-3">ذینفع / وراث قانونی</h3>
-      <div className="grid md:grid-cols-2 gap-4">
-        <div>
-          <label className="label">نوع ذینفع</label>
-          <select className="input" value={value.beneficiaryType} onChange={(e) => set({ beneficiaryType: e.target.value })}>
-            <option value="">— تعیین نشده —</option>
-            {BENEFICIARY_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
-          </select>
-        </div>
-        <label className="flex items-center gap-2 text-sm font-bold self-end pb-2 cursor-pointer">
-          <input type="checkbox" checked={value.hasForm} onChange={(e) => set({ hasForm: e.target.checked })} />
-          متوفی فرم تعیین ذینفع / وراث را تکمیل کرده است
-        </label>
-      </div>
-      {value.hasForm && (
-        <div className="mt-4 space-y-4">
-          <div>
-            <label className="label">فرم تعیین ذینفع / وراث *</label>
-            <input type="file" className="input" accept={phone ? 'image/*' : FORM_ACCEPT} {...(phone ? { capture: 'environment' as const } : {})}
-              onChange={(e) => set({ file: e.target.files?.[0] ?? null })} />
-            <p className="text-xs mt-1" style={{ color: 'var(--muted)' }}>{phone ? 'از فرم با دوربین عکس بگیرید.' : 'PDF، تصویر یا Word؛ پس از ثبت، در ردیف «فرم تعیین ذینفع» مدارک پرونده قرار می‌گیرد.'}</p>
-          </div>
-          <div>
-            <label className="label">نام و شماره شبای هر ذینفع / وارث *</label>
-            <HeirRows rows={value.heirs} onChange={(heirs) => set({ heirs })} />
-          </div>
+    <div className="mt-3 space-y-3 text-sm">
+      {error && <div className="alert-error">{error}</div>}
+      {d.canEdit && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <b>فرم تعیین/تغییر ذینفع:</b>
+          {[[HAS_FORM, 'دارد'], [NO_FORM, 'ندارد']].map(([k, l]) => (
+            <button key={k} type="button" disabled={busy} onClick={() => choose(k)} className={`btn btn-sm ${d.beneficiaryType === k ? 'btn-primary' : 'btn-ghost'}`} aria-pressed={d.beneficiaryType === k}>{l}</button>
+          ))}
         </div>
       )}
+      {d.beneficiaryType === HAS_FORM && (d.canEdit ? (
+        <div className="space-y-2">
+          <div className="font-bold">مشخصات ذینفعان *</div>
+          <HeirRows rows={rows} onChange={(r) => { setRows(r); setDirty(true); onMissing?.(true); }} disabled={busy} />
+          <button type="button" className="btn btn-primary btn-sm" onClick={save} disabled={busy || !dirty}>{busy ? '…' : dirty ? 'ذخیرهٔ ذینفعان' : 'ذخیره شد'}</button>
+        </div>
+      ) : d.heirs.length > 0 && (
+        <ul className="space-y-1">{d.heirs.map((h) => <li key={h.id}>{h.fullName} — <bdi className="latin-digits">{h.nationalCode}</bdi> — <bdi className="latin-digits">{h.iban}</bdi></li>)}</ul>
+      ))}
     </div>
   );
 }
-
-interface HeirsData { beneficiaryType: string | null; canEdit: boolean; form: { id: string; fileName: string } | null; heirs: { id: string; fullName: string; iban: string }[] }
 
 /** On the case: kind, the form and the people; edit + re-upload for whoever may change them. */
 export function HeirsCard({ claimId, realm, className = 'card p-4' }: { claimId: string; realm: Realm; className?: string }) {
@@ -140,11 +158,11 @@ export function HeirsCard({ claimId, realm, className = 'card p-4' }: { claimId:
   const save = async () => {
     if (!edit) return;
     const rows = filled(edit.heirs);
-    const bad = rows.find((h) => h.fullName.trim().length < 2 || !ibanOk(h.iban));
-    if (bad) return setError(bad.fullName.trim().length < 2 ? 'نام هر ذینفع / وارث را بنویسید.' : `شماره شبای «${bad.fullName.trim()}» نامعتبر است.`);
+    const problem = rowsProblem(rows);
+    if (problem) return setError(problem);
     setBusy(true); setError('');
     try {
-      setD(await client.put<HeirsData>(`${base}/heirs`, { beneficiaryType: edit.beneficiaryType || undefined, heirs: rows.map((h) => ({ fullName: h.fullName.trim(), iban: normIban(h.iban) })) }, realm));
+      setD(await client.put<HeirsData>(`${base}/heirs`, { beneficiaryType: edit.beneficiaryType || undefined, heirs: rowsBody(rows) }, realm));
       setEdit(null);
     } catch (e: any) { setError(e.message); } finally { setBusy(false); }
   };
@@ -159,7 +177,7 @@ export function HeirsCard({ claimId, realm, className = 'card p-4' }: { claimId:
               onUpload={async (file, onP) => { const fd = new FormData(); fd.append('file', file); await client.upload(`${base}/documents?docCode=${BENEFICIARY_FORM}`, fd, realm, onP); await load(); }}>
               {d.form ? 'بارگذاری دوبارهٔ فرم' : 'بارگذاری فرم'}
             </UploadButton>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setError(''); setEdit({ beneficiaryType: d.beneficiaryType ?? '', heirs: d.heirs.length ? d.heirs.map((h) => ({ fullName: h.fullName, iban: h.iban })) : [{ fullName: '', iban: '' }] }); }}>ویرایش ذینفعان</button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setError(''); setEdit({ beneficiaryType: d.beneficiaryType ?? '', heirs: d.heirs.length ? d.heirs.map((h) => ({ fullName: h.fullName, nationalCode: h.nationalCode, iban: h.iban })) : [{ ...EMPTY_ROW }] }); }}>ویرایش ذینفعان</button>
           </div>
         )}
       </div>
@@ -190,10 +208,10 @@ export function HeirsCard({ claimId, realm, className = 'card p-4' }: { claimId:
       ) : (
         <div className="overflow-x-auto">
           <table className="table text-sm w-full">
-            <thead><tr><th style={{ width: 40 }}>#</th><th>نام و نام خانوادگی</th><th>شماره شبا</th></tr></thead>
+            <thead><tr><th style={{ width: 40 }}>#</th><th>نام و نام خانوادگی</th><th>کد ملی</th><th>شماره شبا</th></tr></thead>
             <tbody>
               {d.heirs.map((h, i) => (
-                <tr key={h.id}><td>{(i + 1).toLocaleString('fa-IR')}</td><td>{h.fullName}</td><td className="latin-digits" style={{ direction: 'ltr', textAlign: 'right' }}>{h.iban}</td></tr>
+                <tr key={h.id}><td>{(i + 1).toLocaleString('fa-IR')}</td><td>{h.fullName}</td><td className="latin-digits" style={{ direction: 'ltr', textAlign: 'right' }}>{h.nationalCode || '—'}</td><td className="latin-digits" style={{ direction: 'ltr', textAlign: 'right' }}>{h.iban}</td></tr>
               ))}
             </tbody>
           </table>

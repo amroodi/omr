@@ -10,7 +10,7 @@ import { WorkflowPanel } from '../../../components/WorkflowPanel';
 import { caseTitle } from '../../../../lib/caseTitle';
 import { AI_QUEUED_FA, aiVerdict, CaseHero, ChecklistItem, ClaimDoc, ICONS, STATUS_FA, useCase } from '../../../components/case-ui';
 import { DocUploadTile, OnProgress, UploadButton } from '../../../components/upload';
-import { HeirsCard } from '../../../components/heirs';
+import { BENEFICIARY_FORM, BeneficiaryChoice, INHERITANCE_CERT } from '../../../components/heirs';
 
 const DESK_FA: Record<string, string> = { BROKER: 'کارگزاری', BRANCH: 'شعبه', HQ: 'مدیریت ستاد', COUNCIL: 'شورای فنی' };
 const OK = 'M20 6L9 17l-5-5';
@@ -76,6 +76,7 @@ export default function CustomerClaim() {
       throw e;
     }
   };
+  const [heirsMissing, setHeirsMissing] = useState(false);
   const viewDoc = (docId: string) => client.view(`/customer/claims/${id}/documents/${docId}/file`, 'customer').catch((e) => setError(e.message));
 
   const atMyDesk = claim?.workflow?.currentStage === 'POLICYHOLDER';
@@ -92,6 +93,7 @@ export default function CustomerClaim() {
       router.push(`/customer/claims/${id}/result`);
     };
     if (uploading) return fail('بارگذاری یک یا چند مدرک هنوز تمام نشده است؛ پس از پایان بارگذاری دوباره «ثبت نهایی» را بزنید.');
+    if (heirsMissing) return fail('نام، کد ملی و شماره شبای ذینفعان را بنویسید و «ذخیرهٔ ذینفعان» را بزنید.');
     if (missing.length) return fail('مدارک زیر هنوز بارگذاری نشده‌اند؛ پس از بارگذاری همهٔ مدارک دوباره «ثبت نهایی» را بزنید:', missing);
     if (rejected.length) return fail('مدارک زیر رد شده‌اند و باید مدرک صحیح جایگزین شود:', rejected);
     if (submitAction?.disabled) return fail(submitAction.disabled);
@@ -124,8 +126,6 @@ export default function CustomerClaim() {
             {claim.lateNotice && lateWarn && <div className="alert-error">⚠ اعلام خسارت خارج از مهلت مقرر بوده است (مهلت: {claim.noticeDeadline}).</div>}
             {claim.description && <div className="pcard p-4 text-sm whitespace-pre-wrap" style={{ color: 'var(--muted)' }}><b style={{ color: 'var(--text)' }}>توضیحات: </b>{claim.description}</div>}
 
-            <HeirsCard claimId={id} realm="customer" className="pcard p-6" />
-
             {claim.status === 'RETURNED_INCOMPLETE' && (
               <div className="pcard p-6" style={{ borderColor: 'var(--danger)' }}>
                 <h3 className="font-bold mb-2">نقص مدارک — نیازمند اقدام شما</h3>
@@ -149,6 +149,10 @@ export default function CustomerClaim() {
               {aiNote && <div className="alert-success mb-3 text-sm">{AI_QUEUED_FA}</div>}
               <div className="space-y-2.5">
                 {checklist?.items.map((it) => {
+                  // دارد / ندارد not answered yet: one row asks; the answer decides which document stays.
+                  const unchosen = checklist.items.some((x) => x.code === BENEFICIARY_FORM) && checklist.items.some((x) => x.code === INHERITANCE_CERT);
+                  const isBeneficiary = it.code === BENEFICIARY_FORM || it.code === INHERITANCE_CERT;
+                  if (unchosen && it.code === INHERITANCE_CERT) return null;
                   const story = docStory(it, !!claim.story?.manual);
                   const st = up[it.code];
                   const d = it.documents[0] as ClaimDoc | undefined;
@@ -161,12 +165,13 @@ export default function CustomerClaim() {
                           <div className="cu-story">{story.text}</div>
                         </div>
                         <div className="cu-doc-up">
-                          {claim.status !== 'PAID' && (
-                            <DocUploadTile label={it.label} uploaded={it.uploaded} rejected={story.tone === 'bad' || !!it.aiRefused}
+                          {claim.status !== 'PAID' && !(unchosen && isBeneficiary) && (
+                            <DocUploadTile label={it.label} {...(it.code === INHERITANCE_CERT ? { addText: 'بارگزاری فرم انحصار وراثت' } : {})} uploaded={it.uploaded} rejected={story.tone === 'bad' || !!it.aiRefused}
                               cameraOnly onUpload={(f, onP) => upload(it.code, f, onP)} />
                           )}
                         </div>
                       </div>
+                      {isBeneficiary && <BeneficiaryChoice claimId={id} realm="customer" onChosen={reload} onMissing={setHeirsMissing} />}
                       {st && 'error' in st && <div className="cu-err">بارگذاری انجام نشد: {st.error}</div>}
 
                       {/* Precise trail of the current file: when it was uploaded, then each desk's decision */}

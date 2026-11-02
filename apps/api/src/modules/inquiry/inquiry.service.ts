@@ -24,6 +24,7 @@ import { ageAt } from '../claims/claims.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ClaimFieldsService } from '../claim-fields/claim-fields.service';
 import { PolicyholdersService } from '../policyholders/policyholders.service';
+import { beneficiaryHiddenDoc } from '../required-docs/defaults';
 
 /**
  * The secure replacement for the legacy IDOR endpoints (`get_fields.php`,
@@ -436,10 +437,10 @@ export class InquiryService {
   }
 
   /** Read-only document checklist of a claim for the inquiry («بررسی وضعیت مدارک»). */
-  private async documentStatus(c: { id: string; insurerTenantId: string; claimType: any }, manual: boolean) {
+  private async documentStatus(c: { id: string; insurerTenantId: string; claimType: any; beneficiaryType?: string | null }, manual: boolean) {
     const db = this.prisma.unscoped();
     const [reqs, docs] = await Promise.all([
-      db.requiredDocument.findMany({ where: { tenantId: c.insurerTenantId, isActive: true, appliesToTypes: { has: c.claimType } }, orderBy: { order: 'asc' } }),
+      db.requiredDocument.findMany({ where: { tenantId: c.insurerTenantId, isActive: true, appliesToTypes: { has: c.claimType }, code: { not: beneficiaryHiddenDoc(c.beneficiaryType) ?? undefined } }, orderBy: { order: 'asc' } }),
       db.document.findMany({ where: { claimId: c.id }, orderBy: { createdAt: 'desc' }, select: { id: true, docCode: true, createdAt: true, verificationStatus: true } }),
     ]);
     const reviews = docs.length && !manual ? await db.documentReview.findMany({ where: { documentId: { in: docs.map((d) => d.id) } } }) : [];

@@ -7,7 +7,7 @@ import { Shell } from '../../../components/Shell';
 import { CLAIM_TYPE_LABELS, ErrorBox } from '../../../components/ui';
 import { JalaliDatePicker } from '../../../components/JalaliDatePicker';
 import { ORG_NAV } from '../../nav';
-import { EMPTY_HEIRS, HeirsFields, heirsBody, heirsProblem, uploadHeirsForm } from '../../../components/heirs';
+import { EVENT_DATE_LABEL, insuredNameLabel } from '../../../components/claim-wording';
 
 interface Company { id: string; name: string; currentInsurer: { id: string; name: string } | null; contracts: { insurerName: string; policyNumber: string | null }[]; accounts: { id: string; fullName: string }[] }
 
@@ -62,7 +62,6 @@ export default function NewClaim() {
   });
   // «اعلام خسارت»: may this operator file, and to which desks may the case go?
   const [notice, setNotice] = useState<{ enabled: boolean; targets: string[]; default: string; labels: Record<string, string> } | null>(null);
-  const [heirs, setHeirs] = useState(EMPTY_HEIRS);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -78,7 +77,7 @@ export default function NewClaim() {
   const co = companies.find((c) => c.id === f.companyId) ?? null;
   const manual = f.companyId === NO_COMPANY || companies.length === 0;
   const isDeath = DEATH_TYPES.has(f.claimType);
-  const eventLabel = isDeath ? 'تاریخ فوت' : 'تاریخ وقوع حادثه';
+  const eventLabel = EVENT_DATE_LABEL;
   const age = ageBetween(f.birthDate ? jalaliToIso(f.birthDate) : null, f.eventDate ? jalaliToIso(f.eventDate) : null);
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF((s) => ({ ...s, [k]: e.target.value }));
 
@@ -92,8 +91,6 @@ export default function NewClaim() {
     const birthIso = f.birthDate ? jalaliToIso(f.birthDate) : null;
     if (f.birthDate && !birthIso) return setError('تاریخ تولد نامعتبر است (نمونه: ۱۳۴۵/۰۵/۱۲)');
     if (co && !iso) return setError(`${eventLabel} را وارد کنید؛ بیمه‌گر بر اساس قرارداد معتبر در این تاریخ تعیین می‌شود`);
-    const hp = heirsProblem(heirs);
-    if (hp) return setError(hp);
     setBusy(true);
     try {
       const payload: Record<string, string> = {
@@ -110,8 +107,7 @@ export default function NewClaim() {
       if (f.policyNumber.trim()) payload.policyNumber = toAscii(f.policyNumber).trim();
       if (f.description.trim()) payload.description = f.description.trim();
       if (f.startStage) payload.startStage = f.startStage;
-      const c = await client.post<{ id: string }>('/claims', { ...payload, ...heirsBody(heirs) }, 'org');
-      await uploadHeirsForm(heirs, c.id, 'org').catch(() => window.alert('پرونده ثبت شد اما فرم ذینفع بارگذاری نشد؛ آن را در صفحهٔ پرونده، بخش «ذینفع / وراث قانونی» دوباره بارگذاری کنید.'));
+      const c = await client.post<{ id: string }>('/claims', payload, 'org');
       router.push(`/org/claims/${c.id}`);
     } catch (e: any) { setError(e.message); } finally { setBusy(false); }
   };
@@ -179,13 +175,13 @@ export default function NewClaim() {
               {Object.entries(CLAIM_TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
           </PField>
-          <PField label="نام بیمه‌شده (متوفی) *">
+          <PField label={`${insuredNameLabel()} *`}>
             <input className="input" value={f.deceasedFullName} onChange={set('deceasedFullName')} />
           </PField>
-          <PField label="کد ملی بیمه‌شده *" help="کد ملی ۱۰ رقمی بیمه‌شدهٔ متوفی.">
+          <PField label="کد ملی بیمه‌شده *" help="کد ملی ۱۰ رقمی بیمه‌شده.">
             <input className="input" value={f.deceasedNationalCode} onChange={set('deceasedNationalCode')} inputMode="numeric" style={{ direction: 'ltr', textAlign: 'right' }} />
           </PField>
-          <PField label="تاریخ تولد بیمه‌شده (شمسی)" help="سن متوفی به‌طور خودکار محاسبه می‌شود.">
+          <PField label="تاریخ تولد بیمه‌شده (شمسی)" help="سن بیمه‌شده به‌طور خودکار محاسبه می‌شود.">
             <JalaliDatePicker value={f.birthDate} onChange={(v) => setF((s) => ({ ...s, birthDate: v }))} placeholder="۱۳۴۵/۰۵/۱۲" />
           </PField>
           <PField label={`${eventLabel} (شمسی)${co ? ' *' : ''}`}>
@@ -208,8 +204,6 @@ export default function NewClaim() {
             <input className="input" value={f.policyNumber} onChange={set('policyNumber')} style={{ direction: 'ltr', textAlign: 'right' }} />
           </PField>
         </div>
-
-        <HeirsFields value={heirs} onChange={setHeirs} />
 
         <div className="mt-5">
           <label className="label">توضیحات (اختیاری)</label>

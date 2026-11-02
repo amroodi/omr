@@ -27,7 +27,7 @@ export const DEFAULT_REQUIRED_DOCS: {
   { code: 'deceased_id_national_card', label: 'تصویر برابر با اصل کلیه صفحات شناسنامه باطل‌شده بانضمام کارت ملی بیمه‌شده.', appliesToTypes: [ILLNESS, ACCIDENT], order: 4 },
   { code: 'death_certificate', label: 'تصویر برابر با اصل گواهی وفات.', appliesToTypes: [ILLNESS, ACCIDENT], order: 5 },
   { code: 'burial_permit_cause', label: 'تصویر برابر با اصل جواز دفن با ذکر علت فوت که توسط پزشک معالج یا پزشک قانونی صادر شده باشد.', appliesToTypes: [ILLNESS, ACCIDENT], order: 6 },
-  { code: 'beneficiary_form', label: 'اصل فرم تعیین ذینفع بدون خط‌خوردگی و با امضاء بیمه‌شده و با مهر تأیید بیمه‌گزار.', appliesToTypes: [ILLNESS, ACCIDENT], order: 7 },
+  { code: 'beneficiary_form', label: 'فرم تعیین/تغییر ذینفع بدون خط‌خوردگی و با امضاء بیمه‌شده و با مهر تأیید بیمه‌گزار.', appliesToTypes: [ILLNESS, ACCIDENT], order: 7 },
   { code: 'inheritance_cert', label: 'در صورت فقدان و یا عدم تکمیل فرم ذینفع، ضمن اعلام کتبی توسط بیمه‌گزار، تصویر برابر با اصل گواهی انحصار وراثت با ارزش نامحدود و با ذکر درصد سهم هر یک از وراث.', appliesToTypes: [ILLNESS, ACCIDENT], order: 8 },
   { code: 'heirs_id_national_card', label: 'تصویر برابر با اصل صفحه اول شناسنامه و کارت ملی کلیه وراث یا ذینفع‌ها.', appliesToTypes: [ILLNESS, ACCIDENT], order: 9 },
   { code: 'beneficiary_iban', label: 'پرینت شماره شبای کلیه وراث یا ذینفع‌ها با مهر بانک مربوطه.', appliesToTypes: [ILLNESS, ACCIDENT], order: 10 },
@@ -49,3 +49,13 @@ export const DEFAULT_REQUIRED_DOCS: {
   { code: 'driving_license', label: 'رونوشت برابر اصل گواهینامه رانندگی بیمه‌شده (در صورتی که راننده وسیله نقلیه بوده).', appliesToTypes: [DISABILITY], order: 22 },
   { code: 'insured_iban', label: 'پرینت شماره شبای بیمه‌شده.', appliesToTypes: [DISABILITY], order: 23 },
 ];
+
+/**
+ * «فرم تعیین/تغییر ذینفع»: دارد → the form and its people; ندارد → the انحصار وراثت certificate instead.
+ * The document a case's choice takes off its checklist (null until the choice is made).
+ */
+export function beneficiaryHiddenDoc(beneficiaryType: string | null | undefined): string | null {
+  if (beneficiaryType === 'ذینفع قانونی') return 'inheritance_cert';
+  if (beneficiaryType === 'وراث قانونی') return 'beneficiary_form';
+  return null;
+}

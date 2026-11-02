@@ -8,7 +8,7 @@ import { CLAIM_TYPE_LABELS, ErrorBox, Field, Spinner } from '../../../components
 import { JalaliDatePicker } from '../../../components/JalaliDatePicker';
 import { LogoTile } from '../../../components/LogoTile';
 import { ORG_NAV } from '../../nav';
-import { EMPTY_HEIRS, HeirsFields, heirsBody, heirsProblem, uploadHeirsForm } from '../../../components/heirs';
+import { EVENT_DATE_LABEL, insuredNameLabel } from '../../../components/claim-wording';
 
 interface Company {
   id: string; name: string; hasLogo: boolean; currentInsurer: { id: string; name: string } | null;
@@ -17,7 +17,6 @@ interface Company {
 }
 
 const toAscii = (s: string) => s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
-const DEATH_TYPES = new Set(['DEATH_ILLNESS', 'DEATH_ACCIDENT']);
 function jalaliToIso(input: string): string | null {
   const parts = toAscii(input).split('/').map((p) => parseInt(p, 10));
   if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) return null;
@@ -36,7 +35,6 @@ export default function FileOnBehalf() {
   const [q, setQ] = useState('');
   const [co, setCo] = useState<Company | null>(null);
   const [f, setF] = useState({ policyHolderId: '', claimType: 'DEATH_ILLNESS', eventDate: '', birthDate: '', deceasedFullName: '', deceasedNationalCode: '', claimedAmount: '', description: '' });
-  const [heirs, setHeirs] = useState(EMPTY_HEIRS);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [allowed, setAllowed] = useState(true);
@@ -49,8 +47,7 @@ export default function FileOnBehalf() {
   }, []);
 
   const shown = useMemo(() => (companies || []).filter((c) => !q.trim() || c.name.includes(q.trim())), [companies, q]);
-  const isDeath = DEATH_TYPES.has(f.claimType);
-  const eventLabel = isDeath ? 'تاریخ فوت' : 'تاریخ وقوع حادثه';
+  const eventLabel = EVENT_DATE_LABEL;
 
   const submit = async () => {
     if (!co) return;
@@ -59,8 +56,6 @@ export default function FileOnBehalf() {
     if (!iso) return setError(`${eventLabel} نامعتبر است (نمونه: ۱۴۰۵/۰۷/۰۱)`);
     const birthIso = f.birthDate ? jalaliToIso(f.birthDate) : null;
     if (f.birthDate && !birthIso) return setError('تاریخ تولد نامعتبر است (نمونه: ۱۳۴۵/۰۵/۱۲)');
-    const hp = heirsProblem(heirs);
-    if (hp) return setError(hp);
     setBusy(true);
     try {
       const payload: Record<string, string> = {
@@ -72,8 +67,7 @@ export default function FileOnBehalf() {
       const amount = toAscii(f.claimedAmount).replace(/[^\d]/g, '');
       if (amount) payload.claimedAmount = amount;
       if (f.description.trim()) payload.description = f.description.trim();
-      const c = await client.post<{ id: string }>('/claims/on-behalf', { ...payload, ...heirsBody(heirs) }, 'org');
-      await uploadHeirsForm(heirs, c.id, 'org').catch(() => window.alert('پرونده ثبت شد اما فرم ذینفع بارگذاری نشد؛ آن را در صفحهٔ پرونده، بخش «ذینفع / وراث قانونی» دوباره بارگذاری کنید.'));
+      const c = await client.post<{ id: string }>('/claims/on-behalf', payload, 'org');
       router.push(`/org/claims/${c.id}`);
     } catch (e: any) { setError(e.message); } finally { setBusy(false); }
   };
@@ -141,13 +135,12 @@ export default function FileOnBehalf() {
                 {Object.entries(CLAIM_TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
             </Field>
-            <Field label="نام بیمه‌شده (متوفی) *"><input className="input" value={f.deceasedFullName} onChange={(e) => setF({ ...f, deceasedFullName: e.target.value })} /></Field>
+            <Field label={`${insuredNameLabel()} *`}><input className="input" value={f.deceasedFullName} onChange={(e) => setF({ ...f, deceasedFullName: e.target.value })} /></Field>
             <Field label="کد ملی بیمه‌شده *"><input className="input" inputMode="numeric" style={{ direction: 'ltr', textAlign: 'right' }} value={f.deceasedNationalCode} onChange={(e) => setF({ ...f, deceasedNationalCode: e.target.value })} /></Field>
             <Field label="تاریخ تولد بیمه‌شده"><JalaliDatePicker value={f.birthDate} onChange={(v) => setF({ ...f, birthDate: v })} placeholder="۱۳۴۵/۰۵/۱۲" /></Field>
             <Field label={`${eventLabel} *`}><JalaliDatePicker value={f.eventDate} onChange={(v) => setF({ ...f, eventDate: v })} placeholder="۱۴۰۵/۰۷/۰۱" /></Field>
             <Field label="مبلغ خسارت برآوردی (ریال، اختیاری)"><input className="input" inputMode="numeric" value={toAscii(f.claimedAmount).replace(/[^\d]/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, '٬')} onChange={(e) => setF({ ...f, claimedAmount: toAscii(e.target.value).replace(/[^\d]/g, '') })} placeholder="۰" style={{ direction: 'ltr', textAlign: 'right' }} /></Field>
           </div>
-          <HeirsFields value={heirs} onChange={setHeirs} />
           <Field label="توضیحات (اختیاری)"><textarea className="input" rows={3} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></Field>
           <button onClick={submit} disabled={busy || !f.deceasedFullName.trim() || !f.deceasedNationalCode.trim() || !f.eventDate} className="btn btn-primary w-full">
             {busy ? 'در حال ثبت…' : 'ثبت پرونده و ادامه به بارگذاری مدارک'}
