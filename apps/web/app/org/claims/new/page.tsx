@@ -170,7 +170,7 @@ export default function NewClaim() {
             </>
           )}
 
-          <PField label="نوع پرونده *" help="علت فوت یا نوع خسارت را مشخص کنید.">
+          <PField label="نوع پرونده *" help="نوع خسارت را مشخص کنید.">
             <select className="input" value={f.claimType} onChange={set('claimType')}>
               {Object.entries(CLAIM_TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>

@@ -37,6 +37,7 @@ const HEADER_MAP: Record<string, string> = {
   'مبلغ قابل پرداخت': 'payableAmount',
   'تاریخ فوت': 'deathDate',
   'علت فوت': 'causeOfDeath',
+  'علت خسارت': 'causeOfDeath',
   'نوع ذینفع': 'beneficiaryType',
   'وضعیت پرونده': 'caseStatus',
   فوت: 'causeOfDeathAlt', // a second «علت فوت» column in the register export

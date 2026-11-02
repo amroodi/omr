@@ -343,7 +343,7 @@ export class CustomerService {
   private formOf(insurerId: string, line: 'LIFE' | 'ACCIDENT' | null) {
     const m = this.store.get(insurerId);
     return {
-      insuredLabel: m.form.lines[line ?? 'ACCIDENT'].insuredLabel, eventLabel: m.form.eventLabel, birthDate: m.form.birthDate, cause: m.form.cause, causes: m.form.causes,
+      insuredLabel: m.form.lines[line ?? 'ACCIDENT'].insuredLabel, eventLabel: m.form.eventLabel, birthDate: m.form.birthDate, cause: m.form.cause, causeLists: m.form.causeLists,
     };
   }
 

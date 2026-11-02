@@ -66,7 +66,7 @@ export interface WorkflowModel extends CaseRules {
     eventLabel: string;
     birthDate: FieldMode;
     cause: FieldMode;
-    causes: string[]; // ticks above the typed cause
+    causeLists: { DEATH: string[]; ACCIDENT: string[] }; // ticks above the typed cause, by causeGroup
     lines: Record<'LIFE' | 'ACCIDENT', LineForm>;
   };
 }
@@ -90,7 +90,36 @@ export const DEFAULT_WORKFLOW_MODEL: WorkflowModel = {
     eventLabel: 'تاریخ وقوع',
     birthDate: 'optional',
     cause: 'optional',
-    causes: [],
+    causeLists: {
+      DEATH: [
+      'بیماری',
+      'سرطان',
+      'سکته قلبی بدون برگه ذینفع',
+      'فوت-عدم تعیین سهم ذینفعها و پرداخت در وجه وراث',
+      'انفجار',
+      'سکته قلبی-پرداخت در وجه وکیل یا وراث',
+      'سکته قلبی-پرداخت در وجه بیمه گذار',
+      'سکته مغزی-پرداخت در وجه بیمه گذار',
+      'فوت در اثر حادثه-پرداخت در وجه "وکیل یا وراث"',
+      'فوت در اثر حادثه-پرداخت در وجه "وراث قانونی"',
+      'ازکارافتادگی کلی ناشی از بیماری با رأی کمیسیون پزشکی تأمین اجتماعی و تائید بیمه البرز',
+      'ازکارافتادگی کلی ناشی از بیماری با رأی کمیسیون پزشکی بیمه گذار',
+      'سکته قلبی با برگه ذینفع',
+      'سکته مغزی با برگه ذینفع',
+      'فوت در اثر حادثه با برگه ذینفع',
+      'بیماری کرونا',
+      'بیماری های تنفسی',
+      'فوت در اثر حادثه-ذینفع "بیمه گذار"',
+      ],
+      ACCIDENT: [
+      'حادثه ناشی از کار',
+      'حادثه غیر ناشی از کار (تصادف)',
+      'زلزله (با فرم تعیین ذینفع)',
+      'زلزله (بدون فرم تعیین ذینفع)',
+      'حادثه (با هزینه پزشکی)',
+      'حادثه (بدون هزینه پزشکی)',
+      ],
+    },
     lines: {
       LIFE: { insuredLabel: 'نام بیمه‌شده (متوفی/از کار افتاده)', claimTypes: LIFE_TYPES },
       ACCIDENT: { insuredLabel: 'نام بیمه‌شده (مصدوم/متوفی)', claimTypes: ACCIDENT_TYPES },
@@ -136,7 +165,11 @@ export function modelFrom(stored: unknown): WorkflowModel {
       eventLabel: text(raw.form?.eventLabel, d.form.eventLabel),
       birthDate: mode(raw.form?.birthDate, d.form.birthDate),
       cause: mode(raw.form?.cause, d.form.cause),
-      causes: list(raw.form?.causes),
+      causeLists: {
+        // A list saved before there were two: it served every نوع پرونده.
+        DEATH: Array.isArray(raw.form?.causeLists?.DEATH) ? list(raw.form.causeLists.DEATH) : list(raw.form?.causes).length ? list(raw.form.causes) : d.form.causeLists.DEATH,
+        ACCIDENT: Array.isArray(raw.form?.causeLists?.ACCIDENT) ? list(raw.form.causeLists.ACCIDENT) : list(raw.form?.causes).length ? list(raw.form.causes) : d.form.causeLists.ACCIDENT,
+      },
       lines: { LIFE: line(raw.form?.lines?.LIFE, d.form.lines.LIFE), ACCIDENT: line(raw.form?.lines?.ACCIDENT, d.form.lines.ACCIDENT) },
     },
   };

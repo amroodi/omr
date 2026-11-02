@@ -182,3 +182,16 @@ describe('Model View: stages, types and forms', () => {
     expect(modelFrom({ form: { lines: { LIFE: { claimTypes: [] } } } }).form.lines.LIFE.claimTypes.length).toBe(3);
   });
 });
+
+describe('Model View: cause lists', () => {
+  it('starts with both lists', () => {
+    expect(DEFAULT_WORKFLOW_MODEL.form.causeLists.DEATH).toContain('سرطان');
+    expect(DEFAULT_WORKFLOW_MODEL.form.causeLists.ACCIDENT).toContain('حادثه ناشی از کار');
+    expect(modelFrom({ form: {} }).form.causeLists.DEATH.length).toBe(18);
+  });
+  it('a saved empty list stays empty; an old single list serves both', () => {
+    expect(modelFrom({ form: { causeLists: { DEATH: [] } } }).form.causeLists.DEATH).toEqual([]);
+    expect(modelFrom({ form: { causes: ['x'] } }).form.causeLists).toEqual({ DEATH: ['x'], ACCIDENT: ['x'] });
+    expect(modelFrom({ form: { causes: [] } }).form.causeLists.ACCIDENT.length).toBe(6);
+  });
+});

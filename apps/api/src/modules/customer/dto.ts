@@ -111,10 +111,10 @@ export class CustomerFileClaimDto {
   @IsIn(['POLICYHOLDER', 'BROKER', 'BRANCH', 'HQ', 'COUNCIL'])
   startStage?: 'POLICYHOLDER' | 'BROKER' | 'BRANCH' | 'HQ' | 'COUNCIL';
 
-  // علت فوت as the بیمه‌گزار knows it (free text, e.g. «ایست قلبی»).
+  // علت خسارت: the ticked causes and/or typed text.
   @IsOptional()
   @IsString()
-  @Length(0, 300)
+  @Length(0, 1500)
   causeOfDeath?: string;
 
   // «ذینفع / وراث قانونی» named on the deceased's form (the form itself is uploaded right after filing).

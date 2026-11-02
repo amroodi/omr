@@ -7,7 +7,7 @@ import { CLAIM_TYPE_LABELS, ErrorBox } from '../../../components/ui';
 import { JalaliDatePicker } from '../../../components/JalaliDatePicker';
 import { Shell } from '../../../components/Shell';
 import { CUSTOMER_NAV, POLICY_KEY, PolicyRow } from '../../nav';
-import { causeLabel, EVENT_DATE_LABEL, insuredNameLabel } from '../../../components/claim-wording';
+import { CAUSE_LABEL, causeGroup, EVENT_DATE_LABEL, insuredNameLabel } from '../../../components/claim-wording';
 
 const toAscii = (s: string) => s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
 // Death claims ask for the date of death; accident disability / medical claims for the accident date.
@@ -89,8 +89,9 @@ export default function CustomerNewClaim() {
   // Model View: the wording and fields this insurer set for this بیمه‌نامه.
   const form = policy?.form;
   const eventLabel = form?.eventLabel ?? EVENT_DATE_LABEL;
-  const causeOptions = form?.causes ?? [];
-  const cause = [...causes, f.causeOfDeath.trim()].filter(Boolean).join('، ');
+  const causeOptions = form?.causeLists[causeGroup(f.claimType)] ?? [];
+  // Ticks from the other list (the نوع پرونده changed) don't count.
+  const cause = [...causes.filter((c) => causeOptions.includes(c)), f.causeOfDeath.trim()].filter(Boolean).join('، ');
   const types = policy?.claimTypes ?? Object.keys(CLAIM_TYPE_LABELS);
   /** Select a بیمه‌نامه; keep the claim type only if that policy's line covers it. */
   const choosePolicy = (p: PolicyRow) => {
@@ -125,7 +126,7 @@ export default function CustomerNewClaim() {
     if (f.birthDate && !birthIso) return setError('تاریخ تولد نامعتبر است (نمونه: ۱۳۴۵/۰۵/۱۲)');
     if (birthIso && iso && new Date(birthIso) > new Date(iso)) return setError(`تاریخ تولد بعد از ${eventLabel} است`);
     if (form?.birthDate === 'required' && !birthIso) return setError('تاریخ تولد بیمه‌شده را وارد کنید');
-    if (form?.cause === 'required' && !cause) return setError(`${causeLabel(f.claimType)} را مشخص کنید`);
+    if (form?.cause === 'required' && !cause) return setError(`${CAUSE_LABEL} را مشخص کنید`);
     setBusy(true);
     try {
       const payload: Record<string, string> = {
@@ -178,7 +179,7 @@ export default function CustomerNewClaim() {
             {policy && <div className="text-xs mt-1" style={{ color: 'var(--muted)' }}>بیمه‌گر: {policy.insurerName} — کارگزار: {broker}</div>}
           </div>
 
-          <PField label="نوع پرونده *" help="علت فوت یا نوع خسارت را مشخص کنید؛ فقط خسارت‌هایی که بیمه‌نامهٔ انتخاب‌شده پوشش می‌دهد فهرست شده‌اند.">
+          <PField label="نوع پرونده *" help="نوع خسارت را مشخص کنید؛ فقط خسارت‌هایی که بیمه‌نامهٔ انتخاب‌شده پوشش می‌دهد فهرست شده‌اند.">
             <select className="input" value={f.claimType} onChange={(e) => setF({ ...f, claimType: e.target.value })}>
               {types.map((v) => <option key={v} value={v}>{CLAIM_TYPE_LABELS[v] ?? v}</option>)}
             </select>
@@ -211,18 +212,18 @@ export default function CustomerNewClaim() {
           </PField>
 
           {form?.cause !== 'hidden' && (
-          <PField label={`${causeLabel(f.claimType)}${form?.cause === 'required' ? ' *' : ''}`} help="علت را همان‌طور که می‌دانید بنویسید؛ مثلاً «ایست قلبی»، «تصادف رانندگی» یا «سقوط از ارتفاع».">
+          <div className="md:col-span-2"><PField label={`${CAUSE_LABEL}${form?.cause === 'required' ? ' *' : ''}`} help="علت را همان‌طور که می‌دانید بنویسید؛ مثلاً «ایست قلبی»، «تصادف رانندگی» یا «سقوط از ارتفاع».">
             {causeOptions.length > 0 && (
-              <div className="flex flex-wrap gap-x-4 gap-y-1 mb-2">
+              <div className="grid sm:grid-cols-2 gap-x-4 gap-y-1.5 mb-2">
                 {causeOptions.map((c) => (
-                  <label key={c} className="flex items-center gap-1.5 text-sm cursor-pointer">
-                    <input type="checkbox" checked={causes.includes(c)} onChange={(e) => setCauses(e.target.checked ? [...causes, c] : causes.filter((x) => x !== c))} /> {c}
+                  <label key={c} className="flex items-start gap-1.5 text-sm cursor-pointer">
+                    <input type="checkbox" className="mt-1" checked={causes.includes(c)} onChange={(e) => setCauses(e.target.checked ? [...causes, c] : causes.filter((x) => x !== c))} /> {c}
                   </label>
                 ))}
               </div>
             )}
-            <input className="input" value={f.causeOfDeath} onChange={(e) => setF({ ...f, causeOfDeath: e.target.value })} maxLength={300} placeholder={causeOptions.length > 0 ? 'علت دیگر…' : 'شرح علت'} />
-          </PField>
+            <input className="input" value={f.causeOfDeath} onChange={(e) => setF({ ...f, causeOfDeath: e.target.value })} maxLength={300} placeholder={causeOptions.length > 0 ? 'علت دیگر (تایپ کنید)…' : 'شرح علت'} />
+          </PField></div>
           )}
 
           <PField label={isDeath ? 'سن متوفی (هنگام فوت)' : 'سن بیمه‌شده (هنگام حادثه)'} help="از روی تاریخ تولد و تاریخ وقوع محاسبه می‌شود.">

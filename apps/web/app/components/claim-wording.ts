@@ -7,7 +7,8 @@ export const insuredNameLabel = (line?: string | null) =>
 
 export const EVENT_DATE_LABEL = 'تاریخ وقوع';
 
-export function causeLabel(claimType: string) {
-  if (DEATH_TYPES.has(claimType)) return 'علت فوت';
-  return claimType === 'DISABILITY_ILLNESS' ? 'علت از کار افتادگی' : 'علت حادثه';
-}
+export const CAUSE_LABEL = 'علت خسارت';
+
+/** Which cause list a نوع پرونده shows: death and illness disability → فوت; accident injury → حادثه. */
+export const causeGroup = (claimType: string): 'DEATH' | 'ACCIDENT' =>
+  (DEATH_TYPES.has(claimType) || claimType === 'DISABILITY_ILLNESS' ? 'DEATH' : 'ACCIDENT');

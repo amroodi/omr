@@ -16,7 +16,7 @@ interface Model {
   byType: Record<string, Partial<Record<RuleKey, boolean>>>;
   panels: { COMPANY: Rights; REPRESENTATIVE: Rights };
   insured: { enabled: boolean; docCodes: string[]; linkDays: number };
-  form: { eventLabel: string; birthDate: Mode; cause: Mode; causes: string[]; lines: { LIFE: LineForm; ACCIDENT: LineForm } };
+  form: { eventLabel: string; birthDate: Mode; cause: Mode; causeLists: { DEATH: string[]; ACCIDENT: string[] }; lines: { LIFE: LineForm; ACCIDENT: LineForm } };
 }
 interface Doc { code: string; label: string; isActive: boolean; appliesToTypes: string[] }
 interface Coverage { enabled: boolean; url: string; nationalCodeParam: string; authHeader: string; hasSecret: boolean; perMinute: number; notChecked: number; secret?: string }
@@ -199,15 +199,19 @@ export default function ModelView() {
               <Card title="فیلدها">
                 <div className="grid sm:grid-cols-3 gap-3">
                   <label className="text-sm">عنوان تاریخ<input className="input mt-1" value={m.form.eventLabel} maxLength={80} onChange={(e) => setForm({ eventLabel: e.target.value })} /></label>
-                  {([['birthDate', 'تاریخ تولد'], ['cause', 'علت']] as const).map(([k, l]) => (
+                  {([['birthDate', 'تاریخ تولد'], ['cause', 'علت خسارت']] as const).map(([k, l]) => (
                     <label key={k} className="text-sm">{l}
                       <select className="input mt-1" value={m.form[k]} onChange={(e) => setForm({ [k]: e.target.value as Mode })}><option value="required">الزامی</option><option value="optional">اختیاری</option><option value="hidden">پنهان</option></select>
                     </label>
                   ))}
                 </div>
-                <label className="text-sm block">گزینه‌های علت (هر خط یک گزینه؛ کادر تایپ همیشه می‌ماند)
-                  <textarea className="input mt-1" rows={5} value={m.form.causes.join('\n')} onChange={(e) => setForm({ causes: e.target.value.split('\n') })} onBlur={() => setForm({ causes: m.form.causes.map((c) => c.trim()).filter(Boolean) })} />
-                </label>
+                <div className="grid md:grid-cols-2 gap-3">
+                  {([['DEATH', 'گزینه‌های علت خسارت — فوت و ازکارافتادگی ناشی از بیماری'], ['ACCIDENT', 'گزینه‌های علت خسارت — حادثه']] as const).map(([g, l]) => (
+                    <label key={g} className="text-sm block">{l} (هر خط یک گزینه؛ کادر تایپ همیشه می‌ماند)
+                      <textarea className="input mt-1" rows={12} value={m.form.causeLists[g].join('\n')} onChange={(e) => setForm({ causeLists: { ...m.form.causeLists, [g]: e.target.value.split('\n') } })} onBlur={() => setForm({ causeLists: { ...m.form.causeLists, [g]: m.form.causeLists[g].map((c) => c.trim()).filter(Boolean) } })} />
+                    </label>
+                  ))}
+                </div>
               </Card>
               {saveBar}
             </>

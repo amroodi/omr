@@ -79,7 +79,7 @@ interface FileClaimInput {
   deceasedFullName: string;
   deceasedNationalCode: string;
   deceasedBirthDate?: string; // ISO
-  causeOfDeath?: string; // علت فوت, typed by whoever files (free text)
+  causeOfDeath?: string; // علت خسارت: the ticked causes and/or typed text
   policyHolderId?: string;
   policyholderCompanyId?: string; // بیمه‌گزار company (set automatically when the بیمه‌گزار files)
   onBehalf?: boolean; // کارگزاری files *as* the بیمه‌گزار company (claim:file-on-behalf) — starts at their desk
@@ -1998,6 +1998,7 @@ export class ClaimsService {
       eventDate: c.eventDate ? toJalali(c.eventDate, false) : null,
       deceasedBirthDate: c.deceasedBirthDate ? toJalali(c.deceasedBirthDate, false) : null,
       deceasedAge: ageAt(c.deceasedBirthDate, c.eventDate),
+      causeOfDeath: c.causeOfDeath ?? null,
       policyholderCompanyId: c.policyholderCompanyId ?? null,
       imported: !!c.imported, // brought in from Excel («ورود دسته‌ای») — its filing date is only the import date
       noticeDeadline: c.noticeDeadline ? toJalali(c.noticeDeadline, false) : null,
@@ -2064,7 +2065,7 @@ const REPORT_COLUMNS: { key: string; label: string; group: string; type: 'text' 
   { key: 'deceasedNationalCode', label: 'کد ملی متوفی', group: 'بیمه‌شده', type: 'text' },
   { key: 'birthDate', label: 'تاریخ تولد', group: 'بیمه‌شده', type: 'date' },
   { key: 'age', label: 'سن هنگام فوت/حادثه', group: 'بیمه‌شده', type: 'number' },
-  { key: 'causeOfDeath', label: 'علت فوت', group: 'بیمه‌شده', type: 'text' },
+  { key: 'causeOfDeath', label: 'علت خسارت', group: 'بیمه‌شده', type: 'text' },
   { key: 'beneficiaryType', label: 'نوع ذینفع', group: 'بیمه‌شده', type: 'text' },
   { key: 'eventDate', label: 'تاریخ فوت / حادثه', group: 'تاریخ‌ها', type: 'date' },
   { key: 'createdAt', label: 'تاریخ ثبت اولیه', group: 'تاریخ‌ها', type: 'date' },
