@@ -906,6 +906,7 @@ model ClaimHeir {
   claim     Claim    @relation(fields: [claimId], references: [id], onDelete: Cascade)
   fullName  String // ENCRYPTED
   iban      String // ENCRYPTED — شماره شبا (IR + 24 digits, checksum-validated)
+  nationalCode String? // ENCRYPTED — کد ملی (rows from before it was asked for have none)
   order     Int      @default(0)
   createdAt DateTime @default(now())
 

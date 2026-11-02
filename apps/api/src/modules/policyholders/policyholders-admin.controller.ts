@@ -1,9 +1,10 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Put, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { InsuranceLine } from '@prisma/client';
 import { ArrayMaxSize, IsArray, IsBoolean, IsEnum, IsISO8601, IsOptional, IsString, IsUUID, Length, ValidateIf } from 'class-validator';
 import { SuperAdminOnly } from '../../common/rbac/decorators';
 import { PolicyholdersAdminService } from './policyholders-admin.service';
+import { PolicyholdersService } from './policyholders.service';
 
 class AdminCompanyDto {
   @IsUUID() brokerTenantId!: string;
@@ -15,6 +16,10 @@ class AdminCompanyDto {
   @IsOptional() @IsString() @Length(0, 60) policyNumber?: string;
   @IsOptional() @ValidateIf((_, v) => v !== null && v !== '') @IsISO8601() startDate?: string | null;
   @IsOptional() @ValidateIf((_, v) => v !== null && v !== '') @IsISO8601() endDate?: string | null;
+}
+class AdminPartnerDto {
+  @IsUUID() brokerTenantId!: string;
+  @IsBoolean() enabled!: boolean;
 }
 class BrokerSettingsDto {
   @IsUUID() brokerTenantId!: string;
@@ -56,7 +61,19 @@ class AdminDeleteDto {
 @SuperAdminOnly()
 @Controller('admin/policyholders')
 export class PolicyholdersAdminController {
-  constructor(private readonly svc: PolicyholdersAdminService) {}
+  constructor(private readonly svc: PolicyholdersAdminService, private readonly companies: PolicyholdersService) {}
+
+  /** «نقشهٔ اتصال‌ها» of one brokerage: companies → the brokerage → insurers. */
+  @Get('network')
+  network(@Query('brokerTenantId', ParseUUIDPipe) brokerTenantId: string) {
+    return this.companies.network(brokerTenantId);
+  }
+
+  /** Connect a brokerage to an insurer registered on the platform (or end the cooperation). */
+  @Put('partners/:insurerId')
+  setPartner(@Param('insurerId', ParseUUIDPipe) insurerId: string, @Body() dto: AdminPartnerDto) {
+    return this.companies.setPartner(dto.brokerTenantId, insurerId, dto.enabled);
+  }
 
   @Get('options')
   options() {

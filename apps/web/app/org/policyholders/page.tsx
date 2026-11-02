@@ -4,7 +4,6 @@ import { client } from '../../../lib/client';
 import { Shell } from '../../components/Shell';
 import { Field } from '../../components/ui';
 import { ORG_NAV } from '../nav';
-import { NetworkTab } from './network';
 
 interface Acc { id: string; fullName: string | null; nationalCode: string | null; nationalCodeMasked: string | null; phone: string | null; phoneMasked: string | null; canViewPii: boolean; signupStatus: string; isActive: boolean; createdAt: string | null; lastLoginAt: string | null; company: { id: string; name: string } | null; hasPassword?: boolean; mustChangePassword?: boolean; shahkarVerified?: boolean }
 // Only what the نمایندگان tab needs (the company picker).
@@ -16,37 +15,18 @@ const STATUS: Record<string, { label: string; cls: string }> = {
   REJECTED: { label: 'ردشده', cls: 'badge-neutral' },
 };
 // Companies and their contracts are managed in Super Admin; inquiry questions live in «پاسخگوی آنلاین».
-const TABS = [['map', 'نقشهٔ اتصال‌ها'], ['accounts', 'نمایندگان (ورود به پنل بیمه‌گزار)']] as const;
-type Tab = (typeof TABS)[number][0];
-
 const tabStyle = (on: boolean) => (on ? { background: 'var(--brand)', color: '#fff' } : { background: 'var(--surface-2)', color: 'var(--muted)', border: '1px solid var(--border)' });
 
 export default function Policyholders() {
-  const [tab, setTab] = useState<Tab | null>(null);
-  // The connection map is the کارگزاری's view; an insurer (بیمه‌گر) panel doesn't get it at all.
-  const [isBroker, setIsBroker] = useState<boolean | null>(null);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [msg, setMsg] = useState<{ t: 'ok' | 'err'; m: string } | null>(null);
   const loadCompanies = () => client.get<Company[]>('/policyholder-companies', 'org').then(setCompanies).catch((e) => setMsg({ t: 'err', m: e.message }));
-  useEffect(() => {
-    const t = new URLSearchParams(window.location.search).get('tab');
-    client.get<{ kind?: string }>('/tenant/branding', 'org').then((b) => {
-      const broker = b.kind !== 'INSURER';
-      setIsBroker(broker);
-      setTab(t === 'accounts' || !broker ? 'accounts' : 'map');
-    }).catch(() => { setIsBroker(true); setTab(t === 'accounts' ? 'accounts' : 'map'); }); // the API itself refuses the map to an insurer
-    loadCompanies();
-  }, []);
-  const tabs = TABS.filter(([k]) => k !== 'map' || isBroker);
+  useEffect(() => { loadCompanies(); }, []);
 
   return (
-    <Shell title="بیمه‌گزاران" subtitle="اتصال هر شرکت بیمه‌گزار به بیمه‌گر طبق قرارداد، و نمایندگان آن‌ها" nav={ORG_NAV} realm="org">
-      <div className="flex flex-wrap gap-2 mb-4">
-        {isBroker !== null && tabs.map(([k, l]) => <button key={k} onClick={() => setTab(k)} className="btn btn-sm" style={tabStyle(tab === k)}>{l}</button>)}
-      </div>
+    <Shell title="بیمه‌گزاران" subtitle="نمایندگان شرکت‌های بیمه‌گزار و ورود آن‌ها به پنل بیمه‌گزار" nav={ORG_NAV} realm="org">
       {msg && <div className={`${msg.t === 'ok' ? 'alert-success' : 'alert-error'} mb-3`}>{msg.m}</div>}
-      {tab === 'map' && isBroker && <NetworkTab setMsg={setMsg} onChanged={loadCompanies} />}
-      {tab === 'accounts' && <AccountsTab companies={companies} setMsg={setMsg} />}
+      <AccountsTab companies={companies} setMsg={setMsg} />
     </Shell>
   );
 }

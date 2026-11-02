@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { toGregorian } from 'jalaali-js';
-import { client, hasPerm } from '../../../lib/client';
+import { client } from '../../../lib/client';
 import { Field, Spinner } from '../../components/ui';
 import { JalaliDatePicker } from '../../components/JalaliDatePicker';
 import { Overlay } from '../../components/ui';
@@ -25,12 +25,13 @@ function jalaliToIso(v: string): string | null {
  * «نقشهٔ اتصال‌ها» — بیمه‌گزار companies connect to this کارگزاری, and the کارگزاری connects each of them
  * to one of its insurers (through a dated contract). Click a company, then an insurer, to connect them.
  */
-export function NetworkTab({ setMsg, onChanged }: { setMsg: (m: { t: 'ok' | 'err'; m: string } | null) => void; onChanged: () => void }) {
+export function NetworkTab({ brokerTenantId, setMsg }: { brokerTenantId: string; setMsg: (m: { t: 'ok' | 'err'; m: string } | null) => void }) {
   const [net, setNet] = useState<Network | null>(null);
   const [sel, setSel] = useState<{ kind: 'company' | 'insurer'; id: string } | null>(null);
   const [connect, setConnect] = useState<{ company: Company; insurer: Insurer } | null>(null);
-  const [k, setK] = useState({ policyNumber: '', start: '', end: '' });
+  const [k, setK] = useState({ line: 'LIFE', policyNumber: '', start: '', end: '' });
   const [newCo, setNewCo] = useState('');
+  const [newCode, setNewCode] = useState('');
   const [addIns, setAddIns] = useState('');
   const [lines, setLines] = useState<Line[]>([]);
   const [stacked, setStacked] = useState(false);
@@ -38,11 +39,10 @@ export function NetworkTab({ setMsg, onChanged }: { setMsg: (m: { t: 'ok' | 'err
   const [showAll, setShowAll] = useState(false);
   const boardRef = useRef<HTMLDivElement>(null);
   const nodes = useRef<Record<string, HTMLElement | null>>({});
-  const canPartner = hasPerm('org', 'tenant:settings');
 
-  const load = useCallback(() => client.get<Network>('/policyholder-companies/network', 'org').then(setNet).catch((e) => setMsg({ t: 'err', m: e.message })), [setMsg]);
-  useEffect(() => { load(); }, [load]);
-  const act = async (fn: () => Promise<any>, ok: string) => { setMsg(null); try { await fn(); setMsg({ t: 'ok', m: ok }); await load(); onChanged(); } catch (e: any) { setMsg({ t: 'err', m: e.message }); } };
+  const load = useCallback(() => client.get<Network>(`/admin/policyholders/network?brokerTenantId=${brokerTenantId}`, 'super').then(setNet).catch((e) => setMsg({ t: 'err', m: e.message })), [brokerTenantId, setMsg]);
+  useEffect(() => { setSel(null); load(); }, [load]);
+  const act = async (fn: () => Promise<any>, ok: string) => { setMsg(null); try { await fn(); setMsg({ t: 'ok', m: ok }); await load(); } catch (e: any) { setMsg({ t: 'err', m: e.message }); } };
 
   const colorOf = (insurerId: string | undefined) => net?.insurers.find((i) => i.id === insurerId)?.color ?? 'var(--muted)';
 
@@ -96,7 +96,7 @@ export function NetworkTab({ setMsg, onChanged }: { setMsg: (m: { t: 'ok' | 'err
   const clickInsurer = (i: Insurer) => {
     if (sel?.kind === 'company') {
       const company = net!.companies.find((c) => c.id === sel.id)!;
-      setK({ policyNumber: '', start: '', end: '' });
+      setK({ line: 'LIFE', policyNumber: '', start: '', end: '' });
       setConnect({ company, insurer: i });
       return;
     }
@@ -106,7 +106,7 @@ export function NetworkTab({ setMsg, onChanged }: { setMsg: (m: { t: 'ok' | 'err
     const startDate = k.start ? jalaliToIso(k.start) : new Date().toISOString();
     const endDate = k.end ? jalaliToIso(k.end) : null;
     if ((k.start && !startDate) || (k.end && !endDate)) throw new Error('تاریخ نامعتبر است (نمونه: ۱۴۰۵/۰۱/۰۱)');
-    await client.post(`/policyholder-companies/${connect.company.id}/contracts`, { insurerTenantId: connect.insurer.id, policyNumber: k.policyNumber || null, startDate, endDate }, 'org');
+    await client.post(`/admin/policyholders/${connect.company.id}/contracts`, { insurerTenantId: connect.insurer.id, line: k.line, policyNumber: k.policyNumber.trim(), startDate, endDate }, 'super');
     setConnect(null);
   }, `«${connect.company.name}» از طریق کارگزاری به «${connect.insurer.name}» متصل شد.`);
 
@@ -132,10 +132,10 @@ export function NetworkTab({ setMsg, onChanged }: { setMsg: (m: { t: 'ok' | 'err
       <div className="grid md:grid-cols-2 gap-3">
         <div className="card p-3 flex gap-2 items-end flex-wrap">
           <div className="flex-1 min-w-[180px]"><Field label="بیمه‌گزار جدید"><input className="input" value={newCo} onChange={(e) => setNewCo(e.target.value)} placeholder="نام شرکت" /></Field></div>
-          <button className="btn btn-primary btn-sm" disabled={newCo.trim().length < 2} onClick={() => act(async () => { await client.post('/policyholder-companies', { name: newCo.trim() }, 'org'); setNewCo(''); }, 'بیمه‌گزار اضافه شد')}>افزودن</button>
+          <div className="w-32"><Field label="کد بیمه‌گزار"><input className="input" value={newCode} onChange={(e) => setNewCode(e.target.value)} style={{ direction: 'ltr', textAlign: 'right' }} /></Field></div>
+          <button className="btn btn-primary btn-sm" disabled={newCo.trim().length < 2 || !newCode.trim()} onClick={() => act(async () => { await client.post('/admin/policyholders', { brokerTenantId, name: newCo.trim(), code: newCode.trim() }, 'super'); setNewCo(''); setNewCode(''); }, 'بیمه‌گزار اضافه شد')}>افزودن</button>
         </div>
-        {canPartner && (
-          <div className="card p-3 flex gap-2 items-end flex-wrap">
+                  <div className="card p-3 flex gap-2 items-end flex-wrap">
             <div className="flex-1 min-w-[180px]">
               <Field label="افزودن بیمه‌گر همکار">
                 <select className="input" value={addIns} onChange={(e) => setAddIns(e.target.value)}>
@@ -144,9 +144,8 @@ export function NetworkTab({ setMsg, onChanged }: { setMsg: (m: { t: 'ok' | 'err
                 </select>
               </Field>
             </div>
-            <button className="btn btn-primary btn-sm" disabled={!addIns} onClick={() => act(async () => { await client.put(`/policyholder-companies/partners/${addIns}`, { enabled: true }, 'org'); setAddIns(''); }, 'همکاری با بیمه‌گر برقرار شد')}>افزودن</button>
+            <button className="btn btn-primary btn-sm" disabled={!addIns} onClick={() => act(async () => { await client.put(`/admin/policyholders/partners/${addIns}`, { brokerTenantId, enabled: true }, 'super'); setAddIns(''); }, 'همکاری با بیمه‌گر برقرار شد')}>افزودن</button>
           </div>
-        )}
       </div>
 
       {/* The map */}
@@ -245,7 +244,7 @@ export function NetworkTab({ setMsg, onChanged }: { setMsg: (m: { t: 'ok' | 'err
                       <td>{ct.policyNumber || '—'}</td><td>{ct.startDate || 'نامحدود'}</td><td>{ct.endDate || 'نامحدود'}</td>
                       <td>{ct.isActive ? 'فعال' : 'غیرفعال'}</td>
                       <td><button className="text-xs" style={{ color: ct.isActive ? 'var(--danger)' : 'var(--success)' }}
-                        onClick={() => act(() => client.patch(`/policyholder-companies/${selCompany.id}/contracts/${ct.id}`, { isActive: !ct.isActive }, 'org'), ct.isActive ? 'قرارداد غیرفعال شد' : 'قرارداد فعال شد')}>
+                        onClick={() => act(() => client.patch(`/admin/policyholders/${selCompany.id}/contracts/${ct.id}`, { isActive: !ct.isActive }, 'super'), ct.isActive ? 'قرارداد غیرفعال شد' : 'قرارداد فعال شد')}>
                         {ct.isActive ? 'قطع اتصال' : 'فعال‌سازی'}</button></td>
                     </tr>
                   ))}
@@ -258,12 +257,10 @@ export function NetworkTab({ setMsg, onChanged }: { setMsg: (m: { t: 'ok' | 'err
       {selInsurer && (
         <div className="card p-4 text-sm flex items-center justify-between gap-2 flex-wrap">
           <span><b>{selInsurer.name}</b> — {fa(selInsurer.companies)} بیمه‌گزار از طریق کارگزاری به این بیمه‌گر متصل است.</span>
-          {canPartner && (
-            <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }}
-              onClick={() => { if (window.confirm(`پایان همکاری با «${selInsurer.name}»؟`)) act(async () => { await client.put(`/policyholder-companies/partners/${selInsurer.id}`, { enabled: false }, 'org'); setSel(null); }, 'همکاری با بیمه‌گر پایان یافت'); }}>
+                      <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }}
+              onClick={() => { if (window.confirm(`پایان همکاری با «${selInsurer.name}»؟`)) act(async () => { await client.put(`/admin/policyholders/partners/${selInsurer.id}`, { brokerTenantId, enabled: false }, 'super'); setSel(null); }, 'همکاری با بیمه‌گر پایان یافت'); }}>
               پایان همکاری با این بیمه‌گر
             </button>
-          )}
         </div>
       )}
 
@@ -286,7 +283,10 @@ export function NetworkTab({ setMsg, onChanged }: { setMsg: (m: { t: 'ok' | 'err
                   این بیمه‌گزار اکنون به «{connect.company.currentInsurer.name}» متصل است. با شروع قرارداد جدید از تاریخ زیر، پرونده‌های فوتِ بعد از آن تاریخ به «{connect.insurer.name}» می‌روند؛ پرونده‌های قبلی تغییر نمی‌کنند.
                 </div>
               )}
-              <Field label="شماره بیمه‌نامه"><input className="input" value={k.policyNumber} onChange={(e) => setK({ ...k, policyNumber: e.target.value })} /></Field>
+              <div className="grid sm:grid-cols-2 gap-2">
+                <Field label="رشتهٔ بیمه‌نامه"><select className="input" value={k.line} onChange={(e) => setK({ ...k, line: e.target.value })}><option value="LIFE">عمر</option><option value="ACCIDENT">حوادث</option></select></Field>
+                <Field label="شماره بیمه‌نامه *"><input className="input" value={k.policyNumber} onChange={(e) => setK({ ...k, policyNumber: e.target.value })} /></Field>
+              </div>
               <div className="grid sm:grid-cols-2 gap-2">
                 <Field label="از تاریخ (خالی = امروز)"><JalaliDatePicker value={k.start} onChange={(v) => setK({ ...k, start: v })} placeholder="۱۴۰۵/۰۱/۰۱" /></Field>
                 <Field label="تا تاریخ (خالی = نامحدود)"><JalaliDatePicker value={k.end} onChange={(v) => setK({ ...k, end: v })} placeholder="۱۴۰۵/۱۲/۲۹" /></Field>
@@ -294,7 +294,7 @@ export function NetworkTab({ setMsg, onChanged }: { setMsg: (m: { t: 'ok' | 'err
             </div>
             <div className="flex border-t" style={{ borderColor: 'var(--border)' }}>
               <button onClick={() => setConnect(null)} className="flex-1 py-3 font-bold" style={{ color: 'var(--muted)', borderInlineEnd: '1px solid var(--border)' }}>انصراف</button>
-              <button onClick={saveContract} className="flex-1 py-3 font-bold" style={{ color: 'var(--brand)' }}>ثبت اتصال</button>
+              <button onClick={saveContract} disabled={!k.policyNumber.trim()} className="flex-1 py-3 font-bold" style={{ color: 'var(--brand)', opacity: k.policyNumber.trim() ? 1 : .5 }}>ثبت اتصال</button>
             </div>
           </div>
         </Overlay>

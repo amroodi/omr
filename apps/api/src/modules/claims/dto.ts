@@ -18,11 +18,17 @@ import { ToAsciiDigits } from '../../common/validation/to-ascii.decorator';
 
 export const BENEFICIARY_KINDS = ['ذینفع قانونی', 'وراث قانونی'] as const;
 
-/** One ذینفع / وارث from the deceased's beneficiary (inheritance) form: name + شبا. */
+/** One ذینفع / وارث from the beneficiary form: name, کد ملی + شبا. */
 export class HeirDto {
   @IsString()
   @Length(2, 120)
   fullName!: string;
+
+  @IsOptional()
+  @ToAsciiDigits()
+  @IsString()
+  @Length(10, 10)
+  nationalCode?: string; // checked in the service; older rows have none
 
   @ToAsciiDigits()
   @IsString()

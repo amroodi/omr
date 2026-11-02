@@ -61,8 +61,9 @@ export class PolicyholdersService {
   }
 
   // ── Brokerage (org) side ──
-  async list() {
-    const rows = await this.prisma.scoped.policyholderCompany.findMany({
+  async list(tenantId: string = getTenantIdOrThrow()) {
+    const rows = await this.db().policyholderCompany.findMany({
+      where: { tenantId },
       orderBy: { name: 'asc' },
       include: { contracts: { orderBy: { startDate: 'desc' } }, _count: { select: { accounts: true } } },
     });
@@ -85,18 +86,6 @@ export class PolicyholdersService {
         })),
       };
     });
-  }
-
-  async create(input: CompanyInput) {
-    const name = input.name?.trim();
-    if (!name) throw new BadRequestException('نام شرکت بیمه‌گزار الزامی است');
-    if (input.parentId) await this.own(input.parentId);
-    const c = await this.prisma.scoped.policyholderCompany.create({
-      data: { tenantId: getTenantIdOrThrow(), name, ...this.clean(input), parentId: input.parentId ?? null },
-      select: { id: true },
-    });
-    await this.audit.record({ action: AuditAction.CREATE, targetType: 'PolicyholderCompany', targetId: c.id, metadata: { name } });
-    return c;
   }
 
   async update(id: string, input: CompanyInput) {
@@ -125,39 +114,6 @@ export class PolicyholdersService {
     const key = await this.storage.save(getTenantIdOrThrow(), file.buffer);
     await this.prisma.scoped.policyholderCompany.update({ where: { id }, data: { logoKey: `${key}|${file.mimetype}` } });
     await this.audit.record({ action: AuditAction.UPLOAD, targetType: 'PolicyholderCompanyLogo', targetId: id });
-    return { ok: true };
-  }
-
-  async addContract(companyId: string, input: ContractInput) {
-    await this.own(companyId);
-    if (!input.insurerTenantId) throw new BadRequestException('بیمه‌گر را انتخاب کنید');
-    await this.assertPartner(input.insurerTenantId);
-    const range = this.range(input);
-    const c = await this.db().policyholderContract.create({
-      data: { companyId, insurerTenantId: input.insurerTenantId, line: input.line ?? null, policyNumber: input.policyNumber?.trim() || null, note: input.note?.trim() || null, ...range },
-      select: { id: true },
-    });
-    await this.audit.record({ action: AuditAction.CREATE, targetType: 'PolicyholderContract', targetId: c.id, metadata: { companyId, insurerTenantId: input.insurerTenantId } });
-    return c;
-  }
-
-  async updateContract(companyId: string, contractId: string, input: ContractInput) {
-    await this.own(companyId);
-    const c = await this.db().policyholderContract.findFirst({ where: { id: contractId, companyId } });
-    if (!c) throw new NotFoundException('قرارداد یافت نشد');
-    if (input.insurerTenantId) await this.assertPartner(input.insurerTenantId);
-    await this.db().policyholderContract.update({
-      where: { id: contractId },
-      data: {
-        ...(input.insurerTenantId ? { insurerTenantId: input.insurerTenantId } : {}),
-        ...(input.line !== undefined ? { line: input.line } : {}),
-        ...(input.policyNumber !== undefined ? { policyNumber: input.policyNumber?.trim() || null } : {}),
-        ...(input.note !== undefined ? { note: input.note?.trim() || null } : {}),
-        ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
-        ...(input.startDate !== undefined || input.endDate !== undefined ? this.range({ startDate: input.startDate ?? c.startDate?.toISOString(), endDate: input.endDate === undefined ? c.endDate?.toISOString() : input.endDate }) : {}),
-      },
-    });
-    await this.audit.record({ action: AuditAction.EDIT, targetType: 'PolicyholderContract', targetId: contractId, metadata: input as Record<string, unknown> });
     return { ok: true };
   }
 
@@ -237,14 +193,13 @@ export class PolicyholdersService {
    * Everything the «نقشهٔ اتصال‌ها» view needs: this brokerage, its بیمه‌گزار companies (with their
    * contracts), the insurers it works with, and the platform's other insurers it could add.
    */
-  async network() {
-    const tenantId = getTenantIdOrThrow();
+  async network(tenantId: string) {
     const db = this.db();
     const me = await db.tenant.findUnique({ where: { id: tenantId }, select: { kind: true } });
-    if (me?.kind !== 'BROKER') throw new BadRequestException('نقشهٔ اتصال‌ها فقط در پنل کارگزاری است');
+    if (me?.kind !== 'BROKER') throw new BadRequestException('نقشهٔ اتصال‌ها فقط برای کارگزاری است');
     const [broker, companies, parts, allInsurers] = await Promise.all([
       db.tenant.findUnique({ where: { id: tenantId }, select: { name: true, slug: true, logoKey: true } }),
-      this.list(),
+      this.list(tenantId),
       db.brokerInsurerPartnership.findMany({ where: { brokerTenantId: tenantId } }),
       db.tenant.findMany({ where: { kind: 'INSURER', isActive: true }, orderBy: { name: 'asc' }, select: { id: true, name: true, slug: true, logoKey: true, primaryColor: true, theme: true } }),
     ]);
@@ -260,8 +215,7 @@ export class PolicyholdersService {
   }
 
   /** Connect this brokerage to an insurer registered on the platform (or end the cooperation). */
-  async setPartner(insurerTenantId: string, enabled: boolean) {
-    const brokerTenantId = getTenantIdOrThrow();
+  async setPartner(brokerTenantId: string, insurerTenantId: string, enabled: boolean) {
     const db = this.db();
     const ins = await db.tenant.findUnique({ where: { id: insurerTenantId }, select: { kind: true, isActive: true } });
     if (!ins || ins.kind !== 'INSURER' || !ins.isActive) throw new BadRequestException('بیمه‌گر نامعتبر است');
@@ -338,11 +292,6 @@ export class PolicyholdersService {
   private async own(id: string) {
     const c = await this.prisma.scoped.policyholderCompany.findFirst({ where: { id }, select: { id: true } });
     if (!c) throw new NotFoundException('شرکت بیمه‌گزار یافت نشد');
-  }
-
-  private async assertPartner(insurerTenantId: string) {
-    const p = await this.db().brokerInsurerPartnership.findFirst({ where: { brokerTenantId: getTenantIdOrThrow(), insurerTenantId, isActive: true }, select: { id: true } });
-    if (!p) throw new BadRequestException('این کارگزاری با این بیمه‌گر همکاری فعال ندارد');
   }
 
   private range(input: { startDate?: string | null; endDate?: string | null }) {
