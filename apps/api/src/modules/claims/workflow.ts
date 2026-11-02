@@ -49,13 +49,45 @@ export interface WorkflowAction {
 
 const ORDER: Stage[] = ['POLICYHOLDER', 'BROKER', 'BRANCH', 'HQ', 'COUNCIL'];
 
+/**
+ * Model View: how one insurer's chain works, set only in Super Admin (`Tenant.workflowModel`).
+ * The defaults are the behaviour every insurer had before the model existed.
+ */
+export interface PanelRights { upload: boolean; submit: boolean }
+export interface WorkflowModel {
+  councilEnabled: boolean; // ستاد may refer cases to شورای فنی (off: ستاد decides alone, no ceiling applies)
+  requireLossNotice: boolean; // شعبه must record اعلام خسارت before forwarding
+  requireOriginals: boolean; // شعبه must hold the original documents before forwarding
+  panels: { COMPANY: PanelRights; REPRESENTATIVE: PanelRights }; // at the بیمه‌گزار desk
+}
+export const DEFAULT_WORKFLOW_MODEL: WorkflowModel = {
+  councilEnabled: true,
+  requireLossNotice: true,
+  requireOriginals: true,
+  panels: { COMPANY: { upload: true, submit: true }, REPRESENTATIVE: { upload: true, submit: true } },
+};
+
+/** The stored model over the defaults; anything missing or malformed keeps its default. */
+export function modelFrom(stored: unknown): WorkflowModel {
+  const raw = (stored && typeof stored === 'object' ? stored : {}) as Record<string, any>;
+  const d = DEFAULT_WORKFLOW_MODEL;
+  const flag = (v: unknown, def: boolean) => (typeof v === 'boolean' ? v : def);
+  const rights = (r: any, def: PanelRights): PanelRights => ({ upload: flag(r?.upload, def.upload), submit: flag(r?.submit, def.submit) });
+  return {
+    councilEnabled: flag(raw.councilEnabled, d.councilEnabled),
+    requireLossNotice: flag(raw.requireLossNotice, d.requireLossNotice),
+    requireOriginals: flag(raw.requireOriginals, d.requireOriginals),
+    panels: { COMPANY: rights(raw.panels?.COMPANY, d.panels.COMPANY), REPRESENTATIVE: rights(raw.panels?.REPRESENTATIVE, d.panels.REPRESENTATIVE) },
+  };
+}
+
 export function rank(s: Stage): number {
   return ORDER.indexOf(s);
 }
 
-/** The desks this claim passes through, bottom → top. */
-export function chainOf(claim: { brokerTenantId: string | null }): Stage[] {
-  return claim.brokerTenantId ? ORDER : ORDER.filter((s) => s !== 'BROKER');
+/** The desks this claim passes through, bottom → top. A case already at شورای فنی stays on it if the desk is switched off. */
+export function chainOf(claim: { brokerTenantId: string | null; currentStage?: Stage | string | null }, model: WorkflowModel = DEFAULT_WORKFLOW_MODEL): Stage[] {
+  return ORDER.filter((s) => (s !== 'BROKER' || !!claim.brokerTenantId) && (s !== 'COUNCIL' || model.councilEnabled || claim.currentStage === 'COUNCIL'));
 }
 
 export function below(claim: { brokerTenantId: string | null }, s: Stage): Stage | null {
@@ -100,6 +132,9 @@ export interface ActionContext {
   docs: DeskDocFacts;
   branches: { id: string; name: string; code: string }[]; // insurer branches (for کارگزاری → شعبه)
   physical: PhysicalState;
+  model?: WorkflowModel;
+  /** Why this login can't send the case on from the بیمه‌گزار desk (Model View). */
+  submitBlocked?: string;
 }
 
 // ── Original (physical) documents ──
@@ -148,6 +183,7 @@ export function physicalActionsFor(me: Stage | null, p: PhysicalState): Physical
  */
 export function actionsFor(ctx: ActionContext): WorkflowAction[] {
   const { claim, docs } = ctx;
+  const model = ctx.model ?? DEFAULT_WORKFLOW_MODEL;
   const s = claim.currentStage;
   if (!s || ['PAID', 'REJECTED'].includes(claim.status)) return [];
   const out: WorkflowAction[] = [];
@@ -156,7 +192,7 @@ export function actionsFor(ctx: ActionContext): WorkflowAction[] {
   const notApproved = docs.count === 0 ? 'مدرکی بارگذاری نشده است' : !docs.allApproved ? `ابتدا همهٔ مدارک را در مرحلهٔ ${STAGE_FA[s]} تایید کنید` : undefined;
 
   if (s === 'POLICYHOLDER') {
-    const disabled = docs.count === 0
+    const disabled = ctx.submitBlocked ? ctx.submitBlocked : docs.count === 0
       ? 'ابتدا مدارک را بارگذاری کنید'
       : docs.rejectedAnywhere.length
         ? `مدارک ردشده را جایگزین کنید: ${docs.rejectedAnywhere.join('، ')}`
@@ -183,8 +219,8 @@ export function actionsFor(ctx: ActionContext): WorkflowAction[] {
   const waitingOriginals = ph.open?.requesterStage === s ? 'در انتظار دریافت اصل مدارک' : undefined;
   if (s === 'BROKER' || s === 'BRANCH') {
     let disabled = notApproved;
-    if (!disabled && s === 'BRANCH' && !claim.lossNoticeNumber) disabled = 'ابتدا اعلام خسارت را ثبت کنید';
-    if (!disabled && s === 'BRANCH' && !ph.at) disabled = waitingOriginals ?? 'ابتدا اصل مدارک را از بیمه‌گزار دریافت کنید';
+    if (!disabled && s === 'BRANCH' && model.requireLossNotice && !claim.lossNoticeNumber) disabled = 'ابتدا اعلام خسارت را ثبت کنید';
+    if (!disabled && s === 'BRANCH' && !ph.at && (model.requireOriginals || waitingOriginals)) disabled = waitingOriginals ?? 'ابتدا اصل مدارک را از بیمه‌گزار دریافت کنید';
     if (!disabled && s === 'BROKER' && !ctx.branches.length) disabled = 'بیمه‌گر هیچ شعبه‌ای تعریف نکرده است';
     out.push({
       key: 'FORWARD',
@@ -203,9 +239,9 @@ export function actionsFor(ctx: ActionContext): WorkflowAction[] {
       const ceiling = ctx.hqCeiling != null ? Number(ctx.hqCeiling.toString()) : null;
       let disabled = notApproved ?? waitingOriginals;
       if (!disabled && claim.finalizedAmount == null) disabled = 'ابتدا مبلغ خسارت قطعی را ثبت کنید';
-      if (!disabled && ceiling != null && payable > ceiling) disabled = 'مبلغ بیش از سقف اختیار مدیریت ستاد است؛ پرونده را به شورای فنی ارجاع دهید';
+      if (!disabled && model.councilEnabled && ceiling != null && payable > ceiling) disabled = 'مبلغ بیش از سقف اختیار مدیریت ستاد است؛ پرونده را به شورای فنی ارجاع دهید';
       out.push({ key: 'PAY_ORDER', label: 'دستور پرداخت — ارسال به شعبه', tone: 'primary', disabled });
-      out.push(council);
+      if (model.councilEnabled) out.push(council);
     }
   } else if (s === 'COUNCIL') {
     let disabled = notApproved ?? waitingOriginals;

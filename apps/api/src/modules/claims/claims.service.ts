@@ -24,7 +24,7 @@ import { nextClaimNumber } from './claim-number';
 import { isValidIban, isValidNationalCode } from '../../common/validation/field-validation';
 import { beneficiaryHiddenDoc } from '../required-docs/defaults';
 import { toAsciiDigits } from '../../common/jalali/jalali.util';
-import { above, actionsFor, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, physicalActionsFor, PhysicalActionKey, physicalBelow, PhysicalState, Purpose, ReviewDesk, Stage, STAGE_FA, WorkflowAction } from './workflow';
+import { above, actionsFor, modelFrom, WorkflowModel, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, physicalActionsFor, PhysicalActionKey, physicalBelow, PhysicalState, Purpose, ReviewDesk, Stage, STAGE_FA, WorkflowAction } from './workflow';
 
 const CLAIM_DOC_MIME = new Set([
   'application/pdf', 'image/jpeg', 'image/png',
@@ -478,19 +478,33 @@ export class ClaimsService {
     };
   }
 
+  /** What this customer-side login may do at the بیمه‌گزار desk (null for anyone else). */
+  private panelRights(model: WorkflowModel) {
+    const ctx = getContext();
+    if (ctx?.actorType !== 'CUSTOMER') return null;
+    return ctx.customerRepresentative ? model.panels.REPRESENTATIVE : model.panels.COMPANY;
+  }
+
+  private async modelOf(insurerTenantId: string): Promise<WorkflowModel> {
+    const t = await this.db().tenant.findUnique({ where: { id: insurerTenantId }, select: { workflowModel: true } });
+    return modelFrom(t?.workflowModel);
+  }
+
   /** Actions the caller may take on the claim right now (empty unless they hold its desk). */
   private async availableActions(claim: any, desk: Desk): Promise<WorkflowAction[]> {
     if (!this.holdsDesk(claim, desk)) return [];
     const db = this.db();
     const [docs, insurer, branches, physical] = await Promise.all([
       this.deskDocFacts(claim),
-      db.tenant.findUnique({ where: { id: claim.insurerTenantId }, select: { hqCeiling: true } }),
+      db.tenant.findUnique({ where: { id: claim.insurerTenantId }, select: { hqCeiling: true, workflowModel: true } }),
       claim.currentStage === 'BROKER'
         ? db.branch.findMany({ where: { tenantId: claim.insurerTenantId }, orderBy: { code: 'asc' }, select: { id: true, name: true, code: true } })
         : Promise.resolve([]),
       this.physicalState(claim),
     ]);
-    return actionsFor({ claim, isAdmin: desk.isAdmin, hqCeiling: insurer?.hqCeiling ?? null, docs, branches, physical });
+    const model = modelFrom(insurer?.workflowModel);
+    const submitBlocked = this.panelRights(model)?.submit === false ? 'ارسال پرونده از این پنل غیرفعال است' : undefined;
+    return actionsFor({ claim, isAdmin: desk.isAdmin, hqCeiling: insurer?.hqCeiling ?? null, docs, branches, physical, model, submitBlocked });
   }
 
   /** The claim's place in the chain + what the caller can do, for the panels. */
@@ -499,7 +513,7 @@ export class ClaimsService {
     const s = claim.currentStage as Stage | null;
     const holds = this.holdsDesk(claim, desk);
     return {
-      chain: chainOf(claim).map((st) => ({ stage: st, label: STAGE_FA[st] })),
+      chain: chainOf(claim, await this.modelOf(claim.insurerTenantId)).map((st) => ({ stage: st, label: STAGE_FA[st] })),
       currentStage: s,
       currentStageLabel: s ? STAGE_FA[s] : null,
       direction: claim.flowDirection ?? null,
@@ -1406,6 +1420,7 @@ export class ClaimsService {
     if (!claim) throw new NotFoundException('پرونده یافت نشد');
     this.assertParticipant(claim);
     assertNotPaid(claim); // archived once paid
+    if (this.panelRights(await this.modelOf(claim.insurerTenantId))?.upload === false) throw new ForbiddenException('بارگذاری مدارک از این پنل غیرفعال است');
     return this.storeDocument(claim, file, docCode, getContext()?.actorId ?? null, () => this.uploaderPhone(claim));
   }
 

@@ -19,7 +19,7 @@ import { getContext, getTenantIdOrThrow } from '../../common/tenant/tenant-conte
 import { toJalali, toPersianDigits } from '../../common/jalali/jalali.util';
 import { SmsService } from '../auth/sms.service';
 import { RequestOtpDto, VerifyOtpDto } from './dto';
-import { chainOf, Stage, STAGE_FA } from '../claims/workflow';
+import { chainOf, modelFrom, Stage, STAGE_FA } from '../claims/workflow';
 import { ageAt } from '../claims/claims.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ClaimFieldsService } from '../claim-fields/claim-fields.service';
@@ -413,7 +413,7 @@ export class InquiryService {
         direction: s.direction, purpose: s.purpose ?? null, state: s.state, action: s.action ?? null, decidedAt: s.decidedAt ? toJalali(s.decidedAt) : null,
       })),
       deficiencies: (c.deficiencies ?? []).map((d: any) => ({ items: this.safeParse(d.items), resolvedAt: d.resolvedAt ? toJalali(d.resolvedAt, false) : null })),
-      chain: chainOf(c).map((st) => ({ stage: st, label: STAGE_FA[st] })),
+      chain: chainOf(c, modelFrom((await this.prisma.unscoped().tenant.findUnique({ where: { id: c.insurerTenantId }, select: { workflowModel: true } }))?.workflowModel)).map((st) => ({ stage: st, label: STAGE_FA[st] })),
       currentStage: manual ? null : c.currentStage ?? null,
       flowDirection: manual ? null : c.flowDirection ?? null,
       flowPurpose: manual ? null : c.flowPurpose ?? null,
