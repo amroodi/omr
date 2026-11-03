@@ -195,7 +195,7 @@ export function Shell({
           {userName && <span className="ptopbar-user" title={userName}>نام کاربر : <b>{userName}</b></span>}
           <span className="ptopbar-spacer" />
           {action && <span className="no-print ptopbar-action">{action}</span>}
-          <span className="no-print"><NotificationBell realm={realm} /></span>
+          {realm !== 'super' && <span className="no-print"><NotificationBell realm={realm} /></span>}
           <span className="no-print"><WallpaperPicker /></span>
           <span className="no-print"><ThemeToggle /></span>
           {/* The organisation's logo at the far end of the bar (like the insurer's own portal) */}

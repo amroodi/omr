@@ -1,3 +1,4 @@
+import { Realms } from '../../common/rbac/decorators';
 import { Controller, Get, Param, Post } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
 
@@ -6,21 +7,25 @@ import { NotificationsService } from './notifications.service';
 export class NotificationsController {
   constructor(private readonly notifications: NotificationsService) {}
 
+  @Realms('ORG', 'CUSTOMER')
   @Get()
   list() {
     return this.notifications.list();
   }
 
+  @Realms('ORG', 'CUSTOMER')
   @Get('unread-count')
   unreadCount() {
     return this.notifications.unreadCount();
   }
 
+  @Realms('ORG', 'CUSTOMER')
   @Post('read-all')
   readAll() {
     return this.notifications.markAllRead();
   }
 
+  @Realms('ORG', 'CUSTOMER')
   @Post(':id/read')
   read(@Param('id') id: string) {
     return this.notifications.markRead(id);

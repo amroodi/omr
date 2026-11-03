@@ -17,7 +17,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
 import { IsBoolean, IsOptional, IsString, IsUUID, Length, Matches } from 'class-validator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { Permissions, Public } from '../../common/rbac/decorators';
+import { Permissions, Public, Realms } from '../../common/rbac/decorators';
 import { PERMISSIONS } from '../../common/rbac/permissions';
 import { TenantResolverGuard } from '../../common/tenant/tenant-resolver.guard';
 import { ToAsciiDigits } from '../../common/validation/to-ascii.decorator';
@@ -94,6 +94,7 @@ export class CustomerController {
     return this.auth.representativeLoginPublic(dto.nationalCode, dto.password);
   }
 
+  @Realms('CUSTOMER')
   @UseGuards(JwtAuthGuard)
   @Post('password')
   changePassword(@Body() dto: CustomerChangePasswordDto) {
@@ -101,6 +102,7 @@ export class CustomerController {
   }
 
   /** «داشبورد»: the company's policies (عمر / حوادث, every year) and the totals of one of them. */
+  @Realms('CUSTOMER')
   @UseGuards(JwtAuthGuard)
   @Get('dashboard')
   dashboard(@Query('contractId') contractId?: string, @Query('companyId') companyId?: string) {
@@ -108,6 +110,7 @@ export class CustomerController {
   }
 
   /** «broker» login: the brokerage's بیمه‌گزار companies. */
+  @Realms('CUSTOMER')
   @UseGuards(JwtAuthGuard)
   @Get('broker/companies')
   brokerCompanies(@Query('q') q?: string) {
@@ -228,30 +231,35 @@ export class CustomerController {
   }
 
   // ── The بیمه‌گزار company's own نمایندگان (company login only; checked in the service) ──
+  @Realms('CUSTOMER')
   @UseGuards(JwtAuthGuard)
   @Get('representatives')
   representatives() {
     return this.customer.companyRepresentatives();
   }
 
+  @Realms('CUSTOMER')
   @UseGuards(JwtAuthGuard)
   @Post('representatives')
   addRepresentative(@Body() dto: CompanyRepresentativeDto) {
     return this.customer.addCompanyRepresentative(dto);
   }
 
+  @Realms('CUSTOMER')
   @UseGuards(JwtAuthGuard)
   @Post('representatives/:id/password')
   representativePassword(@Param('id') id: string, @Body() dto: AccountPasswordDto) {
     return this.customer.setCompanyRepresentativePassword(id, dto.password);
   }
 
+  @Realms('CUSTOMER')
   @UseGuards(JwtAuthGuard)
   @Post('representatives/:id/active')
   representativeActive(@Param('id') id: string, @Body() dto: ActiveDto) {
     return this.customer.setCompanyRepresentativeActive(id, dto.active);
   }
 
+  @Realms('CUSTOMER')
   @UseGuards(JwtAuthGuard)
   @Delete('representatives/:id')
   removeRepresentative(@Param('id') id: string) {
@@ -259,6 +267,7 @@ export class CustomerController {
   }
 
   /** Customer dashboard — the caller's own cases only (requires a `customer` token). */
+  @Realms('CUSTOMER')
   @UseGuards(JwtAuthGuard)
   @Get('cases')
   myCases() {
@@ -266,6 +275,7 @@ export class CustomerController {
   }
 
   // ── بیمه‌گزار claim self-service (ownership enforced inside ClaimsService) ──
+  @Realms('CUSTOMER')
   @UseGuards(JwtAuthGuard)
   @Get('insurers')
   insurers() {
@@ -273,6 +283,7 @@ export class CustomerController {
   }
 
   /** «اعلام خسارت»: may this login file, and to which desks? */
+  @Realms('CUSTOMER')
   @UseGuards(JwtAuthGuard)
   @Get('notice-options')
   noticeOptions() {
@@ -280,6 +291,7 @@ export class CustomerController {
   }
 
   /** A بیمه‌گزار files their own claim. channel=BROKER, معرف + policyHolder derived from the session. */
+  @Realms('CUSTOMER')
   @UseGuards(JwtAuthGuard)
   @Post('claims')
   fileClaim(@Body() dto: CustomerFileClaimDto) {
@@ -305,6 +317,7 @@ export class CustomerController {
   }
 
   /** Coverage inquiry before anything is typed; `enabled: false` while Super Admin has it off. */
+  @Realms('CUSTOMER')
   @UseGuards(JwtAuthGuard)
   @Post('coverage-check')
   async coverageCheck(@Body() dto: CoverageCheckDto) {
@@ -313,18 +326,21 @@ export class CustomerController {
     return r ? { enabled: true, ...r } : { enabled: false };
   }
 
+  @Realms('CUSTOMER')
   @UseGuards(JwtAuthGuard)
   @Get('me')
   me() {
     return this.customer.me();
   }
 
+  @Realms('CUSTOMER')
   @UseGuards(JwtAuthGuard)
   @Get('claims')
   myClaims(@Query('q') q?: string) {
     return this.claims.listMine(q);
   }
 
+  @Realms('CUSTOMER')
   @UseGuards(JwtAuthGuard)
   @Get('claims/:id')
   claim(@Param('id') id: string) {
@@ -332,6 +348,7 @@ export class CustomerController {
   }
 
   /** «روند پرونده»: the case's executive steps (dates/statuses), read-only for the بیمه‌گزار. */
+  @Realms('CUSTOMER')
   @UseGuards(JwtAuthGuard)
   @Get('claims/:id/fields')
   claimFields(@Param('id') id: string) {
@@ -339,6 +356,7 @@ export class CustomerController {
   }
 
   /** «ذینفع / وراث قانونی» of the case (name + شبا each). */
+  @Realms('CUSTOMER')
   @UseGuards(JwtAuthGuard)
   @Get('claims/:id/heirs')
   claimHeirs(@Param('id') id: string) {
@@ -346,18 +364,21 @@ export class CustomerController {
   }
 
   /** The بیمه‌گزار corrects them while the case is on their desk. */
+  @Realms('CUSTOMER')
   @UseGuards(JwtAuthGuard)
   @Put('claims/:id/heirs')
   setClaimHeirs(@Param('id') id: string, @Body() dto: HeirsDto) {
     return this.claims.setHeirs(id, dto);
   }
 
+  @Realms('CUSTOMER')
   @UseGuards(JwtAuthGuard)
   @Get('claims/:id/checklist')
   claimChecklist(@Param('id') id: string) {
     return this.claims.checklist(id);
   }
 
+  @Realms('CUSTOMER')
   @UseGuards(JwtAuthGuard)
   @Post('claims/:id/documents')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 15 * 1024 * 1024 } }))
@@ -366,18 +387,21 @@ export class CustomerController {
   }
 
   /** بیمه‌گزار sends the original documents to شعبه when asked. */
+  @Realms('CUSTOMER')
   @UseGuards(JwtAuthGuard)
   @Post('claims/:id/physical')
   physical(@Param('id') id: string, @Body() dto: PhysicalDto) {
     return this.claims.physicalAct(id, dto);
   }
 
+  @Realms('CUSTOMER')
   @UseGuards(JwtAuthGuard)
   @Post('claims/:id/rectify')
   rectify(@Param('id') id: string, @Body() body: { note?: string }) {
     return this.claims.rectify(id, body?.note);
   }
 
+  @Realms('CUSTOMER')
   @UseGuards(JwtAuthGuard)
   @Get('claims/:id/documents/:docId/file')
   async claimDoc(@Param('id') id: string, @Param('docId') docId: string, @Res() res: Response) {

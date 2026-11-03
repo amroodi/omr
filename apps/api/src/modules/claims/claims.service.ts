@@ -1854,6 +1854,8 @@ export class ClaimsService {
   async listMine(q?: string) {
     const ctx = getContext();
     const db = this.db();
+    // A بیمه‌گزار's own cases, or staff's desk; nobody else (the inquiry's token reads one case elsewhere).
+    if (ctx?.actorType !== 'CUSTOMER' && ctx?.actorType !== 'ORG_USER') throw new ForbiddenException('دسترسی ندارید');
     const where: Prisma.ClaimWhereInput =
       ctx?.actorType === 'CUSTOMER'
         ? { ...customerClaimWhere(), deletedAt: null }

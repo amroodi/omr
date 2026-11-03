@@ -2,11 +2,23 @@ import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@
 import { Reflector } from '@nestjs/core';
 import { Request } from 'express';
 import { RequestContext } from '../tenant/tenant-context';
-import { IS_PUBLIC_KEY, PERMISSIONS_KEY, BROKER_PANEL_KEY, SUPER_ADMIN_KEY, ENTRY_KEY } from './decorators';
+import { IS_PUBLIC_KEY, PERMISSIONS_KEY, BROKER_PANEL_KEY, SUPER_ADMIN_KEY, ENTRY_KEY, REALMS_KEY, RealmKind } from './decorators';
 import type { Permission } from './permissions';
 
+/** The kind of sign-in behind the request (see @Realms). */
+export function realmOf(ctx: RequestContext): RealmKind | 'API' | 'NONE' {
+  switch (ctx.actorType) {
+    case 'ORG_USER': return 'ORG';
+    case 'SUPER_ADMIN': return 'SUPER';
+    case 'CUSTOMER': return 'CUSTOMER';
+    case 'INSURED': return ctx.insuredPhoneHash ? 'INSURED' : 'RECORD';
+    case 'API': return 'API';
+    default: return 'NONE';
+  }
+}
+
 /**
- * Enforces @Permissions() and @SuperAdminOnly() against the request context populated by
+ * Enforces @Realms(), @Permissions() and @SuperAdminOnly() against the request context populated by
  * JwtAuthGuard. Runs after it.
  */
 @Injectable()
@@ -22,6 +34,12 @@ export class RolesGuard implements CanActivate {
 
     const req = context.switchToHttp().getRequest<Request>();
     const ctx = (req as any).context as RequestContext;
+
+    // @Realms(): only these kinds of sign-in (a بیمه‌گزار route isn't a door for staff, nor the inquiry's code).
+    const realms = this.reflector.getAllAndOverride<RealmKind[]>(REALMS_KEY, [context.getHandler(), context.getClass()]);
+    if (realms?.length && !(realms as string[]).includes(realmOf(ctx))) {
+      throw new ForbiddenException('این بخش برای این نوع ورود نیست');
+    }
 
     const superOnly = this.reflector.getAllAndOverride<boolean>(SUPER_ADMIN_KEY, [
       context.getHandler(),

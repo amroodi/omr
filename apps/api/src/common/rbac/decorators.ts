@@ -27,6 +27,15 @@ export const ENTRY_KEY = 'entryPanel';
 export const EntryOnly = () => SetMetadata(ENTRY_KEY, 'only');
 export const EntryAllowed = () => SetMetadata(ENTRY_KEY, 'allowed');
 
+/**
+ * Which kind of sign-in a route serves, for routes without @Permissions / @SuperAdminOnly / @Public:
+ * ORG (organization staff), SUPER (Super Admin), CUSTOMER (بیمه‌گزار, نماینده, نماینده بیمه — panel 1),
+ * RECORD (panel 3: the public inquiry's code-scoped token), INSURED (پنل بیمه‌شده). Any other token gets 403.
+ */
+export type RealmKind = 'ORG' | 'SUPER' | 'CUSTOMER' | 'RECORD' | 'INSURED';
+export const REALMS_KEY = 'realms';
+export const Realms = (...realms: RealmKind[]) => SetMetadata(REALMS_KEY, realms);
+
 /** Inject the current request context (actor, tenant, permissions). */
 export const CurrentActor = createParamDecorator((_data: unknown, ctx: ExecutionContext) => {
   const req = ctx.switchToHttp().getRequest();
