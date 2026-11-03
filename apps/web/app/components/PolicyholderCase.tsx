@@ -4,13 +4,14 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { client, getToken } from '../../lib/client';
 import { lastPanel } from '../../lib/panel';
-import { claimTypeLabel, ErrorBox, Spinner } from './ui';
+import { BigIcon, claimTypeLabel, ErrorBox, Spinner } from './ui';
 import { Icon, Shell } from './Shell';
 import { CUSTOMER_NAV } from '../customer/nav';
+import { Diamond, IC } from '../customer/launcher';
 import { ORG_NAV } from '../org/nav';
 import { WorkflowPanel } from './WorkflowPanel';
 import { caseTitle } from '../../lib/caseTitle';
-import { AI_QUEUED_FA, aiVerdict, CaseHero, ChecklistItem, ClaimDoc, ICONS, STATUS_FA, useCase } from './case-ui';
+import { AI_QUEUED_FA, aiVerdict, ChecklistItem, ClaimDoc, dateOnly, STATUS_FA, useCase } from './case-ui';
 import { DocUploadTile, OnProgress, UploadButton } from './upload';
 import { BENEFICIARY_FORM, BeneficiaryChoice, INHERITANCE_CERT } from './heirs';
 
@@ -61,8 +62,8 @@ function InsuredAccess({ claimId }: { claimId: string }) {
     try { await client.del(`${base}/${id}`, 'customer'); await load(); } catch (e: any) { setState({ t: 'err', m: e.message }); }
   };
   return (
-    <div className="pcard p-6 space-y-3">
-      <h3 className="font-extrabold">پنل بیمه‌شده</h3>
+    <section className="pcard cu-spec">
+      <h2 className="cu-spec-h"><span>پنل بیمه‌شده</span></h2>
       <p className="text-sm" style={{ color: 'var(--muted)' }}>بیمه‌شده یا افراد تحت تکفل با این شماره وارد می‌شوند و فقط مدارک خود را بارگذاری می‌کنند.</p>
       {state && <div className={state.t === 'ok' ? 'alert-success' : 'alert-error'}>{state.m}</div>}
       <div className="flex gap-2 flex-wrap">
@@ -80,7 +81,7 @@ function InsuredAccess({ claimId }: { claimId: string }) {
           ))}
         </ul>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -138,7 +139,7 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
 
   /** «ثبت نهایی»: check the documents, send the case on, and show the outcome on its own page. */
   const finalSubmit = async () => {
-    if (!checklist || !claim) return;
+    if (!checklist || !claim || sending) return;
     const missing = checklist.items.filter((it) => !it.uploaded && it.required).map((it) => it.label);
     const rejected = checklist.items.filter((it) => it.documents[0]?.reviews?.some((r) => r.state === 'REJECTED')).map((it) => it.label);
     const fail = (reason: string, items: string[] = []) => {
@@ -163,47 +164,98 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
   };
 
   const physicalMoves = (claim?.workflow?.physical?.actions.length ?? 0) > 0;
+  const insurerName = org ? claim?.insurer?.name : claim?.insurerTenantId ? insurers[claim.insurerTenantId] : undefined;
+  const open = !!claim && !['PAID', 'REJECTED', 'CLOSED'].includes(claim.status);
+  /** Where the case is now, in a sentence (the notice under the action tiles). */
+  const whereNow = !claim ? '' : atMyDesk
+    ? 'مدارک مورد نیاز را بارگذاری کنید و سپس «ثبت نهایی» را بزنید تا پرونده برای رسیدگی ارسال شود.'
+    : claim.story?.manual ? `وضعیت پرونده: ${claim.story.caseStage || (STATUS_FA[claim.status] ?? claim.status)}`
+    : claim.workflow?.currentStage ? `مدارک ثبت نهایی شده و پرونده نزد «${claim.workflow.currentStageLabel}» است.`
+    : `پرونده بسته شده است (${STATUS_FA[claim.status] ?? claim.status}).`;
 
   return (
-    <Shell title="جزئیات پرونده" breadcrumb="جزئیات پرونده" sectionLabel="خسارت عمر و حادثه" nav={org ? ORG_NAV : CUSTOMER_NAV} realm={realm}>
-      <div className="space-y-5 max-w-4xl mx-auto">
+    <Shell title="جزئیات پرونده" breadcrumb="جزئیات پرونده" sectionLabel="خسارت عمر و حادثه" nav={org ? ORG_NAV : CUSTOMER_NAV} realm={realm}
+      action={claim ? (
+        <>
+          <Link href={org ? '/org/entry/claims' : '/customer/claims'} className="cu-intro-btn text-center">مرحله قبل</Link>
+          <Link href={`${page}/workflow`} className="cu-intro-btn text-center">مرحله بعد</Link>
+        </>
+      ) : undefined}>
+      <div className="cu-home">
         <ErrorBox message={error} />
         {sentOk && <div className="alert-success">مدارک ثبت نهایی شد و پرونده برای رسیدگی ارسال شد.</div>}
-        {!claim ? <div className="pcard p-10 text-center"><Spinner /></div> : (
+        {!claim ? <div className="pcard p-10 flex justify-center"><Spinner /></div> : (
           <>
-            <div className="cs-sheet">
-              <CaseHero
-                title={caseTitle(claim)} claim={claim}
-                sub={`${claimTypeLabel(claim)} — ${claim.deceasedName || '—'}`}
-                chips={(() => { const name = org ? claim.insurer?.name : claim.insurerTenantId ? insurers[claim.insurerTenantId] : undefined; return name ? [{ label: 'بیمه‌گر', value: name, icon: ICONS.policy }] : []; })()}
-                notesLabel="وضعیت پرونده:" notes={STATUS_FA[claim.status] ?? claim.status}
-                steps back={org ? '/org/entry/claims' : '/customer/claims'} exitHref={`${page}/workflow`} />
+            {/* مشخصات پرونده — laid out like the home's «مشخصات بیمه نامه» */}
+            <section className="pcard cu-spec">
+              <h2 className="cu-spec-h"><span>مشخصات پرونده</span></h2>
+              <div className="cu-spec-row">
+                <div className="cu-select is-static">
+                  <span className="cu-select-ico" style={{ color: 'var(--cu-ink)' }}><BigIcon path={IC.policy} size={20} /></span>
+                  <span>{caseTitle(claim)} | {claimTypeLabel(claim)} | {claim.deceasedName || '—'}</span>
+                </div>
+                <div className="cu-spec-facts">
+                  <span><span style={{ color: 'var(--cu-ink)' }}><BigIcon path={IC.cal} size={18} /></span> تاریخ ثبت: {dateOnly(claim.createdAt) || '—'}</span>
+                  <span><i className={`cu-dot${open ? ' is-on' : ''}`} /> وضعیت: {STATUS_FA[claim.status] ?? claim.status}</span>
+                </div>
+              </div>
+            </section>
+
+            {/* Four summary cards, as on the home page */}
+            <div className="cu-cards">
+              <div className="pcard cu-card">
+                <div><div className="cu-card-t">پرونده خسارت</div><div className="cu-card-v latin-digits">{claim.claimNumber}</div>
+                  <div className="cu-card-s">{claimTypeLabel(claim)}</div></div>
+                <span className="cu-card-ico"><BigIcon path={IC.doc} size={34} /></span>
+              </div>
+              <div className="pcard cu-card">
+                <div><div className="cu-card-t">بیمه‌شده (متوفی)</div><div className="cu-card-v">{claim.deceasedName || '—'}</div>
+                  <div className="cu-card-s">{claim.claimTypeDeath === false ? 'تاریخ حادثه' : 'تاریخ فوت'}: {claim.eventDate || '—'}</div>
+                  {claim.causeOfDeath && <div className="cu-card-s">علت: {claim.causeOfDeath}</div>}</div>
+                <span className="cu-card-ico"><BigIcon path={IC.user} size={34} /></span>
+              </div>
+              <div className="pcard cu-card">
+                <div><div className="cu-card-t">بیمه‌گر</div><div className="cu-card-v">{insurerName || '—'}</div>
+                  <div className="cu-card-s">بیمه‌نامه: <span className="latin-digits">{claim.policyNumber || '—'}</span></div></div>
+                <span className="cu-card-ico"><BigIcon path={IC.policy} size={34} /></span>
+              </div>
+              <div className="pcard cu-card">
+                <div><div className="cu-card-t">وضعیت پرونده</div><div className="cu-card-v">{STATUS_FA[claim.status] ?? claim.status}</div>
+                  <div className="cu-card-s">{claim.workflow?.currentStage ? `نزد ${claim.workflow.currentStageLabel}` : claim.paidDate ? `پرداخت: ${claim.paidDate}` : '—'}</div>
+                  {checklist && <div className="cu-card-s">مدارک: {checklist.complete ? 'کامل' : 'ناقص'}</div>}</div>
+                <span className="cu-card-ico"><BigIcon path={IC.check} size={34} /></span>
+              </div>
             </div>
             {claim.coverageStatus && <div className={claim.coverageStatus === 'VALID' ? 'alert-success' : 'alert-error'}>استعلام پوشش: {({ VALID: 'معتبر', INVALID: 'نامعتبر', NOT_FOUND: 'یافت نشد', NOT_CHECKED: 'بررسی‌نشده؛ به‌محض در دسترس بودن سامانهٔ بیمه‌گر خودکار بررسی می‌شود' } as Record<string, string>)[claim.coverageStatus] ?? claim.coverageStatus}</div>}
             {claim.lateNotice && lateWarn && <div className="alert-error">⚠ اعلام خسارت خارج از مهلت مقرر بوده است (مهلت: {claim.noticeDeadline}).</div>}
-            {claim.description && <div className="pcard p-4 text-sm whitespace-pre-wrap" style={{ color: 'var(--muted)' }}><b style={{ color: 'var(--text)' }}>توضیحات: </b>{claim.description}</div>}
+            {claim.description && (
+              <section className="pcard cu-spec">
+                <h2 className="cu-spec-h"><span>توضیحات</span></h2>
+                <p className="text-sm whitespace-pre-wrap" style={{ color: 'var(--muted)' }}>{claim.description}</p>
+              </section>
+            )}
 
             {claim.status === 'RETURNED_INCOMPLETE' && (
-              <div className="pcard p-6" style={{ borderColor: 'var(--danger)' }}>
-                <h3 className="font-bold mb-2">نقص مدارک — نیازمند اقدام شما</h3>
+              <section className="pcard cu-spec" style={{ borderColor: 'var(--danger)' }}>
+                <h2 className="cu-spec-h" style={{ color: 'var(--danger)' }}><span>نقص مدارک — نیازمند اقدام شما</span></h2>
                 {(claim.deficiencies || []).filter((d) => !d.resolvedAt).map((d, i) => (
                   <ul key={i} className="mr-4 list-disc text-sm" style={{ color: 'var(--danger)' }}>{(d.items || []).map((x, j) => <li key={j}>{x}</li>)}</ul>
                 ))}
                 <p className="text-sm mt-2" style={{ color: 'var(--muted)' }}>مدارک خواسته‌شده را جایگزین و سپس «ثبت نهایی» را بزنید.</p>
-              </div>
+              </section>
             )}
 
             {/* The originals were asked for: the move stays right here, not only in «روند پرونده». */}
             {physicalMoves && claim.workflow && (
-              <div className="pcard p-6"><h3 className="font-extrabold mb-3">اصل مدارک</h3><WorkflowPanel claimId={id} workflow={{ ...claim.workflow, actions: claim.workflow.actions.filter((a) => a.key !== 'SUBMIT') }} realm={realm} onDone={reload} /></div>
+              <section className="pcard cu-spec"><h2 className="cu-spec-h"><span>اصل مدارک</span></h2><WorkflowPanel claimId={id} workflow={{ ...claim.workflow, actions: claim.workflow.actions.filter((a) => a.key !== 'SUBMIT') }} realm={realm} onDone={reload} /></section>
             )}
 
             {claim.insuredLinkEnabled && !org && <InsuredAccess claimId={id} />}
-            <div className="pcard p-6">
-              <div className="flex justify-between items-center mb-3">
-                <h3 className="font-extrabold">مدارک مورد نیاز</h3>
+            <section className="pcard cu-spec">
+              <h2 className="cu-spec-h">
+                <span>مدارک مورد نیاز</span>
                 {checklist && <span className={`badge ${checklist.complete ? 'badge-success' : 'badge-warning'}`}>{checklist.complete ? 'کامل' : 'ناقص'}</span>}
-              </div>
+              </h2>
               <p className="text-xs mb-3" style={{ color: 'var(--muted)' }}>مدارک ستاره‌دار (*) الزامی است؛ بقیه را برحسب مورد بارگذاری کنید.{checklist?.note ? ` ${checklist.note}` : ''}</p>
               {aiNote && <div className="alert-success mb-3 text-sm">{AI_QUEUED_FA}</div>}
               <div className="space-y-2.5">
@@ -266,14 +318,14 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
                   );
                 })}
               </div>
-            </div>
+            </section>
 
             {/* A brokerage's staff (panel 1): drop any number of files at once — they're kept as «سایر مدارک», no matter
                 which required item they belong to; each file uploads (or is refused) on its own. */}
             {isBroker && claim.status !== 'PAID' && (
-              <div className="pcard p-6 space-y-3">
+              <section className="pcard cu-spec">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <h3 className="font-extrabold">بارگذاری گروهی مدارک</h3>
+                  <h2 className="cu-spec-h flex-1"><span>بارگذاری گروهی مدارک</span></h2>
                   <UploadButton multiple camera cameraOnly accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" maxMB={15} className="cu-go"
                     title="بارگذاری گروهی مدارک" subtitle="چند فایل را با هم بکشید یا انتخاب کنید"
                     note="لازم نیست هر فایل با یکی از مدارک مورد نیاز جور باشد؛ همه با عنوان «سایر مدارک» ذخیره می‌شوند و کارگزاری و بیمه‌گر آن‌ها را می‌بینند. فایلی که قالبش مجاز نیست جدا اعلام می‌شود و بقیه بارگذاری می‌شوند."
@@ -295,22 +347,17 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
                       ))}
                     </ul>
                   )}
-              </div>
+              </section>
             )}
 
-            <div className="cs-actions">
-              <Link href={`${page}/workflow`} className="cs-act"><Icon path={ICONS.list} /> روند پرونده</Link>
-              {atMyDesk ? (
-                <button type="button" className="cs-act cu-final" onClick={finalSubmit} disabled={sending}>
-                  <Icon path={OK} /> {sending ? 'در حال ثبت…' : 'ثبت نهایی'}
-                </button>
-              ) : (
-                <span className="cu-sent"><Icon path={OK} /> {claim.story?.manual
-                  ? <>وضعیت پرونده: {claim.story.caseStage || (STATUS_FA[claim.status] ?? claim.status)}</>
-                  : claim.workflow?.currentStage
-                  ? <>مدارک ثبت نهایی شده و پرونده نزد «{claim.workflow.currentStageLabel}» است.</>
-                  : <>پرونده بسته شده است ({STATUS_FA[claim.status] ?? claim.status}).</>}</span>
-              )}
+            {/* Action launcher, like the home page's */}
+            <div className="pcard cu-launch">
+              <div className="cu-tiles">
+                <Diamond href={`${page}/workflow`} title="روند پرونده" sub="مراحل و وضعیت رسیدگی" icon={IC.tray} />
+                {atMyDesk && <Diamond onClick={finalSubmit} active={sending} title={sending ? 'در حال ثبت…' : 'ثبت نهایی'} sub="ارسال مدارک برای رسیدگی" icon={IC.check} />}
+                <Diamond href={org ? '/org/entry/claims' : '/customer/claims'} title="پیگیری خسارت" sub="بازگشت به فهرست پرونده‌ها" icon={IC.search} />
+              </div>
+              <div className="cu-notice">{whereNow}</div>
             </div>
           </>
         )}
