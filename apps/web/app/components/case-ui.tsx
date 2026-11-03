@@ -31,7 +31,7 @@ export interface CaseClaim {
   currentStageLabel?: string | null; flowDirection?: string | null; flowPurpose?: string | null;
   policyholderCompany?: { name: string; phone: string | null } | null;
   policyHolder?: { name: string | null; nationalCode: string | null } | null;
-  insurer?: { name: string } | null; broker?: { name: string } | null; handlingBranchName?: string | null;
+  insurer?: { name: string } | null; broker?: { name: string } | null; handlingBranchName?: string | null; lineLabel?: string | null; // نوع بیمه‌نامه
   description?: string | null;
   steps?: TimelineStep[];
   deficiencies?: { items: string[]; resolvedAt: string | null }[];
@@ -206,6 +206,7 @@ export function CaseSummary({ claim, fv }: { claim: CaseClaim; fv: Record<string
         <InfoRow label="نام شرکت / محل فعالیت" value={claim.policyholderCompany?.name || fv.company_name} />
       </InfoCard>
       <InfoCard title="اطلاعات بیمه‌نامه" icon={ICONS.policy}>
+        <InfoRow label="نوع بیمه‌نامه" value={claim.lineLabel} />
         <InfoRow label="شماره بیمه‌نامه" value={(claim.policyNumber || fv.policy_number) ? <bdi className="ltr-val">{faD(claim.policyNumber || fv.policy_number)}</bdi> : null} />
         <InfoRow label="تاریخ شروع بیمه‌نامه" value={d('policy_start_date')} />
         <InfoRow label="سرمایه فوت" value={fmtAmount(fv.death_capital)} tone="amount" />

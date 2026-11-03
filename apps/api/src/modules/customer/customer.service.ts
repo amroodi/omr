@@ -4,14 +4,15 @@ import { AuditService } from '../../common/audit/audit.service';
 import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { customerClaimWhere, getContext, getTenantIdOrThrow } from '../../common/tenant/tenant-context';
-import { LINE_FA } from '../policyholders/policyholders.service';
+
 import { ModelStore } from '../model-view/model-store.service';
-import { dependentsFor, Line, typesFor } from '../claims/workflow';
-import { activeContracts, policyRows } from '../policyholders/policy-rows';
+import { dependentsFor, Line, lineForm, typesFor } from '../claims/workflow';
+import { activeContracts, fitsLine, policyRows } from '../policyholders/policy-rows';
 import { toAsciiDigits, toJalali } from '../../common/jalali/jalali.util';
 import { NotificationsService } from '../notifications/notifications.service';
 import { HashService } from '../../common/crypto/hash.service';
 import { ShahkarService } from '../auth/shahkar.service';
+import { kindLabel } from '../../common/kinds';
 
 /** A نماینده as entered on a form (کارگزاری or the بیمه‌گزار company). */
 interface RepresentativeInput { nationalCode: string; phone: string; fullName?: string; password?: string }
@@ -306,7 +307,7 @@ export class CustomerService {
       ? (companyId ? await db.policyholderCompany.findFirst({ where: { id: companyId, tenantId: ctx.tenantId }, include: { contracts: true } }) : null)
       : acc.company;
     // Panel 1 works in the نوع بیمه‌نامه chosen on the login.
-    const contracts = activeContracts(co?.contracts ?? []).filter((k) => !line || k.line === line);
+    const contracts = activeContracts(co?.contracts ?? []).filter((k) => fitsLine(k, line));
     const insurerIds = [...new Set(contracts.map((k) => k.insurerTenantId))];
     const insurers = insurerIds.length ? await db.tenant.findMany({ where: { id: { in: insurerIds } }, select: { id: true, name: true } }) : [];
     const iName = new Map(insurers.map((i) => [i.id, i.name]));
@@ -358,9 +359,9 @@ export class CustomerService {
     return {
       company: null, brokerName: insurerName, agent: true,
       contracts: [{
-        id: 'agent', line: line ?? null, lineLabel: line ? LINE_FA[line] : null, policyNumber: null, insurerName, startDate: null, endDate: null, startIso: null, endIso: null, inForce: true,
+        id: 'agent', line: line ?? null, lineLabel: line ? kindLabel(line) : null, policyNumber: null, insurerName, startDate: null, endDate: null, startIso: null, endIso: null, inForce: true,
         // The chosen kind's نوع پرونده at this insurer (every one when no kind was chosen).
-        claimTypes: line ? this.store.get(insurerId).form.lines[line].claimTypes : this.store.get(insurerId).form.caseTypes.map((t) => t.code), form: this.formOf(insurerId, line ?? null, []),
+        claimTypes: line ? lineForm(this.store.get(insurerId), line).claimTypes : this.store.get(insurerId).form.caseTypes.map((t) => t.code), form: this.formOf(insurerId, line ?? null, []),
       }],
       selectedId: 'agent',
       stats: {
@@ -435,7 +436,7 @@ export class CustomerService {
   private formOf(insurerId: string, line: Line | null, chain: string[]) {
     const m = this.store.get(insurerId);
     return {
-      insuredLabel: m.form.lines[line ?? 'ACCIDENT'].insuredLabel, eventLabel: m.form.eventLabel, birthDate: m.form.birthDate, cause: m.form.cause, causeLists: m.form.causeLists, caseTypes: m.form.caseTypes, dependents: dependentsFor(m, chain),
+      insuredLabel: lineForm(m, line ?? 'ACCIDENT').insuredLabel, eventLabel: m.form.eventLabel, birthDate: m.form.birthDate, cause: m.form.cause, causeLists: m.form.causeLists, caseTypes: m.form.caseTypes, dependents: dependentsFor(m, chain),
     };
   }
 
@@ -462,7 +463,7 @@ export class CustomerService {
       claims: cMap.get(r.id) ?? 0,
       policies: r.contracts
         .filter((k) => (!k.startDate || k.startDate <= now) && (!k.endDate || k.endDate >= now))
-        .map((k) => ({ line: k.line ? LINE_FA[k.line] : null, policyNumber: k.policyNumber })),
+        .map((k) => ({ line: k.line ? kindLabel(k.line) : null, policyNumber: k.policyNumber })),
     }));
   }
 

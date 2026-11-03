@@ -49,6 +49,8 @@ model Tenant {
   // field, which also moves the case's status), outside the insurer hierarchy? Super admin can lock it.
   manualCompletion Boolean @default(true)
   spareDeskEnabled Boolean @default(false) // «میز کار مستقل» (brokerages; set only by Super Admin)
+  // نوع بیمه‌نامه this organization's panel 1 offers (Super Admin); empty = every active kind of the catalog.
+  policyKinds      String[] @default([])
   spareCases SpareCase[]
   // BROKER only: password of the «broker» login on the بیمه‌گزار panel (sees every company). Set by super admin.
   brokerPanelPasswordHash String?
@@ -137,6 +139,8 @@ model PlatformConfig {
   // slot it was uploaded to. Off = every file is accepted as before. Super-admin only.
   aiReviewEnabled    Boolean  @default(false)
   aiConfig           String? // ENCRYPTED json: { apiKey, model, maxConcurrency, threshold } (see ai-review/ai-review.config.ts)
+  // نوع بیمه‌نامه catalog managed by Super Admin: [{ code, label, active }] (see common/kinds.ts); null = the default five.
+  policyKinds        Json?
   // «امنیت ورود» alerts (security/sessions.service.ts): who gets the SMS, and for what.
   securityAlertsSms    Boolean  @default(false)
   securityAlertPhones  String? // ENCRYPTED json array of mobile numbers (Super Admin's own)
@@ -234,14 +238,6 @@ model PolicyholderCompany {
 }
 
 // Line of a بیمه‌نامه: the same company may hold an عمر and a حوادث policy (often different numbers).
-enum InsuranceLine {
-  LIFE // عمر
-  ACCIDENT // حوادث
-  LIABILITY // مسئولیت
-  CREDIT_LIFE // عمر مانده بدهکار
-  SAVINGS_LIFE // عمر پس‌انداز
-}
-
 // Which insurer covers a company's employees, and for which period. The brokerage sets and changes
 // these per its contracts; a claim routes to the contract that covered the date of death.
 model PolicyholderContract {
@@ -249,7 +245,7 @@ model PolicyholderContract {
   companyId       String
   company         PolicyholderCompany @relation(fields: [companyId], references: [id])
   insurerTenantId String
-  line            InsuranceLine? // نوع بیمه‌نامه
+  line            String? // نوع بیمه‌نامه: a code of the Super Admin's catalog (PlatformConfig.policyKinds)
   policyNumber    String? // usually renewed (a new number) by the insurer every policy year
   startDate       DateTime?
   endDate         DateTime? // null = open-ended
@@ -823,6 +819,7 @@ model RequiredDocument {
   label          String // Persian label
   appliesToTypes String[] // نوع پرونده codes (Model View) that list this document
   requiredTypes  String[] @default([]) // of those, where it must be uploaded before sending; the rest are «برحسب نیاز»
+  kinds          String[] @default([]) // نوع بیمه‌نامه it belongs to; empty = every kind
   order          Int         @default(0)
   isActive       Boolean     @default(true)
   createdAt      DateTime    @default(now())
@@ -878,7 +875,7 @@ model Claim {
   policyholderCompanyId String? // بیمه‌گزار company (PolicyholderCompany) the deceased worked for
   // نوع بیمه‌نامه: from the contract it was filed under, else the kind chosen on the panel-1 login.
   // A death in an accident may have one case per kind (عمر and حوادث), each assessed on its own.
-  line            InsuranceLine?
+  line            String?
 
   // Subject (deceased بیمه‌شده / متوفی)
   deceasedFullName         String // ENCRYPTED

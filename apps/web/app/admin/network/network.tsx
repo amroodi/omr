@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { toGregorian } from 'jalaali-js';
-import { LINES as POLICY_LINES, LINE_FA as POLICY_LINE_FA } from '../../../lib/line';
+import { useCatalog } from '../../../lib/line';
 import { client } from '../../../lib/client';
 import { Field, Spinner } from '../../components/ui';
 import { JalaliDatePicker } from '../../components/JalaliDatePicker';
@@ -27,6 +27,7 @@ function jalaliToIso(v: string): string | null {
  * to one of its insurers (through a dated contract). Click a company, then an insurer, to connect them.
  */
 export function NetworkTab({ brokerTenantId, setMsg }: { brokerTenantId: string; setMsg: (m: { t: 'ok' | 'err'; m: string } | null) => void }) {
+  const catalog = useCatalog(); // نوع بیمه‌نامه (Super Admin › انواع بیمه‌نامه)
   const [net, setNet] = useState<Network | null>(null);
   const [sel, setSel] = useState<{ kind: 'company' | 'insurer'; id: string } | null>(null);
   const [connect, setConnect] = useState<{ company: Company; insurer: Insurer } | null>(null);
@@ -285,7 +286,7 @@ export function NetworkTab({ brokerTenantId, setMsg }: { brokerTenantId: string;
                 </div>
               )}
               <div className="grid sm:grid-cols-2 gap-2">
-                <Field label="رشتهٔ بیمه‌نامه"><select className="input" value={k.line} onChange={(e) => setK({ ...k, line: e.target.value })}>{POLICY_LINES.map((l) => <option key={l} value={l}>{POLICY_LINE_FA[l]}</option>)}</select></Field>
+                <Field label="رشتهٔ بیمه‌نامه"><select className="input" value={k.line} onChange={(e) => setK({ ...k, line: e.target.value })}>{catalog.map((x) => <option key={x.code} value={x.code}>{x.label}</option>)}</select></Field>
                 <Field label="شماره بیمه‌نامه *"><input className="input" value={k.policyNumber} onChange={(e) => setK({ ...k, policyNumber: e.target.value })} /></Field>
               </div>
               <div className="grid sm:grid-cols-2 gap-2">

@@ -10,6 +10,7 @@ import { NOTICE_TARGETS, rulesFor, SOURCE_FA, SOURCES_OF, TARGET_FA, TARGETS_OF 
 import { DEFAULT_WORKFLOW_MODEL, modelFrom } from '../claims/workflow';
 import { CoverageService, coverageFrom } from './coverage.service';
 import { ModelStore } from './model-store.service';
+import { allKinds } from '../../common/kinds';
 
 class DocRowDto {
   @IsString() @Length(1, 80) code!: string;
@@ -17,6 +18,8 @@ class DocRowDto {
   @IsBoolean() isActive!: boolean;
   @IsArray() @IsString({ each: true }) appliesToTypes!: string[];
   @IsArray() @IsString({ each: true }) requiredTypes!: string[];
+  // نوع بیمه‌نامه it belongs to (empty = every kind)
+  @IsOptional() @IsArray() @IsString({ each: true }) kinds?: string[];
 }
 class DocsDto {
   @IsArray() @ArrayMaxSize(200) @ValidateNested({ each: true }) @Type(() => DocRowDto) docs!: DocRowDto[];
@@ -53,13 +56,14 @@ export class ModelViewController {
     const [atCouncil, notChecked, docs] = await Promise.all([
       db.claim.groupBy({ by: ['insurerTenantId'], where: { currentStage: 'COUNCIL', deletedAt: null }, _count: true }),
       db.claim.groupBy({ by: ['insurerTenantId'], where: { coverageStatus: 'NOT_CHECKED', deletedAt: null }, _count: true }),
-      db.requiredDocument.findMany({ where: { tenantId: { in: insurers.map((i) => i.id) } }, orderBy: { order: 'asc' }, select: { tenantId: true, code: true, label: true, isActive: true, appliesToTypes: true, requiredTypes: true } }),
+      db.requiredDocument.findMany({ where: { tenantId: { in: insurers.map((i) => i.id) } }, orderBy: { order: 'asc' }, select: { tenantId: true, code: true, label: true, isActive: true, appliesToTypes: true, requiredTypes: true, kinds: true } }),
     ]);
     // Companies an insurer's Model View can group: those holding a contract with it, wherever the brokerage.
     const contracts = await db.policyholderContract.findMany({ where: { insurerTenantId: { in: insurers.map((i) => i.id) } }, select: { insurerTenantId: true, company: { select: { id: true, name: true, parentId: true } } } });
     const count = (rows: { insurerTenantId: string; _count: number }[], id: string) => rows.find((r) => r.insurerTenantId === id)?._count ?? 0;
     return {
       defaults: DEFAULT_WORKFLOW_MODEL,
+      kinds: allKinds(), // نوع بیمه‌نامه catalog (Super Admin › انواع بیمه‌نامه)
       insurers: insurers.map((t) => {
         const c = coverageFrom(t.coverageConfig);
         return {
@@ -99,13 +103,24 @@ export class ModelViewController {
     return model;
   }
 
-  /** The insurer's documents: wording, order, and for each نوع پرونده whether listed and whether required. */
+  /**
+   * The insurer's documents: wording, order, which نوع بیمه‌نامه each belongs to, and for each نوع پرونده
+   * whether listed and whether required. A document left out of the list is deleted — or, when a case
+   * already holds a file for it, switched off so those files keep their name.
+   */
   @Put(':insurerId/docs')
   async saveDocs(@Param('insurerId', ParseUUIDPipe) insurerId: string, @Body() dto: DocsDto) {
     await this.insurer(insurerId);
     const db = this.prisma.unscoped();
-    const rows = dto.docs.map((d, i) => ({ code: d.code, label: d.label.trim(), isActive: d.isActive, appliesToTypes: d.appliesToTypes, requiredTypes: d.requiredTypes.filter((x) => d.appliesToTypes.includes(x)), order: i + 1 }));
-    await db.$transaction(rows.map((d) => db.requiredDocument.upsert({ where: { tenantId_code: { tenantId: insurerId, code: d.code } }, update: d, create: { ...d, tenantId: insurerId } })));
+    const known = new Set(allKinds().map((k) => k.code));
+    const rows = dto.docs.map((d, i) => ({ code: d.code, label: d.label.trim(), isActive: d.isActive, appliesToTypes: d.appliesToTypes, requiredTypes: d.requiredTypes.filter((x) => d.appliesToTypes.includes(x)), kinds: [...new Set((d.kinds ?? []).filter((k) => known.has(k)))], order: i + 1 }));
+    const gone = (await db.requiredDocument.findMany({ where: { tenantId: insurerId, code: { notIn: rows.map((r) => r.code) } }, select: { code: true } })).map((r) => r.code);
+    const used = gone.length ? new Set((await db.document.findMany({ where: { docCode: { in: gone }, claimId: { in: (await db.claim.findMany({ where: { insurerTenantId: insurerId }, select: { id: true } })).map((c) => c.id) } }, distinct: ['docCode'], select: { docCode: true } })).map((r) => r.docCode)) : new Set<string | null>();
+    await db.$transaction([
+      ...rows.map((d) => db.requiredDocument.upsert({ where: { tenantId_code: { tenantId: insurerId, code: d.code } }, update: d, create: { ...d, tenantId: insurerId } })),
+      db.requiredDocument.deleteMany({ where: { tenantId: insurerId, code: { in: gone.filter((c) => !used.has(c)) } } }),
+      db.requiredDocument.updateMany({ where: { tenantId: insurerId, code: { in: gone.filter((c) => used.has(c)) } }, data: { isActive: false } }),
+    ]);
     await this.audit.record({ action: AuditAction.EDIT, tenantId: insurerId, targetType: 'RequiredDocument', targetId: insurerId, metadata: { docs: dto.docs } as any });
     return { ok: true };
   }

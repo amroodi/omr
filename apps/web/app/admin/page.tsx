@@ -100,6 +100,9 @@ export default function AdminDashboard() {
           <button onClick={() => router.push('/admin/model')} className="btn btn-primary btn-sm">
             <Icon path="M5 5a2 2 0 100 4 2 2 0 000-4zM19 15a2 2 0 100 4 2 2 0 000-4zM19 5a2 2 0 100 4 2 2 0 000-4zM7 7h10M6.5 8.5l11 8" /> Model View
           </button>
+          <button onClick={() => router.push('/admin/kinds')} className="btn btn-primary btn-sm">
+            <Icon path="M4 6h16M4 12h16M4 18h10" /> انواع بیمه‌نامه
+          </button>
           <button onClick={() => router.push('/admin/policyholders')} className="btn btn-primary btn-sm">
             <Icon path="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" /> بیمه‌گزاران
           </button>

@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { AuditAction, InsuranceLine } from '@prisma/client';
+import { AuditAction } from '@prisma/client';
 import { AuditService } from '../../common/audit/audit.service';
 import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
 import { toJalali } from '../../common/jalali/jalali.util';
@@ -11,10 +11,10 @@ import { RateLimitService } from '../../common/rate-limit/rate-limit.service';
 import { typesFor } from '../claims/workflow';
 import { ModelStore } from '../model-view/model-store.service';
 import { TooManyRequestsException } from '../inquiry/http-exceptions';
+import { kindLabel } from '../../common/kinds';
 
 const LOGO_MIME = new Set(['image/png', 'image/jpeg', 'image/webp']);
 
-export const LINE_FA: Record<InsuranceLine, string> = { LIFE: 'عمر', ACCIDENT: 'حوادث', LIABILITY: 'مسئولیت', CREDIT_LIFE: 'عمر مانده بدهکار', SAVINGS_LIFE: 'عمر پس‌انداز' };
 
 export interface CompanyInput {
   name?: string;
@@ -29,7 +29,7 @@ export interface CompanyInput {
 
 export interface ContractInput {
   insurerTenantId?: string;
-  line?: InsuranceLine | null;
+  line?: string | null;
   policyNumber?: string | null;
   startDate?: string | null;
   endDate?: string | null;
@@ -77,7 +77,7 @@ export class PolicyholdersService {
         currentInsurer: current ? { id: current.insurerTenantId, name: iMap.get(current.insurerTenantId) ?? '—' } : null,
         contracts: r.contracts.map((c) => ({
           id: c.id, insurerTenantId: c.insurerTenantId, insurerName: iMap.get(c.insurerTenantId) ?? '—', policyNumber: c.policyNumber,
-          line: c.line, lineLabel: c.line ? LINE_FA[c.line] : null,
+          line: c.line, lineLabel: c.line ? kindLabel(c.line) : null,
           startDate: c.startDate ? toJalali(c.startDate, false) : null, endDate: c.endDate ? toJalali(c.endDate, false) : null,
           startIso: c.startDate?.toISOString() ?? null, endIso: c.endDate?.toISOString() ?? null,
           isActive: c.isActive, note: c.note, isCurrent: current?.id === c.id,
@@ -262,8 +262,9 @@ export class PolicyholdersService {
    * claim type, contracts of a line that doesn't cover it are skipped (unlined contracts always fit); with a
    * `line` (the نوع بیمه‌نامه chosen on the panel-1 login), only contracts of that kind count.
    */
-  async resolveContract(companyId: string, date: Date | null, claimType: string | null = null, line: InsuranceLine | null = null) {
-    const contracts = await this.db().policyholderContract.findMany({ where: { companyId, isActive: true, ...(line ? { line } : {}) } });
+  async resolveContract(companyId: string, date: Date | null, claimType: string | null = null, line: string | null = null) {
+    // A contract with no kind set fits every kind.
+    const contracts = await this.db().policyholderContract.findMany({ where: { companyId, isActive: true, ...(line ? { OR: [{ line }, { line: null }] } : {}) } });
     const chain = claimType ? await this.companyChain(companyId) : [];
     const fits = contracts.filter((c) => !claimType || !c.line || typesFor(this.store.get(c.insurerTenantId), c.line, chain).includes(claimType));
     return this.pickContract(fits, date ?? new Date());

@@ -1,10 +1,11 @@
 import { BadRequestException, Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Put, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { InsuranceLine } from '@prisma/client';
-import { ArrayMaxSize, IsArray, IsBoolean, IsEnum, IsISO8601, IsOptional, IsString, IsUUID, Length, ValidateIf } from 'class-validator';
+
+import { ArrayMaxSize, IsArray, IsBoolean, IsEnum, IsISO8601, IsOptional, IsString, IsUUID, Length, ValidateIf, Matches } from 'class-validator';
 import { SuperAdminOnly } from '../../common/rbac/decorators';
 import { PolicyholdersAdminService } from './policyholders-admin.service';
 import { PolicyholdersService } from './policyholders.service';
+import { KIND_CODE } from '../../common/kinds';
 
 class AdminCompanyDto {
   @IsUUID() brokerTenantId!: string;
@@ -12,7 +13,7 @@ class AdminCompanyDto {
   @IsString() @Length(1, 40) code!: string;
   // Optional first بیمه‌نامه
   @IsOptional() @IsUUID() insurerTenantId?: string;
-  @IsOptional() @IsEnum(InsuranceLine) line?: InsuranceLine;
+  @IsOptional() @IsString() @Matches(KIND_CODE) line?: string;
   @IsOptional() @IsString() @Length(0, 60) policyNumber?: string;
   @IsOptional() @ValidateIf((_, v) => v !== null && v !== '') @IsISO8601() startDate?: string | null;
   @IsOptional() @ValidateIf((_, v) => v !== null && v !== '') @IsISO8601() endDate?: string | null;
@@ -36,14 +37,14 @@ class AdminPasswordDto {
 }
 class AdminContractDto {
   @IsUUID() insurerTenantId!: string;
-  @IsEnum(InsuranceLine) line!: InsuranceLine;
+  @IsString() @Matches(KIND_CODE) line!: string;
   @IsString() @Length(1, 60) policyNumber!: string;
   @IsOptional() @ValidateIf((_, v) => v !== null && v !== '') @IsISO8601() startDate?: string | null;
   @IsOptional() @ValidateIf((_, v) => v !== null && v !== '') @IsISO8601() endDate?: string | null;
 }
 class AdminContractEditDto {
   @IsOptional() @IsBoolean() isActive?: boolean;
-  @IsOptional() @IsEnum(InsuranceLine) line?: InsuranceLine;
+  @IsOptional() @IsString() @Matches(KIND_CODE) line?: string;
   @IsOptional() @IsString() @Length(1, 60) policyNumber?: string;
   @IsOptional() @IsUUID() insurerTenantId?: string;
   @IsOptional() @ValidateIf((_, v) => v !== null && v !== '') @IsISO8601() startDate?: string | null;
