@@ -3,10 +3,10 @@ import { useEffect, useState } from 'react';
 import { client } from '../../../lib/client';
 import { Shell } from '../../components/Shell';
 import { ErrorBox, Field, Overlay } from '../../components/ui';
+import { StaffPanel } from '../../components/operators/StaffPanel';
 import { ORG_NAV } from '../nav';
 
 interface Role { id: string; name: string; permissions: string[]; isSystem: boolean; locked: boolean; users: number }
-interface User { id: string; username: string; displayName: string; isActive: boolean; lastLoginAt?: string | null; role: { id: string; name: string } | null; branch?: { id: string; name: string } | null; desk?: string | null; phone?: string | null; mfaEnabled?: boolean }
 type Msg = { t: 'ok' | 'err'; m: string } | null;
 
 /** Permission names in Persian, grouped by area (unknown keys fall back to the raw key). */
@@ -32,8 +32,8 @@ const PERM_GROUPS: { title: string; items: [string, string][] }[] = [
 ];
 const PERM_FA = Object.fromEntries(PERM_GROUPS.flatMap((g) => g.items));
 const ADMIN_PERMS = ['user:manage', 'role:manage'];
-const seatLabel = (u: User) => u.branch ? `شعبه: ${u.branch.name}` : u.desk === 'COUNCIL' ? 'شورای فنی' : 'مدیریت ستاد';
-const seatValue = (u: User) => (u.branch ? `branch:${u.branch.id}` : u.desk === 'COUNCIL' ? 'COUNCIL' : 'HQ');
+// Roles that can create cases sign in to panel 1 («ورود برای بارگذاری مدارک» › کارکنان سازمان).
+const ENTRY_PERMS = ['claim:file', 'claim:file-on-behalf', 'import:batch', 'spare:work'];
 
 function MsgBox({ v }: { v: Msg }) { return v ? <div className={v.t === 'ok' ? 'alert-success' : 'alert-error'}>{v.m}</div> : null; }
 
@@ -62,13 +62,12 @@ function PermPicker({ catalog, value, onChange, readOnly }: { catalog: string[];
 }
 
 /**
- * «کاربران و نقش‌ها». Users are edited (name, role, desk/branch, active, password), never deleted, so
- * their past actions stay attributable. Clicking a role shows its permissions; admin roles are
- * preview-only, every other role can be renamed, edited or removed. Every change is audit-logged.
+ * «کاربران و نقش‌ها»: the organization's staff (کارکنان سازمان — panel 1 and panel 2, see StaffPanel) and
+ * its roles. Clicking a role shows its permissions; admin roles are preview-only, every other role can be
+ * renamed, edited or removed. A role that can create cases opens panel 1. Every change is audit-logged.
  */
 export default function UsersRoles() {
   const [roles, setRoles] = useState<Role[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
   const [catalog, setCatalog] = useState<string[]>([]);
   const [error, setError] = useState('');
   const [isInsurer, setIsInsurer] = useState(false);
@@ -78,13 +77,6 @@ export default function UsersRoles() {
   const [re, setRe] = useState<{ id: string; name: string; perms: Set<string>; locked: boolean; users: number } | null>(null);
   const [roleMsg, setRoleMsg] = useState<Msg>(null);
   const [roleBusy, setRoleBusy] = useState(false);
-
-  // user editor / creator
-  const [nu, setNu] = useState({ username: '', displayName: '', password: '', roleId: '', seat: 'HQ', phone: '' });
-  const [userMsg, setUserMsg] = useState<Msg>(null);
-  const [userBusy, setUserBusy] = useState(false);
-  const [ue, setUe] = useState<{ user: User; displayName: string; roleId: string; seat: string; isActive: boolean; password: string; phone: string } | null>(null);
-  const [ueMsg, setUeMsg] = useState<Msg>(null);
 
   useEffect(() => {
     client.get<{ kind?: string }>('/tenant/branding', 'org').then((b) => {
@@ -96,12 +88,11 @@ export default function UsersRoles() {
 
   const load = async () => {
     try {
-      const [r, u, c] = await Promise.all([
+      const [r, c] = await Promise.all([
         client.get<Role[]>('/roles', 'org'),
-        client.get<User[]>('/users', 'org'),
         client.get<{ key: string }[]>('/roles/catalog', 'org'),
       ]);
-      setRoles(r); setUsers(u); setCatalog(c.map((x) => x.key));
+      setRoles(r); setCatalog(c.map((x) => x.key));
     } catch (e: any) { setError(e.message); }
   };
   useEffect(() => { load(); }, []);
@@ -128,52 +119,6 @@ export default function UsersRoles() {
     catch (e: any) { setRoleMsg({ t: 'err', m: e.message }); } finally { setRoleBusy(false); }
   };
 
-  const createUser = async () => {
-    setUserMsg(null);
-    if (!nu.username.trim()) return setUserMsg({ t: 'err', m: 'نام کاربری را وارد کنید.' });
-    if (nu.password.length < 8) return setUserMsg({ t: 'err', m: 'رمز عبور باید حداقل ۸ نویسه باشد.' });
-    if (!nu.roleId) return setUserMsg({ t: 'err', m: 'یک نقش برای کاربر انتخاب کنید.' });
-    setUserBusy(true);
-    try {
-      const payload: Record<string, string> = { username: nu.username.trim(), password: nu.password, roleId: nu.roleId };
-      if (isInsurer) { if (nu.seat.startsWith('branch:')) payload.branchId = nu.seat.slice(7); else payload.desk = nu.seat; }
-      if (nu.displayName.trim()) payload.displayName = nu.displayName.trim();
-      if (nu.phone.trim()) payload.phone = nu.phone.trim();
-      await client.post('/users', payload, 'org');
-      setNu({ username: '', displayName: '', password: '', roleId: '', seat: 'HQ', phone: '' });
-      setUserMsg({ t: 'ok', m: 'کاربر با موفقیت ساخته شد.' });
-      load();
-    } catch (e: any) { setUserMsg({ t: 'err', m: e.message }); } finally { setUserBusy(false); }
-  };
-
-  const openUser = (u: User) => { setUeMsg(null); setUe({ user: u, displayName: u.displayName, roleId: u.role?.id ?? '', seat: seatValue(u), isActive: u.isActive, password: '', phone: u.phone ?? '' }); };
-  const saveUser = async () => {
-    if (!ue) return;
-    setUeMsg(null);
-    if (ue.password && ue.password.length < 8) return setUeMsg({ t: 'err', m: 'رمز عبور جدید باید حداقل ۸ نویسه باشد.' });
-    setUserBusy(true);
-    try {
-      const body: Record<string, unknown> = { isActive: ue.isActive };
-      if (ue.displayName.trim() && ue.displayName.trim() !== ue.user.displayName) body.displayName = ue.displayName.trim();
-      if (ue.roleId && ue.roleId !== ue.user.role?.id) body.roleId = ue.roleId;
-      if (ue.phone.trim() !== (ue.user.phone ?? '')) body.phone = ue.phone.trim();
-      if (isInsurer && ue.seat !== seatValue(ue.user)) {
-        if (ue.seat.startsWith('branch:')) body.branchId = ue.seat.slice(7); else { body.desk = ue.seat; body.branchId = null; }
-      }
-      await client.patch(`/users/${ue.user.id}`, body, 'org');
-      if (ue.password) await client.post(`/users/${ue.user.id}/reset-password`, { password: ue.password }, 'org');
-      setUe(null); await load();
-    } catch (e: any) { setUeMsg({ t: 'err', m: e.message }); } finally { setUserBusy(false); }
-  };
-
-  const seatOptions = (
-    <>
-      <option value="HQ">مدیریت ستاد</option>
-      <option value="COUNCIL">شورای فنی</option>
-      {branches.map((b) => <option key={b.id} value={`branch:${b.id}`}>شعبه: {b.name} ({b.code})</option>)}
-    </>
-  );
-
   return (
     <Shell title="کاربران و نقش‌ها" subtitle="مدیریت دسترسی‌ها و اعضای سازمان" nav={ORG_NAV} realm="org">
       <ErrorBox message={error} />
@@ -187,7 +132,7 @@ export default function UsersRoles() {
           <div className="card divide-y" style={{ borderColor: 'var(--border)' }}>
             {roles.map((r) => (
               <button key={r.id} type="button" onClick={() => openRole(r)} className="ur-role">
-                <span className="text-sm font-semibold">{r.name} {r.locked && <span className="badge badge-neutral">مدیریتی — فقط مشاهده</span>}</span>
+                <span className="text-sm font-semibold">{r.name} {r.locked && <span className="badge badge-neutral">مدیریتی — فقط مشاهده</span>}{r.permissions.some((p) => ENTRY_PERMS.includes(p)) && <span className="badge badge-warning mr-1" title="کاربران این نقش به پنل ۱ (ثبت پرونده) هم وارد می‌شوند">پنل ۱</span>}</span>
                 <span className="text-xs" style={{ color: 'var(--muted)' }}>{r.permissions.length.toLocaleString('fa-IR')} مجوز · {r.users.toLocaleString('fa-IR')} کاربر ›</span>
               </button>
             ))}
@@ -195,48 +140,9 @@ export default function UsersRoles() {
           <p className="text-xs" style={{ color: 'var(--muted)' }}>برای دیدن و تغییر مجوزهای هر نقش روی آن کلیک کنید. همهٔ تغییرات برای مدیر سامانه ثبت می‌شود.</p>
         </div>
 
-        {/* Users */}
-        <div className="space-y-3">
-          <h2 className="font-bold">کاربران</h2>
-          <div className="card divide-y" style={{ borderColor: 'var(--border)' }}>
-            {users.map((u) => (
-              <div key={u.id} className="flex justify-between items-center p-3 gap-2 flex-wrap">
-                <span className="text-sm font-semibold">{u.displayName} <span style={{ color: 'var(--muted)' }} className="font-normal">({u.username})</span></span>
-                <span className="text-xs flex items-center gap-2 flex-wrap">
-                  <span style={{ color: 'var(--muted)' }}>{u.role?.name}</span>
-                  {isInsurer && <span className="badge badge-neutral">{seatLabel(u)}</span>}
-                  {!u.isActive && <span className="badge badge-danger">غیرفعال</span>}
-                  {u.mfaEnabled && <span className="badge badge-success" title="ورود دومرحله‌ای فعال است">دومرحله‌ای</span>}
-                  <button onClick={() => openUser(u)} className="btn btn-ghost btn-sm">ویرایش</button>
-                </span>
-              </div>
-            ))}
-          </div>
-          <div className="card p-4 space-y-3">
-            <h3 className="font-semibold text-sm">افزودن کاربر</h3>
-            <Field label="نام کاربری"><input value={nu.username} onChange={(e) => setNu({ ...nu, username: e.target.value })} className="input" /></Field>
-            <Field label="نام نمایشی (اختیاری)"><input value={nu.displayName} onChange={(e) => setNu({ ...nu, displayName: e.target.value })} className="input" /></Field>
-            <Field label="شمارهٔ همراه (برای پیامک یادآور — اختیاری)"><input value={nu.phone} onChange={(e) => setNu({ ...nu, phone: e.target.value })} className="input" inputMode="numeric" placeholder="۰۹۱۲…" style={{ direction: 'ltr', textAlign: 'right' }} /></Field>
-            <div>
-              <label className="label">رمز عبور</label>
-              <input type="password" value={nu.password} onChange={(e) => setNu({ ...nu, password: e.target.value })} className="input" placeholder="حداقل ۸ نویسه" />
-            </div>
-            <Field label="نقش">
-              <select value={nu.roleId} onChange={(e) => setNu({ ...nu, roleId: e.target.value })} className="input">
-                <option value="">— انتخاب نقش —</option>
-                {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-              </select>
-            </Field>
-            {isInsurer && (
-              <Field label="محل خدمت در گردش کار پرونده">
-                <select value={nu.seat} onChange={(e) => setNu({ ...nu, seat: e.target.value })} className="input">{seatOptions}</select>
-              </Field>
-            )}
-            <MsgBox v={userMsg} />
-            <button onClick={createUser} disabled={userBusy} className="btn btn-primary btn-sm">{userBusy ? '…' : 'ساخت کاربر'}</button>
-            <p className="text-xs" style={{ color: 'var(--muted)' }}>کاربران حذف نمی‌شوند تا سوابق اقدامات آن‌ها حفظ شود؛ برای قطع دسترسی، کاربر را غیرفعال کنید.</p>
-          </div>
-        </div>
+        {/* Users: the organization's staff (panel 1 and panel 2) */}
+        <StaffPanel realm="org" base="" isInsurer={isInsurer} branches={branches} onChanged={load}
+          roles={roles.map((r) => ({ id: r.id, name: r.name, entry: r.permissions.some((p) => ENTRY_PERMS.includes(p)) }))} />
       </div>
 
       {/* Role: permissions (editable unless it's an admin role) */}
@@ -264,51 +170,6 @@ export default function UsersRoles() {
         </Overlay>
       )}
 
-      {/* User: edit (no delete) */}
-      {ue && (
-        <Overlay onClose={() => setUe(null)}>
-          <div className="pmodal ur-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="pmodal-head">
-              <span className="pmodal-title">ویرایش کاربر «{ue.user.username}»</span>
-              <button className="pmodal-x" onClick={() => setUe(null)} aria-label="بستن">×</button>
-            </div>
-            <div className="pmodal-body space-y-3">
-              <Field label="نام نمایشی"><input className="input" value={ue.displayName} onChange={(e) => setUe({ ...ue, displayName: e.target.value })} /></Field>
-              <Field label="شمارهٔ همراه (برای پیامک یادآور)"><input className="input" value={ue.phone} onChange={(e) => setUe({ ...ue, phone: e.target.value })} inputMode="numeric" placeholder="۰۹۱۲…" style={{ direction: 'ltr', textAlign: 'right' }} /></Field>
-              {ue.user.mfaEnabled && (
-                <div className="flex items-center justify-between gap-2 text-sm rounded-lg p-2" style={{ background: 'var(--surface-2)' }}>
-                  <span>ورود دومرحله‌ای این کاربر فعال است.</span>
-                  <button type="button" className="text-xs underline" style={{ color: 'var(--danger)' }} onClick={async () => {
-                    if (!window.confirm('ورود دومرحله‌ای این کاربر بازنشانی شود؟ (مثلاً گوشی را گم کرده است) — باید دوباره راه‌اندازی کند.')) return;
-                    try { await client.post(`/users/${ue.user.id}/mfa-reset`, {}, 'org'); setUe({ ...ue, user: { ...ue.user, mfaEnabled: false } }); load(); } catch (e: any) { setUeMsg({ t: 'err', m: e.message }); }
-                  }}>بازنشانی</button>
-                </div>
-              )}
-              <Field label="نقش">
-                <select className="input" value={ue.roleId} onChange={(e) => setUe({ ...ue, roleId: e.target.value })}>
-                  {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-                </select>
-              </Field>
-              {isInsurer && (
-                <Field label="محل خدمت در گردش کار پرونده">
-                  <select className="input" value={ue.seat} onChange={(e) => setUe({ ...ue, seat: e.target.value })}>{seatOptions}</select>
-                </Field>
-              )}
-              <label className="flex items-center gap-2 text-sm font-semibold">
-                <input type="checkbox" checked={ue.isActive} onChange={(e) => setUe({ ...ue, isActive: e.target.checked })} /> حساب فعال است
-              </label>
-              <Field label="رمز عبور جدید (اختیاری)">
-                <input type="password" className="input" value={ue.password} onChange={(e) => setUe({ ...ue, password: e.target.value })} placeholder="خالی بماند = بدون تغییر — حداقل ۸ نویسه" autoComplete="new-password" />
-              </Field>
-              <MsgBox v={ueMsg} />
-            </div>
-            <div className="ur-modal-btns">
-              <button onClick={saveUser} disabled={userBusy} className="btn btn-primary btn-sm">{userBusy ? '…' : 'ذخیرهٔ تغییرات'}</button>
-              <button onClick={() => setUe(null)} className="btn btn-ghost btn-sm">انصراف</button>
-            </div>
-          </div>
-        </Overlay>
-      )}
     </Shell>
   );
 }

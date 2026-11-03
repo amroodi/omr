@@ -1650,6 +1650,14 @@ export class ClaimsService {
     return k.insurerTenantId;
   }
 
+  /** An insurer's نماینده بیمه files without a company contract: their own insurer answers the check. */
+  async insurerOfAgent(): Promise<string> {
+    const ctx = getContext();
+    if (!ctx?.customerAgent || !ctx.tenantId) throw new BadRequestException('بیمه‌نامه را انتخاب کنید');
+    if (!(await this.rateLimit.hit(`coverage:${ctx.actorId ?? 'x'}`, 30, 3600))) throw new TooManyRequestsException('تعداد استعلام‌ها زیاد است. بعداً تلاش کنید');
+    return ctx.tenantId;
+  }
+
   /**
    * The insurer whose فن‌آوران connection answers the panel-1 staff form's coverage check: the chosen
    * بیمه‌نامه's insurer; else the insurer picked on the form (the staff's own insurer, or one their

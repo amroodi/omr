@@ -1,11 +1,12 @@
 'use client';
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toGregorian } from 'jalaali-js';
 import { client, getToken } from '../../lib/client';
 import { getLine, lineQuery } from '../../lib/line';
 import { CLAIM_TYPE_LABELS, ErrorBox } from './ui';
 import { JalaliDatePicker } from './JalaliDatePicker';
+import { Coverage, CoverageNote, coverageText } from './CoverageNote';
 import { Shell } from './Shell';
 import { CUSTOMER_NAV, POLICY_KEY, PolicyRow } from '../customer/nav';
 import { ORG_NAV } from '../org/nav';
@@ -72,8 +73,10 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
   const [notice, setNotice] = useState<{ enabled: boolean; targets: string[]; default: string; labels: Record<string, string> } | null>(null);
   useEffect(() => { client.get<any>(org ? '/claims/notice-options' : '/customer/notice-options', realm).then(setNotice).catch(() => setNotice(null)); }, []);
   const [causes, setCauses] = useState<string[]>([]);
-  // فن‌آوران coverage inquiry; stays null while Super Admin has it off for this insurer.
-  const [coverage, setCoverage] = useState<{ status: string; name: string } | null>(null);
+  // فن‌آوران coverage inquiry on the insured's کد ملی (the form's first field); null while Super Admin has it
+  // off for this insurer, 'checking' while it asks. `blocked` = this person can't be filed (as Super Admin set).
+  const [coverage, setCoverage] = useState<Coverage | 'checking' | null>(null);
+  const asked = useRef(0);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -155,13 +158,32 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
     if (other) choosePolicy(other);
   };
 
-  const checkCoverage = async () => {
-    setCoverage(null);
-    const code = toAscii(f.deceasedNationalCode).trim();
-    if (!policyId || agent || !/^\d{10}$/.test(code)) return;
-    const r = await client.post<any>(org ? '/claims/on-behalf/coverage-check' : '/customer/coverage-check', { contractId: policyId, nationalCode: code }, realm).catch(() => null);
-    if (r?.enabled) setCoverage({ status: r.status, name: [r.person?.firstName, r.person?.lastName].filter(Boolean).join(' ') });
+  /**
+   * Ask فن‌آوران whether this person — and their بیمه‌نامه and its period — is defined there. Runs when the
+   * کد ملی is complete, and again when the بیمه‌نامه or the event date changes. Fills the name (when empty)
+   * and picks the company's بیمه‌نامه with the number they return, if Super Admin turned that on.
+   */
+  const checkCoverage = async (nid = f.deceasedNationalCode, eventDate = f.eventDate) => {
+    const code = toAscii(nid).trim();
+    const n = ++asked.current;
+    if ((!policyId && !agent) || !/^\d{10}$/.test(code)) { setCoverage(null); return; }
+    setCoverage('checking');
+    const iso = eventDate ? jalaliToIso(eventDate) : null;
+    const body = { nationalCode: code, ...(agent ? {} : { contractId: policyId }), ...(iso ? { eventDate: iso } : {}) };
+    const r = await client.post<any>(org ? '/claims/on-behalf/coverage-check' : '/customer/coverage-check', body, realm).catch((e) => ({ enabled: true, status: 'ERROR', blocked: false, message: e.message }));
+    if (n !== asked.current) return; // a newer check is on its way
+    if (!r?.enabled) { setCoverage(null); return; }
+    const name = [r.person?.firstName, r.person?.lastName].filter(Boolean).join(' ');
+    setCoverage({ status: r.status, name, message: r.message, blocked: !!r.blocked, policy: r.policy ?? null });
+    if (r.autoFill && name) setF((cur) => (cur.deceasedFullName.trim() ? cur : { ...cur, deceasedFullName: name }));
+    if (r.matchPolicy && r.policy?.number && policies) {
+      const want = toAscii(String(r.policy.number)).trim();
+      const p = policies.find((x) => toAscii(x.policyNumber ?? '').trim() === want && x.id !== policyId);
+      if (p) choosePolicy(p);
+    }
   };
+  // A different بیمه‌نامه (insurer) or event date (policy period): ask again.
+  useEffect(() => { if (/^\d{10}$/.test(toAscii(f.deceasedNationalCode).trim())) checkCoverage(); /* eslint-disable-next-line */ }, [policyId, f.eventDate]);
 
   const submit = async () => {
     setError('');
@@ -173,6 +195,8 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
     if (form?.birthDate === 'required' && !birthIso) return setError('تاریخ تولد بیمه‌شده را وارد کنید');
     if (form?.cause === 'required' && !cause) return setError(`${CAUSE_LABEL} را مشخص کنید`);
     if (askRelation && !f.relation) return setError('نوع بیمه‌شده را انتخاب کنید');
+    if (coverage === 'checking') return setError('استعلام کد ملی از سامانهٔ بیمه‌گر هنوز تمام نشده است');
+    if (coverage?.blocked) return setError(coverageText(coverage));
     setBusy(true);
     try {
       const payload: Record<string, string> = {
@@ -257,25 +281,17 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
               </PField>
             </>
           )}
-          {agent ? (
-            <PField label="شماره بیمه‌نامه" help="شماره بیمه‌نامهٔ مشتری نزد این بیمه‌گر.">
-              <input className="input" value={policyNumber} onChange={(e) => setPolicyNumber(e.target.value)} maxLength={60} style={{ direction: 'ltr', textAlign: 'right' }} />
-            </PField>
-          ) : <div className="md:col-span-2">
-            <PField label="بیمه‌نامه و بازهٔ آن *" help="بیمه‌نامهٔ عمر یا حوادث شرکت که خسارت ذیل آن اعلام می‌شود؛ بیمه‌نامهٔ همان سالی را انتخاب کنید که حادثه یا فوت در آن رخ داده است.">
-              <select className="input" value={policyId} onChange={(e) => { const p = policies?.find((x) => x.id === e.target.value); if (p) choosePolicy(p); }} disabled={!policies?.length}>
-                {!policies ? <option>در حال دریافت…</option> : policies.length === 0 ? <option>بیمه‌نامه‌ای ثبت نشده است</option> : policies.map((p) => (
-                  <option key={p.id} value={p.id}>{p.lineLabel ? `${p.lineLabel} — ` : ''}شماره {p.policyNumber ?? '—'} — {p.startDate ?? '…'} تا {p.endDate ?? '…'}{p.inForce ? ' (جاری)' : ''}</option>
-                ))}
-              </select>
-            </PField>
-            {policy && <div className="text-xs mt-1" style={{ color: 'var(--muted)' }}>بیمه‌گر: {policy.insurerName} — کارگزار: {broker}</div>}
-          </div>}
 
-          <PField label="نوع پرونده *" help="نوع خسارت را مشخص کنید؛ فقط خسارت‌هایی که بیمه‌نامهٔ انتخاب‌شده پوشش می‌دهد فهرست شده‌اند.">
-            <select className="input" value={f.claimType} onChange={(e) => setF({ ...f, claimType: e.target.value })}>
-              {types.map((v) => <option key={v} value={v}>{form?.caseTypes.find((t) => t.code === v)?.label ?? CLAIM_TYPE_LABELS[v] ?? v}</option>)}
-            </select>
+          {/* کد ملی first: the insurer's system (فن‌آوران) checks this person and their بیمه‌نامه before anything else. */}
+          <PField label={dependent ? `کد ملی ${relationName} *` : 'کد ملی بیمه‌شده *'} help="ابتدا کد ملی ۱۰ رقمی بیمه‌شده را وارد کنید؛ سامانهٔ بیمه‌گر (فن‌آوران) بررسی می‌کند این فرد و بیمه‌نامه و بازهٔ آن تعریف شده باشد؛ در غیر این صورت پرونده برای پرداخت خسارت ثبت نمی‌شود.">
+            <input className="input" value={f.deceasedNationalCode} autoFocus={!org} inputMode="numeric" maxLength={10} style={{ direction: 'ltr', textAlign: 'right' }}
+              onChange={(e) => {
+                const v = e.target.value;
+                setF({ ...f, deceasedNationalCode: v });
+                if (/^\d{10}$/.test(toAscii(v).trim())) checkCoverage(v);
+                else if (coverage) { asked.current++; setCoverage(null); }
+              }} />
+            <CoverageNote c={coverage} />
           </PField>
 
           {askRelation && (
@@ -298,23 +314,32 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
             </>
           )}
 
-          {(!askRelation || f.relation) && <>
+          {(!askRelation || f.relation) && (
           <PField label={dependent ? `نام و نام خانوادگی ${relationName} *` : `${form?.insuredLabel ?? insuredNameLabel(policy?.line)} *`}>
             <input className="input" value={f.deceasedFullName} onChange={(e) => setF({ ...f, deceasedFullName: e.target.value })} />
           </PField>
+          )}
 
-          <PField label={dependent ? `کد ملی ${relationName} *` : 'کد ملی بیمه‌شده *'} help="کد ملی ۱۰ رقمی.">
-            <input className="input" value={f.deceasedNationalCode} onChange={(e) => setF({ ...f, deceasedNationalCode: e.target.value })} onBlur={checkCoverage} inputMode="numeric" style={{ direction: 'ltr', textAlign: 'right' }} />
-            {coverage && (
-              <div className={`text-xs mt-1 ${coverage.status === 'VALID' ? 'alert-success' : coverage.status === 'NOT_CHECKED' ? '' : 'alert-error'}`}>
-                {coverage.status === 'VALID' ? `پوشش بیمه معتبر است${coverage.name ? ` — ${coverage.name}` : ''}`
-                  : coverage.status === 'INVALID' ? 'پوشش این فرد در سامانهٔ بیمه‌گر معتبر نیست'
-                  : coverage.status === 'NOT_FOUND' ? 'این کد ملی در سامانهٔ بیمه‌گر یافت نشد'
-                  : 'سامانهٔ بیمه‌گر در دسترس نیست؛ می‌توانید ثبت کنید و بررسی بعداً خودکار انجام می‌شود'}
-              </div>
-            )}
+          {agent ? (
+            <PField label="شماره بیمه‌نامه" help="شماره بیمه‌نامهٔ مشتری نزد این بیمه‌گر.">
+              <input className="input" value={policyNumber} onChange={(e) => setPolicyNumber(e.target.value)} maxLength={60} style={{ direction: 'ltr', textAlign: 'right' }} />
+            </PField>
+          ) : <div className="md:col-span-2">
+            <PField label="بیمه‌نامه و بازهٔ آن *" help="بیمه‌نامهٔ عمر یا حوادث شرکت که خسارت ذیل آن اعلام می‌شود؛ بیمه‌نامهٔ همان سالی را انتخاب کنید که حادثه یا فوت در آن رخ داده است.">
+              <select className="input" value={policyId} onChange={(e) => { const p = policies?.find((x) => x.id === e.target.value); if (p) choosePolicy(p); }} disabled={!policies?.length}>
+                {!policies ? <option>در حال دریافت…</option> : policies.length === 0 ? <option>بیمه‌نامه‌ای ثبت نشده است</option> : policies.map((p) => (
+                  <option key={p.id} value={p.id}>{p.lineLabel ? `${p.lineLabel} — ` : ''}شماره {p.policyNumber ?? '—'} — {p.startDate ?? '…'} تا {p.endDate ?? '…'}{p.inForce ? ' (جاری)' : ''}</option>
+                ))}
+              </select>
+            </PField>
+            {policy && <div className="text-xs mt-1" style={{ color: 'var(--muted)' }}>بیمه‌گر: {policy.insurerName} — کارگزار: {broker}</div>}
+          </div>}
+
+          <PField label="نوع پرونده *" help="نوع خسارت را مشخص کنید؛ فقط خسارت‌هایی که بیمه‌نامهٔ انتخاب‌شده پوشش می‌دهد فهرست شده‌اند.">
+            <select className="input" value={f.claimType} onChange={(e) => setF({ ...f, claimType: e.target.value })}>
+              {types.map((v) => <option key={v} value={v}>{form?.caseTypes.find((t) => t.code === v)?.label ?? CLAIM_TYPE_LABELS[v] ?? v}</option>)}
+            </select>
           </PField>
-          </>}
 
           {form?.birthDate !== 'hidden' && (
           <PField label={`تاریخ تولد بیمه‌شده (شمسی)${form?.birthDate === 'required' ? ' *' : ''}`} help="تاریخ تولد بیمه‌شده؛ سن او به‌طور خودکار محاسبه می‌شود.">
@@ -361,7 +386,7 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
         </div>
 
         <div className="flex justify-center mt-3">
-          <button onClick={submit} disabled={busy || types.length === 0 || !f.deceasedFullName || !f.deceasedNationalCode || (dependent && (!f.mainName.trim() || !f.mainCode.trim())) || !f.eventDate || company === null || (policies !== null && policies.length > 0 && !policyId)} className="btn btn-solid btn-solid-lg">
+          <button onClick={submit} disabled={busy || coverage === 'checking' || !!(coverage && coverage.blocked) || types.length === 0 || !f.deceasedFullName || !f.deceasedNationalCode || (dependent && (!f.mainName.trim() || !f.mainCode.trim())) || !f.eventDate || company === null || (policies !== null && policies.length > 0 && !policyId)} className="btn btn-solid btn-solid-lg">
             {busy ? 'در حال ثبت…' : 'ثبت پرونده و ادامه به بارگذاری مدارک'}
           </button>
         </div>

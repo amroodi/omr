@@ -179,8 +179,10 @@ export class RepresentativeLoginDto {
 }
 
 export class CoverageCheckDto {
+  // The بیمه‌نامه's insurer answers; an insurer's نماینده بیمه (no company contract) leaves it out.
+  @IsOptional()
   @IsUUID()
-  contractId!: string;
+  contractId?: string;
 
   @ToAsciiDigits()
   @IsString()

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -87,6 +88,7 @@ export class ClaimsController {
   @Permissions(PERMISSIONS.CLAIM_FILE_ON_BEHALF)
   @Post('on-behalf/coverage-check')
   async onBehalfCoverage(@Body() dto: CoverageCheckDto) {
+    if (!dto.contractId) throw new BadRequestException('بیمه‌نامه را انتخاب کنید');
     const r = await this.coverage.lookup(await this.claims.insurerOfContract(dto.contractId), dto.nationalCode, dto.eventDate ? new Date(dto.eventDate) : null);
     return r ? { enabled: true, ...r } : { enabled: false };
   }

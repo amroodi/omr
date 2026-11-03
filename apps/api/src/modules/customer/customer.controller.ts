@@ -338,7 +338,7 @@ export class CustomerController {
   @UseGuards(JwtAuthGuard)
   @Post('coverage-check')
   async coverageCheck(@Body() dto: CoverageCheckDto) {
-    const insurerId = await this.claims.insurerOfContract(dto.contractId);
+    const insurerId = dto.contractId ? await this.claims.insurerOfContract(dto.contractId) : await this.claims.insurerOfAgent();
     const r = await this.coverage.lookup(insurerId, dto.nationalCode, dto.eventDate ? new Date(dto.eventDate) : null);
     return r ? { enabled: true, ...r } : { enabled: false };
   }

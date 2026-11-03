@@ -123,12 +123,13 @@ export function judgeCoverage(r: CoverageResult, cfg: CoverageConfig, eventDate?
   return before || after ? { ...r, status: 'INVALID', reason: 'OUT_OF_PERIOD' } : r;
 }
 
+/** What their answer says, without what it does to the case (that depends on Super Admin's choice). */
 export function coverageMessage(r: { status: CoverageStatus; reason?: string }): string {
-  if (r.reason === 'OUT_OF_PERIOD') return 'تاریخ وقوع خارج از بازهٔ بیمه‌نامهٔ این فرد در سامانهٔ بیمه‌گر (فن‌آوران) است؛ پرونده برای پرداخت خسارت ثبت نمی‌شود.';
-  if (r.status === 'NOT_FOUND') return 'این کد ملی و بیمه‌نامهٔ آن در سامانهٔ بیمه‌گر (فن‌آوران) تعریف نشده است؛ پرونده برای پرداخت خسارت ثبت نمی‌شود.';
-  if (r.status === 'INVALID') return 'پوشش بیمه‌ای این فرد در سامانهٔ بیمه‌گر (فن‌آوران) معتبر نیست؛ پرونده برای پرداخت خسارت ثبت نمی‌شود.';
-  if (r.status === 'NOT_CHECKED') return 'سامانهٔ بیمه‌گر (فن‌آوران) در دسترس نیست.';
-  return 'پوشش بیمه‌ای معتبر است.';
+  if (r.reason === 'OUT_OF_PERIOD') return 'تاریخ وقوع خارج از بازهٔ بیمه‌نامهٔ این فرد در سامانهٔ بیمه‌گر (فن‌آوران) است';
+  if (r.status === 'NOT_FOUND') return 'این کد ملی و بیمه‌نامهٔ آن در سامانهٔ بیمه‌گر (فن‌آوران) تعریف نشده است';
+  if (r.status === 'INVALID') return 'پوشش بیمه‌ای این فرد در سامانهٔ بیمه‌گر (فن‌آوران) معتبر نیست';
+  if (r.status === 'NOT_CHECKED') return 'سامانهٔ بیمه‌گر (فن‌آوران) در دسترس نیست';
+  return 'پوشش بیمه‌ای معتبر است';
 }
 
 /** What the filing form gets back (and the server enforces again on «ثبت پرونده»). */
@@ -218,8 +219,8 @@ export class CoverageService implements OnModuleInit, OnModuleDestroy {
     const a = await this.lookup(insurerId, nationalCode, eventDate);
     if (!a) return null;
     if (a.blocked) {
-      if (a.status === 'NOT_CHECKED') throw new ServiceUnavailableException('سامانهٔ بیمه‌گر (فن‌آوران) در دسترس نیست و تا پاسخ آن پرونده ثبت نمی‌شود؛ کمی بعد دوباره تلاش کنید.');
-      throw new BadRequestException(a.message);
+      if (a.status === 'NOT_CHECKED') throw new ServiceUnavailableException(`${a.message} و تا پاسخ آن پرونده ثبت نمی‌شود؛ کمی بعد دوباره تلاش کنید.`);
+      throw new BadRequestException(`${a.message}؛ پرونده برای پرداخت خسارت ثبت نمی‌شود.`);
     }
     return a.status;
   }

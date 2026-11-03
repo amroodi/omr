@@ -1,5 +1,5 @@
 'use client';
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toGregorian } from 'jalaali-js';
 import { client, getToken } from '../../../../lib/client';
@@ -7,6 +7,7 @@ import { getLine, lineQuery } from '../../../../lib/line';
 import { Shell } from '../../../components/Shell';
 import { CLAIM_TYPE_LABELS, ErrorBox } from '../../../components/ui';
 import { JalaliDatePicker } from '../../../components/JalaliDatePicker';
+import { Coverage, CoverageNote, coverageText } from '../../../components/CoverageNote';
 import { ORG_NAV } from '../../nav';
 import { EVENT_DATE_LABEL, insuredNameLabel } from '../../../components/claim-wording';
 
@@ -71,6 +72,9 @@ export default function NewClaim() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [caseTypes, setCaseTypes] = useState<Record<string, string>>(CLAIM_TYPE_LABELS);
+  // فن‌آوران coverage check on the insured's کد ملی (null: off for this insurer, or the insurer isn't known yet).
+  const [coverage, setCoverage] = useState<Coverage | 'checking' | null>(null);
+  const asked = useRef(0);
 
   useEffect(() => {
     if (!getToken('org')) { router.push('/org/login'); return; }
@@ -94,6 +98,29 @@ export default function NewClaim() {
   const age = ageBetween(f.birthDate ? jalaliToIso(f.birthDate) : null, f.eventDate ? jalaliToIso(f.eventDate) : null);
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF((s) => ({ ...s, [k]: e.target.value }));
 
+  /**
+   * Ask فن‌آوران about this کد ملی. The insurer that answers: an insurer's own staff → their insurer; a
+   * brokerage's → the picked company's بیمه‌نامه on the event date, or the insurer picked by hand.
+   */
+  const checkCoverage = async (nid = f.deceasedNationalCode) => {
+    const code = toAscii(nid).trim();
+    const n = ++asked.current;
+    const iso = f.eventDate ? jalaliToIso(f.eventDate) : null;
+    const who = ins ? {} : co ? { companyId: co.id } : manual && f.insurerTenantId ? { insurerTenantId: f.insurerTenantId } : null;
+    if (!who || !/^\d{10}$/.test(code)) { setCoverage(null); return; }
+    setCoverage('checking');
+    const r = await client.post<any>('/claims/coverage-check', { nationalCode: code, ...who, ...(iso ? { eventDate: iso } : {}) }, 'org')
+      .catch((e) => ({ enabled: true, status: 'ERROR', blocked: false, message: e.message }));
+    if (n !== asked.current) return; // a newer check is on its way
+    if (!r?.enabled) { setCoverage(null); return; }
+    const name = [r.person?.firstName, r.person?.lastName].filter(Boolean).join(' ');
+    setCoverage({ status: r.status, name, message: r.message, blocked: !!r.blocked, policy: r.policy ?? null });
+    if (r.autoFill && name) setF((s) => (s.deceasedFullName.trim() ? s : { ...s, deceasedFullName: name }));
+  };
+  // Another company / insurer / event date can change the answer.
+  useEffect(() => { if (/^\d{10}$/.test(toAscii(f.deceasedNationalCode).trim())) checkCoverage(); /* eslint-disable-next-line */ }, [f.companyId, f.insurerTenantId, f.eventDate, !!ins]);
+  const coverageStop = () => (coverage === 'checking' ? 'استعلام کد ملی از سامانهٔ بیمه‌گر هنوز تمام نشده است' : coverage?.blocked ? coverageText(coverage) : '');
+
   // Insurer: where this case starts — fixed by Model View, or the operator's choice («هر بار انتخاب شود»).
   const insBroker = ins?.brokers.find((b) => b.id === f.brokerTenantId) ?? null;
   const insStart = ins ? (ins.way === 'ASK' ? (f.startStage || (insBroker ? 'BROKER' : 'BRANCH')) : ins.way) : null;
@@ -101,6 +128,7 @@ export default function NewClaim() {
   const submitInsurer = async () => {
     setError('');
     if (!ins) return;
+    if (coverageStop()) return setError(coverageStop());
     if (insStart === 'BROKER' && !insBroker) return setError('پرونده به میز کارگزاری می‌رود؛ کارگزاری را انتخاب کنید');
     if (!insBroker && !f.sellingBranchId) return setError('شعبه فروش را انتخاب کنید');
     if (insStart === 'BRANCH' && insBroker && !f.branchId) return setError('شعبه‌ای را که پرونده به آن می‌رود انتخاب کنید');
@@ -130,6 +158,7 @@ export default function NewClaim() {
   const submit = async () => {
     if (ins) return submitInsurer();
     setError('');
+    if (coverageStop()) return setError(coverageStop());
     if (!manual && !co) return setError('شرکت بیمه‌گزار را انتخاب کنید (یا «بدون شرکت بیمه‌گزار»)');
     if (manual && !f.insurerTenantId) return setError('بیمه‌گر را انتخاب کنید');
     if (manual && f.channel === 'DIRECT' && !f.sellingBranchId) return setError('شعبه فروش را انتخاب کنید');
@@ -177,6 +206,17 @@ export default function NewClaim() {
         {Object.keys(caseTypes).length === 0 && <div className="alert-error mt-3">برای این نوع بیمه‌نامه هنوز نوع پرونده‌ای در Model View تعریف نشده است؛ نوع بیمه‌نامه را از نوار بالا عوض کنید.</div>}
 
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-2.5 mt-3">
+          {/* کد ملی first: the insurer's system (فن‌آوران) checks this person and their بیمه‌نامه before anything else. */}
+          <PField label="کد ملی بیمه‌شده *" help="ابتدا کد ملی ۱۰ رقمی بیمه‌شده را وارد کنید؛ سامانهٔ بیمه‌گر (فن‌آوران) بررسی می‌کند این فرد و بیمه‌نامه و بازهٔ آن تعریف شده باشد؛ در غیر این صورت پرونده برای پرداخت خسارت ثبت نمی‌شود.">
+            <input className="input" value={f.deceasedNationalCode} autoFocus inputMode="numeric" maxLength={10} style={{ direction: 'ltr', textAlign: 'right' }}
+              onChange={(e) => {
+                const v = e.target.value;
+                setF((s) => ({ ...s, deceasedNationalCode: v }));
+                if (/^\d{10}$/.test(toAscii(v).trim())) checkCoverage(v);
+                else if (coverage) { asked.current++; setCoverage(null); }
+              }} />
+            <CoverageNote c={coverage} />
+          </PField>
           {ins && (
             <>
               <PField label="کارگزاری" help="کارگزاری‌ای که پرونده برای آن ثبت می‌شود؛ برای فروش مستقیم بیمه‌گر «بدون کارگزاری» را انتخاب کنید.">
@@ -263,16 +303,13 @@ export default function NewClaim() {
             </>
           )}
 
+          <PField label={`${insuredNameLabel()} *`}>
+            <input className="input" value={f.deceasedFullName} onChange={set('deceasedFullName')} />
+          </PField>
           <PField label="نوع پرونده *" help="نوع خسارت را مشخص کنید.">
             <select className="input" value={f.claimType} onChange={set('claimType')}>
               {Object.entries(caseTypes).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
-          </PField>
-          <PField label={`${insuredNameLabel()} *`}>
-            <input className="input" value={f.deceasedFullName} onChange={set('deceasedFullName')} />
-          </PField>
-          <PField label="کد ملی بیمه‌شده *" help="کد ملی ۱۰ رقمی بیمه‌شده.">
-            <input className="input" value={f.deceasedNationalCode} onChange={set('deceasedNationalCode')} inputMode="numeric" style={{ direction: 'ltr', textAlign: 'right' }} />
           </PField>
           <PField label="تاریخ تولد بیمه‌شده (شمسی)" help="سن بیمه‌شده به‌طور خودکار محاسبه می‌شود.">
             <JalaliDatePicker value={f.birthDate} onChange={(v) => setF((s) => ({ ...s, birthDate: v }))} placeholder="۱۳۴۵/۰۵/۱۲" />
@@ -304,7 +341,7 @@ export default function NewClaim() {
         </div>
 
         <div className="flex justify-center mt-3">
-          <button onClick={submit} disabled={busy || Object.keys(caseTypes).length === 0 || !f.deceasedFullName.trim() || !f.deceasedNationalCode.trim()} className="btn btn-solid btn-solid-lg">
+          <button onClick={submit} disabled={busy || coverage === 'checking' || !!(coverage && coverage.blocked) || Object.keys(caseTypes).length === 0 || !f.deceasedFullName.trim() || !f.deceasedNationalCode.trim()} className="btn btn-solid btn-solid-lg">
             {busy ? 'در حال ثبت…' : 'ثبت پرونده و ادامه به بارگذاری مدارک'}
           </button>
         </div>

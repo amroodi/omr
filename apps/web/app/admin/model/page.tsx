@@ -23,7 +23,7 @@ interface Model {
   form: { eventLabel: string; birthDate: Mode; cause: Mode; causeLists: { DEATH: string[]; ACCIDENT: string[] }; lines: Record<Line, LineForm>; caseTypes: CaseType[]; groups: CompanyGroup[]; dependents: boolean; docsNote: string };
 }
 interface Doc { code: string; label: string; isActive: boolean; appliesToTypes: string[]; requiredTypes: string[]; kinds?: string[] }
-interface Coverage { enabled: boolean; url: string; nationalCodeParam: string; authHeader: string; hasSecret: boolean; perMinute: number; notChecked: number; secret?: string }
+interface Coverage { enabled: boolean; url: string; hasSecret: boolean; notChecked: number }
 interface Insurer { id: string; name: string; customized: boolean; casesAtCouncil: number; model: Model; docs: Doc[]; companies: { id: string; name: string; parentId: string | null }[]; coverage: Coverage }
 interface NoticeRule { enabled: boolean; targets: string[]; default: string }
 interface NoticeOrg { id: string; name: string; kind: string; sources: { key: string; label: string; allowed: string[]; rule: NoticeRule }[] }
@@ -57,7 +57,6 @@ export default function ModelView() {
   const [cov, setCov] = useState<Coverage | null>(null);
   const [noticeOrg, setNoticeOrg] = useState('');
   const [notice, setNotice] = useState<NoticeOrg | null>(null);
-  const [testCode, setTestCode] = useState('');
   const [msg, setMsg] = useState<{ t: 'ok' | 'err'; m: string } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -391,24 +390,13 @@ export default function ModelView() {
 
           {tab === 'coverage' && (
             <Card title="استعلام پوشش از فن‌آوران">
-              <Toggle on={cov.enabled} onChange={(v) => setCov({ ...cov, enabled: v })} hint="خاموش: هیچ استعلامی انجام نمی‌شود و فرم ثبت پرونده تغییری نمی‌کند. روشن: اگر سرویس در دسترس نباشد، پرونده ثبت و «بررسی‌نشده» علامت می‌خورد و به‌محض برگشت سرویس خودکار بررسی می‌شود.">استعلام برای این بیمه‌گر فعال است</Toggle>
-              <div className="grid sm:grid-cols-2 gap-3">
-                <label className="text-sm sm:col-span-2">نشانی سرویس<input className="input mt-1 latin-digits" style={{ direction: 'ltr' }} value={cov.url} onChange={(e) => setCov({ ...cov, url: e.target.value })} placeholder="https://…" /></label>
-                <label className="text-sm">نام پارامتر کد ملی<input className="input mt-1" style={{ direction: 'ltr' }} value={cov.nationalCodeParam} onChange={(e) => setCov({ ...cov, nationalCodeParam: e.target.value })} /></label>
-                <label className="text-sm">حداکثر استعلام در دقیقه<input className="input mt-1" type="number" min={1} max={600} value={cov.perMinute} onChange={(e) => setCov({ ...cov, perMinute: Number(e.target.value) })} /></label>
-                <label className="text-sm">نام هدر احراز هویت<input className="input mt-1" style={{ direction: 'ltr' }} value={cov.authHeader} onChange={(e) => setCov({ ...cov, authHeader: e.target.value })} /></label>
-                <label className="text-sm">مقدار هدر {cov.hasSecret && '(ثبت شده؛ خالی بماند تا تغییر نکند)'}<input className="input mt-1" type="password" autoComplete="off" style={{ direction: 'ltr' }} value={cov.secret ?? ''} onChange={(e) => setCov({ ...cov, secret: e.target.value })} /></label>
-              </div>
+              <p className="text-sm">
+                {cov.enabled ? <span className="badge badge-success">روشن</span> : <span className="badge badge-neutral">خاموش</span>}{' '}
+                {cov.url ? <bdi className="latin-digits text-xs" style={{ direction: 'ltr' }}>{cov.url}</bdi> : 'نشانی سرویس ثبت نشده است.'}
+              </p>
               {cov.notChecked > 0 && <div className="text-xs rounded-lg p-2" style={{ background: 'var(--warning-soft)' }}>{cov.notChecked.toLocaleString('fa-IR')} پرونده در انتظار بررسی است.</div>}
-              <div className="flex gap-2 flex-wrap items-end">
-                <button className="btn btn-primary" disabled={busy} onClick={() => run(() => client.put(`/admin/workflow-model/${id}/coverage`, { enabled: cov.enabled, url: cov.url, nationalCodeParam: cov.nationalCodeParam, authHeader: cov.authHeader, perMinute: cov.perMinute, ...(cov.secret ? { secret: cov.secret } : {}) }, 'super'), 'تنظیمات استعلام ذخیره شد.')}>ذخیره</button>
-                <input className="input w-40 latin-digits" style={{ direction: 'ltr' }} value={testCode} onChange={(e) => setTestCode(e.target.value)} placeholder="کد ملی آزمایشی" maxLength={10} aria-label="کد ملی آزمایشی" />
-                <button className="btn btn-ghost" disabled={busy || testCode.length !== 10 || !cur.coverage.url} onClick={async () => {
-                  setMsg(null);
-                  const r = await client.post<any>(`/admin/workflow-model/${id}/coverage/test`, { nationalCode: testCode }, 'super').catch((e) => ({ ok: false, error: e.message }));
-                  setMsg(r.ok ? { t: 'ok', m: `پاسخ سرویس: ${r.status}` } : { t: 'err', m: `سرویس پاسخ نداد: ${r.error}` });
-                }}>آزمایش اتصال</button>
-              </div>
+              <p className="text-xs" style={{ color: 'var(--muted)' }}>نشانی، احراز هویت، نام ستون‌های پاسخ، رد یا هشدار برای فرد بدون پوشش، رفتار هنگام قطعی سرویس و آزمایش اتصال در صفحهٔ «اتصال فن‌آوران» تنظیم می‌شود.</p>
+              <Link href={`/admin/fanavaran?insurer=${id}`} className="btn btn-primary btn-sm">تنظیمات اتصال فن‌آوران</Link>
             </Card>
           )}
         </>
