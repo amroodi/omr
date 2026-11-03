@@ -8,6 +8,7 @@ import { ORG_NAV } from '../../../nav';
 import { Workflow, WorkflowPanel } from '../../../../components/WorkflowPanel';
 import { caseTitle } from '../../../../../lib/caseTitle';
 import { OnProgress, UploadButton } from '../../../../components/upload';
+import { lastPanel } from '../../../../../lib/panel';
 
 interface DocReview { stage: string; state: string; canEdit: boolean; changedAt?: string | null; changedBy?: string | null; changes?: number }
 interface HistoryEntry { at: string; stageLabel: string | null; state: string | null; by: string; text: string }
@@ -259,8 +260,8 @@ export default function AssessClaim() {
                 )}
               </div>
 
-              {/* Finalized amount */}
-              {canProcess && !closed && (
+              {/* Finalized amount — set by the insurer's desks, not on the کارگزاری panel */}
+              {canProcess && !closed && lastPanel('org') !== 'BROKER' && (
                 <div className="border-t pt-3" style={{ borderColor: 'var(--border)' }}>
                   <label className="label">مبلغ خسارت قطعی (پس از ارزیابی)</label>
                   <div className="flex items-center gap-2">
