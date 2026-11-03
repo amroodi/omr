@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  ParseUUIDPipe,
   Post,
   Put,
   Query,
@@ -16,8 +17,10 @@ import { Response } from 'express';
 import { EntryAllowed, EntryOnly, Permissions } from '../../common/rbac/decorators';
 import { PERMISSIONS } from '../../common/rbac/permissions';
 import { ClaimFieldsService } from '../claim-fields/claim-fields.service';
+import { CoverageService } from '../model-view/coverage.service';
+import { CoverageCheckDto } from '../customer/dto';
 import { ClaimsService } from './claims.service';
-import { ActionDto, DecisionDto, FileClaimDto, FileOnBehalfDto, HeirsDto, LetterDto, LossNoticeDto, PhysicalDto } from './dto';
+import { ActionDto, DecisionDto, FileClaimDto, FileOnBehalfDto, HeirsDto, LetterDto, LossNoticeDto, PhysicalDto, RectifyDto } from './dto';
 
 const docLimits = { fileSize: 15 * 1024 * 1024 };
 
@@ -26,6 +29,7 @@ export class ClaimsController {
   constructor(
     private readonly claims: ClaimsService,
     private readonly fields: ClaimFieldsService,
+    private readonly coverage: CoverageService,
   ) {}
 
   /** «اعلام خسارت» for the caller: allowed? on which desks may the case start? */
@@ -68,6 +72,22 @@ export class ClaimsController {
   @Get('on-behalf/companies')
   onBehalfCompanies() {
     return this.claims.onBehalfCompanies();
+  }
+
+  /** One company's بیمه‌نامه‌ها for the filing form (same as the بیمه‌گزار panel's). */
+  @Permissions(PERMISSIONS.CLAIM_FILE_ON_BEHALF)
+  @Get('on-behalf/companies/:companyId/policies')
+  onBehalfPolicies(@Param('companyId', ParseUUIDPipe) companyId: string) {
+    return this.claims.onBehalfPolicies(companyId);
+  }
+
+  /** Coverage inquiry while filing for a بیمه‌گزار (`enabled: false` while Super Admin has it off). */
+  @EntryOnly()
+  @Permissions(PERMISSIONS.CLAIM_FILE_ON_BEHALF)
+  @Post('on-behalf/coverage-check')
+  async onBehalfCoverage(@Body() dto: CoverageCheckDto) {
+    const r = await this.coverage.lookup(await this.claims.insurerOfContract(dto.contractId), dto.nationalCode);
+    return r ? { enabled: true, ...r } : { enabled: false };
   }
 
   /** کارگزاری opens a case for one of its بیمه‌گزار companies and uploads the documents for them. */
@@ -175,6 +195,7 @@ export class ClaimsController {
     return this.claims.heirs(id);
   }
 
+  @EntryAllowed() // panel 1 fills them while the case is at the بیمه‌گزار's desk (see canEditHeirs)
   @Permissions(PERMISSIONS.CLAIM_PROCESS)
   @Put(':id/heirs')
   setHeirs(@Param('id') id: string, @Body() dto: HeirsDto) {
@@ -287,6 +308,14 @@ export class ClaimsController {
     return this.claims.setFinalizedAmount(id, body?.amount);
   }
 
+  /** Panel 1: send a case back after رفع نقص (the بیمه‌گزار's «ارسال», filed by the organization's staff). */
+  @EntryOnly()
+  @Permissions(PERMISSIONS.CLAIM_FILE)
+  @Post(':id/rectify')
+  rectify(@Param('id') id: string, @Body() body: RectifyDto) {
+    return this.claims.rectify(id, body?.note);
+  }
+
   /** Take a workflow action offered in `workflow.actions` of GET /claims/:id (see workflow.ts). */
   @Permissions(PERMISSIONS.CLAIM_PROCESS)
   @Post(':id/action')
@@ -295,6 +324,7 @@ export class ClaimsController {
   }
 
   /** Relay / send / receive / return the original (physical) documents. */
+  @EntryAllowed() // panel 1 only moves them at the بیمه‌گزار's desk (see physicalSeats)
   @Permissions(PERMISSIONS.CLAIM_READ)
   @Post(':id/physical')
   physical(@Param('id') id: string, @Body() dto: PhysicalDto) {

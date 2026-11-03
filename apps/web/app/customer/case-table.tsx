@@ -12,8 +12,8 @@ export interface MyClaim {
 
 const faN = (n: number) => n.toLocaleString('fa-IR');
 
-/** The table of cases on «پیگیری خسارت», «نیازمند اقدام» and the پیشخوان's search. */
-export function CaseTable({ rows }: { rows: MyClaim[] }) {
+/** The table of cases on «پیگیری خسارت», «نیازمند اقدام» and the پیشخوان's search (`href`: panel 1 of an organization). */
+export function CaseTable({ rows, href = (id) => `/customer/claims/${id}/workflow` }: { rows: MyClaim[]; href?: (id: string) => string }) {
   const relations = rows.some((c) => c.insuredRelation);
   const heads = ['عملیات', 'شماره پرونده', 'بیمه‌شده', ...(relations ? ['نسبت'] : []), 'نوع خسارت', 'بازهٔ بیمه‌نامه', 'تاریخ وقوع', 'مبلغ برآوردی (ریال)', 'مبلغ قابل پرداخت (ریال)', 'وضعیت پرونده'];
   return (
@@ -23,7 +23,7 @@ export function CaseTable({ rows }: { rows: MyClaim[] }) {
         <tbody>
           {rows.map((c) => (
             <tr key={c.id} className={c.status === 'PAID' ? 'is-paid' : c.status === 'REJECTED' ? 'is-rejected' : undefined}>
-              <td><Link href={`/customer/claims/${c.id}/workflow`} target="_blank" rel="noopener" className="cu-more">جزئیات بیشتر</Link></td>
+              <td><Link href={href(c.id)} target="_blank" rel="noopener" className="cu-more">جزئیات بیشتر</Link></td>
               <td className="latin-digits" style={{ whiteSpace: 'nowrap' }}>{c.claimNumber}</td>
               <td>{c.deceasedName ?? '—'}</td>
               {relations && <td>{INSURED_RELATIONS[c.insuredRelation ?? 'MAIN']}</td>}

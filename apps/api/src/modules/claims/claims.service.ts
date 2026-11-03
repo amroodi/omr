@@ -14,6 +14,7 @@ import { OcrService } from '../../integrations/ocr/ocr.service';
 import { ClaimFieldsService } from '../claim-fields/claim-fields.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PolicyholdersService } from '../policyholders/policyholders.service';
+import { activeContracts, policyRows } from '../policyholders/policy-rows';
 import { AiReviewQueue } from '../ai-review/ai-review.queue';
 import { AiReviewSettings } from '../ai-review/ai-review.settings';
 import { sha256 } from '../ai-review/ai-review.queue';
@@ -233,6 +234,24 @@ export class ClaimsService {
       contracts: c.contracts.filter((k) => k.isActive).map((k) => ({ insurerName: k.insurerName, policyNumber: k.policyNumber, startDate: k.startDate, endDate: k.endDate, isCurrent: k.isCurrent })),
       accounts: accounts.filter((a) => a.companyId === c.id).map((a) => ({ id: a.id, fullName: this.crypto.decrypt(a.fullName) ?? 'بی‌نام' })),
     }));
+  }
+
+  /**
+   * Panel 1 of a brokerage filing for one of its بیمه‌گزاران: that company's بیمه‌نامه‌ها with the insurer's
+   * form — the same list the بیمه‌گزار's own «ثبت پرونده خسارت» shows.
+   */
+  async onBehalfPolicies(companyId: string) {
+    const db = this.prisma.unscoped();
+    const co = await db.policyholderCompany.findFirst({ where: { id: companyId, tenantId: getTenantIdOrThrow(), isActive: true }, include: { contracts: true } });
+    if (!co) throw new NotFoundException('شرکت بیمه‌گزار یافت نشد');
+    const contracts = activeContracts(co.contracts);
+    const ids = [...new Set(contracts.map((k) => k.insurerTenantId))];
+    const [insurers, me] = await Promise.all([
+      ids.length ? db.tenant.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }) : Promise.resolve([]),
+      db.tenant.findUnique({ where: { id: co.tenantId }, select: { name: true } }),
+    ]);
+    const rows = policyRows(contracts, new Map(insurers.map((i) => [i.id, i.name])), this.store, await this.policyholders.companyChain(co.id));
+    return { brokerName: me?.name ?? '', contracts: rows, selectedId: rows.find((r) => r.inForce)?.id ?? rows[0]?.id ?? null };
   }
 
   async file(input: FileClaimInput) {
@@ -573,7 +592,9 @@ export class ClaimsService {
 
   /** Actions the caller may take on the claim right now (empty unless they hold its desk). */
   private async availableActions(claim: any, desk: Desk): Promise<WorkflowAction[]> {
-    if (!this.holdsDesk(claim, desk) || getContext()?.panelMode === 'ENTRY') return []; // panel 1 doesn't process
+    if (!this.holdsDesk(claim, desk)) return [];
+    // Panel 1 doesn't process: it only sends back a case returned to the بیمه‌گزار's desk (رفع نقص).
+    if (getContext()?.panelMode === 'ENTRY' && claim.currentStage !== 'POLICYHOLDER') return [];
     const db = this.db();
     const [docs, insurer, branches, physical] = await Promise.all([
       this.deskDocFacts(claim),
@@ -838,7 +859,8 @@ export class ClaimsService {
   /** The desks the caller sits at on this claim, for physical-document actions (an org user acting for بیمه‌گزار counts too). */
   private physicalSeats(claim: any, desk: Desk): Stage[] {
     const seats: Stage[] = [];
-    if (desk.stage && desk.stage !== 'POLICYHOLDER' && this.sitsAt(claim, desk.stage, desk)) seats.push(desk.stage);
+    // Panel 1 sits only at the بیمه‌گزار's desk; the organization's own desk is panel 2's.
+    if (desk.stage && desk.stage !== 'POLICYHOLDER' && getContext()?.panelMode !== 'ENTRY' && this.sitsAt(claim, desk.stage, desk)) seats.push(desk.stage);
     if (this.sitsAt(claim, 'POLICYHOLDER', desk)) seats.push('POLICYHOLDER');
     return seats;
   }
@@ -1160,7 +1182,7 @@ export class ClaimsService {
     const ctx = getContext();
     if (claim.status === 'PAID') return false;
     if (ctx?.actorType === 'CUSTOMER') return claim.currentStage === 'POLICYHOLDER';
-    if (ctx?.panelMode === 'ENTRY') return false;
+    if (ctx?.panelMode === 'ENTRY') return claim.currentStage === 'POLICYHOLDER'; // panel 1: like the بیمه‌گزار
     const perms = ctx?.permissions ?? [];
     return ctx?.actorType === 'SUPER_ADMIN' || (perms.includes(PERMISSIONS.CLAIM_PROCESS) && perms.includes(PERMISSIONS.VIEW_PII));
   }
@@ -1596,7 +1618,8 @@ export class ClaimsService {
   /** The insurer behind a بیمه‌نامه of the caller's own company (or brokerage, for the «broker» login). */
   async insurerOfContract(contractId: string): Promise<string> {
     const ctx = getContext();
-    const k = await this.prisma.unscoped().policyholderContract.findFirst({ where: { id: contractId, isActive: true, company: ctx?.customerBrokerPanel ? { tenantId: ctx.tenantId } : { id: ctx?.customerCompanyId ?? (await this.prisma.unscoped().customerAccount.findUnique({ where: { id: ctx?.actorId ?? '' }, select: { companyId: true } }))?.companyId ?? '' } }, select: { insurerTenantId: true } });
+    // Org staff (a brokerage's panel 1): any company of their own brokerage.
+    const k = await this.prisma.unscoped().policyholderContract.findFirst({ where: { id: contractId, isActive: true, company: ctx?.customerBrokerPanel || ctx?.actorType === 'ORG_USER' ? { tenantId: ctx.tenantId } : { id: ctx?.customerCompanyId ?? (await this.prisma.unscoped().customerAccount.findUnique({ where: { id: ctx?.actorId ?? '' }, select: { companyId: true } }))?.companyId ?? '' } }, select: { insurerTenantId: true } });
     if (!k) throw new NotFoundException('بیمه‌نامه یافت نشد');
     if (!(await this.rateLimit.hit(`coverage:${ctx?.actorId ?? 'x'}`, 30, 3600))) throw new TooManyRequestsException('تعداد استعلام‌ها زیاد است. بعداً تلاش کنید');
     return k.insurerTenantId;
