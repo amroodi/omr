@@ -113,11 +113,10 @@ export class AuthService {
       panel = dto.panel;
     }
 
-    // Panel 1 «ورود برای بارگذاری مدارک»: for now only a brokerage's staff (an insurer's comes later),
-    // and only accounts whose role can create cases.
+    // Panel 1 «ورود برای بارگذاری مدارک»: a brokerage's or an insurer's staff, only accounts whose role
+    // can create cases.
     const mode = dto.mode === 'ENTRY' ? 'ENTRY' : 'PROCESS';
     if (mode === 'ENTRY') {
-      if (tenant.kind !== 'BROKER') throw new ForbiddenException({ statusCode: 403, code: 'NO_ENTRY_PANEL', message: 'ورود داده برای بیمه‌گر هنوز فعال نیست؛ از «ورود برای ارزیابی پرونده‌ها» وارد شوید.' });
       if (!(user!.role?.permissions ?? []).some((p) => ENTRY_PERMS.includes(p))) {
         throw new ForbiddenException({ statusCode: 403, code: 'NO_ENTRY_PANEL', message: 'این حساب کاربری دسترسی ثبت پرونده ندارد؛ از «ورود برای ارزیابی پرونده‌ها» وارد شوید.' });
       }

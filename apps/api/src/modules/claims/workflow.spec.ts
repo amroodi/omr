@@ -127,6 +127,12 @@ describe('Model View', () => {
   const keys = (c: ActionContext) => actionsFor(c).map((a) => a.key);
   const docsOk = { docs: { count: 1, allApproved: true, rejectedLabels: [], rejectedAnywhere: [] } };
 
+  it('keeps the insurer panel-1 entry way valid, defaulting to the کارگزاری desk', () => {
+    expect(modelFrom(null).entry.way).toBe('BROKER');
+    expect(modelFrom({ entry: { way: 'ASK' } }).entry.way).toBe('ASK');
+    expect(modelFrom({ entry: { way: 'HQ' } }).entry.way).toBe('BROKER');
+  });
+
   it('keeps today\'s behaviour when nothing is stored', () => {
     expect(modelFrom(null)).toEqual(DEFAULT_WORKFLOW_MODEL);
     expect(modelFrom({ councilEnabled: 'no', panels: { COMPANY: { upload: false } } }).councilEnabled).toBe(true);
