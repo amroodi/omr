@@ -43,8 +43,10 @@ const rows: [string, string, string[], string[]?][] = [
   ['deceased_id_national_card', 'تصویر کلیه صفحات شناسنامه باطل‌شده و کارت ملی متوفی.', DEATH, DEATH],
   ['inheritance_cert', 'گواهی حصر وراثت که در آن سهم‌الارث هر یک از وراث قانونی مشخص شده باشد (با ارزش نامحدود و یا برابر با سرمایه فوت).', DEATH, DEATH],
   ['beneficiary_form', 'اصل فرم تعیین ذینفع تکمیل‌شده توسط بیمه‌شده (ممهور به مهر بیمه‌گذار).', DEATH, DEATH],
+  ['no_beneficiary_form_letter', 'نامه بیمه‌گزار مبنی بر پر نکردن فرم ذینفع.', DEATH],
   ['medical_questionnaire', 'فرم پرسشنامه پزشکی بیمه‌شده که در زمان حیات تکمیل گردیده است (ممهور به مهر بیمه‌گذار).', DEATH],
   ['heirs_id_national_card', 'تصویر کلیه صفحات شناسنامه وراث قانونی طبق گواهی حصر وراثت و یا ذینفع‌های مشخص‌شده در فرم تعیین ذینفع.', DEATH, DEATH],
+  ['iban_printout', 'تصویر پرینت شماره شبا.', DEATH],
   ['driver_license_valid', 'تصویر گواهینامه رانندگی متناسب با وسیله نقلیه و معتبر در زمان وقوع فوت (در صورتی که بیمه‌شده رانندگی وسیله نقلیه را به عهده داشته است).', DEATH],
   ['passport_deceased', 'تصویر کلیه صفحات گذرنامه متوفی که در آن تاریخ ورود و خروج از کشور قید شده باشد.', DEATH],
   ['martyr_cert', 'گواهی شهادت متوفی (در صورت فوت بیمه‌شده در عتبات عالیات).', DEATH],
@@ -88,11 +90,11 @@ export const DEFAULT_REQUIRED_DOCS: DefaultDoc[] = rows.map(([code, label, appli
 export const RETIRED_DOC_CODES = ['social_security_history', 'beneficiary_iban', 'emergency_115_report', 'insured_iban'];
 
 /**
- * «فرم تعیین/تغییر ذینفع»: دارد → the form and its people; ندارد → the انحصار وراثت certificate instead.
- * The document a case's choice takes off its checklist (null until the choice is made).
+ * «فرم تعیین/تغییر ذینفع»: دارد → the form and its people; ندارد → the انحصار وراثت certificate (and the
+ * بیمه‌گزار's letter that no form was filled) instead. The documents a case's choice takes off its checklist.
  */
-export function beneficiaryHiddenDoc(beneficiaryType: string | null | undefined): string | null {
-  if (beneficiaryType === 'ذینفع قانونی') return 'inheritance_cert';
-  if (beneficiaryType === 'وراث قانونی') return 'beneficiary_form';
-  return null;
+export function beneficiaryHiddenDocs(beneficiaryType: string | null | undefined): string[] {
+  if (beneficiaryType === 'ذینفع قانونی') return ['inheritance_cert', 'no_beneficiary_form_letter'];
+  if (beneficiaryType === 'وراث قانونی') return ['beneficiary_form'];
+  return [];
 }

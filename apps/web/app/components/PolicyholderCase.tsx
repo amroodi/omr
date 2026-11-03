@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { toGregorian } from 'jalaali-js';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { client, getToken } from '../../lib/client';
@@ -13,12 +14,68 @@ import { WorkflowPanel } from './WorkflowPanel';
 import { caseTitle } from '../../lib/caseTitle';
 import { AI_QUEUED_FA, aiVerdict, ChecklistItem, ClaimDoc, dateOnly, STATUS_FA, useCase } from './case-ui';
 import { DocUploadTile, OnProgress, UploadButton } from './upload';
-import { BENEFICIARY_FORM, BeneficiaryChoice, INHERITANCE_CERT } from './heirs';
+import { BENEFICIARY_FORM, BeneficiaryChoice, INHERITANCE_CERT, NO_FORM_LETTER } from './heirs';
+import { JalaliDatePicker } from './JalaliDatePicker';
 
 const DESK_FA: Record<string, string> = { BROKER: 'کارگزاری', BRANCH: 'شعبه', HQ: 'مدیریت ستاد', COUNCIL: 'شورای فنی' };
 const OK = 'M20 6L9 17l-5-5';
 const NO = 'M18 6L6 18M6 6l12 12';
 const RESULT_KEY = (id: string) => `submitResult:${id}`;
+const asc = (s: string | null | undefined) => (s ?? '').replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
+function jalaliToIso(input: string): string | null {
+  const p = asc(input).split('/').map((x) => parseInt(x, 10));
+  if (p.length !== 3 || p.some((n) => Number.isNaN(n))) return null;
+  const { gy, gm, gd } = toGregorian(p[0], p[1], p[2]);
+  const d = new Date(Date.UTC(gy, gm - 1, gd));
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+type FilingForm = { name: string; nid: string; birth: string; event: string; cause: string; description: string };
+
+/**
+ * «ویرایش مشخصات»: panel 1 corrects what it filed until panel 2 starts on the case (its first review,
+ * hand-off or «ویرایش»). Only the changed fields go to the server, which checks the window again.
+ */
+function FilingEditor({ claim, api, realm, onSaved, onCancel }: { claim: any; api: string; realm: 'customer' | 'org'; onSaved: () => void; onCancel: () => void }) {
+  const start: FilingForm = {
+    name: claim.deceasedName ?? '', nid: /^\d{10}$/.test(asc(claim.deceasedNationalCode)) ? asc(claim.deceasedNationalCode) : '',
+    birth: asc(claim.deceasedBirthDate), event: asc(claim.eventDate), cause: claim.causeOfDeath ?? '', description: claim.description ?? '',
+  };
+  const [f, setF] = useState(start);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    setError('');
+    const body: Record<string, string> = {};
+    if (f.name.trim() !== start.name) { if (f.name.trim().length < 2) return setError('نام بیمه‌شده را بنویسید'); body.deceasedFullName = f.name.trim(); }
+    if (asc(f.nid).trim() !== start.nid) { if (!/^\d{10}$/.test(asc(f.nid).trim())) return setError('کد ملی باید ۱۰ رقم باشد'); body.deceasedNationalCode = asc(f.nid).trim(); }
+    if (f.event !== start.event) { const iso = jalaliToIso(f.event); if (!iso) return setError('تاریخ وقوع نامعتبر است (نمونه: ۱۴۰۵/۰۷/۰۱)'); body.eventDate = iso; }
+    if (f.birth !== start.birth) { const iso = f.birth ? jalaliToIso(f.birth) : ''; if (iso === null) return setError('تاریخ تولد نامعتبر است (نمونه: ۱۳۴۵/۰۵/۱۲)'); body.deceasedBirthDate = iso; }
+    if (f.cause.trim() !== start.cause) body.causeOfDeath = f.cause.trim();
+    if (f.description.trim() !== start.description) body.description = f.description.trim();
+    if (!Object.keys(body).length) return onCancel();
+    setBusy(true);
+    try { await client.put(`${api}/filing`, body, realm); onSaved(); } catch (e: any) { setError(e.message); } finally { setBusy(false); }
+  };
+  const set = (k: keyof FilingForm) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
+  return (
+    <div className="space-y-3 mt-3">
+      {error && <div className="alert-error text-sm">{error}</div>}
+      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-2.5">
+        <label className="block"><span className="label">کد ملی بیمه‌شده</span><input className="input latin-digits" value={f.nid} onChange={set('nid')} inputMode="numeric" maxLength={10} style={{ direction: 'ltr', textAlign: 'right' }} placeholder={claim.deceasedNationalCode ?? ''} /></label>
+        <label className="block"><span className="label">نام بیمه‌شده</span><input className="input" value={f.name} onChange={set('name')} maxLength={120} /></label>
+        <label className="block"><span className="label">تاریخ تولد</span><JalaliDatePicker value={f.birth} onChange={(v) => setF({ ...f, birth: v })} placeholder="۱۳۴۵/۰۵/۱۲" /></label>
+        <label className="block"><span className="label">تاریخ وقوع</span><JalaliDatePicker value={f.event} onChange={(v) => setF({ ...f, event: v })} placeholder="۱۴۰۵/۰۷/۰۱" /></label>
+        <label className="block md:col-span-2"><span className="label">علت</span><input className="input" value={f.cause} onChange={set('cause')} maxLength={300} /></label>
+        <label className="block md:col-span-2 lg:col-span-3"><span className="label">توضیحات</span><textarea className="input" rows={2} value={f.description} onChange={set('description')} maxLength={2000} /></label>
+      </div>
+      <div className="flex gap-2">
+        <button type="button" className="btn btn-primary" onClick={save} disabled={busy}>{busy ? '…' : 'ذخیرهٔ مشخصات'}</button>
+        <button type="button" className="btn btn-ghost" onClick={onCancel} disabled={busy}>انصراف</button>
+      </div>
+    </div>
+  );
+}
 
 /** Upload state of one checklist row while a file is going up, or the outcome right after. */
 type UpState = { pct: number; eta: number | null } | { done: true } | { error: string };
@@ -103,6 +160,7 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
   const [sending, setSending] = useState(false);
   const [aiNote, setAiNote] = useState(false); // an upload went to the AI check queue (result comes by SMS)
   const [isBroker, setIsBroker] = useState(false); // a brokerage's staff on panel 1 (batch upload)
+  const [editing, setEditing] = useState(false); // «ویرایش مشخصات» open
 
   useEffect(() => {
     client.get<{ lateNoticeWarning?: boolean }>('/tenant/branding', realm).then((b) => setLateWarn(b.lateNoticeWarning !== false)).catch(() => {});
@@ -177,8 +235,8 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
     <Shell title="جزئیات پرونده" breadcrumb="جزئیات پرونده" sectionLabel="خسارت عمر و حادثه" nav={org ? ORG_NAV : CUSTOMER_NAV} realm={realm}
       action={claim ? (
         <>
-          <Link href={org ? '/org/entry/claims' : '/customer/claims'} className="cu-intro-btn text-center">مرحله قبل</Link>
           <Link href={`${page}/workflow`} className="cu-intro-btn text-center">مرحله بعد</Link>
+          <Link href={org ? '/org/entry/claims' : '/customer/claims'} className="cu-intro-btn text-center">مرحله قبل</Link>
         </>
       ) : undefined}>
       <div className="cu-home">
@@ -188,7 +246,10 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
           <>
             {/* مشخصات پرونده — laid out like the home's «مشخصات بیمه نامه» */}
             <section className="pcard cu-spec">
-              <h2 className="cu-spec-h"><span>مشخصات پرونده</span></h2>
+              <h2 className="cu-spec-h">
+                <span>مشخصات پرونده</span>
+                {claim.filingEdit?.editable && !editing && <button type="button" className="btn btn-ghost btn-sm no-print" onClick={() => setEditing(true)}>ویرایش مشخصات</button>}
+              </h2>
               <div className="cu-spec-row">
                 <div className="cu-select is-static">
                   <span className="cu-select-ico" style={{ color: 'var(--cu-ink)' }}><BigIcon path={IC.policy} size={20} /></span>
@@ -199,6 +260,9 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
                   <span><i className={`cu-dot${open ? ' is-on' : ''}`} /> وضعیت: {STATUS_FA[claim.status] ?? claim.status}</span>
                 </div>
               </div>
+              {claim.filingEdit?.editable && !editing && <p className="text-xs" style={{ color: 'var(--muted)' }}>تا پیش از آغاز بررسی پرونده می‌توانید مشخصات آن را اصلاح کنید.</p>}
+              {claim.filingEdit && !claim.filingEdit.editable && claim.filingEdit.reason && <p className="text-xs" style={{ color: 'var(--muted)' }}>{claim.filingEdit.reason}</p>}
+              {editing && <FilingEditor claim={claim} api={api} realm={realm} onCancel={() => setEditing(false)} onSaved={async () => { setEditing(false); await reload(); }} />}
             </section>
 
             {/* Four summary cards, as on the home page */}
@@ -263,13 +327,15 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
                   // دارد / ندارد not answered yet: one row asks; the answer decides which document stays.
                   const unchosen = checklist.items.some((x) => x.code === BENEFICIARY_FORM) && checklist.items.some((x) => x.code === INHERITANCE_CERT);
                   const isBeneficiary = it.code === BENEFICIARY_FORM || it.code === INHERITANCE_CERT;
-                  if (unchosen && it.code === INHERITANCE_CERT) return null;
+                  if (unchosen && (it.code === INHERITANCE_CERT || it.code === NO_FORM_LETTER)) return null;
+                  // The کارگزاری's own panel-1 list: what it doesn't require shows greyed (still uploadable).
+                  const greyed = !!checklist.entryList && !it.required && !it.uploaded;
                   const story = docStory(it, !!claim.story?.manual);
                   const st = up[it.code];
                   const d = it.documents[0] as ClaimDoc | undefined;
                   const older = it.documents.slice(1);
                   return (
-                    <div key={it.code} className={`doc-row cu-doc tone-${story.tone}`}>
+                    <div key={it.code} className={`doc-row cu-doc tone-${story.tone}${greyed ? ' is-optional' : ''}`}>
                       <div className="cu-doc-head">
                         <div className="text-sm min-w-0">
                           <div className="font-bold">{it.label}{it.required && <span style={{ color: 'var(--danger)' }}> *</span>}</div>

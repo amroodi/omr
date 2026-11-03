@@ -20,6 +20,9 @@ class DocRowDto {
   // نوع بیمه‌نامه it belongs to (empty = every kind)
   @IsOptional() @IsArray() @IsString({ each: true }) kinds?: string[];
 }
+class EntryDocsDto {
+  @IsArray() @ArrayMaxSize(200) @IsString({ each: true }) codes!: string[];
+}
 class DocsDto {
   @IsArray() @ArrayMaxSize(200) @ValidateNested({ each: true }) @Type(() => DocRowDto) docs!: DocRowDto[];
 }
@@ -36,7 +39,7 @@ export class ModelViewController {
   @Get()
   async list() {
     const db = this.prisma.unscoped();
-    const orgs = await db.tenant.findMany({ where: { kind: { in: ['INSURER', 'BROKER'] } }, orderBy: { name: 'asc' }, select: { id: true, name: true, kind: true, workflowModel: true, coverageConfig: true, claimNoticeRules: true } });
+    const orgs = await db.tenant.findMany({ where: { kind: { in: ['INSURER', 'BROKER'] } }, orderBy: { name: 'asc' }, select: { id: true, name: true, kind: true, workflowModel: true, coverageConfig: true, claimNoticeRules: true, entryRequiredDocs: true } });
     const insurers = orgs.filter((o) => o.kind === 'INSURER');
     const [atCouncil, notChecked, docs] = await Promise.all([
       db.claim.groupBy({ by: ['insurerTenantId'], where: { currentStage: 'COUNCIL', deletedAt: null }, _count: true }),
@@ -60,7 +63,7 @@ export class ModelViewController {
         };
       }),
       notice: orgs.map((o) => ({
-        id: o.id, name: o.name, kind: o.kind,
+        id: o.id, name: o.name, kind: o.kind, entryRequiredDocs: o.entryRequiredDocs,
         sources: SOURCES_OF[o.kind].map((key) => ({ key, label: SOURCE_FA[key], allowed: TARGETS_OF[key], rule: rulesFor(o.kind, o.claimNoticeRules)[key] })),
       })),
       targets: NOTICE_TARGETS.map((key) => ({ key, label: TARGET_FA[key] })),
@@ -109,6 +112,18 @@ export class ModelViewController {
     ]);
     await this.audit.record({ action: AuditAction.EDIT, tenantId: insurerId, targetType: 'RequiredDocument', targetId: insurerId, metadata: { docs: dto.docs } as any });
     return { ok: true };
+  }
+
+  /** A کارگزاری's panel-1 required documents (empty = the insurer's own rules). */
+  @Put(':orgId/entry-docs')
+  async saveEntryDocs(@Param('orgId', ParseUUIDPipe) orgId: string, @Body() dto: EntryDocsDto) {
+    const db = this.prisma.unscoped();
+    const t = await db.tenant.findUnique({ where: { id: orgId }, select: { kind: true } });
+    if (!t || t.kind !== 'BROKER') throw new NotFoundException('کارگزاری یافت نشد');
+    const codes = [...new Set(dto.codes.map((c) => c.trim()).filter(Boolean))];
+    await db.tenant.update({ where: { id: orgId }, data: { entryRequiredDocs: codes } });
+    await this.audit.record({ action: AuditAction.EDIT, tenantId: orgId, targetType: 'EntryRequiredDocs', targetId: orgId, metadata: { codes } });
+    return { codes };
   }
 
   /** «اعلام خسارت» rules of an insurer or a کارگزاری. */

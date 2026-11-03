@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { client, getToken, hasPerm } from '../../../lib/client';
 import { Shell } from '../../components/Shell';
 import { Faq } from '../../components/Faq';
@@ -70,20 +71,21 @@ export default function EntryHome() {
                 <div className="cu-card-s">پنل ورود داده</div></div>
               <span className="cu-card-ico"><BigIcon path={IC.user} size={34} /></span>
             </div>
-            <div className="pcard cu-card">
+            {/* The three figures open the list of those cases. */}
+            <Link href="/org/entry/claims?tab=open" className="pcard cu-card is-link" title="فهرست پرونده‌های در جریان">
               <div><div className="cu-card-t">پرونده‌ها</div><div className="cu-card-v">{fa(stats.total)}</div>
                 <div className="cu-card-s">{fa(stats.open)} پرونده در جریان</div></div>
               <span className="cu-card-ico"><BigIcon path={IC.doc} size={34} /></span>
-            </div>
-            <div className="pcard cu-card">
+            </Link>
+            <Link href="/org/entry/claims?tab=paid" className="pcard cu-card is-link" title="فهرست پرونده‌های پرداخت‌شده">
               <div><div className="cu-card-t">جمع مبالغ پرداخت شده</div><div className="cu-card-v">{fa(stats.paid)}</div><div className="cu-card-s">ریال</div></div>
               <span className="cu-card-ico"><BigIcon path={IC.check} size={34} /></span>
-            </div>
-            <div className="pcard cu-card">
+            </Link>
+            <Link href="/org/entry/claims?tab=approved" className="pcard cu-card is-link" title="فهرست خسارات تاییدشده">
               <div><div className="cu-card-t">تعداد خسارات تایید شده</div><div className="cu-card-v">{fa(stats.approved)}</div>
                 <div className="cu-card-s">از {fa(stats.total)} پرونده</div></div>
               <span className="cu-card-ico"><BigIcon path={IC.bubble} size={34} /></span>
-            </div>
+            </Link>
           </div>
 
           <div className="pcard cu-launch">

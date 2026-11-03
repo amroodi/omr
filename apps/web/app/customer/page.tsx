@@ -160,15 +160,15 @@ function CompanyDashboard({ mustChangePassword }: { mustChangePassword: boolean 
                 <div className="cu-card-s">{policy ? `${policy.lineLabel ?? '—'} — ${policy.insurerName}` : '—'}</div></div>
               <span className="cu-card-ico"><BigIcon path={IC.doc} size={34} /></span>
             </div>
-            <div className="pcard cu-card">
+            <Link href="/customer/claims?tab=paid" className="pcard cu-card is-link" title="فهرست پرونده‌های پرداخت‌شده">
               <div><div className="cu-card-t">جمع مبالغ پرداخت شده</div><div className="cu-card-v">{fa(dash.stats.paidAmount)}</div><div className="cu-card-s">ریال</div></div>
               <span className="cu-card-ico"><BigIcon path={IC.check} size={34} /></span>
-            </div>
-            <div className="pcard cu-card">
+            </Link>
+            <Link href="/customer/claims?tab=approved" className="pcard cu-card is-link" title="فهرست خسارات تاییدشده">
               <div><div className="cu-card-t">تعداد خسارات تایید شده</div><div className="cu-card-v">{fa(dash.stats.approvedCount)}</div>
                 <div className="cu-card-s">از {fa(dash.stats.total)} پرونده — {fa(dash.stats.open)} در جریان</div></div>
               <span className="cu-card-ico"><BigIcon path={IC.bubble} size={34} /></span>
-            </div>
+            </Link>
           </div>
 
           {/* Action launcher */}

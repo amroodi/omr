@@ -2108,3 +2108,20 @@ html:has(.pshell:not(.is-customer)) .pmodal-body { padding: 10px 14px; }
   border: 1px solid var(--border); background: var(--surface); font-size: .78rem; color: var(--muted); transition: border-color .15s, background .15s; }
 .est-cases-list button b { color: var(--text); font-size: .85rem; }
 .est-cases-list button.is-on { border-color: var(--brand); background: var(--brand-soft); }
+
+/* Panel 1: a کارگزاری's own required list — the documents it doesn't require show greyed (still uploadable). */
+.cu-doc.is-optional { background: var(--surface-2); filter: grayscale(1); opacity: .72; transition: opacity .15s, filter .15s; }
+.cu-doc.is-optional:hover, .cu-doc.is-optional:focus-within { opacity: 1; filter: none; }
+/* Home cards that open their list */
+a.cu-card.is-link { color: inherit; transition: transform .15s, box-shadow .15s; cursor: pointer; }
+a.cu-card.is-link:hover { transform: translateY(-2px); box-shadow: 0 0 0 2px var(--brand) inset, var(--shadow); }
+/* Date fields: calendar icon inside the field */
+.jdp-ico { position: absolute; left: 6px; top: 50%; transform: translateY(-50%); width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; color: var(--muted); background: transparent; }
+.jdp-ico:hover { color: var(--brand); background: var(--brand-soft); }
+.jdp-ico svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+/* «بیمه‌گزار (شرکت)» search list */
+.co-pick { position: absolute; z-index: 40; inset-inline: 0; top: calc(100% + 4px); max-height: 280px; overflow-y: auto; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 14px; box-shadow: var(--shadow-lg); padding: 4px; }
+.co-pick li { padding: 8px 12px; border-radius: 10px; font-size: .86rem; cursor: pointer; }
+.co-pick li.is-hi { background: var(--brand-soft); }
+.co-pick li.is-off { color: var(--muted); cursor: not-allowed; }
+.co-pick li.is-empty { color: var(--muted); cursor: default; }

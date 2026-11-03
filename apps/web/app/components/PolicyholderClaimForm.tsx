@@ -49,15 +49,51 @@ function PField({ label, help, children }: { label: string; help?: string; child
 /** A بیمه‌گزار company a brokerage's staff may file for (panel 1). */
 interface StaffCompany { id: string; name: string; contracts: unknown[]; accounts: { id: string; fullName: string }[] }
 
+/** «بیمه‌گزار (شرکت)»: type part of the name to find the company among many; ↓/Enter pick, Esc closes. */
+function CompanyPicker({ list, value, onPick }: { list: StaffCompany[] | null; value: string; onPick: (co: StaffCompany | null) => void }) {
+  const [q, setQ] = useState('');
+  const [open, setOpen] = useState(false);
+  const [hi, setHi] = useState(0);
+  const picked = list?.find((c) => c.id === value) ?? null;
+  const norm = (s: string) => s.replace(/ي/g, 'ی').replace(/ك/g, 'ک').replace(/\u200c/g, ' ').trim();
+  const shown = (list ?? []).filter((c) => !q.trim() || norm(c.name).includes(norm(q)));
+  const choose = (c: StaffCompany) => { if (!c.contracts.length) return; onPick(c); setQ(''); setOpen(false); };
+  return (
+    <div style={{ position: 'relative' }}>
+      <input className="input" role="combobox" aria-expanded={open} aria-label="جستجوی بیمه‌گزار" disabled={!list?.length}
+        value={open ? q : picked?.name ?? ''} placeholder={!list ? 'در حال دریافت…' : list.length ? 'نام بیمه‌گزار را تایپ کنید…' : 'بیمه‌گزاری ثبت نشده است'}
+        onFocus={() => { setOpen(true); setQ(''); setHi(0); }} onBlur={() => setOpen(false)}
+        onChange={(e) => { setQ(e.target.value); setHi(0); setOpen(true); }}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowDown') { e.preventDefault(); setHi((h) => Math.min(h + 1, shown.length - 1)); }
+          else if (e.key === 'ArrowUp') { e.preventDefault(); setHi((h) => Math.max(h - 1, 0)); }
+          else if (e.key === 'Enter') { e.preventDefault(); if (shown[hi]) choose(shown[hi]); }
+          else if (e.key === 'Escape') setOpen(false);
+        }} />
+      {open && (
+        <ul className="co-pick" role="listbox">
+          {shown.length === 0 ? <li className="is-empty">بیمه‌گزاری با این نام نیست</li> : shown.map((c, i) => (
+            <li key={c.id} role="option" aria-selected={c.id === value} aria-disabled={!c.contracts.length}
+              className={`${i === hi ? 'is-hi' : ''}${c.contracts.length ? '' : ' is-off'}`}
+              onMouseDown={(e) => { e.preventDefault(); choose(c); }} onMouseEnter={() => setHi(i)}>
+              {c.name}{c.contracts.length ? '' : ' (بدون قرارداد فعال)'}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 /**
  * «ثبت پرونده خسارت» of the بیمه‌گزار / نماینده panel — and of a brokerage's panel 1 (`realm="org"`), where
- * the staff first pick the بیمه‌گزار company (and may name its نماینده and an estimated amount).
+ * the staff first pick the بیمه‌گزار company (and may name its نماینده).
  */
 export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) {
   const router = useRouter();
   const org = realm === 'org';
   const [staffCos, setStaffCos] = useState<StaffCompany[] | null>(null);
-  const [extra, setExtra] = useState({ policyHolderId: '', claimedAmount: '' });
+  const [extra, setExtra] = useState({ policyHolderId: '' });
   const [company, setCompany] = useState<{ name: string } | null | undefined>(undefined);
   // An insurer's نماینده بیمه: no company or contract; they type the policy number, and «ارسال» sends to their شعبه.
   const [agent, setAgent] = useState(false);
@@ -83,7 +119,7 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
   /** Panel 1: the staff pick the بیمه‌گزار; its بیمه‌نامه‌ها then come exactly as on its own panel. */
   const pickCompany = (co: StaffCompany | null) => {
     setBrokerFor(co ? { id: co.id, name: co.name } : null); setCompany(co ? { name: co.name } : null);
-    setExtra({ policyHolderId: co?.accounts.length === 1 ? co.accounts[0].id : '', claimedAmount: '' });
+    setExtra({ policyHolderId: co?.accounts.length === 1 ? co.accounts[0].id : '' });
     setPolicies(co ? null : []); setPolicyId(''); setCoverage(null);
     if (!co) return;
     client.get<{ contracts: PolicyRow[]; selectedId: string | null; brokerName: string }>(`/claims/on-behalf/companies/${co.id}/policies${lineQuery()}`, 'org').then((d) => {
@@ -222,8 +258,6 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
         if (!brokerFor) throw new Error('بیمه‌گزار را انتخاب کنید');
         payload.policyholderCompanyId = brokerFor.id;
         if (extra.policyHolderId) payload.policyHolderId = extra.policyHolderId;
-        const amount = toAscii(extra.claimedAmount).replace(/[^\d]/g, '');
-        if (amount) payload.claimedAmount = amount;
         const c = await client.post<{ id: string }>('/claims/on-behalf', payload, 'org');
         router.push(`/org/claims/${c.id}`);
         return;
@@ -263,10 +297,7 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
           {org && (
             <>
               <PField label="بیمه‌گزار (شرکت) *" help="شرکتی که بیمه‌شده در آن شاغل است؛ پرونده در پنل همین بیمه‌گزار هم دیده می‌شود.">
-                <select className="input" value={brokerFor?.id ?? ''} onChange={(e) => pickCompany(staffCos?.find((c) => c.id === e.target.value) ?? null)} disabled={!staffCos?.length}>
-                  <option value="">{!staffCos ? 'در حال دریافت…' : staffCos.length ? '— انتخاب بیمه‌گزار —' : 'بیمه‌گزاری ثبت نشده است'}</option>
-                  {staffCos?.map((c) => <option key={c.id} value={c.id} disabled={!c.contracts.length}>{c.name}{c.contracts.length ? '' : ' (بدون قرارداد فعال)'}</option>)}
-                </select>
+                <CompanyPicker list={staffCos} value={brokerFor?.id ?? ''} onPick={pickCompany} />
               </PField>
               {(() => { const co = staffCos?.find((c) => c.id === brokerFor?.id); return co && co.accounts.length > 0 ? (
                 <PField label="نمایندهٔ بیمه‌گزار" help="اختیاری؛ نماینده پرونده را در پنل خود هم می‌بیند.">
@@ -276,14 +307,12 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
                   </select>
                 </PField>
               ) : null; })()}
-              <PField label="مبلغ خسارت برآوردی (ریال)" help="اختیاری؛ مبلغ قطعی پس از ارزیابی ثبت می‌شود.">
-                <input className="input" inputMode="numeric" value={toAscii(extra.claimedAmount).replace(/[^\d]/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, '٬')} onChange={(e) => setExtra({ ...extra, claimedAmount: toAscii(e.target.value).replace(/[^\d]/g, '') })} placeholder="۰" style={{ direction: 'ltr', textAlign: 'right' }} />
-              </PField>
             </>
           )}
 
-          {/* کد ملی first: the insurer's system (فن‌آوران) checks this person and their بیمه‌نامه before anything else. */}
-          <PField label={dependent ? `کد ملی ${relationName} *` : 'کد ملی بیمه‌شده *'} help="ابتدا کد ملی ۱۰ رقمی بیمه‌شده را وارد کنید؛ سامانهٔ بیمه‌گر (فن‌آوران) بررسی می‌کند این فرد و بیمه‌نامه و بازهٔ آن تعریف شده باشد؛ در غیر این صورت پرونده برای پرداخت خسارت ثبت نمی‌شود.">
+          {/* کد ملی first: the insurer's system (فن‌آوران) checks this person and their بیمه‌نامه before anything else.
+              It opens its own row (the right-hand column), after the company fields of panel 1. */}
+          <div className="md:col-start-1"><PField label={dependent ? `کد ملی ${relationName} *` : 'کد ملی بیمه‌شده *'} help="ابتدا کد ملی ۱۰ رقمی بیمه‌شده را وارد کنید؛ سامانهٔ بیمه‌گر (فن‌آوران) بررسی می‌کند این فرد و بیمه‌نامه و بازهٔ آن تعریف شده باشد؛ در غیر این صورت پرونده برای پرداخت خسارت ثبت نمی‌شود.">
             <input className="input" value={f.deceasedNationalCode} autoFocus={!org} inputMode="numeric" maxLength={10} style={{ direction: 'ltr', textAlign: 'right' }}
               onChange={(e) => {
                 const v = e.target.value;
@@ -292,7 +321,7 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
                 else if (coverage) { asked.current++; setCoverage(null); }
               }} />
             <CoverageNote c={coverage} />
-          </PField>
+          </PField></div>
 
           {askRelation && (
             <PField label="نوع بیمه‌شده *" help="هر پرونده برای یک نفر است؛ برای هر فرزند پروندهٔ جداگانه ثبت کنید.">

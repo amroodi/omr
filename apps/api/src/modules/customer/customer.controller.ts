@@ -70,7 +70,7 @@ export class AccountUpdateDto {
 }
 import { CustomerSignupStatus } from '@prisma/client';
 import { ClaimsService } from '../claims/claims.service';
-import { HeirsDto, PhysicalDto } from '../claims/dto';
+import { FilingEditDto, HeirsDto, PhysicalDto } from '../claims/dto';
 import { CoverageService } from '../model-view/coverage.service';
 import { CoverageCheckDto } from './dto';
 import { CustomerAuthService } from './customer-auth.service';
@@ -378,6 +378,14 @@ export class CustomerController {
   @Get('claims/:id/heirs')
   claimHeirs(@Param('id') id: string) {
     return this.claims.heirs(id);
+  }
+
+  /** The بیمه‌گزار / نماینده corrects what they filed, until panel 2 starts on the case. */
+  @Realms('CUSTOMER')
+  @UseGuards(JwtAuthGuard)
+  @Put('claims/:id/filing')
+  editFiling(@Param('id') id: string, @Body() dto: FilingEditDto) {
+    return this.claims.editFiling(id, dto);
   }
 
   /** The بیمه‌گزار corrects them while the case is on their desk. */

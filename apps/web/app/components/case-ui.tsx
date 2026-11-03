@@ -19,7 +19,7 @@ export interface DocReview { stage: string; state: string; canEdit: boolean; cha
 export interface DocAi { status: string; reason: string | null; detected: string | null }
 export interface ClaimDoc { id: string; fileName: string; status: string; statusLabel: string; note: string | null; uploadedAt: string | null; version: number; isLatest: boolean; reviews?: DocReview[]; ai?: DocAi | null }
 export interface ChecklistItem { code: string; label: string; required?: boolean; uploaded: boolean; aiRefused?: boolean; latestStatus: string | null; documents: ClaimDoc[] }
-export interface Checklist { claimType: string; complete: boolean; note?: string; items: ChecklistItem[]; otherDocuments?: ClaimDoc[] }
+export interface Checklist { claimType: string; complete: boolean; note?: string; items: ChecklistItem[]; otherDocuments?: ClaimDoc[]; entryList?: boolean }
 export interface FieldRow { key: string; label: string; type: string; options: string[]; required: boolean; value: string | null; source: string | null; confirmed: boolean; canEdit: boolean }
 export interface FieldsData { party: string; manual?: boolean; groups: Record<string, FieldRow[]> }
 export interface CaseClaim {
@@ -43,6 +43,8 @@ export interface CaseClaim {
    * and the typed values' history) or the hierarchy (its hand-offs). «ویرایش» always has priority.
    */
   story?: CaseStory;
+  /** Panel 1 only: may it still correct the filing data (until panel 2 starts on the case)? */
+  filingEdit?: { editable: boolean; reason: string | null } | null;
 }
 export interface CaseStory { manual: boolean; caseStage: string | null; history: { at: string; title: string; detail: string | null }[] }
 

@@ -26,7 +26,7 @@ interface Doc { code: string; label: string; isActive: boolean; appliesToTypes: 
 interface Coverage { enabled: boolean; url: string; hasSecret: boolean; notChecked: number }
 interface Insurer { id: string; name: string; customized: boolean; casesAtCouncil: number; model: Model; docs: Doc[]; companies: { id: string; name: string; parentId: string | null }[]; coverage: Coverage }
 interface NoticeRule { enabled: boolean; targets: string[]; default: string }
-interface NoticeOrg { id: string; name: string; kind: string; sources: { key: string; label: string; allowed: string[]; rule: NoticeRule }[] }
+interface NoticeOrg { id: string; name: string; kind: string; entryRequiredDocs?: string[]; sources: { key: string; label: string; allowed: string[]; rule: NoticeRule }[] }
 interface Kind { code: string; label: string; active: boolean }
 interface Data { defaults: Model; kinds: Kind[]; insurers: Insurer[]; notice: NoticeOrg[]; targets: { key: string; label: string }[] }
 
@@ -54,6 +54,9 @@ export default function ModelView() {
   const [m, setM] = useState<Model | null>(null);
   const [docs, setDocs] = useState<Doc[]>([]);
   const [docType, setDocType] = useState('DEATH_ILLNESS');
+  const [docKind, setDocKind] = useState(''); // '' = every نوع بیمه‌نامه
+  const [entryBroker, setEntryBroker] = useState('');
+  const [entryCodes, setEntryCodes] = useState<string[] | null>(null);
   const [cov, setCov] = useState<Coverage | null>(null);
   const [noticeOrg, setNoticeOrg] = useState('');
   const [notice, setNotice] = useState<NoticeOrg | null>(null);
@@ -112,6 +115,15 @@ export default function ModelView() {
     appliesToTypes: mode === 'off' ? d.appliesToTypes.filter((x) => x !== docType) : [...new Set([...d.appliesToTypes, docType])],
     requiredTypes: mode === 'required' ? [...new Set([...d.requiredTypes, docType])] : d.requiredTypes.filter((x) => x !== docType),
   })));
+  // A document belongs to a نوع بیمه‌نامه when it names it, or names none (= every kind).
+  const inKind = (d: Doc) => !docKind || !(d.kinds ?? []).length || (d.kinds ?? []).includes(docKind);
+  /** «حذف از این نوع»: an every-kind document keeps the other kinds; the last kind removes the document. */
+  const dropFromKind = (code: string) => setDocs(docs.flatMap((d) => {
+    if (d.code !== code) return [d];
+    const rest = ((d.kinds ?? []).length ? d.kinds! : kinds.map((k) => k.code)).filter((k) => k !== docKind);
+    return rest.length ? [{ ...d, kinds: rest }] : [];
+  }));
+  const brokers = (data?.notice ?? []).filter((o) => o.kind === 'BROKER');
   const chain = m ? STAGES.filter((s) => s !== 'COUNCIL' || m.councilEnabled).map((s) => m.stages[s].label) : [];
 
   return (
@@ -280,14 +292,22 @@ export default function ModelView() {
           {tab === 'docs' && (
             <>
               <Card title="مدارک هر نوع پرونده">
-                <label className="text-sm block max-w-md">نوع پرونده
-                  <select className="input mt-1" value={docType} onChange={(e) => setDocType(e.target.value)}>
-                    {m.form.caseTypes.map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}
-                  </select>
-                </label>
+                <div className="grid sm:grid-cols-2 gap-3 max-w-2xl">
+                  <label className="text-sm block">نوع بیمه‌نامه
+                    <select className="input mt-1" value={docKind} onChange={(e) => setDocKind(e.target.value)}>
+                      <option value="">همهٔ انواع</option>
+                      {kinds.map((k) => <option key={k.code} value={k.code}>{kindTitle(k)}</option>)}
+                    </select>
+                  </label>
+                  <label className="text-sm block">نوع پرونده
+                    <select className="input mt-1" value={docType} onChange={(e) => setDocType(e.target.value)}>
+                      {m.form.caseTypes.map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}
+                    </select>
+                  </label>
+                </div>
                 <p className="text-xs" style={{ color: 'var(--muted)' }}>هر مدرک فقط در پرونده‌های نوع بیمه‌نامهٔ تیک‌خورده می‌آید (بدون تیک = همهٔ انواع). «حذف» با ذخیره انجام می‌شود؛ مدرکی که پرونده‌ای فایلش را دارد فقط غیرفعال می‌شود. بدون مدارک «الزامی» پرونده ارسال نمی‌شود؛ «برحسب نیاز» در فهرست می‌آید ولی مانع ارسال نیست. غیرفعال‌کردن مدرک آن را از همهٔ نوع پرونده‌ها برمی‌دارد و فایل‌های قبلی در «سایر مدارک» می‌ماند.</p>
                 <div className="space-y-2">
-                  {[...docs.filter((d) => d.appliesToTypes.includes(docType)), ...docs.filter((d) => !d.appliesToTypes.includes(docType))].map((d) => (
+                  {[...docs.filter((d) => inKind(d) && d.appliesToTypes.includes(docType)), ...docs.filter((d) => inKind(d) && !d.appliesToTypes.includes(docType))].map((d) => (
                     <div key={d.code} className="grid md:grid-cols-[1fr_9rem_auto] gap-2 items-start">
                       <textarea className="input text-sm" rows={2} aria-label="عنوان مدرک" value={d.label} maxLength={500} onChange={(e) => setDocs(docs.map((x) => (x.code === d.code ? { ...x, label: e.target.value } : x)))} />
                       <select className="input" aria-label="وضعیت در این نوع پرونده" value={!d.appliesToTypes.includes(docType) ? 'off' : d.requiredTypes.includes(docType) ? 'required' : 'optional'} onChange={(e) => setDocMode(d.code, e.target.value)}>
@@ -295,7 +315,9 @@ export default function ModelView() {
                       </select>
                       <span className="flex items-center gap-2">
                         <Toggle on={d.isActive} onChange={(v) => setDocs(docs.map((x) => (x.code === d.code ? { ...x, isActive: v } : x)))}>فعال</Toggle>
-                        <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} title="با ذخیره حذف می‌شود؛ اگر پرونده‌ای فایل این مدرک را دارد، فقط غیرفعال می‌شود" onClick={() => setDocs(docs.filter((x) => x.code !== d.code))}>حذف</button>
+                        {docKind
+                          ? <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} title="این مدرک از این نوع بیمه‌نامه برداشته می‌شود (در انواع دیگر می‌ماند)؛ با ذخیره اعمال می‌شود" onClick={() => dropFromKind(d.code)}>حذف از این نوع</button>
+                          : <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} title="با ذخیره حذف می‌شود؛ اگر پرونده‌ای فایل این مدرک را دارد، فقط غیرفعال می‌شود" onClick={() => setDocs(docs.filter((x) => x.code !== d.code))}>حذف</button>}
                       </span>
                       {/* نوع بیمه‌نامه this document belongs to; none ticked = every kind. */}
                       <div className="md:col-span-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
@@ -306,9 +328,36 @@ export default function ModelView() {
                   ))}
                 </div>
                 <div className="flex gap-2 flex-wrap">
-                  <button className="btn btn-ghost btn-sm" onClick={() => setDocs([{ code: `other_${Date.now().toString(36)}`, label: 'مدرک جدید', isActive: true, appliesToTypes: [docType], requiredTypes: [] }, ...docs])}>افزودن مدرک</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setDocs([{ code: `other_${Date.now().toString(36)}`, label: 'مدرک جدید', isActive: true, appliesToTypes: [docType], requiredTypes: [], kinds: docKind ? [docKind] : [] }, ...docs])}>{docKind ? `افزودن مدرک به ${kinds.find((k) => k.code === docKind)?.label ?? ''}` : 'افزودن مدرک'}</button>
                   <button className="btn btn-primary" disabled={busy || docs.some((d) => d.label.trim().length < 2) || JSON.stringify(docs) === JSON.stringify(cur.docs)} onClick={() => run(() => client.put(`/admin/workflow-model/${id}/docs`, { docs }, 'super'), 'مدارک ذخیره شد.')}>ذخیرهٔ مدارک</button>
                 </div>
+              </Card>
+              {/* A کارگزاری's panel 1: only these are required there; the rest of the list shows greyed and optional. */}
+              <Card title="مدارک الزامی پنل ۱ کارگزاری">
+                <p className="text-xs" style={{ color: 'var(--muted)' }}>در پنل ۱ این کارگزاری (کارکنان، بیمه‌گزاران و نمایندگان آن) فقط مدارک تیک‌خورده برای «ثبت نهایی» الزامی است و بقیه اختیاری و خاکستری نمایش داده می‌شود. بدون تیک = قواعد خود بیمه‌گر. پرونده‌ای که هیچ‌یک از این مدارک را ندارد (مثلاً حوادث با فهرستی برای فوت) همان قواعد بیمه‌گر را دارد. فهرست مدارک از همین بیمه‌گر نمایش داده می‌شود.</p>
+                <label className="text-sm block max-w-md">کارگزاری
+                  <select className="input mt-1" value={entryBroker} onChange={(e) => { setEntryBroker(e.target.value); setEntryCodes(brokers.find((b) => b.id === e.target.value)?.entryRequiredDocs ?? []); }}>
+                    <option value="">انتخاب کنید…</option>
+                    {brokers.map((b) => <option key={b.id} value={b.id}>{b.name}{(b.entryRequiredDocs ?? []).length ? ` (${(b.entryRequiredDocs ?? []).length.toLocaleString('fa-IR')} مدرک)` : ''}</option>)}
+                  </select>
+                </label>
+                {entryBroker && entryCodes && (
+                  <>
+                    <div className="grid md:grid-cols-2 gap-x-4 gap-y-1.5">
+                      {docs.filter((d) => d.isActive).map((d) => (
+                        <label key={d.code} className="flex items-start gap-2 text-sm cursor-pointer">
+                          <input type="checkbox" className="mt-1" checked={entryCodes.includes(d.code)} onChange={(e) => setEntryCodes(toggled(entryCodes, d.code, e.target.checked))} />
+                          <span>{d.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <div className="flex gap-2 flex-wrap">
+                      <button className="btn btn-primary" disabled={busy || JSON.stringify([...entryCodes].sort()) === JSON.stringify([...(brokers.find((b) => b.id === entryBroker)?.entryRequiredDocs ?? [])].sort())}
+                        onClick={() => run(() => client.put(`/admin/workflow-model/${entryBroker}/entry-docs`, { codes: entryCodes }, 'super'), 'مدارک الزامی پنل ۱ ذخیره شد.')}>ذخیره</button>
+                      <button className="btn btn-ghost btn-sm" disabled={!entryCodes.length} onClick={() => setEntryCodes([])}>برداشتن همه (قواعد بیمه‌گر)</button>
+                    </div>
+                  </>
+                )}
               </Card>
               <Card title="یادآوری بالای فهرست مدارک">
                 <textarea className="input" rows={2} maxLength={500} aria-label="یادآوری" value={m.form.docsNote} onChange={(e) => setForm({ docsNote: e.target.value })} />
