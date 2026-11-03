@@ -15,6 +15,9 @@ import {
   Length,
   Matches,
   ValidateNested,
+  IsNumber,
+  Min,
+  Max,
 } from 'class-validator';
 import { ToAsciiDigits } from '../../common/validation/to-ascii.decorator';
 import { KIND_CODE } from '../../common/kinds';
@@ -42,6 +45,23 @@ export class HeirDto {
   @IsString()
   @Length(0, 40)
   relation?: string; // نسبت with the main insured
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100)
+  sharePercent?: number; // سهم (٪) on the form, when it gives one
+}
+
+/** Panel 1 corrects what it filed, until panel 2 starts on the case. Only the fields sent change. */
+export class FilingEditDto {
+  @IsOptional() @IsString() @Length(2, 120) deceasedFullName?: string;
+  @IsOptional() @ToAsciiDigits() @IsString() @Matches(/^\d{10}$/, { message: 'کد ملی باید ۱۰ رقم باشد' }) deceasedNationalCode?: string;
+  @IsOptional() @IsISO8601() eventDate?: string;
+  // '' clears it
+  @IsOptional() @IsString() deceasedBirthDate?: string;
+  @IsOptional() @IsString() @Length(0, 300) causeOfDeath?: string;
+  @IsOptional() @IsString() @Length(0, 2000) description?: string;
 }
 
 /** «ذینفع / وراث قانونی» of a case: the kind and the people named on the form. */

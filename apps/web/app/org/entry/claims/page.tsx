@@ -17,25 +17,30 @@ const GROUPS: [GroupBy, string][] = [
 ];
 const STATUS_ORDER = ['RETURNED_INCOMPLETE', 'DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'PAID', 'REJECTED'];
 const faN = (n: number) => n.toLocaleString('fa-IR');
+/** «همه / نیازمند اقدام» and the home cards' lists: در جریان, تاییدشده, پرداخت‌شده. */
+type Tab = 'all' | 'action' | 'open' | 'approved' | 'paid';
+const TAB_KEYS: Tab[] = ['all', 'action', 'open', 'approved', 'paid'];
+const inTab = (t: Tab, c: MyClaim) => t === 'open' ? !['PAID', 'REJECTED'].includes(c.status) : t === 'approved' ? ['APPROVED', 'PAID'].includes(c.status) : t === 'paid' ? c.status === 'PAID' : true;
 const amount = (c: MyClaim) => Number(c.payableAmount || c.claimedAmount || 0);
 
 /** Panel 1 «پیگیری خسارت»: the organization's cases grouped like the بیمه‌گزار panel's page. */
 export default function EntryTrack() {
   const [claims, setClaims] = useState<MyClaim[] | null>(null);
   const [groupBy, setGroupBy] = useState<GroupBy>('status');
-  const [tab, setTab] = useState<'all' | 'action'>('all');
+  const [tab, setTab] = useState<Tab>('all');
   const [newHref, setNewHref] = useState<string | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get('tab') === 'action') setTab('action');
+    const t = new URLSearchParams(window.location.search).get('tab') as Tab | null;
+    if (t && TAB_KEYS.includes(t)) setTab(t);
     setNewHref(hasPerm('org', 'claim:file-on-behalf') ? '/org/claims/on-behalf' : hasPerm('org', 'claim:file') ? '/org/claims/new' : null);
     entryCases().then(setClaims).catch((e) => setError(e.message));
   }, []);
 
   const all = claims ?? [];
   const action = all.filter((c) => c.needsAction);
-  const shown = tab === 'action' ? action : all;
+  const shown = tab === 'action' ? action : all.filter((c) => inTab(tab, c));
   const groups = useMemo(() => {
     const key = (c: MyClaim): [string, string] => {
       if (groupBy === 'type') return [c.claimType, claimTypeLabel(c)];
@@ -67,10 +72,13 @@ export default function EntryTrack() {
         <div className="cu-tabs" role="tablist">
           <button type="button" role="tab" aria-selected={tab === 'all'} className={tab === 'all' ? 'is-on' : ''} onClick={() => setTab('all')}>همهٔ پرونده‌ها - ({faN(all.length)}) عدد</button>
           <button type="button" role="tab" aria-selected={tab === 'action'} className={tab === 'action' ? 'is-on' : ''} onClick={() => setTab('action')}>نیازمند اقدام - ({faN(action.length)}) عدد</button>
+          {([['open', 'در جریان'], ['approved', 'تاییدشده'], ['paid', 'پرداخت‌شده']] as const).map(([k, l]) => (
+            <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? 'is-on' : ''} onClick={() => setTab(k)}>{l} - ({faN(all.filter((c) => inTab(k, c)).length)}) عدد</button>
+          ))}
         </div>
 
         {!claims ? <div className="p-10 flex justify-center"><FancyLoader label="در حال دریافت پرونده‌ها" /></div>
-          : groups.length === 0 ? <div className="p-8 text-center text-sm" style={{ color: 'var(--muted)' }}>{tab === 'action' ? 'پرونده‌ای منتظر رفع نقص نیست.' : 'پرونده‌ای ثبت نشده است.'}</div>
+          : groups.length === 0 ? <div className="p-8 text-center text-sm" style={{ color: 'var(--muted)' }}>{tab === 'action' ? 'پرونده‌ای منتظر رفع نقص نیست.' : tab === 'all' ? 'پرونده‌ای ثبت نشده است.' : 'پرونده‌ای در این دسته نیست.'}</div>
           : groups.map((g) => (
             <div key={g.key} className="cu-group">
               <div className="cu-group-h"><span>{g.label} - ({faN(g.rows.length)}) عدد :</span><span>جمع: {faN(g.rows.reduce((t, c) => t + amount(c), 0))} ریال</span></div>

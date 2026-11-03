@@ -22,7 +22,7 @@ import { CoverageService } from '../model-view/coverage.service';
 import { CoverageCheckDto, StaffCoverageCheckDto } from '../customer/dto';
 import { ClaimsService } from './claims.service';
 import { asLine } from './workflow';
-import { ActionDto, DecisionDto, FileClaimDto, FileOnBehalfDto, HeirsDto, LetterDto, LossNoticeDto, PhysicalDto, RectifyDto } from './dto';
+import { ActionDto, DecisionDto, FileClaimDto, FileOnBehalfDto, FilingEditDto, HeirsDto, LetterDto, LossNoticeDto, PhysicalDto, RectifyDto } from './dto';
 
 const docLimits = { fileSize: 15 * 1024 * 1024 };
 
@@ -212,6 +212,14 @@ export class ClaimsController {
   @Put(':id/heirs')
   setHeirs(@Param('id') id: string, @Body() dto: HeirsDto) {
     return this.claims.setHeirs(id, dto);
+  }
+
+  /** Panel 1 corrects the filing data until panel 2 starts on the case (checked in the service). */
+  @EntryOnly()
+  @Permissions(PERMISSIONS.CLAIM_READ)
+  @Put(':id/filing')
+  editFiling(@Param('id') id: string, @Body() dto: FilingEditDto) {
+    return this.claims.editFiling(id, dto);
   }
 
   /** Required-document checklist (filtered by the claim's cause of death). */

@@ -23,7 +23,7 @@ import { TooManyRequestsException } from '../inquiry/http-exceptions';
 import { PERMISSIONS } from '../../common/rbac/permissions';
 import { nextClaimNumber } from './claim-number';
 import { isValidIban, isValidNationalCode } from '../../common/validation/field-validation';
-import { beneficiaryHiddenDoc } from '../required-docs/defaults';
+import { beneficiaryHiddenDocs } from '../required-docs/defaults';
 import { toAsciiDigits } from '../../common/jalali/jalali.util';
 import { ModelStore } from '../model-view/model-store.service';
 import { CoverageService } from '../model-view/coverage.service';
@@ -44,7 +44,7 @@ export const BENEFICIARY_FILE_CODE = 'BENEFICIARY_FILE';
 export const EXCEL_MIME = new Set(['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']);
 
 /** A ذینفع / وارث named on the deceased's beneficiary form. */
-export interface HeirInput { fullName: string; iban: string; nationalCode?: string; relation?: string }
+export interface HeirInput { fullName: string; iban: string; nationalCode?: string; relation?: string; sharePercent?: number }
 /** شبا as typed («IR06 2960 …», Persian digits, or the 24 digits alone) → «IR» + 24 digits. */
 const normIban = (s: string) => {
   const a = toAsciiDigits(s ?? '').replace(/[\s-]/g, '').toUpperCase();
@@ -452,7 +452,7 @@ export class ClaimsService {
         description: input.description ?? null,
         causeOfDeath: input.causeOfDeath?.trim() || null,
         beneficiaryType: input.beneficiaryType || null,
-        ...(heirs.length ? { heirs: { create: heirs.map((h, i) => ({ fullName: this.crypto.encrypt(h.fullName)!, iban: this.crypto.encrypt(h.iban)!, nationalCode: h.nationalCode ? this.crypto.encrypt(h.nationalCode) : null, relation: h.relation ?? null, order: i })) } } : {}),
+        ...(heirs.length ? { heirs: { create: heirs.map((h, i) => ({ fullName: this.crypto.encrypt(h.fullName)!, iban: this.crypto.encrypt(h.iban)!, nationalCode: h.nationalCode ? this.crypto.encrypt(h.nationalCode) : null, relation: h.relation ?? null, sharePercent: h.sharePercent ?? null, order: i })) } } : {}),
         status: byPolicyHolder ? ClaimStatus.SUBMITTED : ClaimStatus.UNDER_REVIEW,
         currentStage: firstStage,
         flowDirection: 'UP',
@@ -1180,6 +1180,7 @@ export class ClaimsService {
     result.policyholderCompany = await this.policyholders.contact(claim.policyholderCompanyId);
     // «ویرایش» first: a hand-completed case tells its typed story; otherwise the hierarchy's.
     result.story = await this.fields.statusStory(claim);
+    result.filingEdit = await this.filingEditState(claim); // panel 1 only (null elsewhere)
     if (result.story.manual) {
       // Hand-completed: the typed «وضعیت پرونده» and payment date, not the hierarchy's position / hand-off.
       const pay = await this.db().claimFieldValue.findUnique({ where: { claimId_key: { claimId, key: 'payment_order_date' } }, select: { value: true } });
@@ -1189,17 +1190,113 @@ export class ClaimsService {
     return result;
   }
 
+  /**
+   * Has panel 2 started on the case? Its first document decision, hand-off (any desk past the بیمه‌گزار's
+   * acting on it), «ویرایش» save or اعلام خسارت number. From then on panel 1 can't change the filing data.
+   */
+  private async panel2Started(claim: { id: string; lossNoticeNumber: string | null }): Promise<boolean> {
+    if (claim.lossNoticeNumber) return true;
+    const db = this.db();
+    const [step, review, log] = await Promise.all([
+      db.claimStep.findFirst({ where: { claimId: claim.id, NOT: { stage: 'POLICYHOLDER' }, state: { not: 'PENDING' } }, select: { id: true } }),
+      db.documentReview.findFirst({ where: { document: { claimId: claim.id }, state: { not: 'PENDING' } }, select: { id: true } }),
+      db.claimFieldLog.findFirst({ where: { claimId: claim.id }, select: { id: true } }),
+    ]);
+    return !!(step || review || log);
+  }
+
+  /** Panel 1 (the بیمه‌گزار / نماینده, or the organization's own filing staff): may it still correct this case? */
+  private async filingEditState(claim: any): Promise<{ editable: boolean; reason: string | null } | null> {
+    const ctx = getContext();
+    const perms = ctx?.permissions ?? [];
+    const panel1 = ctx?.actorType === 'CUSTOMER'
+      ? customerOwnsClaim(claim)
+      : ctx?.actorType === 'ORG_USER' && ctx.panelMode === 'ENTRY' && (perms.includes(PERMISSIONS.CLAIM_FILE) || perms.includes(PERMISSIONS.CLAIM_FILE_ON_BEHALF))
+        && (ctx.tenantId === claim.insurerTenantId || ctx.tenantId === claim.brokerTenantId);
+    if (!panel1) return null;
+    if (claim.imported || ['APPROVED', 'REJECTED', 'PAID'].includes(claim.status)) return { editable: false, reason: 'پرونده بسته شده است.' };
+    if (await this.panel2Started(claim)) return { editable: false, reason: 'بررسی پرونده آغاز شده است؛ برای اصلاح مشخصات با کارشناس تماس بگیرید.' };
+    return { editable: true, reason: null };
+  }
+
+  /** Panel 1 corrects what it filed (name, کد ملی, dates, cause, description) until panel 2 starts on it. */
+  async editFiling(claimId: string, input: { deceasedFullName?: string; deceasedNationalCode?: string; eventDate?: string; deceasedBirthDate?: string; causeOfDeath?: string; description?: string }) {
+    const db = this.db();
+    const claim = await db.claim.findUnique({ where: { id: claimId } });
+    if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
+    this.assertParticipant(claim);
+    const state = await this.filingEditState(claim);
+    if (!state?.editable) throw new ForbiddenException(state?.reason ?? 'اجازهٔ ویرایش این پرونده را ندارید');
+    const data: Prisma.ClaimUpdateInput = {};
+    const changed: string[] = [];
+    if (input.deceasedFullName !== undefined) { data.deceasedFullName = this.crypto.encrypt(input.deceasedFullName.trim())!; changed.push('name'); }
+    if (input.deceasedNationalCode !== undefined) {
+      const nid = input.deceasedNationalCode.trim();
+      data.deceasedNationalCode = this.crypto.encrypt(nid)!;
+      data.deceasedNationalCodeHash = this.crypto.blindIndex(nid)!;
+      changed.push('nationalCode');
+    }
+    const birth = input.deceasedBirthDate === undefined ? claim.deceasedBirthDate : input.deceasedBirthDate ? new Date(input.deceasedBirthDate) : null;
+    if (input.deceasedBirthDate !== undefined) {
+      if (birth && isNaN(birth.getTime())) throw new BadRequestException('تاریخ تولد نامعتبر است');
+      data.deceasedBirthDate = birth; changed.push('birthDate');
+    }
+    let event = claim.eventDate;
+    if (input.eventDate !== undefined) {
+      event = new Date(input.eventDate);
+      // The date must stay inside this case's بیمه‌نامه (another policy year means another case).
+      if (claim.policyholderCompanyId && claim.policyNumber) {
+        const k = await db.policyholderContract.findFirst({ where: { companyId: claim.policyholderCompanyId, insurerTenantId: claim.insurerTenantId, policyNumber: claim.policyNumber }, select: { startDate: true, endDate: true } });
+        if (k && ((k.startDate && event < k.startDate) || (k.endDate && event > k.endDate))) {
+          throw new BadRequestException(`تاریخ وقوع در دورهٔ بیمه‌نامهٔ این پرونده (${k.startDate ? toJalali(k.startDate, false) : '…'} تا ${k.endDate ? toJalali(k.endDate, false) : '…'}) نیست.`);
+        }
+      }
+      const insurer = await db.tenant.findUnique({ where: { id: claim.insurerTenantId }, select: { noticeDays: true } });
+      const deadline = new Date(event.getTime() + (insurer?.noticeDays ?? 30) * 86400000);
+      Object.assign(data, { eventDate: event, noticeDeadline: deadline, lateNotice: claim.createdAt > deadline });
+      changed.push('eventDate');
+    }
+    if (birth && event && birth > event) throw new BadRequestException('تاریخ تولد بعد از تاریخ وقوع است');
+    if (input.causeOfDeath !== undefined) { data.causeOfDeath = input.causeOfDeath.trim() || null; changed.push('cause'); }
+    if (input.description !== undefined) { data.description = input.description.trim() || null; changed.push('description'); }
+    // A new کد ملی or date: the insurer's system (فن‌آوران) is asked again.
+    if (claim.coverageStatus && (changed.includes('nationalCode') || changed.includes('eventDate'))) data.coverageStatus = 'NOT_CHECKED';
+    if (!changed.length) return this.get(claimId);
+    await db.claim.update({ where: { id: claimId }, data });
+    await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { filing: changed } });
+    return this.get(claimId);
+  }
+
+  /**
+   * A کارگزاری's own panel-1 list (Tenant.entryRequiredDocs): when its panel 1 looks at its case, only those
+   * documents are required and the rest are optional. null = the insurer's rules (anyone else, no list, or a
+   * checklist the list says nothing about, e.g. an accident case for a death-only list).
+   */
+  private async entryRequired(claim: { brokerTenantId: string | null }, codes: string[]): Promise<Set<string> | null> {
+    const ctx = getContext();
+    const panel1 = ctx?.actorType === 'CUSTOMER' || (ctx?.actorType === 'ORG_USER' && ctx.panelMode === 'ENTRY');
+    if (!panel1 || !ctx?.tenantId || ctx.tenantId !== claim.brokerTenantId) return null;
+    const t = await this.db().tenant.findUnique({ where: { id: ctx.tenantId }, select: { entryRequiredDocs: true } });
+    const list = new Set(t?.entryRequiredDocs ?? []);
+    return codes.some((c) => list.has(c)) ? list : null;
+  }
+
   /** Trim names, normalise each شبا and refuse an invalid one (named, so the filer knows which row). */
   private cleanHeirs(list?: HeirInput[]): HeirInput[] {
-    return (list ?? []).filter((h) => h.fullName?.trim() || h.iban?.trim()).map((h) => {
+    const rows = (list ?? []).filter((h) => h.fullName?.trim() || h.iban?.trim()).map((h) => {
       const fullName = (h.fullName ?? '').trim();
       const iban = normIban(h.iban);
       if (fullName.length < 2) throw new BadRequestException('نام هر ذینفع / وارث را بنویسید.');
       if (!isValidIban(iban)) throw new BadRequestException(`شماره شبای «${fullName}» نامعتبر است (IR و ۲۴ رقم).`);
       const nationalCode = h.nationalCode?.trim() || undefined;
       if (nationalCode && !isValidNationalCode(nationalCode)) throw new BadRequestException(`کد ملی «${fullName}» نامعتبر است.`);
-      return { fullName, iban, nationalCode, relation: h.relation?.trim() || undefined };
+      const sharePercent = h.sharePercent ?? undefined;
+      if (sharePercent != null && (sharePercent < 0 || sharePercent > 100)) throw new BadRequestException(`سهم «${fullName}» باید بین ۰ تا ۱۰۰ درصد باشد.`);
+      return { fullName, iban, nationalCode, relation: h.relation?.trim() || undefined, sharePercent };
     });
+    const total = rows.reduce((t, h) => t + (h.sharePercent ?? 0), 0);
+    if (total > 100.001) throw new BadRequestException('جمع سهم ذینفعان بیش از ۱۰۰ درصد است.');
+    return rows;
   }
 
   /** Who may change the heirs: staff who process cases (and see PII), or the بیمه‌گزار while it's on their desk. */
@@ -1228,7 +1325,7 @@ export class ClaimsService {
       heirs: claim.heirs.map((h) => {
         const iban = this.crypto.decrypt(h.iban) ?? '';
         const nationalCode = h.nationalCode ? this.crypto.decrypt(h.nationalCode) ?? '' : '';
-        return { id: h.id, relation: h.relation ?? '', nationalCode: full ? nationalCode : nationalCode ? `••••••${nationalCode.slice(-4)}` : '', fullName: this.crypto.decrypt(h.fullName) ?? '', iban: full ? iban : `IR••••••••••••••••••••${iban.slice(-4)}` };
+        return { id: h.id, sharePercent: h.sharePercent != null ? Number(h.sharePercent) : null, relation: h.relation ?? '', nationalCode: full ? nationalCode : nationalCode ? `••••••${nationalCode.slice(-4)}` : '', fullName: this.crypto.decrypt(h.fullName) ?? '', iban: full ? iban : `IR••••••••••••••••••••${iban.slice(-4)}` };
       }),
     };
   }
@@ -1244,7 +1341,7 @@ export class ClaimsService {
     const heirs = this.cleanHeirs(input.heirs);
     await db.$transaction([
       db.claimHeir.deleteMany({ where: { claimId } }),
-      ...(heirs.length ? [db.claimHeir.createMany({ data: heirs.map((h, i) => ({ claimId, fullName: this.crypto.encrypt(h.fullName)!, iban: this.crypto.encrypt(h.iban)!, nationalCode: h.nationalCode ? this.crypto.encrypt(h.nationalCode) : null, relation: h.relation ?? null, order: i })) })] : []),
+      ...(heirs.length ? [db.claimHeir.createMany({ data: heirs.map((h, i) => ({ claimId, fullName: this.crypto.encrypt(h.fullName)!, iban: this.crypto.encrypt(h.iban)!, nationalCode: h.nationalCode ? this.crypto.encrypt(h.nationalCode) : null, relation: h.relation ?? null, sharePercent: h.sharePercent ?? null, order: i })) })] : []),
       db.claim.update({ where: { id: claimId }, data: { beneficiaryType: input.beneficiaryType || null } }),
     ]);
     await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { heirs: heirs.length, beneficiaryType: input.beneficiaryType ?? null } });
@@ -1322,7 +1419,7 @@ export class ClaimsService {
     this.assertParticipant(claim);
 
     const reqs = await db.requiredDocument.findMany({
-      where: { tenantId: claim.insurerTenantId, isActive: true, appliesToTypes: { has: claim.claimType }, code: { not: beneficiaryHiddenDoc(claim.beneficiaryType) ?? undefined }, ...docKindWhere(claim.line) },
+      where: { tenantId: claim.insurerTenantId, isActive: true, appliesToTypes: { has: claim.claimType }, code: { notIn: beneficiaryHiddenDocs(claim.beneficiaryType) }, ...docKindWhere(claim.line) },
       orderBy: { order: 'asc' },
     });
     const docs = await db.document.findMany({
@@ -1393,6 +1490,7 @@ export class ClaimsService {
           };
         }),
       }));
+    const entryList = await this.entryRequired(claim, reqs.map((r) => r.code));
     const items = reqs.map((r) => {
       const group = byCode.get(r.code) ?? [];
       const latest = group[0];
@@ -1400,7 +1498,7 @@ export class ClaimsService {
         code: r.code,
         label: r.label,
         appliesToTypes: r.appliesToTypes,
-        required: r.requiredTypes.includes(claim.claimType),
+        required: entryList ? entryList.has(r.code) : r.requiredTypes.includes(claim.claimType),
         uploaded: !!latest && latest.aiStatus !== 'MISMATCH', // a refused newest file leaves the slot to fix
         aiRefused: latest?.aiStatus === 'MISMATCH',
         latestStatus: latest?.verificationStatus ?? null,
@@ -1413,6 +1511,7 @@ export class ClaimsService {
       claimType: claim.claimType,
       archived: claim.status === 'PAID', // a paid case takes no more uploads or reviews
       complete: items.length > 0 && items.every((i) => i.uploaded || !i.required),
+      entryList: !!entryList, // the کارگزاری's own panel-1 list decides what is required (the rest show greyed)
       note: (await this.modelOf(claim.insurerTenantId)).form.docsNote,
       items,
       // Each «سایر مدارک» file stands on its own (a batch upload is many documents, not versions of one).
@@ -1848,8 +1947,8 @@ export class ClaimsService {
     const rows = claims.map((c) => {
       const f = fv.get(c.id) ?? {};
       const cd = docsBy.get(c.id) ?? [];
-      const hiddenDoc = beneficiaryHiddenDoc(c.beneficiaryType);
-      const required = reqs.filter((r) => r.tenantId === c.insurerTenantId && r.requiredTypes.includes(c.claimType) && r.code !== hiddenDoc).map((r) => r.code);
+      const hidden = beneficiaryHiddenDocs(c.beneficiaryType);
+      const required = reqs.filter((r) => r.tenantId === c.insurerTenantId && r.requiredTypes.includes(c.claimType) && !hidden.includes(r.code)).map((r) => r.code);
       const latestByCode = new Map<string, string>();
       for (const d of cd) if (d.docCode && !latestByCode.has(d.docCode)) latestByCode.set(d.docCode, d.verificationStatus);
       const uploaded = required.filter((code) => latestByCode.has(code)).length;

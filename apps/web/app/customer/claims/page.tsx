@@ -19,6 +19,10 @@ const GROUPS: [GroupBy, string][] = [
 // Status groups in the order a case moves through them.
 const STATUS_ORDER = ['RETURNED_INCOMPLETE', 'DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'PAID', 'REJECTED'];
 const faN = (n: number) => n.toLocaleString('fa-IR');
+/** «همه / نیازمند اقدام» and the home cards' lists: در جریان, تاییدشده, پرداخت‌شده. */
+type Tab = 'all' | 'action' | 'open' | 'approved' | 'paid';
+const TAB_KEYS: Tab[] = ['all', 'action', 'open', 'approved', 'paid'];
+const inTab = (t: Tab, c: MyClaim) => t === 'open' ? !['PAID', 'REJECTED'].includes(c.status) : t === 'approved' ? ['APPROVED', 'PAID'].includes(c.status) : t === 'paid' ? c.status === 'PAID' : true;
 const amount = (c: MyClaim) => Number(c.payableAmount || c.claimedAmount || 0);
 
 /**
@@ -33,7 +37,7 @@ export default function CustomerTrack() {
   const [policyId, setPolicyId] = useState<string>('all');
   const [pick, setPick] = useState(false);
   const [groupBy, setGroupBy] = useState<GroupBy>('status');
-  const [tab, setTab] = useState<'all' | 'action'>('all');
+  const [tab, setTab] = useState<Tab>('all');
   const [error, setError] = useState('');
   // «broker» login: ?company=… narrows to one بیمه‌گزار
   const [companyId, setCompanyId] = useState('');
@@ -42,7 +46,8 @@ export default function CustomerTrack() {
     if (!getToken('customer')) { router.push('/customer/login'); return; }
     const params = new URLSearchParams(window.location.search);
     const co = params.get('company') ?? '';
-    if (params.get('tab') === 'action') setTab('action');
+    const t = params.get('tab') as Tab | null;
+    if (t && TAB_KEYS.includes(t)) setTab(t);
     setCompanyId(co);
     client.get<MyClaim[]>(`/customer/claims${lineQuery()}`, 'customer').then(setClaims).catch((e) => setError(e.message));
     client.get<{ contracts: PolicyRow[]; selectedId: string | null; brokerName: string }>(`/customer/dashboard?${new URLSearchParams({ ...(co ? { companyId: co } : {}), ...(getLine() ? { line: getLine()! } : {}) })}`, 'customer').then((d) => {
@@ -57,7 +62,7 @@ export default function CustomerTrack() {
   const policy = policies.find((p) => p.id === policyId) ?? null;
   const inPolicy = useMemo(() => (claims ?? []).filter((c) => (!companyId || c.policyholderCompanyId === companyId) && (!policy || c.policyNumber === policy.policyNumber)), [claims, policy, companyId]);
   const action = inPolicy.filter((c) => c.needsAction || c.status === 'RETURNED_INCOMPLETE');
-  const shown = tab === 'action' ? action : inPolicy;
+  const shown = tab === 'action' ? action : inPolicy.filter((c) => inTab(tab, c));
 
   const groups = useMemo(() => {
     const key = (c: MyClaim): [string, string] => {
@@ -106,10 +111,13 @@ export default function CustomerTrack() {
         <div className="cu-tabs" role="tablist">
           <button type="button" role="tab" aria-selected={tab === 'all'} className={tab === 'all' ? 'is-on' : ''} onClick={() => setTab('all')}>همهٔ پرونده‌ها - ({faN(inPolicy.length)}) عدد</button>
           <button type="button" role="tab" aria-selected={tab === 'action'} className={tab === 'action' ? 'is-on' : ''} onClick={() => setTab('action')}>نیازمند اقدام شما - ({faN(action.length)}) عدد</button>
+          {([['open', 'در جریان'], ['approved', 'تاییدشده'], ['paid', 'پرداخت‌شده']] as const).map(([k, l]) => (
+            <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? 'is-on' : ''} onClick={() => setTab(k)}>{l} - ({faN(inPolicy.filter((c) => inTab(k, c)).length)}) عدد</button>
+          ))}
         </div>
 
         {!claims ? <div className="p-10 flex justify-center"><FancyLoader label="در حال دریافت پرونده‌ها" /></div>
-          : groups.length === 0 ? <div className="p-8 text-center text-sm" style={{ color: 'var(--muted)' }}>{tab === 'action' ? 'پرونده‌ای منتظر اقدام شما نیست.' : 'در این بیمه‌نامه پرونده‌ای ثبت نشده است.'}</div>
+          : groups.length === 0 ? <div className="p-8 text-center text-sm" style={{ color: 'var(--muted)' }}>{tab === 'action' ? 'پرونده‌ای منتظر اقدام شما نیست.' : tab === 'all' ? 'در این بیمه‌نامه پرونده‌ای ثبت نشده است.' : 'پرونده‌ای در این دسته نیست.'}</div>
           : groups.map((g) => {
             const sum = g.rows.reduce((t, c) => t + amount(c), 0);
             return (

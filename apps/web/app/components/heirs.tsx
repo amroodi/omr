@@ -4,18 +4,26 @@ import { client, Realm } from '../../lib/client';
 import { UploadButton } from './upload';
 
 /**
- * «فرم تعیین/تغییر ذینفع» on a case: دارد → the form and each ذینفع (name, کد ملی, شبا);
+ * «فرم تعیین/تغییر ذینفع» on a case: دارد → the form and each ذینفع (name, شبا; کد ملی and سهم ٪ if known);
  * ندارد → the انحصار وراثت certificate. The choice is `beneficiaryType`, and the API takes the other
  * document off the checklist. `BeneficiaryChoice` sits in the بیمه‌گزار's checklist, `HeirsCard` on the staff case page.
  */
 export const BENEFICIARY_FORM = 'beneficiary_form'; // required document «فرم تعیین/تغییر ذینفع»
 export const INHERITANCE_CERT = 'inheritance_cert'; // required document «گواهی انحصار وراثت»
+export const NO_FORM_LETTER = 'no_beneficiary_form_letter'; // «نامه بیمه‌گزار مبنی بر پر نکردن فرم ذینفع» (with ندارد)
 const HAS_FORM = 'ذینفع قانونی'; const NO_FORM = 'وراث قانونی';
 export const BENEFICIARY_KINDS = [HAS_FORM, NO_FORM];
 const FORM_ACCEPT = '.pdf,.jpg,.jpeg,.png,.doc,.docx';
 
-export interface HeirRow { fullName: string; relation: string; nationalCode: string; iban: string }
-const EMPTY_ROW: HeirRow = { fullName: '', relation: '', nationalCode: '', iban: '' };
+export interface HeirRow { fullName: string; relation: string; nationalCode: string; iban: string; share: string }
+const EMPTY_ROW: HeirRow = { fullName: '', relation: '', nationalCode: '', iban: '', share: '' };
+/** «۳۳٫۵» / «33.5» / «33/5» → 33.5; '' → null; anything else → NaN. */
+const shareNum = (s: string): number | null => {
+  const a = toAscii(s).trim().replace(/[٫/,]/g, '.').replace(/%|٪/g, '');
+  return a ? Number(a) : null;
+};
+const shareOk = (s: string) => { const n = shareNum(s); return n === null || (Number.isFinite(n) && n >= 0 && n <= 100); };
+const faN = (n: number) => n.toLocaleString('fa-IR', { maximumFractionDigits: 2 });
 /** نسبت ذینفع با بیمه‌شدهٔ اصلی */
 const RELATIONS = ['همسر', 'فرزند', 'پدر', 'مادر', 'خواهر', 'برادر', 'سایر'];
 
@@ -42,20 +50,28 @@ export function nationalCodeOk(input: string): boolean {
   const r = sum % 11;
   return Number(c[9]) === (r < 2 ? r : 11 - r);
 }
-const filled = (rows: HeirRow[]) => rows.filter((h) => h.fullName.trim() || h.iban.trim() || h.nationalCode.trim());
+const filled = (rows: HeirRow[]) => rows.filter((h) => h.fullName.trim() || h.iban.trim() || h.nationalCode.trim() || h.share.trim());
 /** Why these rows can't be saved (null = fine). */
 function rowsProblem(rows: HeirRow[]): string | null {
   for (const h of rows) {
     if (h.fullName.trim().length < 2) return 'نام و نام خانوادگی هر ذینفع را بنویسید.';
     if (!h.relation.trim()) return `نسبت «${h.fullName.trim()}» با بیمه‌شدهٔ اصلی را انتخاب کنید.`;
-    if (!nationalCodeOk(h.nationalCode)) return `کد ملی «${h.fullName.trim()}» نامعتبر است.`;
+    if (h.nationalCode.trim() && !nationalCodeOk(h.nationalCode)) return `کد ملی «${h.fullName.trim()}» نامعتبر است (یا خالی بگذارید).`;
     if (!ibanOk(h.iban)) return `شماره شبای «${h.fullName.trim()}» نامعتبر است (IR و ۲۴ رقم).`;
+    if (!shareOk(h.share)) return `سهم «${h.fullName.trim()}» باید عددی بین ۰ تا ۱۰۰ باشد (یا خالی بگذارید).`;
   }
+  if (rows.reduce((t, h) => t + (shareNum(h.share) ?? 0), 0) > 100.001) return 'جمع سهم ذینفعان بیش از ۱۰۰ درصد است.';
   return null;
 }
-const rowsBody = (rows: HeirRow[]) => rows.map((h) => ({ fullName: h.fullName.trim(), relation: h.relation.trim(), nationalCode: toAscii(h.nationalCode).trim(), iban: normIban(h.iban) }));
+const rowsBody = (rows: HeirRow[]) => rows.map((h) => ({
+  fullName: h.fullName.trim(), relation: h.relation.trim(), iban: normIban(h.iban),
+  ...(h.nationalCode.trim() ? { nationalCode: toAscii(h.nationalCode).trim() } : {}),
+  ...(shareNum(h.share) !== null ? { sharePercent: shareNum(h.share)! } : {}),
+}));
+const toRow = (h: { fullName: string; relation?: string; nationalCode: string; iban: string; sharePercent?: number | null }): HeirRow =>
+  ({ fullName: h.fullName, relation: h.relation ?? '', nationalCode: h.nationalCode, iban: h.iban, share: h.sharePercent != null ? String(h.sharePercent) : '' });
 
-/** Name, کد ملی + شبا rows with add / remove. */
+/** Name, نسبت, کد ملی (optional), سهم ٪ (optional) + شبا rows with add / remove. */
 function HeirRows({ rows, onChange, disabled }: { rows: HeirRow[]; onChange: (rows: HeirRow[]) => void; disabled?: boolean }) {
   const set = (i: number, k: keyof HeirRow, x: string) => onChange(rows.map((h, j) => (j === i ? { ...h, [k]: x } : h)));
   return (
@@ -63,18 +79,24 @@ function HeirRows({ rows, onChange, disabled }: { rows: HeirRow[]; onChange: (ro
       {rows.map((h, i) => {
         const badIban = h.iban.trim().length >= 10 && !ibanOk(h.iban);
         const badCode = h.nationalCode.trim().length >= 10 && !nationalCodeOk(h.nationalCode);
+        const badShare = !shareOk(h.share);
         const ltr = { direction: 'ltr', textAlign: 'right' } as const;
         return (
-          <div key={i} className="grid gap-2 items-start grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,.55fr)_minmax(0,.8fr)_minmax(0,1.3fr)_auto]">
+          <div key={i} className="grid gap-2 items-start grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,.55fr)_minmax(0,.8fr)_minmax(0,.45fr)_minmax(0,1.3fr)_auto]">
             <input className="input" value={h.fullName} disabled={disabled} onChange={(e) => set(i, 'fullName', e.target.value)} placeholder="نام و نام خانوادگی" maxLength={120} />
             <select className="input" value={h.relation} disabled={disabled} onChange={(e) => set(i, 'relation', e.target.value)} aria-label="نسبت با بیمه‌شدهٔ اصلی" title="نسبت با بیمه‌شدهٔ اصلی">
               <option value="">— نسبت —</option>
               {[...new Set([...RELATIONS, ...(h.relation ? [h.relation] : [])])].map((r) => <option key={r} value={r}>{r}</option>)}
             </select>
             <div>
-              <input className="input latin-digits" value={h.nationalCode} disabled={disabled} onChange={(e) => set(i, 'nationalCode', e.target.value)} placeholder="کد ملی" inputMode="numeric" maxLength={10}
+              <input className="input latin-digits" value={h.nationalCode} disabled={disabled} onChange={(e) => set(i, 'nationalCode', e.target.value)} placeholder="کد ملی (اختیاری)" inputMode="numeric" maxLength={10}
                 style={{ ...ltr, ...(badCode ? { borderColor: 'var(--danger)' } : {}) }} />
               {badCode && <div className="text-xs mt-1" style={{ color: 'var(--danger)' }}>کد ملی نامعتبر است</div>}
+            </div>
+            <div>
+              <input className="input latin-digits" value={h.share} disabled={disabled} onChange={(e) => set(i, 'share', e.target.value)} placeholder="سهم ٪ (اختیاری)" inputMode="decimal" maxLength={6}
+                aria-label="سهم (درصد)" title="سهم این ذینفع طبق فرم (درصد)؛ اگر در فرم نیامده خالی بگذارید" style={{ ...ltr, ...(badShare ? { borderColor: 'var(--danger)' } : {}) }} />
+              {badShare && <div className="text-xs mt-1" style={{ color: 'var(--danger)' }}>۰ تا ۱۰۰</div>}
             </div>
             <div>
               <input className="input latin-digits" value={h.iban} disabled={disabled} onChange={(e) => set(i, 'iban', e.target.value)} placeholder="شماره شبا: IR000000000000000000000000" maxLength={34}
@@ -90,7 +112,7 @@ function HeirRows({ rows, onChange, disabled }: { rows: HeirRow[]; onChange: (ro
   );
 }
 
-interface HeirsData { beneficiaryType: string | null; canEdit: boolean; form: { id: string; fileName: string } | null; heirs: { id: string; fullName: string; relation?: string; nationalCode: string; iban: string }[] }
+interface HeirsData { beneficiaryType: string | null; canEdit: boolean; form: { id: string; fileName: string } | null; heirs: { id: string; fullName: string; relation?: string; nationalCode: string; iban: string; sharePercent?: number | null }[] }
 
 /**
  * In the checklist's beneficiary row: asks دارد / ندارد; on دارد also takes each ذینفع.
@@ -105,7 +127,7 @@ export function BeneficiaryChoice({ claimId, realm, onChosen, onMissing }: { cla
   const [busy, setBusy] = useState(false);
   const show = (x: HeirsData) => {
     setD(x); setDirty(false);
-    setRows(x.heirs.length ? x.heirs.map((h) => ({ fullName: h.fullName, relation: h.relation ?? '', nationalCode: h.nationalCode, iban: h.iban })) : [{ ...EMPTY_ROW }]);
+    setRows(x.heirs.length ? x.heirs.map(toRow) : [{ ...EMPTY_ROW }]);
     onMissing?.(x.beneficiaryType === HAS_FORM && x.heirs.length === 0);
   };
   useEffect(() => { client.get<HeirsData>(`${base}/heirs`, realm).then(show).catch(() => setD(null)); /* eslint-disable-next-line */ }, [claimId]);
@@ -145,7 +167,7 @@ export function BeneficiaryChoice({ claimId, realm, onChosen, onMissing }: { cla
           <button type="button" className="btn btn-primary btn-sm" onClick={save} disabled={busy || !dirty}>{busy ? '…' : dirty ? 'ذخیرهٔ ذینفعان' : 'ذخیره شد'}</button>
         </div>
       ) : d.heirs.length > 0 && (
-        <ul className="space-y-1">{d.heirs.map((h) => <li key={h.id}>{h.fullName}{h.relation ? ` (${h.relation})` : ''} — <bdi className="latin-digits">{h.nationalCode}</bdi> — <bdi className="latin-digits">{h.iban}</bdi></li>)}</ul>
+        <ul className="space-y-1">{d.heirs.map((h) => <li key={h.id}>{h.fullName}{h.relation ? ` (${h.relation})` : ''}{h.nationalCode ? <> — <bdi className="latin-digits">{h.nationalCode}</bdi></> : null}{h.sharePercent != null ? ` — سهم ${faN(h.sharePercent)}٪` : ''} — <bdi className="latin-digits">{h.iban}</bdi></li>)}</ul>
       ))}
     </div>
   );
@@ -184,7 +206,7 @@ export function HeirsCard({ claimId, realm, className = 'card p-4' }: { claimId:
               onUpload={async (file, onP) => { const fd = new FormData(); fd.append('file', file); await client.upload(`${base}/documents?docCode=${BENEFICIARY_FORM}`, fd, realm, onP); await load(); }}>
               {d.form ? 'بارگذاری دوبارهٔ فرم' : 'بارگذاری فرم'}
             </UploadButton>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setError(''); setEdit({ beneficiaryType: d.beneficiaryType ?? '', heirs: d.heirs.length ? d.heirs.map((h) => ({ fullName: h.fullName, relation: h.relation ?? '', nationalCode: h.nationalCode, iban: h.iban })) : [{ ...EMPTY_ROW }] }); }}>ویرایش ذینفعان</button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setError(''); setEdit({ beneficiaryType: d.beneficiaryType ?? '', heirs: d.heirs.length ? d.heirs.map(toRow) : [{ ...EMPTY_ROW }] }); }}>ویرایش ذینفعان</button>
           </div>
         )}
       </div>
@@ -215,10 +237,10 @@ export function HeirsCard({ claimId, realm, className = 'card p-4' }: { claimId:
       ) : (
         <div className="overflow-x-auto">
           <table className="table text-sm w-full">
-            <thead><tr><th style={{ width: 40 }}>#</th><th>نام و نام خانوادگی</th><th>نسبت</th><th>کد ملی</th><th>شماره شبا</th></tr></thead>
+            <thead><tr><th style={{ width: 40 }}>#</th><th>نام و نام خانوادگی</th><th>نسبت</th><th>کد ملی</th><th>سهم</th><th>شماره شبا</th></tr></thead>
             <tbody>
               {d.heirs.map((h, i) => (
-                <tr key={h.id}><td>{(i + 1).toLocaleString('fa-IR')}</td><td>{h.fullName}</td><td>{h.relation || '—'}</td><td className="latin-digits" style={{ direction: 'ltr', textAlign: 'right' }}>{h.nationalCode || '—'}</td><td className="latin-digits" style={{ direction: 'ltr', textAlign: 'right' }}>{h.iban}</td></tr>
+                <tr key={h.id}><td>{(i + 1).toLocaleString('fa-IR')}</td><td>{h.fullName}</td><td>{h.relation || '—'}</td><td className="latin-digits" style={{ direction: 'ltr', textAlign: 'right' }}>{h.nationalCode || '—'}</td><td>{h.sharePercent != null ? `${faN(h.sharePercent)}٪` : '—'}</td><td className="latin-digits" style={{ direction: 'ltr', textAlign: 'right' }}>{h.iban}</td></tr>
               ))}
             </tbody>
           </table>

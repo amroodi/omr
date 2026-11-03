@@ -31,7 +31,8 @@ function todayJ() {
  * Jalali (Persian) date picker. Emits/accepts "YYYY/MM/DD" (ASCII) like the forms expect.
  * The date can be typed (Persian or Latin digits) or picked; the header has year + month dropdowns so
  * far-away dates (e.g. a birth date decades back) take two clicks instead of hundreds of «ماه قبل».
- * Clicking the field opens the calendar in the middle of the screen (over a dimmed backdrop).
+ * The field is for typing (the slashes come by themselves); the calendar icon in it (or ↓) opens the
+ * calendar in the middle of the screen, over a dimmed backdrop.
  */
 export function JalaliDatePicker({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
   const parsed = (() => {
@@ -74,9 +75,12 @@ export function JalaliDatePicker({ value, onChange, placeholder }: { value: stri
   return (
     <div style={{ position: 'relative' }}>
       <input className="input" value={value ? fa(value) : ''} placeholder={placeholder || '۱۴۰۵/۰۷/۰۱'} inputMode="numeric"
-        onChange={(e) => onType(e.target.value)} onClick={() => setOpen(true)}
-        onKeyDown={(e) => { if (e.key === 'Escape' || e.key === 'Enter') setOpen(false); if (e.key === 'ArrowDown') setOpen(true); }}
-        style={{ direction: 'ltr', textAlign: 'right', cursor: 'pointer' }} aria-haspopup="dialog" aria-expanded={open} />
+        onChange={(e) => onType(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Escape' || e.key === 'Enter') setOpen(false); if (e.key === 'ArrowDown') { e.preventDefault(); setOpen(true); } }}
+        style={{ direction: 'ltr', textAlign: 'right', paddingLeft: 40 }} aria-haspopup="dialog" aria-expanded={open} />
+      <button type="button" className="jdp-ico" onClick={() => setOpen(true)} aria-label="باز کردن تقویم" title="انتخاب از تقویم">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z" /></svg>
+      </button>
       {open && (
         <Overlay onClose={() => setOpen(false)}>
         <div className="card jdp-pop" role="dialog" aria-label="انتخاب تاریخ" onClick={(e) => e.stopPropagation()}>

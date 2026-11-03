@@ -13,7 +13,7 @@ import { webBase } from '../ai-review/ai-review.queue';
 import { SmsService } from '../auth/sms.service';
 import { ClaimsService } from '../claims/claims.service';
 import { ModelStore } from '../model-view/model-store.service';
-import { beneficiaryHiddenDoc } from '../required-docs/defaults';
+import { beneficiaryHiddenDocs } from '../required-docs/defaults';
 import { SessionsService } from '../security/sessions.service';
 import { docKindWhere } from '../../common/kinds';
 
@@ -135,9 +135,9 @@ export class InsuredService {
       seen.add(r.claimId);
       const c = r.claim;
       const m = this.store.get(c.insurerTenantId);
-      const hidden = beneficiaryHiddenDoc(c.beneficiaryType);
+      const hidden = beneficiaryHiddenDocs(c.beneficiaryType);
       const reqs = await this.db().requiredDocument.findMany({
-        where: { tenantId: c.insurerTenantId, isActive: true, appliesToTypes: { has: c.claimType }, code: { in: m.insured.docCodes.filter((x) => x !== hidden) }, ...docKindWhere(c.line) },
+        where: { tenantId: c.insurerTenantId, isActive: true, appliesToTypes: { has: c.claimType }, code: { in: m.insured.docCodes.filter((x) => !hidden.includes(x)) }, ...docKindWhere(c.line) },
         orderBy: { order: 'asc' }, select: { code: true, label: true },
       });
       const docs = await this.db().document.findMany({ where: { claimId: c.id, docCode: { in: reqs.map((x) => x.code) } }, orderBy: { createdAt: 'desc' }, select: { docCode: true, fileName: true, verificationStatus: true, aiStatus: true, aiReason: true, verificationNote: true } });
@@ -163,7 +163,7 @@ export class InsuredService {
     const c = access.claim;
     if (c.status === 'PAID' || c.status === 'REJECTED') throw new BadRequestException('این پرونده بسته شده است');
     const m = this.store.get(c.insurerTenantId);
-    if (!m.insured.docCodes.includes(docCode) || beneficiaryHiddenDoc(c.beneficiaryType) === docCode) throw new ForbiddenException('بارگذاری این مدرک از این پنل مجاز نیست');
+    if (!m.insured.docCodes.includes(docCode) || beneficiaryHiddenDocs(c.beneficiaryType).includes(docCode)) throw new ForbiddenException('بارگذاری این مدرک از این پنل مجاز نیست');
     if (!(await this.rateLimit.hit(`insuredup:${access.id}`, 30, 3600))) throw new TooManyRequestsException('تعداد بارگذاری‌ها زیاد است. بعداً تلاش کنید');
     const phone = this.crypto.decrypt(access.phone);
     const doc = await this.claims.storeInsuredDocument(c, file, docCode, phone);
