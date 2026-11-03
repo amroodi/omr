@@ -34,8 +34,25 @@ export function lastPanel(realm: 'org' | 'customer'): PanelKey | null {
   } catch { return null; }
 }
 
+const MODE_KEY = 'omr_mode';
+
+/** Org sign-ins remember which of the two panels it was, so a signed-out user lands on the same login. */
+export function rememberMode(mode: 'ENTRY' | 'PROCESS'): void {
+  try { localStorage.setItem(MODE_KEY, mode); } catch { /* ignore */ }
+}
+
+/** The data-entry (panel 1) login of one organization. */
+export function entryLogin(slug: string): string {
+  return `/entry/login?org=${encodeURIComponent(slug)}`;
+}
+
 /** Where a signed-out user of this realm goes: the login page of the panel they last used. */
 export function panelLogin(realm: 'org' | 'customer'): string {
+  if (realm === 'org') {
+    let mode: string | null = null; let slug = '';
+    try { mode = localStorage.getItem(MODE_KEY); slug = localStorage.getItem('omr_tenant') || ''; } catch { /* ignore */ }
+    if (mode === 'ENTRY' && slug) return entryLogin(slug);
+  }
   const p = lastPanel(realm);
   return p ? PANELS[p].login : realm === 'org' ? '/org/login' : '/customer/login';
 }

@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { ReactNode, useEffect, useState } from 'react';
-import { signOut, client, getTenantSlug, hasPerm, Realm } from '../../lib/client';
+import { signOut, client, getTenantSlug, hasPerm, orgMode, Realm } from '../../lib/client';
 import { lastPanel, PanelKey, PANELS, rememberPanel } from '../../lib/panel';
 import { ChangePasswordModal } from './ChangePasswordModal';
 import { NotificationBell } from './NotificationBell';
@@ -21,6 +21,8 @@ export interface NavItem {
   special?: 'password';
   /** Only in these panels (e.g. «ثبت پرونده برای بیمه‌گزار» is a کارگزاری job). Omit = every panel. */
   panels?: PanelKey[];
+  /** Only on panel 1 (ENTRY, creating cases) or panel 2 (PROCESS). Omit = both. */
+  modes?: ('ENTRY' | 'PROCESS')[];
   /** Only while Super Admin has this switched on for the organization. */
   feature?: 'spareDesk';
 }
@@ -66,10 +68,13 @@ export function Shell({
   const [card, setCard] = useState<{ broker: string; period: string | null } | null>(null);
   // Which separate panel this is (پنل کارگزاری / شعبه / ستاد / شورای فنی / بیمه‌گزار / نماینده).
   const [panel, setPanel] = useState<PanelKey | null>(null);
+  // Org sign-ins: panel 1 (data entry) or panel 2 (process); the menu and pages follow it.
+  const [mode, setMode] = useState<'ENTRY' | 'PROCESS'>('PROCESS');
   const [spareDesk, setSpareDesk] = useState(false);
 
   useEffect(() => {
     setMounted(true);
+    if (realm === 'org') setMode(orgMode());
     // Every panel starts as an icon rail (like Sinad); each remembers its own choice after that.
     try { const v = localStorage.getItem(railKey); setRail(v !== '0'); } catch {}
     if (realm === 'org' || realm === 'customer') setPanel(lastPanel(realm));
@@ -109,10 +114,13 @@ export function Shell({
   useEffect(() => {
     const item = nav.find((n) => n.href === pathname);
     if (panel && item?.panels && !item.panels.includes(panel)) router.replace(realm === 'customer' ? '/customer' : '/org/work-desk');
-  }, [nav, pathname, panel, realm, router]);
+    if (!mounted || realm !== 'org') return;
+    // Panel 1 doesn't assess; panel 2 doesn't create cases.
+    if ((item?.modes && !item.modes.includes(mode)) || (mode === 'ENTRY' && /^\/org\/claims\/[^/]+\/assess/.test(pathname))) router.replace('/org/work-desk');
+  }, [nav, pathname, panel, realm, router, mode, mounted]);
 
   const toggleRail = () => setRail((r) => { const n = !r; try { localStorage.setItem(railKey, n ? '1' : '0'); } catch {} return n; });
-  const visibleNav = nav.filter((n) => (!n.perm || (mounted && hasPerm(realm, n.perm))) && (!n.panels || !panel || n.panels.includes(panel)) && (n.feature !== 'spareDesk' || spareDesk));
+  const visibleNav = nav.filter((n) => (!n.perm || (mounted && hasPerm(realm, n.perm))) && (!n.panels || !panel || n.panels.includes(panel)) && (n.feature !== 'spareDesk' || spareDesk) && (!n.modes || realm !== 'org' || (mounted && n.modes.includes(mode))));
   const info = panel ? PANELS[panel] : null;
   const homeHref = realm === 'customer' ? '/customer' : realm === 'super' ? '/admin' : '/org/work-desk';
   // «بازگشت»: one step back when the user arrived from inside the site, otherwise to the panel home.
@@ -150,7 +158,7 @@ export function Shell({
               <span className="lbl">بازگشت</span>
             </button>
           )}
-          {info && <span className="panel-chip" title={info.label}>{info.label}</span>}
+          {info && <span className="panel-chip" title={info.label}>{realm === 'org' && mode === 'ENTRY' ? 'پنل ورود داده' : info.label}</span>}
           <span className="ptopbar-title">{title}</span>
           <span className="pbreadcrumb">
             <Link href={homeHref}>صفحه اصلی</Link>{breadcrumb ? ` / ${breadcrumb}` : ''}

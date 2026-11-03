@@ -9,6 +9,11 @@ export class OrgLoginDto {
   @IsIn(['BROKER', 'BRANCH', 'HQ', 'COUNCIL'])
   panel?: 'BROKER' | 'BRANCH' | 'HQ' | 'COUNCIL';
 
+  // Panel 1 «ورود برای بارگذاری مدارک» (ENTRY: creating cases) or panel 2 «ورود برای ارزیابی پرونده‌ها» (PROCESS, the default).
+  @IsOptional()
+  @IsIn(['ENTRY', 'PROCESS'])
+  mode?: 'ENTRY' | 'PROCESS';
+
   @IsString()
   @Length(3, 64)
   username!: string;

@@ -3,9 +3,10 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { client, getTenantSlug, setTenantSlug, setToken } from '../../lib/client';
-import { OrgPanel, PANELS, rememberPanel } from '../../lib/panel';
+import { OrgPanel, PANELS, rememberMode, rememberPanel } from '../../lib/panel';
 
 const INSURER_INFO = { label: 'پنل بیمه‌گر', accent: '#334155', title: 'ورود بیمه‌گر', subtitle: 'شعبه، مدیریت ستاد و شورای فنی' };
+const ENTRY_INFO = { label: 'پنل ورود داده', accent: '#f7931e', title: 'ورود برای بارگذاری مدارک', subtitle: 'ثبت پرونده، ورود دسته‌ای و میز کار مستقل — کارکنان سازمان' };
 import { applyTheme, TenantTheme } from '../../lib/theme';
 import { AuthCard, LoginNav } from './auth-card';
 import { ErrorBox, Field } from './ui';
@@ -16,11 +17,12 @@ interface Org { slug: string; name: string; kind?: string }
 /**
  * Org login pages: «ورود کارگزاری» (/org/login, kind BROKER) and «ورود بیمه‌گر» (/insurer/login, kind
  * INSURER) — one page for the insurer's شعبه, ستاد and شورای فنی; the account decides which panel opens.
- * Only matching organizations are offered (brokerages / insurers).
+ * Only matching organizations are offered (brokerages / insurers). `mode="ENTRY"` is the same login for
+ * panel 1 (data entry, /entry/login); `switcher` sits above the form there (staff ↔ بیمه‌گزار / نماینده).
  */
-export function OrgLoginPage({ kind }: { kind: 'BROKER' | 'INSURER' }) {
+export function OrgLoginPage({ kind, mode = 'PROCESS', switcher }: { kind: 'BROKER' | 'INSURER'; mode?: 'ENTRY' | 'PROCESS'; switcher?: React.ReactNode }) {
   const router = useRouter();
-  const info = kind === 'BROKER' ? PANELS.BROKER : INSURER_INFO;
+  const info = mode === 'ENTRY' ? ENTRY_INFO : kind === 'BROKER' ? PANELS.BROKER : INSURER_INFO;
   const wantKind = kind;
   const panel: OrgPanel | undefined = kind === 'BROKER' ? 'BROKER' : undefined; // insurer: the account's own desk
   const [tenantSlug, setSlug] = useState('');
@@ -73,9 +75,10 @@ export function OrgLoginPage({ kind }: { kind: 'BROKER' | 'INSURER' }) {
     try {
       setTenantSlug(tenantSlug);
       const code = totp ? totp.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).trim() : undefined;
-      const r = await client.post<{ token: string; mfaSetupRequired?: boolean; panel?: OrgPanel }>('/auth/org/login', { tenantSlug, username, password, ...(panel ? { panel } : {}), ...(code ? { totp: code } : {}) });
+      const r = await client.post<{ token: string; mfaSetupRequired?: boolean; panel?: OrgPanel }>('/auth/org/login', { tenantSlug, username, password, mode, ...(panel ? { panel } : {}), ...(code ? { totp: code } : {}) });
       setToken('org', r.token);
       rememberPanel('org', r.panel ?? panel ?? 'HQ');
+      rememberMode(mode);
       router.push(r.mfaSetupRequired ? '/org/security?required=1' : '/org/welcome');
     } catch (e: any) {
       // Two-step login: the password was right; now the authenticator code.
@@ -90,6 +93,7 @@ export function OrgLoginPage({ kind }: { kind: 'BROKER' | 'INSURER' }) {
 
   const fields = (
     <>
+      {switcher}
       <div className="panel-tag" style={{ ['--panel-accent' as any]: info.accent }}>{info.label}</div>
       <ErrorBox message={error} />
       {wrongPanel && <Link href={PANELS[wrongPanel].login} className="btn btn-ghost btn-sm w-full">رفتن به صفحهٔ ورود «{PANELS[wrongPanel].label}»</Link>}

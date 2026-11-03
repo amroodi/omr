@@ -8,7 +8,6 @@ import { Faq } from '../components/Faq';
 import { CUSTOMER_NAV, POLICY_KEY, PolicyRow } from './nav';
 import { BigIcon, ErrorBox, Spinner } from '../components/ui';
 import { CaseTable, MyClaim } from './case-table';
-import { BrokerHome } from './broker-home';
 
 interface Dashboard {
   company: { id: string; name: string; code: string | null; hasLogo: boolean } | null;
@@ -61,13 +60,13 @@ function Diamond({ title, sub, icon, href, onClick, active }: { title: string; s
  */
 export default function CustomerHome() {
   const router = useRouter();
-  const [me, setMe] = useState<{ brokerPanel?: boolean; mustChangePassword?: boolean } | null>(null);
+  const [me, setMe] = useState<{ mustChangePassword?: boolean } | null>(null);
   useEffect(() => {
     if (!getToken('customer')) { router.push('/customer/login'); return; }
-    client.get<{ brokerPanel?: boolean; mustChangePassword?: boolean }>('/customer/me', 'customer').then(setMe).catch(() => setMe({}));
+    client.get<{ mustChangePassword?: boolean }>('/customer/me', 'customer').then(setMe).catch(() => setMe({}));
   }, [router]);
   if (!me) return <Shell title="اعلام و پیگیری خسارت عمر و حوادث" nav={CUSTOMER_NAV} realm="customer"><div className="pcard p-10 flex justify-center"><Spinner /></div></Shell>;
-  return me.brokerPanel ? <BrokerHome /> : <CompanyDashboard mustChangePassword={!!me.mustChangePassword} />;
+  return <CompanyDashboard mustChangePassword={!!me.mustChangePassword} />;
 }
 
 function CompanyDashboard({ mustChangePassword }: { mustChangePassword: boolean }) {

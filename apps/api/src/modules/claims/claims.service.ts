@@ -518,7 +518,7 @@ export class ClaimsService {
 
   /** Actions the caller may take on the claim right now (empty unless they hold its desk). */
   private async availableActions(claim: any, desk: Desk): Promise<WorkflowAction[]> {
-    if (!this.holdsDesk(claim, desk)) return [];
+    if (!this.holdsDesk(claim, desk) || getContext()?.panelMode === 'ENTRY') return []; // panel 1 doesn't process
     const db = this.db();
     const [docs, insurer, branches, physical] = await Promise.all([
       this.deskDocFacts(claim),
@@ -1105,6 +1105,7 @@ export class ClaimsService {
     const ctx = getContext();
     if (claim.status === 'PAID') return false;
     if (ctx?.actorType === 'CUSTOMER') return claim.currentStage === 'POLICYHOLDER';
+    if (ctx?.panelMode === 'ENTRY') return false;
     const perms = ctx?.permissions ?? [];
     return ctx?.actorType === 'SUPER_ADMIN' || (perms.includes(PERMISSIONS.CLAIM_PROCESS) && perms.includes(PERMISSIONS.VIEW_PII));
   }
@@ -1344,7 +1345,7 @@ export class ClaimsService {
    * insurer users; OrgUser.desk = COUNCIL marks a council member).
    */
   private canReviewStage(claim: any, stage: ReviewDesk, desk: Desk): boolean {
-    if (!(getContext()?.permissions ?? []).includes(PERMISSIONS.DOC_VERIFY)) return false;
+    if (!(getContext()?.permissions ?? []).includes(PERMISSIONS.DOC_VERIFY) || getContext()?.panelMode === 'ENTRY') return false;
     return claim.currentStage === stage && claim.flowDirection === 'UP' && (desk.stage === stage || !!desk.insurerAdmin) && this.holdsDesk(claim, desk);
   }
 

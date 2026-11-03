@@ -120,8 +120,10 @@ export class CustomerService {
   }
 
   /** Active organizations, for the public signup picker. */
-  listOrgs() {
-    return this.prisma.unscoped().tenant.findMany({ where: { isActive: true }, orderBy: { name: 'asc' }, select: { slug: true, name: true, kind: true } });
+  /** Public list for the home page's company picker: name, kind and whether a logo exists (never its key). */
+  async listOrgs() {
+    const rows = await this.prisma.unscoped().tenant.findMany({ where: { isActive: true }, orderBy: { name: 'asc' }, select: { slug: true, name: true, kind: true, logoKey: true } });
+    return rows.map(({ logoKey, ...t }) => ({ ...t, hasLogo: !!logoKey }));
   }
 
   // ── Org-side بیمه‌گزار onboarding (tenant-scoped) ── admin-created accounts are ACTIVE at once

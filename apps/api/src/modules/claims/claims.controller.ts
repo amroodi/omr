@@ -13,7 +13,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
-import { Permissions } from '../../common/rbac/decorators';
+import { EntryAllowed, EntryOnly, Permissions } from '../../common/rbac/decorators';
 import { PERMISSIONS } from '../../common/rbac/permissions';
 import { ClaimFieldsService } from '../claim-fields/claim-fields.service';
 import { ClaimsService } from './claims.service';
@@ -43,6 +43,7 @@ export class ClaimsController {
   }
 
   /** File a death claim (بیمه‌گزار / broker on their behalf). */
+  @EntryOnly()
   @Permissions(PERMISSIONS.CLAIM_FILE)
   @Post()
   file(@Body() dto: FileClaimDto) {
@@ -63,6 +64,7 @@ export class ClaimsController {
   }
 
   /** کارگزاری opens a case for one of its بیمه‌گزار companies and uploads the documents for them. */
+  @EntryOnly()
   @Permissions(PERMISSIONS.CLAIM_FILE_ON_BEHALF)
   @Post('on-behalf')
   fileOnBehalf(@Body() dto: FileOnBehalfDto) {
@@ -234,6 +236,7 @@ export class ClaimsController {
   }
 
   /** Upload a document to the claim, tagged with the required-document code it satisfies. */
+  @EntryAllowed() // panel 1 files them; panel 2 may replace one while assessing
   @Permissions(PERMISSIONS.CLAIM_FILE)
   @Post(':id/documents')
   @UseInterceptors(FileInterceptor('file', { limits: docLimits }))

@@ -7,6 +7,7 @@ import { ErrorBox, Field } from './components/ui';
 import { Icon } from './components/Shell';
 import { Reveal } from './components/reveal';
 import { DotGrid } from './components/DotGrid';
+import { OrgPicker } from './components/OrgPicker';
 
 export default function Landing() {
   return (
@@ -24,8 +25,8 @@ const IC_UPLOAD = 'M12 15V3m0 0L8 7m4-4l4 4M4 15v4a2 2 0 002 2h12a2 2 0 002-2v-4
 const IC_PHONE = 'M7 3h10a1 1 0 011 1v16a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1zM11 18h2';
 const IC_EVAL = 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 104 0 2 2 0 00-4 0zM9 14l2 2 4-4';
 
-/** A soft entry button inside a group (link when enabled, muted «به زودی» when coming soon). */
-function EntryBtn({ label, href, icon, soon }: { label: string; href?: string; icon: string; soon?: boolean }) {
+/** A soft entry button inside a group (link or action when enabled, muted «به زودی» when coming soon). */
+function EntryBtn({ label, href, icon, soon, onClick }: { label: string; href?: string; icon: string; soon?: boolean; onClick?: () => void }) {
   const inner = (
     <>
       <Icon path={icon} />
@@ -33,6 +34,7 @@ function EntryBtn({ label, href, icon, soon }: { label: string; href?: string; i
     </>
   );
   const cls = 'flex items-center justify-center gap-2 w-full px-4 py-3 rounded-xl text-sm font-bold transition';
+  if (onClick && !soon) return <button type="button" onClick={onClick} className={cls} style={{ background: 'var(--brand-soft)', color: 'var(--brand)' }}>{inner}</button>;
   if (soon || !href) {
     return <button disabled className={cls} style={{ background: 'var(--surface-2)', color: 'var(--muted)', cursor: 'default' }}>{inner}</button>;
   }
@@ -50,8 +52,11 @@ function EntryGroup({ title, children }: { title: string; children: React.ReactN
 }
 
 function AuthHub() {
+  // A: panel 1 (data entry), B: panel 2 (assessment) — each opens the company picker first.
+  const [pick, setPick] = useState<'ENTRY' | 'PROCESS' | null>(null);
   return (
     <section className="w-full px-4 py-2">
+      <OrgPicker purpose={pick} onClose={() => setPick(null)} />
       <Reveal delay={80}>
         <div className="glass mx-auto overflow-hidden" style={{ borderRadius: 22, boxShadow: 'var(--shadow-lg)', maxWidth: 800 }}>
           <div className="grid md:grid-cols-2" style={{ minHeight: 560 }}>
@@ -72,11 +77,11 @@ function AuthHub() {
               </div>
               <div className="flex flex-col gap-4" style={{ maxWidth: 300, width: '100%', margin: '0 auto' }}>
                 <EntryGroup title="ورود بیمه گزار">
-                  <EntryBtn label="ورود برای بارگزاری مدارک" href="/customer/login" icon={IC_UPLOAD} />
+                  <EntryBtn label="ورود برای بارگزاری مدارک" onClick={() => setPick('ENTRY')} icon={IC_UPLOAD} />
                   <EntryBtn label="نرم‌افزار گوشی های هوشمند به‌زودی" icon={IC_PHONE} soon />
                 </EntryGroup>
                 <EntryGroup title="سامانه کنترل و ارزیابی عمر و حادثه">
-                  <EntryBtn label="ورود برای ارزیابی پرونده‌ها" href="/org/login" icon={IC_EVAL} />
+                  <EntryBtn label="ورود برای ارزیابی پرونده‌ها" onClick={() => setPick('PROCESS')} icon={IC_EVAL} />
                   <EntryBtn label="نرم‌افزار گوشی‌های هوشمند به‌زودی" icon={IC_PHONE} soon />
                 </EntryGroup>
               </div>

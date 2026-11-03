@@ -49,7 +49,6 @@ export class CustomerAuthService {
     if (!(await this.rateLimit.hit(`custpw:ip:${ip}`, 30, 600))) throw new TooManyRequestsException('تعداد تلاش‌ها زیاد است؛ چند دقیقه بعد دوباره تلاش کنید.');
     if (!(await this.rateLimit.hit(`custpw:code:${tenantId}:${key}`, 10, 600))) throw new TooManyRequestsException('تعداد تلاش‌ها زیاد است؛ چند دقیقه بعد دوباره تلاش کنید.');
     const db = this.prisma.unscoped();
-    if (key.toLowerCase() === 'broker') return this.brokerLogin(tenantId, password);
     const co = await db.policyholderCompany.findFirst({ where: { tenantId, code: key } });
     if (!co && /^\d{10}$/.test(key)) return this.representativeLogin(tenantId, key, password);
     const ok = !!co?.isActive && !!co.passwordHash && (await this.hash.verifyPassword(co.passwordHash, password));
@@ -64,32 +63,6 @@ export class CustomerAuthService {
     // `permissions` only shows the «نمایندگان» menu; the server checks the login type itself.
     const token = await this.jwt.signAsync({ kind: 'customer', sub: account.id, sid, tenantId, nidHash: account.nationalCodeHash, companyId: co.id, permissions: ['representatives:manage'] }, { expiresIn: jwtTtl(expiresIn) });
     await this.audit.record({ action: AuditAction.LOGIN, tenantId, actorType: 'CUSTOMER', actorId: account.id, metadata: { realm: 'company', companyId: co.id } });
-    return { token, expiresIn };
-  }
-
-  /**
-   * The brokerage's own login on the بیمه‌گزار panel: username «broker» (typed in the کد بیمه‌گزار box),
-   * password set by super admin. It sees every company of the brokerage and files / uploads for any.
-   */
-  private async brokerLogin(tenantId: string, password: string) {
-    const db = this.prisma.unscoped();
-    const t = await db.tenant.findUnique({ where: { id: tenantId }, select: { kind: true, isActive: true, brokerPanelPasswordHash: true, name: true } });
-    const ok = t?.kind === 'BROKER' && t.isActive && !!t.brokerPanelPasswordHash && (await this.hash.verifyPassword(t.brokerPanelPasswordHash, password));
-    if (!ok) {
-      await this.audit.record({ action: AuditAction.LOGIN_FAILED, tenantId, actorType: 'CUSTOMER', metadata: { realm: 'broker-panel' } });
-      throw new ForbiddenException('کد بیمه‌گزار یا رمز عبور نادرست است.');
-    }
-    const nationalCodeHash = this.crypto.blindIndex(`broker:${tenantId}`)!;
-    const account = (await db.customerAccount.findFirst({ where: { tenantId, nationalCodeHash }, select: { id: true } }))
-      ?? (await db.customerAccount.create({
-        data: { tenantId, nationalCodeHash, nationalCode: this.crypto.encrypt('broker')!, fullName: this.crypto.encrypt(t!.name), signupStatus: 'ACTIVE', isActive: true },
-        select: { id: true },
-      }));
-    await db.customerAccount.update({ where: { id: account.id }, data: { lastLoginAt: new Date() } });
-    const expiresIn = this.config.get<string>('JWT_SESSION_TTL', '8h');
-    const sid = await this.sessions.start({ realm: 'CUSTOMER', actorId: account.id, actorLabel: `پنل کارگزاری (${t!.name})`, tenantId });
-    const token = await this.jwt.signAsync({ kind: 'customer', sub: account.id, sid, tenantId, nidHash: nationalCodeHash, brokerPanel: true }, { expiresIn: jwtTtl(expiresIn) });
-    await this.audit.record({ action: AuditAction.LOGIN, tenantId, actorType: 'CUSTOMER', actorId: account.id, metadata: { realm: 'broker-panel' } });
     return { token, expiresIn };
   }
 

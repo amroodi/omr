@@ -2,7 +2,7 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { client, getToken, hasPerm } from '../../../lib/client';
+import { client, getToken, hasPerm, orgMode } from '../../../lib/client';
 import { Shell, Icon } from '../../components/Shell';
 import { ORG_NAV } from '../nav';
 import { CLAIM_TYPE_LABELS, claimTypeLabel, ErrorBox, FancyLoader, NoticeModal, Overlay, STATUS_MAP, StatusBadge } from '../../components/ui';
@@ -60,9 +60,11 @@ function WorkDesk() {
   useEffect(() => { setPage(1); }, [rows, pageSize]);
   const [notice, setNotice] = useState('');
   const [docTypes, setDocTypes] = useState<{ code: string; label: string }[]>([]);
-  // «پرونده جدید» needs claim:file — resolved after mount to avoid an SSR/client hydration mismatch.
+  // «پرونده جدید» needs claim:file and panel 1; panel 1 has no «ارزیابی». Resolved after mount to avoid
+  // an SSR/client hydration mismatch.
   const [canFile, setCanFile] = useState(false);
-  useEffect(() => { setCanFile(hasPerm('org', 'claim:file')); }, []);
+  const [entry, setEntry] = useState(false);
+  useEffect(() => { const e = orgMode() === 'ENTRY'; setEntry(e); setCanFile(e && hasPerm('org', 'claim:file')); }, []);
 
   useEffect(() => {
     if (!getToken('org')) { router.push('/org/login'); return; }
@@ -320,7 +322,7 @@ function WorkDesk() {
                           <td>{fa((page - 1) * pageSize + i + 1)}</td>
                           <td>
                             <span className="flex items-center gap-1">
-                              <a href={`/org/claims/${r.id}/assess`} target="_blank" rel="noopener" className="sn-act" title="باز شدن در زبانهٔ جدید">ارزیابی</a>
+                              {!entry && <a href={`/org/claims/${r.id}/assess`} target="_blank" rel="noopener" className="sn-act" title="باز شدن در زبانهٔ جدید">ارزیابی</a>}
                               <a href={`/org/claims/${r.id}`} target="_blank" rel="noopener" className="sn-act is-ghost" title="باز شدن در زبانهٔ جدید">مشاهده</a>
                             </span>
                           </td>
