@@ -42,8 +42,10 @@ describe('A/B/C route access', () => {
   });
 
   it('A/B: the panel markers are exactly these (panel 1 default-denies every other staff write)', () => {
-    expect(list(routes.filter((r) => r.entry === 'allowed'))).toEqual(['POST /claims/:id/documents', 'POST /exports/table.xlsx']);
-    expect(list(routes.filter((r) => r.entry === 'only' && !r.path.startsWith('/spare')))).toEqual(['POST /claims', 'POST /claims/on-behalf', 'POST /import/commit', 'POST /import/preview']);
+    // heirs and the original documents: panel 1 only while the case sits at the بیمه‌گزار's desk (checked in the service)
+    expect(list(routes.filter((r) => r.entry === 'allowed'))).toEqual(['POST /claims/:id/documents', 'POST /claims/:id/physical', 'POST /exports/table.xlsx', 'PUT /claims/:id/heirs']);
+    // rectify: panel 1's «ثبت نهایی» after رفع نقص; coverage-check: the panel-1 filing form's فن‌آوران lookup
+    expect(list(routes.filter((r) => r.entry === 'only' && !r.path.startsWith('/spare')))).toEqual(['POST /claims', 'POST /claims/:id/rectify', 'POST /claims/on-behalf', 'POST /claims/on-behalf/coverage-check', 'POST /import/commit', 'POST /import/preview']);
   });
 
   it('C: the inquiry token reads its case, leaves a question, and signs out — nothing else', () => {
