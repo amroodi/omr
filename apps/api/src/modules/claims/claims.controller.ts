@@ -17,7 +17,7 @@ import { EntryAllowed, EntryOnly, Permissions } from '../../common/rbac/decorato
 import { PERMISSIONS } from '../../common/rbac/permissions';
 import { ClaimFieldsService } from '../claim-fields/claim-fields.service';
 import { ClaimsService } from './claims.service';
-import { ActionDto, DecisionDto, FileClaimDto, FileOnBehalfDto, HeirsDto, LetterDto, LossNoticeDto, PhysicalDto } from './dto';
+import { ActionDto, DecisionDto, FileClaimDto, FileOnBehalfDto, HeirsDto, LetterDto, LossNoticeDto, PhysicalDto, RectifyDto } from './dto';
 
 const docLimits = { fileSize: 15 * 1024 * 1024 };
 
@@ -175,6 +175,7 @@ export class ClaimsController {
     return this.claims.heirs(id);
   }
 
+  @EntryAllowed() // panel 1 fills them while the case is at the بیمه‌گزار's desk (see canEditHeirs)
   @Permissions(PERMISSIONS.CLAIM_PROCESS)
   @Put(':id/heirs')
   setHeirs(@Param('id') id: string, @Body() dto: HeirsDto) {
@@ -287,6 +288,14 @@ export class ClaimsController {
     return this.claims.setFinalizedAmount(id, body?.amount);
   }
 
+  /** Panel 1: send a case back after رفع نقص (the بیمه‌گزار's «ارسال», filed by the organization's staff). */
+  @EntryOnly()
+  @Permissions(PERMISSIONS.CLAIM_FILE)
+  @Post(':id/rectify')
+  rectify(@Param('id') id: string, @Body() body: RectifyDto) {
+    return this.claims.rectify(id, body?.note);
+  }
+
   /** Take a workflow action offered in `workflow.actions` of GET /claims/:id (see workflow.ts). */
   @Permissions(PERMISSIONS.CLAIM_PROCESS)
   @Post(':id/action')
@@ -295,6 +304,7 @@ export class ClaimsController {
   }
 
   /** Relay / send / receive / return the original (physical) documents. */
+  @EntryAllowed() // panel 1 only moves them at the بیمه‌گزار's desk (see physicalSeats)
   @Permissions(PERMISSIONS.CLAIM_READ)
   @Post(':id/physical')
   physical(@Param('id') id: string, @Body() dto: PhysicalDto) {

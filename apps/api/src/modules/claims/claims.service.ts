@@ -564,7 +564,9 @@ export class ClaimsService {
 
   /** Actions the caller may take on the claim right now (empty unless they hold its desk). */
   private async availableActions(claim: any, desk: Desk): Promise<WorkflowAction[]> {
-    if (!this.holdsDesk(claim, desk) || getContext()?.panelMode === 'ENTRY') return []; // panel 1 doesn't process
+    if (!this.holdsDesk(claim, desk)) return [];
+    // Panel 1 doesn't process: it only sends back a case returned to the بیمه‌گزار's desk (رفع نقص).
+    if (getContext()?.panelMode === 'ENTRY' && claim.currentStage !== 'POLICYHOLDER') return [];
     const db = this.db();
     const [docs, insurer, branches, physical] = await Promise.all([
       this.deskDocFacts(claim),
@@ -829,7 +831,8 @@ export class ClaimsService {
   /** The desks the caller sits at on this claim, for physical-document actions (an org user acting for بیمه‌گزار counts too). */
   private physicalSeats(claim: any, desk: Desk): Stage[] {
     const seats: Stage[] = [];
-    if (desk.stage && desk.stage !== 'POLICYHOLDER' && this.sitsAt(claim, desk.stage, desk)) seats.push(desk.stage);
+    // Panel 1 sits only at the بیمه‌گزار's desk; the organization's own desk is panel 2's.
+    if (desk.stage && desk.stage !== 'POLICYHOLDER' && getContext()?.panelMode !== 'ENTRY' && this.sitsAt(claim, desk.stage, desk)) seats.push(desk.stage);
     if (this.sitsAt(claim, 'POLICYHOLDER', desk)) seats.push('POLICYHOLDER');
     return seats;
   }
@@ -1151,7 +1154,7 @@ export class ClaimsService {
     const ctx = getContext();
     if (claim.status === 'PAID') return false;
     if (ctx?.actorType === 'CUSTOMER') return claim.currentStage === 'POLICYHOLDER';
-    if (ctx?.panelMode === 'ENTRY') return false;
+    if (ctx?.panelMode === 'ENTRY') return claim.currentStage === 'POLICYHOLDER'; // panel 1: like the بیمه‌گزار
     const perms = ctx?.permissions ?? [];
     return ctx?.actorType === 'SUPER_ADMIN' || (perms.includes(PERMISSIONS.CLAIM_PROCESS) && perms.includes(PERMISSIONS.VIEW_PII));
   }

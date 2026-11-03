@@ -273,3 +273,11 @@ export class PhysicalDto {
   @IsUUID()
   letterId?: string;
 }
+
+/** Panel 1 «ارسال» after رفع نقص: an optional note to the desk. */
+export class RectifyDto {
+  @IsOptional()
+  @IsString()
+  @Length(0, 1000)
+  note?: string;
+}

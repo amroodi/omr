@@ -79,7 +79,7 @@ export function OrgLoginPage({ kind, mode = 'PROCESS', switcher }: { kind: 'BROK
       setToken('org', r.token);
       rememberPanel('org', r.panel ?? panel ?? 'HQ');
       rememberMode(mode);
-      router.push(r.mfaSetupRequired ? '/org/security?required=1' : '/org/welcome');
+      router.push(r.mfaSetupRequired ? '/org/security?required=1' : mode === 'ENTRY' ? '/org/entry' : '/org/welcome');
     } catch (e: any) {
       // Two-step login: the password was right; now the authenticator code.
       if (e.code === 'MFA_REQUIRED') { setTotp(''); setError(''); }
