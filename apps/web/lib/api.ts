@@ -32,6 +32,15 @@ export interface InquiryThread { brokerName: string; messages: { id: string; fro
 
 export interface CompanyHit { id: string; name: string; hasLogo: boolean }
 
+/** One case the looked-up کد ملی covers (panel 3 lists them when there is more than one). */
+export interface InquiryCase { id: string; claimNumber: string; status: string; name: string | null; relation: string; line: string | null; claimType: string; insurerName: string | null; eventDate: string | null }
+
+/** The case picked on the result page (several when a main insured's family has cases); null = the newest. */
+export function pickedClaim(): string | null {
+  try { return sessionStorage.getItem('inquiryClaimId'); } catch { return null; }
+}
+const pick = (id?: string | null, prefix = '?') => (id ? `${prefix}claimId=${encodeURIComponent(id)}` : '');
+
 export const inquiryApi = {
   // استعلام سریع: nationalCode = DECEASED's کد ملی (any company's case);
   // phone = the CHECKER's own mobile (OTP target, and how «پاسخگوی آنلاین» answers them).
@@ -46,8 +55,9 @@ export const inquiryApi = {
   // Direct claim view when OTP is disabled platform-wide (no code).
   directClaim: (nationalCode: string, phone: string) =>
     post<{ token: string; expiresIn: string }>('/inquiry/claim-direct', { nationalCode, phone }),
-  getCase: (token: string) => get<any>('/inquiry/case', token),
+  getCase: (token: string, claimId?: string | null) => get<any>(`/inquiry/case${pick(claimId)}`, token),
+  listCases: (token: string) => get<InquiryCase[]>('/inquiry/cases', token),
   // «پاسخگوی آنلاین» — leave a question on the looked-up claim (record token from the inquiry).
-  message: (token: string, message: string) => post<{ ok: boolean; message: string }>('/inquiry/message', { message }, token),
-  thread: (token: string) => get<InquiryThread>('/inquiry/messages', token),
+  message: (token: string, message: string, claimId?: string | null) => post<{ ok: boolean; message: string }>('/inquiry/message', { message, ...(claimId ? { claimId } : {}) }, token),
+  thread: (token: string, claimId?: string | null) => get<InquiryThread>(`/inquiry/messages${pick(claimId)}`, token),
 };

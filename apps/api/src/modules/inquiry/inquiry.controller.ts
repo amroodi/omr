@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { Public, Realms } from '../../common/rbac/decorators';
 import { TenantResolverGuard } from '../../common/tenant/tenant-resolver.guard';
@@ -53,8 +53,16 @@ export class InquiryController {
   @Realms('RECORD')
   @UseGuards(JwtAuthGuard)
   @Get('case')
-  getCase() {
-    return this.inquiry.getScopedCase();
+  getCase(@Query('claimId') claimId?: string) {
+    return this.inquiry.getScopedCase(claimId);
+  }
+
+  /** Every case the looked-up کد ملی covers (the person's, and a main insured's dependents'). */
+  @Realms('RECORD')
+  @UseGuards(JwtAuthGuard)
+  @Get('cases')
+  getCases() {
+    return this.inquiry.listScopedClaims();
   }
 
   /** «پاسخگوی آنلاین» — the requester (record token) leaves a question for the بیمه‌گزار / کارگزاری. */
@@ -62,14 +70,14 @@ export class InquiryController {
   @UseGuards(JwtAuthGuard)
   @Post('message')
   message(@Body() dto: InquiryMessageDto) {
-    return this.inquiry.leaveMessage(dto.message);
+    return this.inquiry.leaveMessage(dto.message, dto.claimId);
   }
 
   /** «گفتگو» — the requester's questions and the کارگزاری's answers on this claim. */
   @Realms('RECORD')
   @UseGuards(JwtAuthGuard)
   @Get('messages')
-  messages() {
-    return this.inquiry.thread();
+  messages(@Query('claimId') claimId?: string) {
+    return this.inquiry.thread(claimId);
   }
 }

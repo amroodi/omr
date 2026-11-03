@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { inquiryApi, InquiryThread } from '../../../lib/api';
+import { pickedClaim, inquiryApi, InquiryThread } from '../../../lib/api';
 import { EstelamFrame, SIDE_MENU, SubHead } from '../shared';
 
 const REFRESH_MS = 20_000;
@@ -19,7 +19,7 @@ function Chat({ token }: { token: string }) {
   const [sending, setSending] = useState(false);
   const [expired, setExpired] = useState(false);
 
-  const load = useCallback(() => inquiryApi.thread(token).then(setT).catch((e) => { setExpired(true); setNote({ ok: false, text: expiredText(e) }); }), [token]);
+  const load = useCallback(() => inquiryApi.thread(token, pickedClaim()).then(setT).catch((e) => { setExpired(true); setNote({ ok: false, text: expiredText(e) }); }), [token]);
   useEffect(() => {
     load();
     const i = setInterval(() => { if (!document.hidden) load(); }, REFRESH_MS);
@@ -28,7 +28,7 @@ function Chat({ token }: { token: string }) {
 
   const send = async () => {
     setSending(true); setNote(null);
-    try { const res = await inquiryApi.message(token, msg.trim()); setNote({ ok: true, text: res.message }); setMsg(''); load(); }
+    try { const res = await inquiryApi.message(token, msg.trim(), pickedClaim()); setNote({ ok: true, text: res.message }); setMsg(''); load(); }
     catch (e: any) { setNote({ ok: false, text: expiredText(e) }); }
     finally { setSending(false); }
   };

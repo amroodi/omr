@@ -5,6 +5,9 @@ import { LINE_FA } from './policyholders.service';
 
 interface ContractRow { id: string; line: Line | null; policyNumber: string | null; insurerTenantId: string; startDate: Date | null; endDate: Date | null; isActive: boolean }
 
+/** Does a contract belong in panel 1's chosen نوع بیمه‌نامه? One with no kind set fits every kind. */
+export const fitsLine = (k: { line: Line | null }, line?: Line | null) => !line || !k.line || k.line === line;
+
 /** In force today (no dates = always). */
 export const inForce = (k: { startDate: Date | null; endDate: Date | null }, now = new Date()) => (!k.startDate || k.startDate <= now) && (!k.endDate || k.endDate >= now);
 

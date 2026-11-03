@@ -1,3 +1,4 @@
+import { INSURED_RELATIONS, InsuredRelation } from '../claims/workflow';
 import { InsuranceLine } from '@prisma/client';
 import { Type } from 'class-transformer';
 import { ArrayMaxSize, IsArray, IsEnum, IsIn, IsISO8601, IsOptional, IsString, IsUUID, Length, Matches, ValidateNested } from 'class-validator';
@@ -104,8 +105,8 @@ export class CustomerFileClaimDto {
 
   // نوع بیمه‌شده: the subject above is the main insured, or a dependent of the main insured named here.
   @IsOptional()
-  @IsIn(['MAIN', 'SPOUSE', 'CHILD'])
-  insuredRelation?: 'MAIN' | 'SPOUSE' | 'CHILD';
+  @IsIn(INSURED_RELATIONS as unknown as string[])
+  insuredRelation?: InsuredRelation;
 
   @IsOptional()
   @IsString()

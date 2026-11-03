@@ -23,6 +23,11 @@ export class InquiryMessageDto {
   @IsString()
   @Length(3, 2000)
   message!: string;
+
+  // Which of the looked-up کد ملی's cases the question is about (the token must grant it).
+  @IsOptional()
+  @IsUUID()
+  claimId?: string;
 }
 
 export class VerifyOtpDto extends RequestOtpDto {

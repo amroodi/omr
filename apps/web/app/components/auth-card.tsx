@@ -16,7 +16,7 @@ const LOGINS = [
  * Navigation under a login card: back to the home page, and the other login portal(s). The
  * super-admin login is deliberately not linked (reached only by its direct URL).
  */
-export function LoginNav({ onDark }: { onDark?: boolean }) {
+export function LoginNav({ onDark, org }: { onDark?: boolean; org?: 'BROKER' | 'INSURER' }) {
   const path = usePathname() || '';
   const style = onDark ? { color: '#fff', borderColor: 'rgba(255,255,255,0.45)', background: 'rgba(255,255,255,0.12)' } : undefined;
   return (
@@ -25,7 +25,8 @@ export function LoginNav({ onDark }: { onDark?: boolean }) {
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 18l6-6-6-6" /></svg>
         صفحهٔ اصلی
       </Link>
-      {LOGINS.filter((l) => !path.startsWith(l.href)).map((l) => (
+      {/* A company's own login links no other kind of company: a brokerage's has no «بیمه‌گر», an insurer's no «کارگزاری». */}
+      {LOGINS.filter((l) => !path.startsWith(l.href) && !(org === 'BROKER' && l.href === '/insurer/login') && !(org === 'INSURER' && l.href === '/org/login')).map((l) => (
         <Link key={l.href} href={l.href} className="login-nav-btn" style={style}>{l.label}</Link>
       ))}
     </nav>
@@ -36,7 +37,7 @@ export function LoginNav({ onDark }: { onDark?: boolean }) {
  * Login card. The logo, title and subtitle sit inside the card. With a `bg` (rotating photos), an arrow
  * button folds the card away so the whole background can be enjoyed; a round arrow brings it back.
  */
-export function AuthCard({ title, subtitle, children, bg }: { title: string; subtitle?: string; children: ReactNode; bg?: LoginBgSet }) {
+export function AuthCard({ title, subtitle, children, bg, org }: { title: string; subtitle?: string; children: ReactNode; bg?: LoginBgSet; org?: 'BROKER' | 'INSURER' }) {
   const [hidden, setHidden] = useState(false);
   return (
     <div className="min-h-[calc(70*var(--zvh))] flex items-center justify-center">
@@ -56,7 +57,7 @@ export function AuthCard({ title, subtitle, children, bg }: { title: string; sub
           {children}
           <div className="auth-credit">طراحي و توليد توسط کارگزاری آتیه اندیشان دامون</div>
         </div>
-        <LoginNav />
+        <LoginNav org={org} />
       </div>
       {bg && hidden && (
         <button type="button" className="auth-unfold" onClick={() => setHidden(false)} title="نمایش فرم ورود" aria-label="نمایش فرم ورود">

@@ -2099,3 +2099,12 @@ html:has(.pshell:not(.is-customer)) .pmodal-body { padding: 10px 14px; }
 .line-switch { display: inline-flex; align-items: center; gap: 6px; font-size: .78rem; color: var(--muted); white-space: nowrap; }
 .line-switch select { border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; font-size: .8rem; font-weight: 700; color: var(--brand); background: var(--surface); }
 @media (max-width: 640px) { .line-switch > span { display: none; } }
+
+/* Panel 3: several cases for one کد ملی (a main insured's family, one case per نوع بیمه‌نامه) */
+.est-cases { padding: 12px 14px; }
+.est-cases-h { font-weight: 800; font-size: .85rem; margin-bottom: 8px; }
+.est-cases-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+.est-cases-list button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: right; padding: 8px 10px; border-radius: 10px;
+  border: 1px solid var(--border); background: var(--surface); font-size: .78rem; color: var(--muted); transition: border-color .15s, background .15s; }
+.est-cases-list button b { color: var(--text); font-size: .85rem; }
+.est-cases-list button.is-on { border-color: var(--brand); background: var(--brand-soft); }

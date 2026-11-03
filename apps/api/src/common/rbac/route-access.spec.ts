@@ -49,7 +49,7 @@ describe('A/B/C route access', () => {
   });
 
   it('C: the inquiry token reads its case, leaves a question, and signs out — nothing else', () => {
-    expect(list(routes.filter((r) => r.realms.includes('RECORD')))).toEqual(['GET /inquiry/case', 'GET /inquiry/messages', 'POST /inquiry/message', 'POST /security/logout']);
+    expect(list(routes.filter((r) => r.realms.includes('RECORD')))).toEqual(['GET /inquiry/case', 'GET /inquiry/cases', 'GET /inquiry/messages', 'POST /inquiry/message', 'POST /security/logout']);
   });
 
   it('panel 1 (بیمه‌گزار, نماینده, نماینده بیمه) is reached only through its own routes', () => {
