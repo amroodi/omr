@@ -48,7 +48,7 @@ function PField({ label, help, children }: { label: string; help?: string; child
 }
 
 /**
- * «پرونده جدید» (from the Work Desk header) — the بیمه‌گزار panel's filing form, for staff. Picking the
+ * «ثبت پرونده خسارت» on panel 1 — laid out like the بیمه‌گزار panel's filing form, for staff. Picking the
  * بیمه‌گزار company routes the case by its insurer contract and shows it in that company's panel; for a
  * case without a company the insurer and sales channel are chosen by hand. An insurer's staff (panel 1)
  * pick one of its کارگزاری‌ها and that brokerage's بیمه‌گزار — or a direct sale by a شعبه — and the case
@@ -156,10 +156,10 @@ export default function NewClaim() {
 
   return (
     <Shell title="ثبت پرونده خسارت" breadcrumb="پرونده جدید" sectionLabel="خسارت عمر و حادثه" nav={ORG_NAV} realm="org">
-      <div className="pcard p-6 md:p-8 pform max-w-4xl mx-auto">
-        <div className="pinfobox mb-6 text-center">
+      <div className="pcard p-5 pform">
+        <div className="pinfobox mb-3 text-center">
           پس از ثبت پرونده، مدارک موردنیاز را در صفحهٔ پرونده بارگذاری کنید. لطفاً مشخصات بیمه‌شدهٔ متوفی و نوع پرونده را با دقت وارد نمایید.
-          <div className="text-xs mt-1 font-normal">
+          <div className="text-xs font-normal">
             {ins ? null : co
               ? <>پرونده برای «{co.name}» ثبت می‌شود و در پنل این بیمه‌گزار هم دیده می‌شود؛ بیمه‌گر از روی قرارداد شرکت{co.contracts.length ? ` (${co.contracts.map((k) => k.insurerName).join('، ')})` : ''} در {eventLabel} تعیین می‌شود.</>
               : manual ? <>پرونده بدون شرکت بیمه‌گزار ثبت می‌شود؛ بیمه‌گر و کانال فروش را خودتان انتخاب کنید.</> : null}
@@ -169,7 +169,7 @@ export default function NewClaim() {
         <ErrorBox message={error} />
         {notice && !notice.enabled && <div className="alert-error mt-3">اعلام خسارت برای شما در «تنظیمات سازمان › اعلام خسارت» غیرفعال است.</div>}
 
-        <div className="grid md:grid-cols-2 gap-5 mt-4">
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-2.5 mt-3">
           {ins && (
             <>
               <PField label="کارگزاری" help="کارگزاری‌ای که پرونده برای آن ثبت می‌شود؛ برای فروش مستقیم بیمه‌گر «بدون کارگزاری» را انتخاب کنید.">
@@ -209,7 +209,7 @@ export default function NewClaim() {
                   </select>
                 </PField>
               )}
-              <div className="md:col-span-2 text-xs" style={{ color: 'var(--muted)' }}>
+              <div className="md:col-span-2 lg:col-span-3 text-xs" style={{ color: 'var(--muted)' }}>
                 {insStart === 'BROKER' ? 'پرونده پس از ثبت به میز همان کارگزاری می‌رود و ارزیابی اولیه از آنجا شروع می‌شود.' : 'پرونده پس از ثبت مستقیم به شعبه می‌رود.'}
               </div>
             </>
@@ -291,12 +291,12 @@ export default function NewClaim() {
           </PField>
         </div>
 
-        <div className="mt-5">
+        <div className="mt-2.5">
           <label className="label">توضیحات (اختیاری)</label>
-          <textarea className="input" rows={4} value={f.description} onChange={set('description')} placeholder="هر توضیح یا جزئیاتی که لازم می‌دانید بنویسید؛ مثلاً شرح حادثه یا موارد خاص پرونده." />
+          <textarea className="input" rows={2} value={f.description} onChange={set('description')} placeholder="هر توضیح یا جزئیاتی که لازم می‌دانید بنویسید؛ مثلاً شرح حادثه یا موارد خاص پرونده." />
         </div>
 
-        <div className="flex justify-center mt-8">
+        <div className="flex justify-center mt-3">
           <button onClick={submit} disabled={busy || !f.deceasedFullName.trim() || !f.deceasedNationalCode.trim()} className="btn btn-solid btn-solid-lg">
             {busy ? 'در حال ثبت…' : 'ثبت پرونده و ادامه به بارگذاری مدارک'}
           </button>

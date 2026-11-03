@@ -1,7 +1,7 @@
 'use client';
 import { usePathname } from 'next/navigation';
 import { useEffect } from 'react';
-import { client } from '../../lib/client';
+import { client, orgMode } from '../../lib/client';
 import { lastPanel } from '../../lib/panel';
 import { applyTheme } from '../../lib/theme';
 
@@ -17,7 +17,8 @@ export function ThemeApplier() {
     if (!themed) { applyTheme(null); return; }
     let active = true;
     // This panel's own look (پنل کارگزاری / بیمه‌گزار / نماینده / شعبه / ستاد / شورای فنی), over the org's.
-    const panel = lastPanel(path.startsWith('/customer') ? 'customer' : 'org');
+    // Panel 1 of an organization wears its «پنل بیمه‌گزار» look (the org's own theme when it has none).
+    const panel = path.startsWith('/customer') ? lastPanel('customer') : orgMode() === 'ENTRY' ? 'COMPANY' : lastPanel('org');
     client.get<{ theme?: Record<string, string> | null }>(`/tenant/branding${panel ? `?panel=${panel}` : ''}`)
       .then((b) => { if (active) applyTheme(b.theme ?? null); })
       .catch(() => {});

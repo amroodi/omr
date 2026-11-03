@@ -139,6 +139,30 @@ export class FileOnBehalfDto {
   @IsUUID()
   policyholderCompanyId!: string;
 
+  // The بیمه‌نامه picked on the form (as on the بیمه‌گزار panel); else the one in force on the event date.
+  @IsOptional()
+  @IsUUID()
+  contractId?: string;
+
+  @IsOptional()
+  @IsIn(['MAIN', 'SPOUSE', 'CHILD'])
+  insuredRelation?: 'MAIN' | 'SPOUSE' | 'CHILD';
+
+  @IsOptional()
+  @IsString()
+  @Length(2, 120)
+  mainInsuredName?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(8, 12)
+  mainInsuredNationalCode?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 1500)
+  causeOfDeath?: string;
+
   @IsOptional()
   @IsUUID()
   policyHolderId?: string; // a representative account of that company, so it also sees the case in its panel
@@ -272,4 +296,12 @@ export class PhysicalDto {
   @IsOptional()
   @IsUUID()
   letterId?: string;
+}
+
+/** Panel 1 «ارسال» after رفع نقص: an optional note to the desk. */
+export class RectifyDto {
+  @IsOptional()
+  @IsString()
+  @Length(0, 1000)
+  note?: string;
 }

@@ -11,6 +11,7 @@ import { caseTitle } from '../../../../lib/caseTitle';
 import { ArchivedNotice, CaseHero, CaseSummary, DEATH_TYPES, ICONS, phaseText, useCase } from '../../../components/case-ui';
 import { CaseEditForm } from './case-edit';
 import { HeirsCard } from '../../../components/heirs';
+import { PolicyholderCase } from '../../../components/PolicyholderCase';
 
 const ICON_ASSESS = 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 104 0 2 2 0 00-4 0zM9 14l2 2 4-4';
 
@@ -20,7 +21,15 @@ const ICON_ASSESS = 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 0
  * کار» (executive steps) — then the workflow actions. «ویرایش» corrects and completes the case's data at
  * any desk, as the field catalog allows; «ارزیابی» opens the two-pane assessment page.
  */
-export default function ClaimDetail() {
+/** Panel 1 (an organization's staff filing cases) sees the case as the بیمه‌گزار does; panel 2 assesses it. */
+export default function ClaimPage() {
+  const [entry, setEntry] = useState<boolean | null>(null);
+  useEffect(() => { setEntry(orgMode() === 'ENTRY'); }, []);
+  if (entry === null) return null;
+  return entry ? <PolicyholderCase realm="org" /> : <ClaimDetail />;
+}
+
+function ClaimDetail() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { claim, fv, error, setError, reload } = useCase(id);

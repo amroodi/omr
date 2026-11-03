@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { ReactNode, useEffect, useState } from 'react';
 import { assistInfo, signOut, client, getTenantSlug, hasPerm, orgMode, Realm } from '../../lib/client';
-import { lastPanel, PanelKey, PANELS, rememberPanel } from '../../lib/panel';
+import { entryLogin, lastPanel, PanelKey, PANELS, rememberPanel } from '../../lib/panel';
 import { ChangePasswordModal } from './ChangePasswordModal';
 import { NotificationBell } from './NotificationBell';
 import { ThemeToggle } from '../theme-toggle';
@@ -114,14 +114,21 @@ export function Shell({
     return () => { active = false; };
   }, [realm]);
 
+  // Panel 1 of an organization (its staff filing cases) wears the بیمه‌گزار / نماینده panel's design and
+  // home; panel 2 keeps the work desk.
+  const isEntry = realm === 'org' && mounted && mode === 'ENTRY';
+  const orgHome = mode === 'ENTRY' ? '/org/entry' : '/org/work-desk';
+
   // A page of another panel, opened by its address (the menu doesn't offer it here).
   useEffect(() => {
     const item = nav.find((n) => n.href === pathname);
-    if (panel && item?.panels && !item.panels.includes(panel)) router.replace(realm === 'customer' ? '/customer' : '/org/work-desk');
+    if (panel && item?.panels && !item.panels.includes(panel)) router.replace(realm === 'customer' ? '/customer' : orgHome);
     if (!mounted || realm !== 'org' || assist) return;
-    // Panel 1 doesn't assess; panel 2 doesn't create cases.
-    if ((item?.modes && !item.modes.includes(mode)) || (mode === 'ENTRY' && /^\/org\/claims\/[^/]+\/assess/.test(pathname))) router.replace('/org/work-desk');
-  }, [nav, pathname, panel, realm, router, mode, mounted, assist]);
+    // Panel 1 doesn't assess; panel 2 doesn't create cases. (An address may sit in both menus.)
+    const items = nav.filter((n) => n.href === pathname);
+    const wrongPanel = items.length > 0 && items.every((n) => n.modes && !n.modes.includes(mode));
+    if (wrongPanel || (mode === 'ENTRY' && /^\/org\/(claims\/[^/]+\/assess|work-desk)/.test(pathname))) router.replace(orgHome);
+  }, [nav, pathname, panel, realm, router, mode, mounted, assist, orgHome]);
   useEffect(() => {
     if (!assist) return;
     const tick = () => setLeft(Math.max(0, Math.round((assist.endsAt - Date.now()) / 60_000)));
@@ -133,8 +140,9 @@ export function Shell({
 
   const toggleRail = () => setRail((r) => { const n = !r; try { localStorage.setItem(railKey, n ? '1' : '0'); } catch {} return n; });
   const visibleNav = nav.filter((n) => (!n.perm || (mounted && hasPerm(realm, n.perm))) && (!n.panels || !panel || n.panels.includes(panel)) && (n.feature !== 'spareDesk' || spareDesk) && (!n.modes || realm !== 'org' || !!assist || (mounted && n.modes.includes(mode))));
-  const info = panel ? PANELS[panel] : null;
-  const homeHref = realm === 'customer' ? '/customer' : realm === 'super' ? '/admin' : '/org/work-desk';
+  // Panel 1 takes the بیمه‌گزار panel's accent too.
+  const info = panel ? (isEntry ? { ...PANELS[panel], accent: PANELS.COMPANY.accent } : PANELS[panel]) : null;
+  const homeHref = realm === 'customer' ? '/customer' : realm === 'super' ? '/admin' : orgHome;
   // «بازگشت»: one step back when the user arrived from inside the site, otherwise to the panel home.
   const isHome = pathname === homeHref || pathname === '/org/welcome';
   const goBack = () => {
@@ -144,14 +152,16 @@ export function Shell({
     else router.push(homeHref);
   };
   // Back to this panel's own login page.
-  const logout = () => { signOut(realm); router.push(info ? info.login : `/${realm === 'super' ? 'admin' : realm}/login`); };
-  const logoUrl = brand?.logoSrc !== undefined ? brand.logoSrc : brand?.hasLogo ? `${client.base}/tenant/assets/logo?tenant=${brand.slug}${panel ? `&panel=${panel}` : ''}` : null;
+  const logout = () => { signOut(realm); router.push(isEntry ? entryLogin(getTenantSlug()) : info ? info.login : `/${realm === 'super' ? 'admin' : realm}/login`); };
+  // Panel 1 shows the organization's «پنل بیمه‌گزار» logo when it has one, else its own.
+  const logoPanel = isEntry ? 'COMPANY' : panel;
+  const logoUrl = brand?.logoSrc !== undefined ? brand.logoSrc : brand?.hasLogo ? `${client.base}/tenant/assets/logo?tenant=${brand.slug}${logoPanel ? `&panel=${logoPanel}` : ''}` : null;
 
   const PW_ICON = 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zM8 11V7a4 4 0 118 0v4';
   const OUT_ICON = 'M15 3H5a2 2 0 00-2 2v14a2 2 0 002 2h10M17 16l4-4-4-4M21 12H9';
 
   return (
-    <div className={`pshell${info ? ' has-panel' : ''}${realm === 'customer' ? ' is-customer' : ''}`} dir="rtl" style={info ? { ['--panel-accent' as any]: info.accent } : undefined}>
+    <div className={`pshell${info ? ' has-panel' : ''}${realm === 'customer' || isEntry ? ' is-customer' : ''}`} dir="rtl" style={info ? { ['--panel-accent' as any]: info.accent } : undefined}>
       {/* ── Content column (top bar + scrolling content) ── */}
       <div className="pshell-main">
         {assist && (

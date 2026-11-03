@@ -7,6 +7,7 @@ import { customerClaimWhere, getContext, getTenantIdOrThrow } from '../../common
 import { LINE_FA } from '../policyholders/policyholders.service';
 import { ModelStore } from '../model-view/model-store.service';
 import { dependentsFor, typesFor } from '../claims/workflow';
+import { activeContracts, policyRows } from '../policyholders/policy-rows';
 import { toAsciiDigits, toJalali } from '../../common/jalali/jalali.util';
 import { NotificationsService } from '../notifications/notifications.service';
 import { HashService } from '../../common/crypto/hash.service';
@@ -304,8 +305,7 @@ export class CustomerService {
     const co = ctx.customerBrokerPanel
       ? (companyId ? await db.policyholderCompany.findFirst({ where: { id: companyId, tenantId: ctx.tenantId }, include: { contracts: true } }) : null)
       : acc.company;
-    const contracts = (co?.contracts ?? []).filter((k) => k.isActive)
-      .sort((a, b) => (b.startDate?.getTime() ?? 0) - (a.startDate?.getTime() ?? 0) || (a.line === 'LIFE' ? 0 : 1) - (b.line === 'LIFE' ? 0 : 1));
+    const contracts = activeContracts(co?.contracts ?? []);
     const insurerIds = [...new Set(contracts.map((k) => k.insurerTenantId))];
     const insurers = insurerIds.length ? await db.tenant.findMany({ where: { id: { in: insurerIds } }, select: { id: true, name: true } }) : [];
     const iName = new Map(insurers.map((i) => [i.id, i.name]));
@@ -338,14 +338,7 @@ export class CustomerService {
     return {
       company: co ? { id: co.id, name: co.name, code: co.code, hasLogo: !!co.logoKey } : null,
       brokerName: acc.tenant.name,
-      contracts: contracts.map((k) => ({
-        id: k.id, line: k.line, lineLabel: k.line ? LINE_FA[k.line] : null, policyNumber: k.policyNumber,
-        insurerName: iName.get(k.insurerTenantId) ?? '—',
-        startDate: k.startDate ? toJalali(k.startDate, false) : null, endDate: k.endDate ? toJalali(k.endDate, false) : null,
-        startIso: k.startDate?.toISOString() ?? null, endIso: k.endDate?.toISOString() ?? null,
-        inForce: inForce(k), claimTypes: k.line ? typesFor(this.store.get(k.insurerTenantId), k.line, chain) : null,
-        form: this.formOf(k.insurerTenantId, k.line, chain),
-      })),
+      contracts: policyRows(contracts, iName, this.store, chain),
       selectedId: selected?.id ?? null,
       stats,
     };
