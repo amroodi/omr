@@ -1,4 +1,5 @@
 import { Icon, NavItem } from '../components/Shell';
+import type { Line } from '../../lib/line';
 
 const ACCOUNT = 'حساب کاربری';
 const CLAIMS = 'خسارت عمر و حوادث';
@@ -16,7 +17,7 @@ export const CUSTOMER_NAV: NavItem[] = [
 /** Remembered choice of بیمه‌نامه (also pre-selects it on «ثبت پرونده خسارت»). */
 export const POLICY_KEY = 'customer.policy';
 export interface PolicyRow {
-  id: string; line: 'LIFE' | 'ACCIDENT' | null; lineLabel: string | null; policyNumber: string | null; insurerName: string;
+  id: string; line: Line | null; lineLabel: string | null; policyNumber: string | null; insurerName: string;
   startDate: string | null; endDate: string | null; startIso: string | null; endIso: string | null; inForce: boolean; claimTypes: string[] | null;
   form?: { insuredLabel: string; eventLabel: string; birthDate: 'required' | 'optional' | 'hidden'; cause: 'required' | 'optional' | 'hidden'; causeLists: { DEATH: string[]; ACCIDENT: string[] }; caseTypes: { code: string; label: string; causeGroup: 'DEATH' | 'ACCIDENT'; death: boolean }[]; dependents?: boolean };
 }

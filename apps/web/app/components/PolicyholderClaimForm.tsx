@@ -3,6 +3,7 @@ import { ReactNode, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toGregorian } from 'jalaali-js';
 import { client, getToken } from '../../lib/client';
+import { getLine, lineQuery } from '../../lib/line';
 import { CLAIM_TYPE_LABELS, ErrorBox } from './ui';
 import { JalaliDatePicker } from './JalaliDatePicker';
 import { Shell } from './Shell';
@@ -82,7 +83,7 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
     setExtra({ policyHolderId: co?.accounts.length === 1 ? co.accounts[0].id : '', claimedAmount: '' });
     setPolicies(co ? null : []); setPolicyId(''); setCoverage(null);
     if (!co) return;
-    client.get<{ contracts: PolicyRow[]; selectedId: string | null; brokerName: string }>(`/claims/on-behalf/companies/${co.id}/policies`, 'org').then((d) => {
+    client.get<{ contracts: PolicyRow[]; selectedId: string | null; brokerName: string }>(`/claims/on-behalf/companies/${co.id}/policies${lineQuery()}`, 'org').then((d) => {
       setPolicies(d.contracts); setBroker(d.brokerName);
       const pick = d.contracts.find((c) => c.id === d.selectedId) ?? d.contracts[0];
       if (pick) choosePolicy(pick);
@@ -115,7 +116,7 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
       const co = list.find((c) => c.id === companyParam) ?? null;
       setBrokerFor(co); setCompany(co ? { name: co.name } : null);
     }).catch(() => setCompany(null));
-    client.get<{ contracts: PolicyRow[]; selectedId: string | null; brokerName: string }>(`/customer/dashboard${companyParam ? `?companyId=${encodeURIComponent(companyParam)}` : ''}`, 'customer').then((d) => {
+    client.get<{ contracts: PolicyRow[]; selectedId: string | null; brokerName: string }>(`/customer/dashboard?${new URLSearchParams({ ...(companyParam ? { companyId: companyParam } : {}), ...(getLine() ? { line: getLine()! } : {}) })}`, 'customer').then((d) => {
       setPolicies(d.contracts); setBroker(d.brokerName);
       const pick = d.contracts.find((c) => c.id === want) ?? d.contracts.find((c) => c.id === d.selectedId) ?? d.contracts[0];
       if (pick) choosePolicy(pick);
@@ -139,7 +140,7 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
   /** Select a بیمه‌نامه; keep the claim type only if that policy's line covers it. */
   const choosePolicy = (p: PolicyRow) => {
     setPolicyId(p.id);
-    setF((cur) => (p.claimTypes && !p.claimTypes.includes(cur.claimType) ? { ...cur, claimType: p.claimTypes[0] } : cur));
+    setF((cur) => (p.claimTypes?.length && !p.claimTypes.includes(cur.claimType) ? { ...cur, claimType: p.claimTypes[0] } : cur));
   };
   /** A date outside the chosen policy year → switch to the same line's policy that covers it, if any. */
   const onEventDate = (v: string) => {
@@ -175,6 +176,7 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
     try {
       const payload: Record<string, string> = {
         claimType: f.claimType,
+        ...(getLine() ? { line: getLine()! } : {}), // the نوع بیمه‌نامه panel 1 works in
         ...(policyId && !agent ? { contractId: policyId } : {}),
         ...(agent && policyNumber.trim() ? { policyNumber: toAscii(policyNumber).trim() } : {}),
         ...(brokerFor && !org ? { companyId: brokerFor.id } : {}),
@@ -229,6 +231,8 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
 
         <ErrorBox message={error} />
         {notice && !notice.enabled && <div className="alert-error mt-3">اعلام خسارت از این پنل غیرفعال است؛ برای ثبت پرونده با کارگزاری تماس بگیرید.</div>}
+        {/* A نوع بیمه‌نامه with no نوع پرونده yet (set in Model View): nothing can be filed under it. */}
+        {policies !== null && types.length === 0 && <div className="alert-error mt-3">برای این نوع بیمه‌نامه هنوز نوع پرونده‌ای تعریف نشده است؛ نوع بیمه‌نامه را از نوار بالا عوض کنید.</div>}
 
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-2.5 mt-3">
           {org && (
@@ -356,7 +360,7 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
         </div>
 
         <div className="flex justify-center mt-3">
-          <button onClick={submit} disabled={busy || !f.deceasedFullName || !f.deceasedNationalCode || (dependent && (!f.mainName.trim() || !f.mainCode.trim())) || !f.eventDate || company === null || (policies !== null && policies.length > 0 && !policyId)} className="btn btn-solid btn-solid-lg">
+          <button onClick={submit} disabled={busy || types.length === 0 || !f.deceasedFullName || !f.deceasedNationalCode || (dependent && (!f.mainName.trim() || !f.mainCode.trim())) || !f.eventDate || company === null || (policies !== null && policies.length > 0 && !policyId)} className="btn btn-solid btn-solid-lg">
             {busy ? 'در حال ثبت…' : 'ثبت پرونده و ادامه به بارگذاری مدارک'}
           </button>
         </div>

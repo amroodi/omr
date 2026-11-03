@@ -8,6 +8,7 @@ import { ChangePasswordModal } from './ChangePasswordModal';
 import { NotificationBell } from './NotificationBell';
 import { ThemeToggle } from '../theme-toggle';
 import { WallpaperPicker } from './WallpaperPicker';
+import { LineSwitch } from './LineSelect';
 
 export interface NavItem {
   href: string;
@@ -192,6 +193,8 @@ export function Shell({
             <Link href={homeHref}>صفحه اصلی</Link>{breadcrumb ? ` / ${breadcrumb}` : ''}
           </span>
           <span className="ptopbar-spacer" />
+          {/* Panel 1 works in one نوع بیمه‌نامه (chosen on the login); switch it here. */}
+          {(realm === 'customer' || isEntry) && <LineSwitch />}
           {userName && <span className="ptopbar-user" title={userName}>نام کاربر : <b>{userName}</b></span>}
           <span className="ptopbar-spacer" />
           {action && <span className="no-print ptopbar-action">{action}</span>}

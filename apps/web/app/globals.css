@@ -2094,3 +2094,8 @@ html:has(.pshell:not(.is-customer)) .pmodal-body { padding: 10px 14px; }
   padding: 6px 12px; font-size: .8rem; font-weight: 800; color: #fff;
   background: repeating-linear-gradient(135deg, #b91c1c 0 14px, #991b1b 14px 28px); }
 .assist-bar button { padding: 3px 12px; border-radius: 999px; background: #fff; color: #991b1b; font-weight: 800; }
+
+/* Panel 1 top bar: the نوع بیمه‌نامه the panel works in */
+.line-switch { display: inline-flex; align-items: center; gap: 6px; font-size: .78rem; color: var(--muted); white-space: nowrap; }
+.line-switch select { border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; font-size: .8rem; font-weight: 700; color: var(--brand); background: var(--surface); }
+@media (max-width: 640px) { .line-switch > span { display: none; } }

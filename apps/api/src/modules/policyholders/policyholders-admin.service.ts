@@ -249,8 +249,11 @@ export class PolicyholdersAdminService {
 
     wb.eachSheet((ws) => {
       const title = fa(ws.name);
-      const line: InsuranceLine | null = title.includes('عمر') ? 'LIFE' : title.includes('حوادث') ? 'ACCIDENT' : null;
-      if (!line) { out.errors.push({ sheet: ws.name, row: 0, message: 'نام برگه باید «عمر» یا «حوادث» داشته باشد؛ این برگه وارد نشد' }); return; }
+      // The sheet's name says the نوع بیمه‌نامه (the longer names first: «عمر مانده بدهکار» also contains «عمر»).
+      const t = title.replace(/‌/g, ' ');
+      const line: InsuranceLine | null = t.includes('مانده بدهکار') ? 'CREDIT_LIFE' : t.includes('پس انداز') ? 'SAVINGS_LIFE' : t.includes('مسئولیت') ? 'LIABILITY'
+        : t.includes('عمر') ? 'LIFE' : t.includes('حوادث') ? 'ACCIDENT' : null;
+      if (!line) { out.errors.push({ sheet: ws.name, row: 0, message: 'نام برگه باید نوع بیمه‌نامه را داشته باشد (عمر، حوادث، مسئولیت، عمر مانده بدهکار یا عمر پس‌انداز)؛ این برگه وارد نشد' }); return; }
       // Header row: the first row that names the policy-number column.
       let header = 0; const col: Record<string, number> = {};
       for (let r = 1; r <= Math.min(10, ws.rowCount) && !header; r++) {

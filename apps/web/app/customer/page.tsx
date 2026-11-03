@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { client, getToken } from '../../lib/client';
+import { getLine, lineQuery } from '../../lib/line';
 import { Shell } from '../components/Shell';
 import { Faq } from '../components/Faq';
 import { CUSTOMER_NAV, POLICY_KEY, PolicyRow } from './nav';
@@ -77,7 +78,7 @@ function CompanyDashboard({ mustChangePassword }: { mustChangePassword: boolean 
   }, [mustChangePassword]);
 
   const loadDash = (id?: string) =>
-    client.get<Dashboard>(`/customer/dashboard${id ? `?contractId=${encodeURIComponent(id)}` : ''}`, 'customer')
+    client.get<Dashboard>(`/customer/dashboard?${new URLSearchParams({ ...(id ? { contractId: id } : {}), ...(getLine() ? { line: getLine()! } : {}) })}`, 'customer')
       .then((d) => { setDash(d); setPolicyId(d.selectedId ?? ''); try { if (d.selectedId) localStorage.setItem(POLICY_KEY, d.selectedId); } catch { /* ignore */ } })
       .catch((e) => setError(e.message));
 
@@ -86,7 +87,7 @@ function CompanyDashboard({ mustChangePassword }: { mustChangePassword: boolean 
     let saved: string | undefined;
     try { saved = localStorage.getItem(POLICY_KEY) ?? undefined; } catch { /* ignore */ }
     loadDash(saved);
-    client.get<MyClaim[]>('/customer/claims', 'customer').then(setClaims).catch(() => {});
+    client.get<MyClaim[]>(`/customer/claims${lineQuery()}`, 'customer').then(setClaims).catch(() => {});
     client.get<unknown[]>('/customer/shared-cases', 'customer').then((r) => setSharedCount(r.length)).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -101,7 +102,7 @@ function CompanyDashboard({ mustChangePassword }: { mustChangePassword: boolean 
   const search = async () => {
     if (!q.trim()) return;
     setSearching(true); setError('');
-    try { setFound(await client.get<MyClaim[]>(`/customer/claims?q=${encodeURIComponent(q.trim())}`, 'customer')); }
+    try { setFound(await client.get<MyClaim[]>(`/customer/claims?q=${encodeURIComponent(q.trim())}${lineQuery('&')}`, 'customer')); }
     catch (e: any) { setError(e.message); } finally { setSearching(false); }
   };
 

@@ -9,6 +9,8 @@ const INSURER_INFO = { label: 'پنل بیمه‌گر', accent: '#334155', title
 const ENTRY_INFO = { label: 'پنل ورود داده', accent: '#f7931e', title: 'ورود برای بارگذاری مدارک', subtitle: 'ثبت پرونده، ورود دسته‌ای و میز کار مستقل — کارکنان سازمان' };
 import { applyTheme, TenantTheme } from '../../lib/theme';
 import { AuthCard, LoginNav } from './auth-card';
+import { LineSelect } from './LineSelect';
+import type { Line } from '../../lib/line';
 import { ErrorBox, Field } from './ui';
 
 interface OrgBrand { slug: string; name: string; hasLogo: boolean; theme: TenantTheme | null }
@@ -34,6 +36,9 @@ export function OrgLoginPage({ kind, mode = 'PROCESS', switcher }: { kind: 'BROK
   const [wrongPanel, setWrongPanel] = useState<OrgPanel | null>(null);
   const [loading, setLoading] = useState(false);
   const [totp, setTotp] = useState<string | null>(null); // null = not asked; '' = asked, typing
+  // Panel 1: the نوع بیمه‌نامه the panel will work in, chosen before signing in.
+  const [line, setLine] = useState<Line | null>(null);
+  const needLine = mode === 'ENTRY' && !line;
   // Organizations to pick from (a dropdown instead of typing the شناسه). Temporary: once every org has
   // its own domain / subdomain the login won't need a choice at all. null = list unavailable → type it.
   const [orgs, setOrgs] = useState<Org[] | null>(null);
@@ -71,6 +76,7 @@ export function OrgLoginPage({ kind, mode = 'PROCESS', switcher }: { kind: 'BROK
   }, [tenantSlug]);
 
   const submit = async () => {
+    if (needLine) { setError('نوع بیمه‌نامه را انتخاب کنید'); return; }
     setError(''); setWrongPanel(null); setLoading(true);
     try {
       setTenantSlug(tenantSlug);
@@ -94,7 +100,8 @@ export function OrgLoginPage({ kind, mode = 'PROCESS', switcher }: { kind: 'BROK
   const fields = (
     <>
       {switcher}
-      <div className="panel-tag" style={{ ['--panel-accent' as any]: info.accent }}>{info.label}</div>
+      {/* An insurer with its own look: its button colour, not the panel's default accent. */}
+      <div className="panel-tag" style={{ ['--panel-accent' as any]: (kind === 'INSURER' && brand?.theme?.loginButton) || info.accent }}>{info.label}</div>
       <ErrorBox message={error} />
       {wrongPanel && <Link href={PANELS[wrongPanel].login} className="btn btn-ghost btn-sm w-full">رفتن به صفحهٔ ورود «{PANELS[wrongPanel].label}»</Link>}
       {fixedOrg && brand ? (
@@ -114,6 +121,7 @@ export function OrgLoginPage({ kind, mode = 'PROCESS', switcher }: { kind: 'BROK
           )}
         </Field>
       )}
+      {mode === 'ENTRY' && <LineSelect onChange={setLine} />}
       <Field label="نام کاربری"><input className="input" value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" /></Field>
       <Field label="رمز عبور"><input type="password" className="input" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" onKeyDown={(e) => e.key === 'Enter' && submit()} /></Field>
       {totp !== null && (
@@ -140,7 +148,7 @@ export function OrgLoginPage({ kind, mode = 'PROCESS', switcher }: { kind: 'BROK
               <div className="text-xs" style={{ color: '#6b7280' }}>{info.subtitle}</div>
             </div>
             {fields}
-            <button onClick={submit} disabled={loading || !username || !password} className="tlogin-btn" style={{ background: brand.theme.loginButton || 'var(--brand)' }}>
+            <button onClick={submit} disabled={loading || !username || !password || needLine} className="tlogin-btn" style={{ background: brand.theme.loginButton || 'var(--brand)' }}>
               {loading ? '…' : `ورود به ${info.label}`}
             </button>
           </div>
@@ -155,7 +163,7 @@ export function OrgLoginPage({ kind, mode = 'PROCESS', switcher }: { kind: 'BROK
     <AuthCard title={info.title} subtitle={info.subtitle} bg={{ light: ['org-day-1', 'org-day-2'], dark: ['org-night-1'] }}>
       <div className="space-y-4">
         {fields}
-        <button onClick={submit} disabled={loading || !username || !password} className="btn btn-primary w-full">{loading ? '…' : 'ورود'}</button>
+        <button onClick={submit} disabled={loading || !username || !password || needLine} className="btn btn-primary w-full">{loading ? '…' : 'ورود'}</button>
       </div>
     </AuthCard>
   );
