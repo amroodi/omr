@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { Spinner } from '../components/ui';
 import { BrandMark } from '../components/brand';
 import { Icon } from '../components/Shell';
-import { inquiryApi } from '../../lib/api';
+import { InquiryCase, inquiryApi, pickedClaim } from '../../lib/api';
 import { notesTone } from '../components/case-ui';
 
 /**
@@ -65,6 +65,12 @@ export function useInquiry() {
   const [r, setR] = useState<any>(null);
   const [token, setToken] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  // Every case the looked-up کد ملی covers (a main insured's family, each نوع بیمه‌نامه its own case).
+  const [cases, setCases] = useState<InquiryCase[]>([]);
+  const load = (t: string, id: string | null) => inquiryApi.getCase(t, id).then((fresh) => {
+    setR(fresh);
+    try { sessionStorage.setItem('inquiryResult', JSON.stringify(fresh)); } catch { /* ignore */ }
+  });
   useEffect(() => {
     let t: string | null = null;
     try {
@@ -73,20 +79,24 @@ export function useInquiry() {
     } catch { /* private mode */ }
     setReady(true);
     if (t) {
-      inquiryApi.getCase(t).then((fresh) => {
-        setR(fresh);
-        try { sessionStorage.setItem('inquiryResult', JSON.stringify(fresh)); } catch { /* ignore */ }
-      }).catch(() => { /* token expired: keep what we have */ });
+      load(t, pickedClaim()).catch(() => { /* token expired: keep what we have */ });
+      inquiryApi.listCases(t).then(setCases).catch(() => setCases([]));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  return { r, token, ready };
+  /** Show another of the looked-up cases (every inquiry page follows it). */
+  const pick = (id: string) => {
+    try { sessionStorage.setItem('inquiryClaimId', id); } catch { /* ignore */ }
+    if (token) load(token, id).catch(() => {});
+  };
+  return { r, token, ready, cases, pick };
 }
 
 /** «خروج» — forget the looked-up case in this tab and go home. */
 export function useExit() {
   const router = useRouter();
   return () => {
-    try { sessionStorage.removeItem('inquiryResult'); sessionStorage.removeItem('inquiryToken'); } catch { /* ignore */ }
+    try { sessionStorage.removeItem('inquiryResult'); sessionStorage.removeItem('inquiryToken'); sessionStorage.removeItem('inquiryClaimId'); } catch { /* ignore */ }
     router.push('/');
   };
 }
@@ -133,7 +143,7 @@ export function EstelamSide({ r }: { r: any }) {
 
 /** White top bar, page body, footer line and the back-to-top button shared by every inquiry page. */
 export function EstelamFrame({ children }: { children: (r: any, token: string | null) => ReactNode }) {
-  const { r, token, ready } = useInquiry();
+  const { r, token, ready, cases, pick } = useInquiry();
   const exit = useExit();
   const [showTop, setShowTop] = useState(false);
   const box = useRef<HTMLDivElement>(null); // the page scrolls inside this full-window layer
@@ -168,7 +178,12 @@ export function EstelamFrame({ children }: { children: (r: any, token: string | 
             <p style={{ color: 'var(--muted)' }}>اطلاعات استعلامی یافت نشد. لطفاً دوباره استعلام کنید.</p>
             <Link href="/" className="est-btn inline-flex">استعلام جدید</Link>
           </div>
-        ) : children(r, token)}
+        ) : (
+          <>
+            {cases.length > 1 && <CasePicker cases={cases} current={r?.id} onPick={pick} />}
+            {children(r, token)}
+          </>
+        )}
 
         <div className="est-card est-footer">کارگزاری رسمی بیمه مستقیم برخط آتیه اندیشان دامون</div>
       </main>
@@ -179,6 +194,28 @@ export function EstelamFrame({ children }: { children: (r: any, token: string | 
           <Icon path="M18 15l-6-6-6 6" />
         </button>
       )}
+    </div>
+  );
+}
+
+/**
+ * The looked-up کد ملی covers several cases: a main insured's own (one per نوع بیمه‌نامه — a death in an
+ * accident may have a عمر and a حوادث case) and their dependents'. Pick which one the pages show.
+ */
+function CasePicker({ cases, current, onPick }: { cases: InquiryCase[]; current?: string; onPick: (id: string) => void }) {
+  return (
+    <div className="est-card est-cases">
+      <div className="est-cases-h">پرونده‌های این کد ملی ({cases.length.toLocaleString('fa-IR')})</div>
+      <div className="est-cases-list">
+        {cases.map((c) => (
+          <button key={c.id} type="button" className={c.id === current ? 'is-on' : undefined} onClick={() => onPick(c.id)} aria-pressed={c.id === current}>
+            <b>{c.name || '—'}</b>
+            <span>{c.relation}{c.line ? ` — ${c.line}` : ''}</span>
+            <span>{c.claimType}{c.eventDate ? ` — ${c.eventDate}` : ''}</span>
+            <span className="latin-digits">{c.claimNumber}</span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

@@ -57,6 +57,15 @@ export interface PanelRights { upload: boolean; submit: boolean }
 export interface CaseRules { councilEnabled: boolean; requireLossNotice: boolean; requireOriginals: boolean }
 export type FieldMode = 'required' | 'optional' | 'hidden';
 export interface LineForm { insuredLabel: string; claimTypes: string[] }
+/**
+ * نوع بیمه‌شده: the main insured (اصلی) or one of their dependents (فرعی). On a dependent's case the
+ * deceased* fields are that person and mainInsured* name the main insured.
+ */
+export const INSURED_RELATIONS = ['MAIN', 'SPOUSE', 'CHILD', 'FATHER', 'MOTHER', 'OTHER'] as const;
+export type InsuredRelation = (typeof INSURED_RELATIONS)[number];
+export const DEPENDENT_RELATIONS: InsuredRelation[] = ['SPOUSE', 'CHILD', 'FATHER', 'MOTHER', 'OTHER'];
+export const RELATION_FA: Record<InsuredRelation, string> = { MAIN: 'اصلی', SPOUSE: 'همسر', CHILD: 'فرزند', FATHER: 'پدر', MOTHER: 'مادر', OTHER: 'سایر' };
+
 /** نوع بیمه‌نامه. The last three start with no نوع پرونده: filing opens once Super Admin sets them in Model View. */
 export type Line = 'LIFE' | 'ACCIDENT' | 'LIABILITY' | 'CREDIT_LIFE' | 'SAVINGS_LIFE';
 export const LINES: Line[] = ['LIFE', 'ACCIDENT', 'LIABILITY', 'CREDIT_LIFE', 'SAVINGS_LIFE'];
@@ -87,7 +96,7 @@ export interface WorkflowModel extends CaseRules {
     lines: Record<Line, LineForm>;
     caseTypes: CaseType[];
     groups: CompanyGroup[];
-    dependents: boolean; // «نوع بیمه‌شده» (اصلی / همسر / فرزند) on the filing form, for companies outside a group
+    dependents: boolean; // «نوع بیمه‌شده» (اصلی / همسر / فرزند / پدر / مادر / سایر) on the filing form, for companies outside a group
     docsNote: string; // shown above the document uploads
   };
 }

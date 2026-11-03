@@ -144,7 +144,7 @@ function InquiryForm() {
   // Stash the fetched case and open the dedicated result page (مشاهده سریع و استعلام پرونده).
   // The record token is kept too (it expires in minutes) so the result page can send «پاسخگوی آنلاین» messages.
   const goResult = (res: any, token: string) => {
-    try { sessionStorage.setItem('inquiryResult', JSON.stringify(res)); sessionStorage.setItem('inquiryToken', token); } catch { /* private mode */ }
+    try { sessionStorage.setItem('inquiryResult', JSON.stringify(res)); sessionStorage.setItem('inquiryToken', token); sessionStorage.removeItem('inquiryClaimId'); } catch { /* private mode */ }
     router.push('/estelam');
   };
   const run = async (fn: () => Promise<void>) => { setError(''); setLoading(true); try { await fn(); } catch (e: any) { setError(e.message || 'خطا'); } finally { setLoading(false); } };

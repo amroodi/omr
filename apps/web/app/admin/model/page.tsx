@@ -226,7 +226,7 @@ export default function ModelView() {
                 </Card>
               ))}
               <Card title="نوع بیمه‌شده">
-                <Toggle on={m.form.dependents} onChange={(v) => setForm({ dependents: v })}>سایر بیمه‌گزاران «نوع بیمه‌شده» (اصلی / همسر / فرزند) را در فرم ثبت پرونده انتخاب می‌کنند</Toggle>
+                <Toggle on={m.form.dependents} onChange={(v) => setForm({ dependents: v })}>سایر بیمه‌گزاران «نوع بیمه‌شده» (اصلی / همسر / فرزند / پدر / مادر / سایر) را در فرم ثبت پرونده انتخاب می‌کنند</Toggle>
               </Card>
               <Card title="گروه‌های بیمه‌گزار">
                 <p className="text-xs" style={{ color: 'var(--muted)' }}>بیمه‌گزار، نماینده و بیمه‌شدهٔ شرکت‌های تیک‌خورده (و شرکت‌های زیرمجموعهٔ آن‌ها) به‌جای فهرست‌های بالا، نوع پرونده‌های این گروه را می‌بینند.</p>
@@ -236,7 +236,7 @@ export default function ModelView() {
                       <input className="input" aria-label="نام گروه" value={g.label} maxLength={120} onChange={(e) => setGroup(g.id, { label: e.target.value })} />
                       <button className="btn btn-ghost btn-sm" onClick={() => setForm({ groups: m.form.groups.filter((x) => x.id !== g.id) })}>حذف گروه</button>
                     </div>
-                    <Toggle on={g.dependents} onChange={(v) => setGroup(g.id, { dependents: v })}>«نوع بیمه‌شده» (اصلی / همسر / فرزند) در فرم ثبت پرونده</Toggle>
+                    <Toggle on={g.dependents} onChange={(v) => setGroup(g.id, { dependents: v })}>«نوع بیمه‌شده» (اصلی / همسر / فرزند / پدر / مادر / سایر) در فرم ثبت پرونده</Toggle>
                     <div className="text-sm font-bold">شرکت‌ها</div>
                     {cur.companies.length === 0 ? <div className="text-xs" style={{ color: 'var(--muted)' }}>هنوز شرکتی با این بیمه‌گر بیمه‌نامه ندارد.</div> : (
                       <div className="grid sm:grid-cols-2 gap-1 max-h-56 overflow-y-auto">

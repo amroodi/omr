@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { inquiryApi } from '../../../lib/api';
+import { pickedClaim, inquiryApi } from '../../../lib/api';
 import { downloadPdf } from '../../../lib/pdf';
 import { BrandMark } from '../../components/brand';
 import { Icon } from '../../components/Shell';
@@ -52,7 +52,7 @@ export default function EstelamTrack() {
     let stop = false;
     const tick = async () => {
       try {
-        const fresh = await inquiryApi.getCase(token);
+        const fresh = await inquiryApi.getCase(token, pickedClaim());
         if (stop) return;
         setR(fresh); setUpdatedAt(new Date());
         try { sessionStorage.setItem('inquiryResult', JSON.stringify(fresh)); } catch { /* ignore */ }

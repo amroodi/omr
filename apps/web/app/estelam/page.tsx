@@ -54,6 +54,7 @@ function Result({ r }: { r: any }) {
         </InfoCol>
         <InfoCol title="اطلاعات بیمه‌نامه">
           <InfoRow label="بیمه‌گر" value={r.insurerName} />
+          <InfoRow label="نوع بیمه‌نامه" value={r.line} />
           <InfoRow label="شماره بیمه‌نامه" value={r.policyNumber ? <bdi className="ltr-val">{r.policyNumber}</bdi> : null} />
           <InfoRow label="تاریخ شروع بیمه‌نامه" value={r.policyStartDate} />
           <InfoRow label="سرمایه فوت" value={fmtAmt(r.deathCapital)} />
