@@ -3,7 +3,7 @@ import JSZip from 'jszip';
 import { uploadName } from '../../common/validation/upload-name';
 import { NoticeRule, NoticeSource, NoticeTarget, SOURCE_FA, TARGET_FA, TARGETS_OF, combine, rulesFor } from './claim-notice';
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { AuditAction, ClaimStatus, Prisma, SalesChannel } from '@prisma/client';
+import { AuditAction, ClaimStatus, InsuranceLine, Prisma, SalesChannel } from '@prisma/client';
 import { AuditService } from '../../common/audit/audit.service';
 import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -13,8 +13,8 @@ import { toJalali, toPersianDigits } from '../../common/jalali/jalali.util';
 import { OcrService } from '../../integrations/ocr/ocr.service';
 import { ClaimFieldsService } from '../claim-fields/claim-fields.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { PolicyholdersService } from '../policyholders/policyholders.service';
-import { activeContracts, policyRows } from '../policyholders/policy-rows';
+import { LINE_FA, PolicyholdersService } from '../policyholders/policyholders.service';
+import { activeContracts, fitsLine, policyRows } from '../policyholders/policy-rows';
 import { AiReviewQueue } from '../ai-review/ai-review.queue';
 import { AiReviewSettings } from '../ai-review/ai-review.settings';
 import { sha256 } from '../ai-review/ai-review.queue';
@@ -27,7 +27,7 @@ import { beneficiaryHiddenDoc } from '../required-docs/defaults';
 import { toAsciiDigits } from '../../common/jalali/jalali.util';
 import { ModelStore } from '../model-view/model-store.service';
 import { CoverageService } from '../model-view/coverage.service';
-import { above, actionsFor, rulesOf, WorkflowModel, Line, LINES, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, physicalActionsFor, PhysicalActionKey, physicalBelow, PhysicalState, Purpose, ReviewDesk, Stage, STAGE_FA, WorkflowAction, caseTypeOf, dependentsFor, EntryWay, typesFor } from './workflow';
+import { above, actionsFor, rulesOf, WorkflowModel, Line, LINES, InsuredRelation, RELATION_FA, DEPENDENT_RELATIONS, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, physicalActionsFor, PhysicalActionKey, physicalBelow, PhysicalState, Purpose, ReviewDesk, Stage, STAGE_FA, WorkflowAction, caseTypeOf, dependentsFor, EntryWay, typesFor } from './workflow';
 
 const CLAIM_DOC_MIME = new Set([
   'application/pdf', 'image/jpeg', 'image/png',
@@ -81,7 +81,7 @@ interface FileClaimInput {
   deceasedFullName: string;
   deceasedNationalCode: string;
   /** نوع بیمه‌شده; on SPOUSE / CHILD the deceased* fields are the dependent and these name the main insured. */
-  insuredRelation?: 'MAIN' | 'SPOUSE' | 'CHILD';
+  insuredRelation?: InsuredRelation;
   mainInsuredName?: string;
   mainInsuredNationalCode?: string;
   deceasedBirthDate?: string; // ISO
@@ -245,7 +245,7 @@ export class ClaimsService {
     const db = this.prisma.unscoped();
     const co = await db.policyholderCompany.findFirst({ where: { id: companyId, tenantId: getTenantIdOrThrow(), isActive: true }, include: { contracts: true } });
     if (!co) throw new NotFoundException('شرکت بیمه‌گزار یافت نشد');
-    const contracts = activeContracts(co.contracts).filter((k) => !line || k.line === line);
+    const contracts = activeContracts(co.contracts).filter((k) => fitsLine(k, line));
     const ids = [...new Set(contracts.map((k) => k.insurerTenantId))];
     const [insurers, me] = await Promise.all([
       ids.length ? db.tenant.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }) : Promise.resolve([]),
@@ -1821,7 +1821,7 @@ export class ClaimsService {
         sellingBranch: c.sellingBranchId ? brName.get(c.sellingBranchId) ?? null : null,
         deceasedName: c.deceasedFullName ? this.crypto.decrypt(c.deceasedFullName) : null,
         deceasedNationalCode: nid ? (showPii ? nid : `******${nid.slice(-4)}`) : null,
-        insuredRelation: c.insuredRelation === 'SPOUSE' ? 'همسر' : c.insuredRelation === 'CHILD' ? 'فرزند' : 'اصلی',
+        insuredRelation: RELATION_FA[(c.insuredRelation ?? 'MAIN') as InsuredRelation] ?? 'اصلی',
         mainInsuredName: c.mainInsuredName ? this.crypto.decrypt(c.mainInsuredName) : null,
         birthDate: jd(c.deceasedBirthDate) ?? ascii(f.birth_date),
         age: ageAt(c.deceasedBirthDate, c.eventDate),
@@ -2022,7 +2022,7 @@ export class ClaimsService {
     // کد ملی بیمه‌شده فرعی: that dependent's cases only.
     if (clean(q.subNationalCode)) {
       const h = this.crypto.blindIndex(clean(q.subNationalCode).replace(/\D/g, ''));
-      if (h) and.push({ deceasedNationalCodeHash: h, insuredRelation: { in: ['SPOUSE', 'CHILD'] } });
+      if (h) and.push({ deceasedNationalCodeHash: h, insuredRelation: { in: DEPENDENT_RELATIONS } });
     }
     if (clean(q.insurerTenantId)) and.push({ insurerTenantId: clean(q.insurerTenantId) });
     if (clean(q.brokerTenantId)) and.push({ brokerTenantId: clean(q.brokerTenantId) });
@@ -2170,6 +2170,8 @@ export class ClaimsService {
       brokerTenantId: c.brokerTenantId,
       eventDate: c.eventDate ? toJalali(c.eventDate, false) : null,
       insuredRelation: c.insuredRelation ?? null,
+      line: c.line ?? null, // نوع بیمه‌نامه
+      lineLabel: c.line ? LINE_FA[c.line as InsuranceLine] : null,
       mainInsuredName: c.mainInsuredName ? this.crypto.decrypt(c.mainInsuredName) : null,
       mainInsuredNationalCode: c.mainInsuredNationalCode ? this.crypto.decrypt(c.mainInsuredNationalCode) : null,
       deceasedBirthDate: c.deceasedBirthDate ? toJalali(c.deceasedBirthDate, false) : null,

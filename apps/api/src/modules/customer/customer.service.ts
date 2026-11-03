@@ -7,7 +7,7 @@ import { customerClaimWhere, getContext, getTenantIdOrThrow } from '../../common
 import { LINE_FA } from '../policyholders/policyholders.service';
 import { ModelStore } from '../model-view/model-store.service';
 import { dependentsFor, Line, typesFor } from '../claims/workflow';
-import { activeContracts, policyRows } from '../policyholders/policy-rows';
+import { activeContracts, fitsLine, policyRows } from '../policyholders/policy-rows';
 import { toAsciiDigits, toJalali } from '../../common/jalali/jalali.util';
 import { NotificationsService } from '../notifications/notifications.service';
 import { HashService } from '../../common/crypto/hash.service';
@@ -306,7 +306,7 @@ export class CustomerService {
       ? (companyId ? await db.policyholderCompany.findFirst({ where: { id: companyId, tenantId: ctx.tenantId }, include: { contracts: true } }) : null)
       : acc.company;
     // Panel 1 works in the نوع بیمه‌نامه chosen on the login.
-    const contracts = activeContracts(co?.contracts ?? []).filter((k) => !line || k.line === line);
+    const contracts = activeContracts(co?.contracts ?? []).filter((k) => fitsLine(k, line));
     const insurerIds = [...new Set(contracts.map((k) => k.insurerTenantId))];
     const insurers = insurerIds.length ? await db.tenant.findMany({ where: { id: { in: insurerIds } }, select: { id: true, name: true } }) : [];
     const iName = new Map(insurers.map((i) => [i.id, i.name]));

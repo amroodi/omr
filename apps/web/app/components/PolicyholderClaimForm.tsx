@@ -134,7 +134,8 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
   const cause = [...causes.filter((c) => causeOptions.includes(c)), f.causeOfDeath.trim()].filter(Boolean).join('، ');
   // Model View: «نوع بیمه‌شده» for this company? A همسر / فرزند also names the main insured.
   const askRelation = !!form?.dependents;
-  const dependent = askRelation && (f.relation === 'SPOUSE' || f.relation === 'CHILD');
+  // Any نوع بیمه‌شده but اصلی is a dependent (فرعی): the form also asks for the main insured.
+  const dependent = askRelation && !!f.relation && f.relation !== 'MAIN';
   const relationName = INSURED_RELATIONS[f.relation] ?? '';
   const types = policy?.claimTypes ?? Object.keys(CLAIM_TYPE_LABELS);
   /** Select a بیمه‌نامه; keep the claim type only if that policy's line covers it. */

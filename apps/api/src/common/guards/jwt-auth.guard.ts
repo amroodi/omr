@@ -66,6 +66,7 @@ export class JwtAuthGuard implements CanActivate {
       ctx.actorType = 'INSURED';
       ctx.scopedCaseId = payload.caseId;
       ctx.scopedClaimId = payload.claimId;
+      ctx.scopedClaimIds = Array.isArray(payload.claimIds) ? payload.claimIds.filter((x: unknown) => typeof x === 'string') : payload.claimId ? [payload.claimId] : [];
       ctx.scopedPhone = payload.ph;
       ctx.permissions = ['case:read'];
     } else if (payload.kind === 'insured') {

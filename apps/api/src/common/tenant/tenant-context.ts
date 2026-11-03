@@ -15,6 +15,8 @@ export interface RequestContext {
   scopedCaseId?: string;
   /** For the public inquiry: the single (new-model) claim id a record-token is scoped to. */
   scopedClaimId?: string;
+  /** Panel 3: every claim the looked-up کد ملی covers (the person, and the dependents of a main insured). */
+  scopedClaimIds?: string[];
   /** For the public inquiry: the requester's OTP-verified phone (encrypted), for «پاسخگوی آنلاین». */
   scopedPhone?: string;
   /** For the customer realm: the customer's blind-index key to match their own cases. */

@@ -9,7 +9,7 @@ import { jwtTtl } from '../../common/crypto/jwt-ttl';
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { AuditAction } from '@prisma/client';
+import { AuditAction, InsuranceLine } from '@prisma/client';
 import { AuditService } from '../../common/audit/audit.service';
 import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
 import { HashService } from '../../common/crypto/hash.service';
@@ -19,7 +19,8 @@ import { getContext, getTenantIdOrThrow } from '../../common/tenant/tenant-conte
 import { toJalali, toPersianDigits } from '../../common/jalali/jalali.util';
 import { SmsService } from '../auth/sms.service';
 import { RequestOtpDto, VerifyOtpDto } from './dto';
-import { caseTypeOf, chainOf, Stage } from '../claims/workflow';
+import { caseTypeOf, chainOf, InsuredRelation, RELATION_FA, Stage } from '../claims/workflow';
+import { LINE_FA } from '../policyholders/policyholders.service';
 import { ModelStore } from '../model-view/model-store.service';
 import { ageAt } from '../claims/claims.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -185,21 +186,64 @@ export class InquiryService {
   }
 
   /**
-   * The deceased's latest claim with this organization. With `companyId` (the requester first picks the
-   * بیمه‌گزار company) the match is limited to that company's claims — filed for it, or by one of its
-   * representatives.
+   * Every claim a کد ملی covers with this organization, newest first: the person's own cases (each
+   * نوع بیمه‌نامه has its own — a death in an accident may have a عمر and a حوادث case), and, when they are
+   * a main insured (اصلی), the cases of their dependents (همسر، فرزند، پدر، مادر، سایر). A dependent's own
+   * کد ملی finds only that person's cases. With `companyId` only that company's claims.
    */
-  private async findClaimByDeceased(tenantId: string, nidHash: string, companyId?: string) {
+  private async familyClaims(tenantId: string, nidHash: string, companyId?: string): Promise<{ id: string }[]> {
     const db = this.prisma.unscoped();
     let companyFilter = {};
     if (companyId) {
       const reps = await db.customerAccount.findMany({ where: { companyId }, select: { id: true } });
       companyFilter = { OR: [{ policyholderCompanyId: companyId }, ...(reps.length ? [{ policyHolderId: { in: reps.map((r) => r.id) } }] : [])] };
     }
-    return db.claim.findFirst({
-      where: { AND: [{ deceasedNationalCodeHash: nidHash, deletedAt: null, OR: [{ insurerTenantId: tenantId }, { brokerTenantId: tenantId }] }, companyFilter] },
+    return db.claim.findMany({
+      where: { AND: [{ deletedAt: null, OR: [{ insurerTenantId: tenantId }, { brokerTenantId: tenantId }] }, { OR: [{ deceasedNationalCodeHash: nidHash }, { mainInsuredNationalCodeHash: nidHash }] }, companyFilter] },
       orderBy: { createdAt: 'desc' },
+      take: 30,
       select: { id: true },
+    });
+  }
+
+  /** The newest claim of that family (the OTP is sent only when there is one). */
+  private async findClaimByDeceased(tenantId: string, nidHash: string, companyId?: string) {
+    return (await this.familyClaims(tenantId, nidHash, companyId))[0] ?? null;
+  }
+
+  /** The claim ids a record token grants: the family of the searched کد ملی, provided it holds `claimId`. */
+  private async grantedIds(tenantId: string, nationalCode: string, claimId: string, companyId?: string): Promise<string[]> {
+    const ids = (await this.familyClaims(tenantId, this.crypto.blindIndex(this.nid10(nationalCode))!, companyId)).map((c) => c.id);
+    return ids.includes(claimId) ? ids : [claimId];
+  }
+
+  /** Which claim of the token a request is about: the one asked for when the token grants it, else its first. */
+  private scopedClaim(claimId?: string): string | undefined {
+    const ctx = getContext();
+    if (claimId && (ctx?.scopedClaimIds ?? []).includes(claimId)) return claimId;
+    return ctx?.scopedClaimId;
+  }
+
+  /** Panel 3: the cases the looked-up کد ملی covers, to pick from (who, نوع بیمه‌شده, kind, type, status). */
+  async listScopedClaims() {
+    const ctx = getContext();
+    const ids = ctx?.scopedClaimIds?.length ? ctx.scopedClaimIds : ctx?.scopedClaimId ? [ctx.scopedClaimId] : [];
+    if (!ids.length) throw new ForbiddenException('توکن نامعتبر است.');
+    const db = this.prisma.unscoped();
+    const rows = await db.claim.findMany({ where: { id: { in: ids }, deletedAt: null }, orderBy: { createdAt: 'desc' } });
+    const insurers = await db.tenant.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.insurerTenantId))] } }, select: { id: true, name: true } });
+    const iName = new Map(insurers.map((i) => [i.id, i.name]));
+    return rows.map((c) => {
+      const m = this.store.get(c.insurerTenantId);
+      return {
+        id: c.id, claimNumber: c.claimNumber, status: c.status,
+        name: c.deceasedFullName ? this.crypto.decrypt(c.deceasedFullName) : null,
+        relation: RELATION_FA[(c.insuredRelation ?? 'MAIN') as InsuredRelation] ?? 'اصلی',
+        line: (c as any).line ? LINE_FA[(c as any).line as InsuranceLine] : null,
+        claimType: caseTypeOf(m, c.claimType)?.label ?? c.claimType,
+        insurerName: iName.get(c.insurerTenantId) ?? null,
+        eventDate: c.eventDate ? toJalali(c.eventDate, false) : null,
+      };
     });
   }
 
@@ -268,7 +312,8 @@ export class InquiryService {
     await this.recordInquiry(tenantId, claim, phone, dto.nationalCode, ctx?.ip ?? 'unknown');
     const ttl = this.config.get<string>('RECORD_TOKEN_TTL', '10m');
     // `ph` = the requester's phone (encrypted) so «پاسخگوی آنلاین» knows whom to answer.
-    const token = await this.jwt.signAsync({ kind: 'record', tenantId, caseId: null, claimId: claim.id, sub: null, ph: this.crypto.encrypt(phone) }, { expiresIn: jwtTtl(ttl) });
+    const claimIds = await this.grantedIds(tenantId, dto.nationalCode, claim.id, dto.companyId);
+    const token = await this.jwt.signAsync({ kind: 'record', tenantId, caseId: null, claimId: claim.id, claimIds, sub: null, ph: this.crypto.encrypt(phone) }, { expiresIn: jwtTtl(ttl) });
     return { token, expiresIn: ttl };
   }
 
@@ -305,9 +350,11 @@ export class InquiryService {
       data: { consumedAt: new Date() },
     });
 
-    // Mint a token scoped to exactly one record id (case or claim) — not the National ID.
+    // Mint a token scoped to record ids — not the National ID: the claim the code was sent for and, with
+    // it, the rest of that کد ملی's family (see familyClaims), only when that family holds this claim.
+    const claimIds = challenge.claimId ? await this.grantedIds(tenantId, dto.nationalCode, challenge.claimId, dto.companyId) : [];
     const token = await this.jwt.signAsync(
-      { kind: 'record', tenantId, caseId: challenge.caseId, claimId: challenge.claimId, sub: challenge.insuredId, ph: this.crypto.encrypt(this.normalizePhone(dto.phone)) },
+      { kind: 'record', tenantId, caseId: challenge.caseId, claimId: challenge.claimId, claimIds, sub: challenge.insuredId, ph: this.crypto.encrypt(this.normalizePhone(dto.phone)) },
       { expiresIn: jwtTtl(this.config.get<string>('RECORD_TOKEN_TTL', '10m')) },
     );
     await this.audit.record({
@@ -322,9 +369,9 @@ export class InquiryService {
   }
 
   /** Returns the single record (legacy case or new-model claim) the token authorizes. */
-  async getScopedCase(): Promise<unknown> {
+  async getScopedCase(pick?: string): Promise<unknown> {
     const ctx = getContext();
-    const claimId = ctx?.scopedClaimId;
+    const claimId = this.scopedClaim(pick);
     if (claimId) return this.getScopedClaim(claimId);
 
     const caseId = ctx?.scopedCaseId;
@@ -380,6 +427,8 @@ export class InquiryService {
     const manual = story.manual;
     return {
       kind: 'claim',
+      id: c.id, // which of the looked-up cases this is (the picker)
+      line: c.line ? LINE_FA[c.line as InsuranceLine] : null, // نوع بیمه‌نامه
       claimNumber: c.claimNumber,
       status: c.status,
       claimType: c.claimType,
@@ -469,9 +518,9 @@ export class InquiryService {
    * «پاسخگوی آنلاین» — the requester leaves a question about the claim they looked up. It reaches the
    * کارگزاری's inbox only («پاسخگوی آنلاین» in the کارگزاری panel); staff answer on the (OTP-verified) phone.
    */
-  async leaveMessage(message: string) {
+  async leaveMessage(message: string, pick?: string) {
     const ctx = getContext();
-    const claimId = ctx?.scopedClaimId;
+    const claimId = this.scopedClaim(pick);
     if (!claimId || !ctx?.scopedPhone) throw new ForbiddenException('برای ارسال پیام ابتدا استعلام کنید.');
     const text = String(message ?? '').trim();
     if (text.length < 3) throw new BadRequestException('متن پیام را بنویسید');
@@ -493,9 +542,9 @@ export class InquiryService {
    * کارگزاری's answers, oldest first. Matched by the verified phone, so a later inquiry from the same
    * mobile sees the whole thread and nobody else's.
    */
-  async thread() {
+  async thread(pick?: string) {
     const ctx = getContext();
-    const claimId = ctx?.scopedClaimId;
+    const claimId = this.scopedClaim(pick);
     if (!claimId || !ctx?.scopedPhone) throw new ForbiddenException('برای دیدن گفتگو ابتدا استعلام کنید.');
     const phone = this.crypto.decrypt(ctx.scopedPhone);
     const idx = this.crypto.blindIndex(phone);

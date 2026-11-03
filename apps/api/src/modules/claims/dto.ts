@@ -1,3 +1,4 @@
+import { INSURED_RELATIONS, InsuredRelation } from './workflow';
 import { InsuranceLine, SalesChannel } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
@@ -155,8 +156,8 @@ export class FileOnBehalfDto {
   contractId?: string;
 
   @IsOptional()
-  @IsIn(['MAIN', 'SPOUSE', 'CHILD'])
-  insuredRelation?: 'MAIN' | 'SPOUSE' | 'CHILD';
+  @IsIn(INSURED_RELATIONS as unknown as string[])
+  insuredRelation?: InsuredRelation;
 
   @IsOptional()
   @IsString()

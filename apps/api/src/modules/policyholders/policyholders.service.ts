@@ -263,7 +263,8 @@ export class PolicyholdersService {
    * `line` (the نوع بیمه‌نامه chosen on the panel-1 login), only contracts of that kind count.
    */
   async resolveContract(companyId: string, date: Date | null, claimType: string | null = null, line: InsuranceLine | null = null) {
-    const contracts = await this.db().policyholderContract.findMany({ where: { companyId, isActive: true, ...(line ? { line } : {}) } });
+    // A contract with no kind set fits every kind.
+    const contracts = await this.db().policyholderContract.findMany({ where: { companyId, isActive: true, ...(line ? { OR: [{ line }, { line: null }] } : {}) } });
     const chain = claimType ? await this.companyChain(companyId) : [];
     const fits = contracts.filter((c) => !claimType || !c.line || typesFor(this.store.get(c.insurerTenantId), c.line, chain).includes(claimType));
     return this.pickContract(fits, date ?? new Date());

@@ -107,7 +107,7 @@ export function CustomerLoginPage({ slug: fixedSlug, switcher, agent }: { slug?:
             {fields}
             <button type="submit" disabled={!ready} className="tlogin-btn" style={{ background: brand.theme.loginButton || 'var(--brand)' }}>{loading ? '…' : `ورود به ${info.label}`}</button>
           </form>
-          <LoginNav onDark />
+          <LoginNav onDark org="INSURER" />
           <div className="text-center text-xs mt-4" style={{ color: 'rgba(255,255,255,0.85)' }}>با همکاری کارگزاری رسمی بیمه مستقیم برخط آتیه اندیشان دامون</div>
         </div>
       </div>
@@ -115,7 +115,7 @@ export function CustomerLoginPage({ slug: fixedSlug, switcher, agent }: { slug?:
   }
 
   return (
-    <AuthCard title={info.title} subtitle={info.subtitle || undefined} bg={{ light: ['cust-day-1', 'cust-day-2'], dark: ['cust-night-1'] }}>
+    <AuthCard title={info.title} subtitle={info.subtitle || undefined} bg={{ light: ['cust-day-1', 'cust-day-2'], dark: ['cust-night-1'] }} org={fixedSlug ? (agent ? 'INSURER' : 'BROKER') : undefined}>
       <form className="space-y-4" onSubmit={login}>
         {fields}
         <button type="submit" disabled={!ready} className="btn btn-primary w-full">{loading ? '…' : 'ورود'}</button>
