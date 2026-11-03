@@ -7,8 +7,8 @@ import { OrgLoginPage } from '../../components/OrgLoginPage';
 /**
  * Panel 1 «ورود برای بارگذاری مدارک» of one organization (?org=slug, chosen on the home page): the
  * بیمه‌گزار and نماینده sign in here, and so do the organization's own staff (own account and
- * two-step login) to file cases, import Excel files and use «میز کار مستقل». An insurer's panel 1 is its
- * staff only (they file for its کارگزاران; بیمه‌گزاران belong to a brokerage). Assessment is panel 2.
+ * two-step login) to file cases, import Excel files and use «میز کار مستقل». An insurer's panel 1: its
+ * نمایندگان بیمه (کد ملی + password) and its staff, who file for its کارگزاران. Assessment is panel 2.
  */
 export default function EntryLogin() {
   const [slug, setSlug] = useState<string | null>(null);
@@ -24,15 +24,15 @@ export default function EntryLogin() {
     }).catch(() => setKind('BROKER'));
   }, []);
   if (slug === null || kind === null) return null;
-  if (kind === 'INSURER') return <OrgLoginPage kind="INSURER" mode="ENTRY" />;
+  const insurer = kind === 'INSURER';
 
   const switcher = (
     <div className="entry-tabs" role="tablist">
-      <button type="button" role="tab" aria-selected={tab === 'customer'} className={tab === 'customer' ? 'is-on' : ''} onClick={() => setTab('customer')}>بیمه‌گزار / نماینده</button>
+      <button type="button" role="tab" aria-selected={tab === 'customer'} className={tab === 'customer' ? 'is-on' : ''} onClick={() => setTab('customer')}>{insurer ? 'نماینده بیمه' : 'بیمه‌گزار / نماینده'}</button>
       <button type="button" role="tab" aria-selected={tab === 'staff'} className={tab === 'staff' ? 'is-on' : ''} onClick={() => setTab('staff')}>کارکنان سازمان</button>
     </div>
   );
   return tab === 'staff'
-    ? <OrgLoginPage kind="BROKER" mode="ENTRY" switcher={switcher} />
-    : <CustomerLoginPage slug={slug || undefined} switcher={switcher} />;
+    ? <OrgLoginPage kind={insurer ? 'INSURER' : 'BROKER'} mode="ENTRY" switcher={switcher} />
+    : <CustomerLoginPage slug={slug || undefined} switcher={switcher} agent={insurer} />;
 }

@@ -277,7 +277,14 @@ export class ClaimsService {
         if (acc?.companyId !== companyId) throw new BadRequestException('نماینده انتخاب‌شده متعلق به این شرکت نیست');
       }
     }
-    if (ctx?.actorType === 'CUSTOMER' && ctx.customerBrokerPanel) {
+    if (ctx?.actorType === 'CUSTOMER' && ctx.customerAgent) {
+      // An insurer's نماینده بیمه: a direct sale of that insurer, its معرف the agent's own شعبه. No
+      // بیمه‌گزار company or contract; the agent keeps the case (documents first) until «ارسال».
+      const acc = await this.prisma.unscoped().customerAccount.findUnique({ where: { id: ctx.actorId }, select: { branchId: true } });
+      if (!acc?.branchId) throw new BadRequestException('حساب شما هنوز به شعبه‌ای متصل نشده است؛ با بیمه‌گر تماس بگیرید.');
+      companyId = null; input.contractId = undefined; input.policyHolderId = undefined;
+      input.insurerTenantId = ctx.tenantId; input.channel = 'DIRECT' as any; input.sellingBranchId = acc.branchId; input.brokerTenantId = undefined;
+    } else if (ctx?.actorType === 'CUSTOMER' && ctx.customerBrokerPanel) {
       // The brokerage's «broker» login files for a company of its own brokerage.
       const co = input.policyholderCompanyId ? await db.policyholderCompany.findFirst({ where: { id: input.policyholderCompanyId, tenantId: ctx.tenantId }, select: { id: true } }) : null;
       if (!co) throw new BadRequestException('بیمه‌گزار را انتخاب کنید');
@@ -472,6 +479,8 @@ export class ClaimsService {
     let source: NoticeSource;
     if (ctx?.actorType === 'CUSTOMER') source = ctx.customerRepresentative ? 'REPRESENTATIVE' : 'POLICYHOLDER';
     else source = ((await this.myDesk()).stage ?? 'BROKER') as NoticeSource;
+    // An insurer's نماینده بیمه keeps the case until they send it to their شعبه.
+    if (ctx?.actorType === 'CUSTOMER' && ctx.customerAgent) return { enabled: true, targets: ['POLICYHOLDER'], default: 'POLICYHOLDER', source, labels: TARGET_FA };
     // An insurer's own staff: Super Admin's Model View «ورود داده بیمه‌گر» decides where the case starts.
     if (ctx?.actorType === 'ORG_USER' && ctx.tenantId && ['BRANCH', 'HQ', 'COUNCIL'].includes(source)) {
       const way = (await this.modelOf(ctx.tenantId)).entry.way;

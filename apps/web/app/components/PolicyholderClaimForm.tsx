@@ -57,6 +57,9 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
   const [staffCos, setStaffCos] = useState<StaffCompany[] | null>(null);
   const [extra, setExtra] = useState({ policyHolderId: '', claimedAmount: '' });
   const [company, setCompany] = useState<{ name: string } | null | undefined>(undefined);
+  // An insurer's نماینده بیمه: no company or contract; they type the policy number, and «ارسال» sends to their شعبه.
+  const [agent, setAgent] = useState(false);
+  const [policyNumber, setPolicyNumber] = useState('');
   const [policies, setPolicies] = useState<PolicyRow[] | null>(null);
   const [broker, setBroker] = useState('');
   const [policyId, setPolicyId] = useState('');
@@ -103,7 +106,8 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
     // The بیمه‌نامه chosen on the dashboard (?policy=…, else the remembered one), else the one in force.
     let want = params.get('policy') ?? '';
     try { want = want || (companyParam ? '' : localStorage.getItem(POLICY_KEY) || ''); } catch { /* ignore */ }
-    client.get<{ company: { name: string } | null; brokerPanel?: boolean }>('/customer/me', 'customer').then(async (m) => {
+    client.get<{ company: { name: string } | null; brokerPanel?: boolean; agent?: boolean }>('/customer/me', 'customer').then(async (m) => {
+      if (m.agent) setAgent(true);
       if (!m.brokerPanel) { setCompany(m.company); setBrokerFor(null); return; }
       // The broker files for a company it picked on its home list.
       setIsBroker(true);
@@ -152,7 +156,7 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
   const checkCoverage = async () => {
     setCoverage(null);
     const code = toAscii(f.deceasedNationalCode).trim();
-    if (!policyId || !/^\d{10}$/.test(code)) return;
+    if (!policyId || agent || !/^\d{10}$/.test(code)) return;
     const r = await client.post<any>(org ? '/claims/on-behalf/coverage-check' : '/customer/coverage-check', { contractId: policyId, nationalCode: code }, realm).catch(() => null);
     if (r?.enabled) setCoverage({ status: r.status, name: [r.person?.firstName, r.person?.lastName].filter(Boolean).join(' ') });
   };
@@ -171,7 +175,8 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
     try {
       const payload: Record<string, string> = {
         claimType: f.claimType,
-        ...(policyId ? { contractId: policyId } : {}),
+        ...(policyId && !agent ? { contractId: policyId } : {}),
+        ...(agent && policyNumber.trim() ? { policyNumber: toAscii(policyNumber).trim() } : {}),
         ...(brokerFor && !org ? { companyId: brokerFor.id } : {}),
         deceasedFullName: f.deceasedFullName.trim(),
         deceasedNationalCode: toAscii(f.deceasedNationalCode).trim(),
@@ -213,7 +218,8 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
         <div className="pinfobox mb-3 text-center">
           پس از ثبت پرونده، مدارک موردنیاز را در صفحهٔ پرونده بارگذاری کنید.
           <div className="text-xs font-normal">
-            {company
+            {agent ? <>پرونده به نام شما ثبت می‌شود؛ پس از بارگذاری مدارک، با «ارسال» به شعبهٔ شما در {broker || 'بیمه‌گر'} می‌رود.</>
+              : company
               ? <>پرونده برای «{company.name}» ذیل بیمه‌نامهٔ انتخاب‌شده ثبت می‌شود و کارگزاری آن را به بیمه‌گر همان بیمه‌نامه ارسال می‌کند.</>
               : company === null ? (isBroker
                 ? <>ابتدا بیمه‌گزاری را که پرونده برای آن ثبت می‌شود انتخاب کنید.</>
@@ -246,7 +252,11 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
               </PField>
             </>
           )}
-          <div className="md:col-span-2">
+          {agent ? (
+            <PField label="شماره بیمه‌نامه" help="شماره بیمه‌نامهٔ مشتری نزد این بیمه‌گر.">
+              <input className="input" value={policyNumber} onChange={(e) => setPolicyNumber(e.target.value)} maxLength={60} style={{ direction: 'ltr', textAlign: 'right' }} />
+            </PField>
+          ) : <div className="md:col-span-2">
             <PField label="بیمه‌نامه و بازهٔ آن *" help="بیمه‌نامهٔ عمر یا حوادث شرکت که خسارت ذیل آن اعلام می‌شود؛ بیمه‌نامهٔ همان سالی را انتخاب کنید که حادثه یا فوت در آن رخ داده است.">
               <select className="input" value={policyId} onChange={(e) => { const p = policies?.find((x) => x.id === e.target.value); if (p) choosePolicy(p); }} disabled={!policies?.length}>
                 {!policies ? <option>در حال دریافت…</option> : policies.length === 0 ? <option>بیمه‌نامه‌ای ثبت نشده است</option> : policies.map((p) => (
@@ -255,7 +265,7 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
               </select>
             </PField>
             {policy && <div className="text-xs mt-1" style={{ color: 'var(--muted)' }}>بیمه‌گر: {policy.insurerName} — کارگزار: {broker}</div>}
-          </div>
+          </div>}
 
           <PField label="نوع پرونده *" help="نوع خسارت را مشخص کنید؛ فقط خسارت‌هایی که بیمه‌نامهٔ انتخاب‌شده پوشش می‌دهد فهرست شده‌اند.">
             <select className="input" value={f.claimType} onChange={(e) => setF({ ...f, claimType: e.target.value })}>

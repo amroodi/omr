@@ -91,11 +91,14 @@ export class CustomerAuthService {
       throw new ForbiddenException('نام کاربری یا رمز عبور نادرست است.');
     }
     if (!acc.isActive) throw new ForbiddenException('حساب شما غیرفعال شده است؛ با بیمه‌گزار یا کارگزاری تماس بگیرید.');
+    // An account of an insurer is its own نماینده بیمه (insurance agent), tied to one of its شعبه‌ها.
+    const agent = (await db.tenant.findUnique({ where: { id: tenantId }, select: { kind: true } }))?.kind === 'INSURER';
+    if (agent && !acc.branchId) throw new ForbiddenException('حساب شما هنوز به شعبه‌ای متصل نشده است؛ با بیمه‌گر تماس بگیرید.');
     await db.customerAccount.update({ where: { id: acc.id }, data: { lastLoginAt: new Date() } });
     const expiresIn = this.config.get<string>('JWT_SESSION_TTL', '8h');
     const repName = acc.fullName ? this.crypto.decrypt(acc.fullName) : null;
-    const sid = await this.sessions.start({ realm: 'CUSTOMER', actorId: acc.id, actorLabel: `نماینده: ${repName || `••••••${nid.slice(-4)}`}`, tenantId });
-    const token = await this.jwt.signAsync({ kind: 'customer', sub: acc.id, sid, tenantId, nidHash: acc.nationalCodeHash, companyId: acc.companyId ?? undefined, representative: true }, { expiresIn: jwtTtl(expiresIn) });
+    const sid = await this.sessions.start({ realm: 'CUSTOMER', actorId: acc.id, actorLabel: `${agent ? 'نماینده بیمه' : 'نماینده'}: ${repName || `••••••${nid.slice(-4)}`}`, tenantId });
+    const token = await this.jwt.signAsync({ kind: 'customer', sub: acc.id, sid, tenantId, nidHash: acc.nationalCodeHash, companyId: acc.companyId ?? undefined, representative: true, ...(agent ? { agent: true } : {}) }, { expiresIn: jwtTtl(expiresIn) });
     await this.audit.record({ action: AuditAction.LOGIN, tenantId, actorType: 'CUSTOMER', actorId: acc.id, metadata: { realm: 'representative' } });
     return { token, expiresIn };
   }
