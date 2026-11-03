@@ -102,8 +102,6 @@ export function OrgLoginPage({ kind, mode = 'PROCESS', switcher }: { kind: 'BROK
   const fields = (
     <>
       {switcher}
-      {/* An insurer with its own look: its button colour, not the panel's default accent; its panel-2 login shows no panel name. */}
-      {mode === 'ENTRY' && <div className="panel-tag" style={{ ['--panel-accent' as any]: (kind === 'INSURER' && brand?.theme?.loginButton) || info.accent }}>{info.label}</div>}
       <ErrorBox message={error} />
       {wrongPanel && <Link href={PANELS[wrongPanel].login} className="btn btn-ghost btn-sm w-full">رفتن به صفحهٔ ورود «{PANELS[wrongPanel].label}»</Link>}
       {/* A company's own login (?org=…, picked on the home page): its logo and look already say which. */}
@@ -143,14 +141,13 @@ export function OrgLoginPage({ kind, mode = 'PROCESS', switcher }: { kind: 'BROK
               {logo && <img src={logo} alt={brand.name} style={{ height: 110, width: 'auto', maxWidth: 220, objectFit: 'contain' }} />}
               <div className="font-bold" style={{ color: brand.theme.title || 'var(--brand)' }}>{brand.name}</div>
               <div className="text-sm font-extrabold">سامانهٔ رسیدگی به پرونده‌های خسارت عمر و حادثه</div>
-              {mode === 'ENTRY' && <div className="text-xs" style={{ color: '#6b7280' }}>{info.subtitle}</div>}
             </div>
             {fields}
             <button onClick={submit} disabled={loading || !username || !password || needLine} className="tlogin-btn" style={{ background: brand.theme.loginButton || 'var(--brand)' }}>
-              {loading ? '…' : mode === 'ENTRY' ? `ورود به ${info.label}` : 'ورود'}
+              {loading ? '…' : 'ورود'}
             </button>
           </div>
-          <LoginNav onDark org="INSURER" />
+          {mode !== 'ENTRY' && <LoginNav onDark org="INSURER" />}
           <div className="text-center text-xs mt-4" style={{ color: 'rgba(255,255,255,0.85)' }}>با همکاری کارگزاری رسمی بیمه مستقیم برخط آتیه اندیشان دامون</div>
         </div>
       </div>
@@ -158,7 +155,7 @@ export function OrgLoginPage({ kind, mode = 'PROCESS', switcher }: { kind: 'BROK
   }
 
   return (
-    <AuthCard title={info.title} subtitle={mode === 'ENTRY' ? info.subtitle : undefined} bg={{ light: ['org-day-1', 'org-day-2'], dark: ['org-night-1'] }} org={fixedOrg ? kind : undefined}>
+    <AuthCard title={info.title} subtitle={mode === 'ENTRY' ? info.subtitle : undefined} bg={{ light: ['org-day-1', 'org-day-2'], dark: ['org-night-1'] }} org={fixedOrg ? kind : undefined} hideNav={mode === 'ENTRY'}>
       <div className="space-y-4">
         {fields}
         <button onClick={submit} disabled={loading || !username || !password || needLine} className="btn btn-primary w-full">{loading ? '…' : 'ورود'}</button>

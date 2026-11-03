@@ -5,9 +5,9 @@ import { ReactNode, useState } from 'react';
 import { BrandLogo } from './brand';
 import { LoginBgSet, RotatingBg } from './RotatingBg';
 
-// Every panel's login page (the super-admin login is deliberately not linked).
+// The company login portals linked under a panel-2 card (the super-admin login is deliberately not
+// linked, and the بیمه‌گزار/نماینده portal is reached only from the home page, not cross-linked here).
 const LOGINS = [
-  { href: '/customer/login', label: 'بیمه‌گزار و نماینده' },
   { href: '/org/login', label: 'کارگزاری' },
   { href: '/insurer/login', label: 'بیمه‌گر' },
 ];
@@ -37,7 +37,7 @@ export function LoginNav({ onDark, org }: { onDark?: boolean; org?: 'BROKER' | '
  * Login card. The logo, title and subtitle sit inside the card. With a `bg` (rotating photos), an arrow
  * button folds the card away so the whole background can be enjoyed; a round arrow brings it back.
  */
-export function AuthCard({ title, subtitle, children, bg, org }: { title: string; subtitle?: string; children: ReactNode; bg?: LoginBgSet; org?: 'BROKER' | 'INSURER' }) {
+export function AuthCard({ title, subtitle, children, bg, org, hideNav }: { title: string; subtitle?: string; children: ReactNode; bg?: LoginBgSet; org?: 'BROKER' | 'INSURER'; hideNav?: boolean }) {
   const [hidden, setHidden] = useState(false);
   return (
     <div className="min-h-[calc(70*var(--zvh))] flex items-center justify-center">
@@ -57,7 +57,7 @@ export function AuthCard({ title, subtitle, children, bg, org }: { title: string
           {children}
           <div className="auth-credit">طراحي و توليد توسط کارگزاری آتیه اندیشان دامون</div>
         </div>
-        <LoginNav org={org} />
+        {!hideNav && <LoginNav org={org} />}
       </div>
       {bg && hidden && (
         <button type="button" className="auth-unfold" onClick={() => setHidden(false)} title="نمایش فرم ورود" aria-label="نمایش فرم ورود">
