@@ -27,6 +27,11 @@ export interface RequestContext {
   insuredPhoneHash?: string;
   /** For the customer realm: a نماینده (person, کد ملی + password) acting for their company. */
   customerRepresentative?: boolean;
+  /**
+   * For the customer realm: an insurer's own نماینده (insurance agent) — an account of an insurer, tied to
+   * one of its شعبه‌ها. Files for their own customers; sees only the cases they filed.
+   */
+  customerAgent?: boolean;
   /** Org user: which panel the session signed in to (کارگزاری / شعبه / ستاد / شورای فنی) — display only. */
   panel?: string;
   /**

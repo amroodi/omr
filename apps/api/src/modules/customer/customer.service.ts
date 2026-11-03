@@ -277,6 +277,7 @@ export class CustomerService {
       .sort((a, b) => (b.startDate?.getTime() ?? 0) - (a.startDate?.getTime() ?? 0))[0];
     return {
       fullName: acc.fullName ? this.crypto.decrypt(acc.fullName) : null,
+      agent: !!ctx.customerAgent, // an insurer's نماینده بیمه (brokerName is then the insurer's name)
       companyLogin: !!ctx.customerCompanyId,
       brokerPanel: !!ctx.customerBrokerPanel,
       mustChangePassword: acc.passwordHash ? acc.mustChangePassword : !!c?.mustChangePassword,
@@ -298,6 +299,7 @@ export class CustomerService {
     const db = this.prisma.unscoped();
     const acc = await db.customerAccount.findUnique({ where: { id: ctx.actorId }, include: { company: { include: { contracts: true } }, tenant: { select: { name: true } } } });
     if (!acc) throw new NotFoundException('حساب یافت نشد');
+    if (ctx.customerAgent) return this.agentDashboard(acc.tenantId, acc.tenant.name);
     // The «broker» login looks at whichever company of its brokerage it picked.
     const co = ctx.customerBrokerPanel
       ? (companyId ? await db.policyholderCompany.findFirst({ where: { id: companyId, tenantId: ctx.tenantId }, include: { contracts: true } }) : null)
@@ -347,6 +349,92 @@ export class CustomerService {
       selectedId: selected?.id ?? null,
       stats,
     };
+  }
+
+  /**
+   * An insurer's نماینده بیمه has no company or contract: one «بیمه‌نامه» row standing for the insurer
+   * (every نوع پرونده it offers; the policy number is typed on each case), and totals of their own cases.
+   */
+  private async agentDashboard(insurerId: string, insurerName: string) {
+    const claims = await this.prisma.unscoped().claim.findMany({
+      where: { ...customerClaimWhere(), deletedAt: null, insurerTenantId: insurerId },
+      select: { status: true, currentStage: true, claimedAmount: true, finalizedAmount: true },
+    });
+    const sum = claims.filter((c) => c.status === 'PAID').reduce((t, c) => t + BigInt(Math.round(Number(c.finalizedAmount ?? c.claimedAmount ?? 0))), 0n);
+    return {
+      company: null, brokerName: insurerName, agent: true,
+      contracts: [{
+        id: 'agent', line: null, lineLabel: null, policyNumber: null, insurerName, startDate: null, endDate: null, startIso: null, endIso: null, inForce: true,
+        claimTypes: this.store.get(insurerId).form.caseTypes.map((t) => t.code), form: this.formOf(insurerId, null, []),
+      }],
+      selectedId: 'agent',
+      stats: {
+        total: claims.length,
+        open: claims.filter((c) => !['APPROVED', 'PAID', 'REJECTED'].includes(c.status)).length,
+        waiting: claims.filter((c) => c.currentStage === 'POLICYHOLDER').length,
+        approvedCount: claims.filter((c) => c.status === 'APPROVED' || c.status === 'PAID').length,
+        paidAmount: sum.toString(),
+      },
+    };
+  }
+
+  // ── An insurer's نمایندگان بیمه (insurance agents), managed by the insurer's admin in panel 2 ──
+  private async insurerId(): Promise<string> {
+    const id = getTenantIdOrThrow();
+    const t = await this.prisma.unscoped().tenant.findUnique({ where: { id }, select: { kind: true } });
+    if (t?.kind !== 'INSURER') throw new ForbiddenException('نمایندگان بیمه فقط برای بیمه‌گر است');
+    return id;
+  }
+
+  private async ownBranch(tenantId: string, branchId: string) {
+    const b = await this.prisma.unscoped().branch.findFirst({ where: { id: branchId, tenantId }, select: { id: true } });
+    if (!b) throw new BadRequestException('شعبه متعلق به این بیمه‌گر نیست');
+    return b.id;
+  }
+
+  async listAgents() {
+    const tenantId = await this.insurerId();
+    const canPii = (getContext()?.permissions ?? []).includes('view:pii');
+    const db = this.prisma.unscoped();
+    const [rows, branches] = await Promise.all([
+      db.customerAccount.findMany({ where: { tenantId, removedAt: null, passwordHash: { not: null } }, orderBy: { createdAt: 'desc' }, take: 2000 }),
+      db.branch.findMany({ where: { tenantId }, select: { id: true, name: true, code: true }, orderBy: { name: 'asc' } }),
+    ]);
+    const bName = new Map(branches.map((b) => [b.id, `${b.name} (${b.code})`]));
+    return {
+      branches,
+      agents: rows.filter((r) => this.isPerson(r.nationalCode)).map((r) => {
+        const nid = this.crypto.decrypt(r.nationalCode) ?? '';
+        const phone = r.phone ? this.crypto.decrypt(r.phone) ?? '' : '';
+        return {
+          id: r.id, fullName: r.fullName ? this.crypto.decrypt(r.fullName) : null,
+          nationalCode: canPii ? nid : `••••••${nid.slice(-4)}`, phone: canPii ? phone : phone ? `•••••••${phone.slice(-4)}` : '',
+          branchId: r.branchId, branchName: r.branchId ? bName.get(r.branchId) ?? null : null,
+          isActive: r.isActive, mustChangePassword: r.mustChangePassword, lastLoginAt: r.lastLoginAt ? toJalali(r.lastLoginAt) : null,
+        };
+      }),
+    };
+  }
+
+  /** Add a نماینده بیمه: کد ملی + mobile (شاهکار when on), their شعبه; first password = کد ملی unless given. */
+  async addAgent(input: RepresentativeInput & { branchId: string }) {
+    const tenantId = await this.insurerId();
+    const branchId = await this.ownBranch(tenantId, input.branchId);
+    const r = await this.addRepresentative(tenantId, null, input);
+    await this.prisma.unscoped().customerAccount.update({ where: { id: r.id }, data: { branchId } });
+    return r;
+  }
+
+  async updateAgent(id: string, input: { branchId?: string; active?: boolean }) {
+    const tenantId = await this.insurerId();
+    const acc = await this.prisma.unscoped().customerAccount.findFirst({ where: { id, tenantId, removedAt: null } });
+    if (!acc || !this.isPerson(acc.nationalCode)) throw new NotFoundException('نماینده یافت نشد');
+    const data: { branchId?: string; isActive?: boolean } = {};
+    if (input.branchId) data.branchId = await this.ownBranch(tenantId, input.branchId);
+    if (typeof input.active === 'boolean') data.isActive = input.active;
+    await this.prisma.unscoped().customerAccount.update({ where: { id }, data });
+    await this.audit.record({ action: AuditAction.EDIT, tenantId, targetType: 'InsuranceAgent', targetId: id, metadata: data });
+    return { ok: true };
   }
 
   private formOf(insurerId: string, line: 'LIFE' | 'ACCIDENT' | null, chain: string[]) {

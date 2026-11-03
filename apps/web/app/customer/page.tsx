@@ -12,6 +12,7 @@ import { CaseTable, MyClaim } from './case-table';
 interface Dashboard {
   company: { id: string; name: string; code: string | null; hasLogo: boolean } | null;
   brokerName: string;
+  agent?: boolean; // an insurer's نماینده بیمه: brokerName is the insurer
   contracts: PolicyRow[];
   selectedId: string | null;
   stats: { total: number; open: number; waiting: number; approvedCount: number; paidAmount: string };
@@ -166,9 +167,14 @@ function CompanyDashboard({ mustChangePassword }: { mustChangePassword: boolean 
           {/* Four summary cards for the chosen policy */}
           <div className="cu-cards">
             <div className="pcard cu-card">
-              <div><div className="cu-card-t">بیمه‌گزار</div><div className="cu-card-v">{dash.company?.name ?? '—'}</div>
-                <div className="cu-card-s">کد بیمه‌گزار: <span className="latin-digits">{dash.company?.code ?? '—'}</span></div>
-                <div className="cu-card-s">کارگزار: {dash.brokerName}</div></div>
+              {dash.agent ? (
+                <div><div className="cu-card-t">نماینده بیمه</div><div className="cu-card-v">{dash.brokerName}</div>
+                  <div className="cu-card-s">پرونده‌های مشتریان شما؛ با «ارسال» به شعبهٔ شما می‌روند.</div></div>
+              ) : (
+                <div><div className="cu-card-t">بیمه‌گزار</div><div className="cu-card-v">{dash.company?.name ?? '—'}</div>
+                  <div className="cu-card-s">کد بیمه‌گزار: <span className="latin-digits">{dash.company?.code ?? '—'}</span></div>
+                  <div className="cu-card-s">کارگزار: {dash.brokerName}</div></div>
+              )}
               <span className="cu-card-ico"><BigIcon path={IC.user} size={34} /></span>
             </div>
             <div className="pcard cu-card">
