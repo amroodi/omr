@@ -82,6 +82,7 @@ export class JwtAuthGuard implements CanActivate {
       ctx.customerCompanyId = payload.companyId ?? undefined;
       ctx.customerBrokerPanel = payload.brokerPanel === true;
       ctx.customerRepresentative = payload.representative === true;
+      ctx.customerAgent = payload.agent === true;
       ctx.permissions = ['case:read'];
       if (ctx.customerRepresentative) {
         // Removed or suspended by the کارگزاری / their company → the session ends now, not at token expiry.

@@ -50,7 +50,8 @@ export class AssistService {
     const [users, companies, reps] = await Promise.all([
       db.orgUser.findMany({ where: { tenantId }, orderBy: { displayName: 'asc' }, select: { id: true, username: true, displayName: true, isActive: true, desk: true, branchId: true, role: { select: { name: true } } } }),
       t.kind === 'BROKER' ? db.policyholderCompany.findMany({ where: { tenantId }, orderBy: { name: 'asc' }, select: { id: true, name: true, isActive: true } }) : [],
-      t.kind === 'BROKER' ? db.customerAccount.findMany({ where: { tenantId, removedAt: null, passwordHash: { not: null } }, select: { id: true, fullName: true, isActive: true, company: { select: { name: true } } } }) : [],
+      // A brokerage's نمایندگان (of its companies) or an insurer's نمایندگان بیمه.
+      db.customerAccount.findMany({ where: { tenantId, removedAt: null, passwordHash: { not: null } }, select: { id: true, fullName: true, isActive: true, company: { select: { name: true } } } }),
     ]);
     return {
       tenant: t,
@@ -105,10 +106,11 @@ export class AssistService {
     } else {
       const acc = await db.customerAccount.findFirst({ where: { id: input.id, tenantId: tenant.id, removedAt: null, passwordHash: { not: null } } });
       if (!acc) throw new NotFoundException('نماینده یافت نشد');
-      label = `نماینده: ${(acc.fullName && this.crypto.decrypt(acc.fullName)) || '—'}`;
+      const agent = tenant.kind === 'INSURER';
+      label = `${agent ? 'نماینده بیمه' : 'نماینده'}: ${(acc.fullName && this.crypto.decrypt(acc.fullName)) || '—'}`;
       sid = await this.sessions.start({ realm: 'CUSTOMER', actorId: acc.id, actorLabel: `${by} ← ${label}`, tenantId: tenant.id });
       token = await this.jwt.signAsync(
-        { kind: 'customer', sub: acc.id, sid, tenantId: tenant.id, nidHash: acc.nationalCodeHash, companyId: acc.companyId ?? undefined, representative: true, assist: superId, assistName: label },
+        { kind: 'customer', sub: acc.id, sid, tenantId: tenant.id, nidHash: acc.nationalCodeHash, companyId: acc.companyId ?? undefined, representative: true, ...(agent ? { agent: true } : {}), assist: superId, assistName: label },
         { expiresIn },
       );
       realm = 'customer'; home = '/customer';

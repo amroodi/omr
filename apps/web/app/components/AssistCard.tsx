@@ -61,7 +61,7 @@ export function AssistCard({ tenantId }: { tenantId: string }) {
       <div className="entry-tabs" role="tablist" style={{ maxWidth: 420 }}>
         <button type="button" role="tab" aria-selected={kind === 'ORG'} className={kind === 'ORG' ? 'is-on' : ''} onClick={() => setKind('ORG')}>کارکنان</button>
         {broker && <button type="button" role="tab" aria-selected={kind === 'COMPANY'} className={kind === 'COMPANY' ? 'is-on' : ''} onClick={() => setKind('COMPANY')}>بیمه‌گزار</button>}
-        {broker && <button type="button" role="tab" aria-selected={kind === 'REPRESENTATIVE'} className={kind === 'REPRESENTATIVE' ? 'is-on' : ''} onClick={() => setKind('REPRESENTATIVE')}>نماینده</button>}
+        {<button type="button" role="tab" aria-selected={kind === 'REPRESENTATIVE'} className={kind === 'REPRESENTATIVE' ? 'is-on' : ''} onClick={() => setKind('REPRESENTATIVE')}>{broker ? 'نماینده' : 'نماینده بیمه'}</button>}
       </div>
       <div className="grid md:grid-cols-2 gap-3">
         <Field label={kind === 'ORG' ? 'کاربر' : kind === 'COMPANY' ? 'شرکت بیمه‌گزار' : 'نماینده'}>

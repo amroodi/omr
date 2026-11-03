@@ -121,6 +121,12 @@ export class CustomerFileClaimDto {
   @IsUUID()
   contractId?: string;
 
+  // An insurer's نماینده بیمه: the policy number (a company's contract supplies it otherwise).
+  @IsOptional()
+  @IsString()
+  @Length(1, 60)
+  policyNumber?: string;
+
   // «اعلام خسارت به»: the desk the case starts on (allowed by the «اعلام خسارت» rules).
   @IsOptional()
   @IsIn(['POLICYHOLDER', 'BROKER', 'BRANCH', 'HQ', 'COUNCIL'])

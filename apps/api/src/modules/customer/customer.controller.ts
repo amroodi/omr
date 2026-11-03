@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   Put,
   Query,
@@ -48,6 +49,16 @@ class CompanyRepresentativeDto {
 
 class ActiveDto {
   @IsBoolean() active!: boolean;
+}
+
+/** An insurer's نماینده بیمه: the same person details, plus the شعبه they work under. */
+class AgentDto extends CompanyRepresentativeDto {
+  @IsUUID() branchId!: string;
+}
+
+class AgentUpdateDto {
+  @IsOptional() @IsUUID() branchId?: string;
+  @IsOptional() @IsBoolean() active?: boolean;
 }
 import { CustomerSignupStatus } from '@prisma/client';
 import { ClaimsService } from '../claims/claims.service';
@@ -190,6 +201,25 @@ export class CustomerController {
     return this.customer.reject(id);
   }
 
+  // ── An insurer's نمایندگان بیمه (password reset and removal use accounts/:id above) ──
+  @Permissions(PERMISSIONS.CUSTOMER_MANAGE)
+  @Get('agents')
+  listAgents() {
+    return this.customer.listAgents();
+  }
+
+  @Permissions(PERMISSIONS.CUSTOMER_MANAGE)
+  @Post('agents')
+  addAgent(@Body() dto: AgentDto) {
+    return this.customer.addAgent(dto);
+  }
+
+  @Permissions(PERMISSIONS.CUSTOMER_MANAGE)
+  @Patch('agents/:id')
+  updateAgent(@Param('id') id: string, @Body() dto: AgentUpdateDto) {
+    return this.customer.updateAgent(id, dto);
+  }
+
   /** Remove a نماینده (kept for the cases they filed, but hidden and signed out). */
   @Permissions(PERMISSIONS.CUSTOMER_MANAGE)
   @Delete('accounts/:id')
@@ -270,6 +300,7 @@ export class CustomerController {
       insuredRelation: dto.insuredRelation,
       mainInsuredName: dto.mainInsuredName,
       mainInsuredNationalCode: dto.mainInsuredNationalCode,
+      policyNumber: dto.policyNumber, // an insurer's نماینده بیمه types it (no contract to take it from)
     });
   }
 

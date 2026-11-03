@@ -14,8 +14,9 @@ const toAscii = (s: string) => s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵
  * پنل نماینده). «حساب کاربری ندارید؟» sends a نماینده's signup request: name, کد ملی and mobile are
  * checked with شاهکار (when on), the mobile is confirmed by SMS code, then the organization approves it.
  */
-export function CustomerLoginPage({ slug: fixedSlug, switcher }: { slug?: string; switcher?: React.ReactNode } = {}) {
-  const info = PANELS.COMPANY;
+export function CustomerLoginPage({ slug: fixedSlug, switcher, agent }: { slug?: string; switcher?: React.ReactNode; agent?: boolean } = {}) {
+  // `agent`: an insurer's نماینده بیمه (کد ملی only; the insurer adds them, so no sign-up).
+  const info = agent ? { ...PANELS.REPRESENTATIVE, title: 'ورود نماینده بیمه', subtitle: 'ثبت پرونده برای مشتریان و ارسال به شعبه' } : PANELS.COMPANY;
   const router = useRouter();
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [code, setCode] = useState('');
@@ -58,7 +59,7 @@ export function CustomerLoginPage({ slug: fixedSlug, switcher }: { slug?: string
         <ErrorBox message={error} />
         <Field label="نام کاربری">
           <input value={code} onChange={(e) => setCode(e.target.value)} className="input latin-digits" autoComplete="username" autoCapitalize="off"
-            placeholder="کد بیمه‌گزار / کد ملی" style={{ direction: 'ltr', textAlign: 'right' }} autoFocus />
+            placeholder={agent ? 'کد ملی' : 'کد بیمه‌گزار / کد ملی'} style={{ direction: 'ltr', textAlign: 'right' }} autoFocus />
         </Field>
         <Field label="رمز عبور">
           <div className="relative">
@@ -70,11 +71,11 @@ export function CustomerLoginPage({ slug: fixedSlug, switcher }: { slug?: string
           </div>
         </Field>
         <button type="submit" disabled={loading || !code.trim() || !password} className="btn btn-primary w-full">{loading ? '…' : 'ورود'}</button>
-        <p className="text-xs text-center" style={{ color: 'var(--muted)' }}>شرکت‌ها با کد بیمه‌گزار و نمایندگان با کد ملی وارد می‌شوند.</p>
-        <p className="text-sm text-center">
+        <p className="text-xs text-center" style={{ color: 'var(--muted)' }}>{agent ? 'با کد ملی و رمزی که بیمه‌گر داده وارد شوید؛ نخستین رمز، کد ملی شماست.' : 'شرکت‌ها با کد بیمه‌گزار و نمایندگان با کد ملی وارد می‌شوند.'}</p>
+        {!agent && <p className="text-sm text-center">
           حساب کاربری ندارید؟{' '}
           <button type="button" className="font-bold underline" style={{ color: 'var(--brand)' }} onClick={() => { setError(''); setMode('signup'); }}>ثبت‌نام نماینده</button>
-        </p>
+        </p>}
       </form>
     </AuthCard>
   );
