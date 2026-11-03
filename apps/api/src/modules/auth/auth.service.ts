@@ -12,6 +12,7 @@ import { TooManyRequestsException } from '../inquiry/http-exceptions';
 import { OrgLoginDto, SuperAdminLoginDto } from './dto';
 import { MfaService } from './mfa.service';
 import { SessionsService } from '../security/sessions.service';
+import { ENTRY_PERMISSIONS } from '../../common/rbac/permissions';
 
 export interface TokenResult {
   token: string;
@@ -26,7 +27,7 @@ export interface TokenResult {
 }
 
 /** Roles that may sign in to panel 1: they can create cases in some way. */
-const ENTRY_PERMS = ['claim:file', 'claim:file-on-behalf', 'import:batch', 'spare:work'];
+const ENTRY_PERMS = ENTRY_PERMISSIONS;
 
 /** The org panels — one per desk, each with its own login page. */
 export type Panel = 'BROKER' | 'BRANCH' | 'HQ' | 'COUNCIL';

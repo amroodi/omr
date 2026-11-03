@@ -326,6 +326,9 @@ model OrgUser {
   totpPending  String? // ENCRYPTED — secret being set up, until its first code is confirmed
   totpLastStep Int? // last accepted TOTP time step (a code can't be used twice)
   isActive     Boolean  @default(true)
+  // «حذف» by the organization's admin or Super Admin: hidden from every list and unable to sign in.
+  // Kept (not deleted) so the actions they took on cases stay attributable.
+  removedAt    DateTime?
   lastLoginAt  DateTime?
   createdAt    DateTime @default(now())
 

@@ -18,7 +18,7 @@ import { EntryAllowed, EntryOnly, Permissions } from '../../common/rbac/decorato
 import { PERMISSIONS } from '../../common/rbac/permissions';
 import { ClaimFieldsService } from '../claim-fields/claim-fields.service';
 import { CoverageService } from '../model-view/coverage.service';
-import { CoverageCheckDto } from '../customer/dto';
+import { CoverageCheckDto, StaffCoverageCheckDto } from '../customer/dto';
 import { ClaimsService } from './claims.service';
 import { asLine } from './workflow';
 import { ActionDto, DecisionDto, FileClaimDto, FileOnBehalfDto, HeirsDto, LetterDto, LossNoticeDto, PhysicalDto, RectifyDto } from './dto';
@@ -87,7 +87,16 @@ export class ClaimsController {
   @Permissions(PERMISSIONS.CLAIM_FILE_ON_BEHALF)
   @Post('on-behalf/coverage-check')
   async onBehalfCoverage(@Body() dto: CoverageCheckDto) {
-    const r = await this.coverage.lookup(await this.claims.insurerOfContract(dto.contractId), dto.nationalCode);
+    const r = await this.coverage.lookup(await this.claims.insurerOfContract(dto.contractId), dto.nationalCode, dto.eventDate ? new Date(dto.eventDate) : null);
+    return r ? { enabled: true, ...r } : { enabled: false };
+  }
+
+  /** The same inquiry on the staff's own «ثبت پرونده خسارت» form (an insurer's or a brokerage's panel 1). */
+  @EntryOnly()
+  @Permissions(PERMISSIONS.CLAIM_FILE)
+  @Post('coverage-check')
+  async staffCoverage(@Body() dto: StaffCoverageCheckDto) {
+    const r = await this.coverage.lookup(await this.claims.insurerForCoverage(dto), dto.nationalCode, dto.eventDate ? new Date(dto.eventDate) : null);
     return r ? { enabled: true, ...r } : { enabled: false };
   }
 

@@ -48,7 +48,7 @@ export class AssistService {
     const t = await db.tenant.findUnique({ where: { id: tenantId }, select: { id: true, kind: true, name: true, slug: true } });
     if (!t) throw new NotFoundException('سازمان یافت نشد');
     const [users, companies, reps] = await Promise.all([
-      db.orgUser.findMany({ where: { tenantId }, orderBy: { displayName: 'asc' }, select: { id: true, username: true, displayName: true, isActive: true, desk: true, branchId: true, role: { select: { name: true } } } }),
+      db.orgUser.findMany({ where: { tenantId, removedAt: null }, orderBy: { displayName: 'asc' }, select: { id: true, username: true, displayName: true, isActive: true, desk: true, branchId: true, role: { select: { name: true } } } }),
       t.kind === 'BROKER' ? db.policyholderCompany.findMany({ where: { tenantId }, orderBy: { name: 'asc' }, select: { id: true, name: true, isActive: true } }) : [],
       // A brokerage's نمایندگان (of its companies) or an insurer's نمایندگان بیمه.
       db.customerAccount.findMany({ where: { tenantId, removedAt: null, passwordHash: { not: null } }, select: { id: true, fullName: true, isActive: true, company: { select: { name: true } } } }),
@@ -81,7 +81,7 @@ export class AssistService {
 
     let token: string; let realm: 'org' | 'customer'; let label: string; let sid: string; let home: string;
     if (input.target === 'ORG') {
-      const user = await db.orgUser.findFirst({ where: { id: input.id, tenantId: tenant.id }, include: { role: true } });
+      const user = await db.orgUser.findFirst({ where: { id: input.id, tenantId: tenant.id, removedAt: null }, include: { role: true } });
       if (!user) throw new NotFoundException('کاربر یافت نشد');
       const panel = homePanel(tenant.kind, user);
       const mode = input.mode === 'ENTRY' ? 'ENTRY' : 'PROCESS';

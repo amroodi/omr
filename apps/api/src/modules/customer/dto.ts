@@ -186,4 +186,22 @@ export class CoverageCheckDto {
   @IsString()
   @Matches(/^\d{10}$/, { message: 'کد ملی باید ۱۰ رقم باشد' })
   nationalCode!: string;
+
+  // With it, a policy period in their reply is checked against the event date.
+  @IsOptional()
+  @IsISO8601()
+  eventDate?: string;
+}
+
+/** The panel-1 staff form's check: a بیمه‌نامه, or the insurer / company picked on the form. */
+export class StaffCoverageCheckDto {
+  @ToAsciiDigits()
+  @IsString()
+  @Matches(/^\d{10}$/, { message: 'کد ملی باید ۱۰ رقم باشد' })
+  nationalCode!: string;
+
+  @IsOptional() @IsUUID() contractId?: string;
+  @IsOptional() @IsUUID() insurerTenantId?: string;
+  @IsOptional() @IsUUID() companyId?: string;
+  @IsOptional() @IsISO8601() eventDate?: string;
 }

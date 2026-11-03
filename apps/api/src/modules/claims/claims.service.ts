@@ -417,6 +417,10 @@ export class ClaimsService {
         if (mainNid === nid) throw new BadRequestException('کد ملی بیمه‌شدهٔ فرعی و اصلی یکسان است');
       }
     }
+    // فن‌آوران (when Super Admin has it on for this insurer): is this person — their بیمه‌نامه and its
+    // period — defined there? If not, the case isn't filed (or only warned about, as set). The form asks
+    // first; this repeats it, since the form's answer can't be trusted. The answer is kept on the case.
+    const coverage = nid ? await this.coverage.gate(insurerTenantId, nid, eventDate) : null;
     // Numbering must see every case with this policy number (other brokerages' too), or it could pick a
     // number already taken: the unrestricted client, which returns only numbers.
     const claimNumber = await nextClaimNumber(this.prisma.unscoped() as any, input.policyNumber); // «سال/شماره بیمه‌نامه/n»
@@ -483,8 +487,8 @@ export class ClaimsService {
       await this.notifyOrg(firstStage === 'BROKER' ? moarefTenantId : insurerTenantId, 'پرونده خسارت جدید', `پرونده ${claim.claimNumber} برای بررسی به میز کار شما رسید.`);
       await this.notifyPolicyHolder(claim.policyHolderId, 'ثبت پرونده خسارت', `پرونده ${claim.claimNumber} ثبت شد و در حال بررسی است.`);
     }
-    // Coverage inquiry (off unless Super Admin enabled it): never holds up the filing.
-    if (nid) void this.coverage.onFiled(claim.id, insurerTenantId, nid).catch(() => undefined);
+    // NOT_CHECKED (service down) is filled in by the coverage sweep as soon as the service answers.
+    if (coverage) await this.coverage.record(claim.id, coverage);
     return this.present(claim);
   }
 
@@ -1644,6 +1648,36 @@ export class ClaimsService {
     if (!k) throw new NotFoundException('بیمه‌نامه یافت نشد');
     if (!(await this.rateLimit.hit(`coverage:${ctx?.actorId ?? 'x'}`, 30, 3600))) throw new TooManyRequestsException('تعداد استعلام‌ها زیاد است. بعداً تلاش کنید');
     return k.insurerTenantId;
+  }
+
+  /**
+   * The insurer whose فن‌آوران connection answers the panel-1 staff form's coverage check: the chosen
+   * بیمه‌نامه's insurer; else the insurer picked on the form (the staff's own insurer, or one their
+   * brokerage cooperates with); else the picked company's بیمه‌نامه in force on the event date.
+   */
+  async insurerForCoverage(input: { contractId?: string; insurerTenantId?: string; companyId?: string; eventDate?: string }): Promise<string> {
+    if (input.contractId) return this.insurerOfContract(input.contractId);
+    const ctx = getContext();
+    const db = this.prisma.unscoped();
+    const own = await db.tenant.findUnique({ where: { id: ctx?.tenantId ?? '' }, select: { id: true, kind: true } });
+    if (!own) throw new ForbiddenException('دسترسی ندارید');
+    let insurerId: string | null = null;
+    if (input.insurerTenantId) {
+      const allowed = own.kind === 'INSURER'
+        ? input.insurerTenantId === own.id
+        : !!(await db.brokerInsurerPartnership.findFirst({ where: { brokerTenantId: own.id, insurerTenantId: input.insurerTenantId, isActive: true }, select: { id: true } }));
+      if (!allowed) throw new BadRequestException('بیمه‌گر نامعتبر است');
+      insurerId = input.insurerTenantId;
+    } else if (own.kind === 'INSURER') {
+      insurerId = own.id;
+    } else if (input.companyId) {
+      const co = await db.policyholderCompany.findFirst({ where: { id: input.companyId, tenantId: own.id }, select: { id: true } });
+      if (!co) throw new NotFoundException('بیمه‌گزار یافت نشد');
+      insurerId = (await this.policyholders.resolveContract(co.id, input.eventDate ? new Date(input.eventDate) : new Date()))?.insurerTenantId ?? null;
+    }
+    if (!insurerId) throw new BadRequestException('بیمه‌گر پرونده هنوز مشخص نیست');
+    if (!(await this.rateLimit.hit(`coverage:${ctx?.actorId ?? 'x'}`, 30, 3600))) throw new TooManyRequestsException('تعداد استعلام‌ها زیاد است. بعداً تلاش کنید');
+    return insurerId;
   }
 
   /** What the link page shows: the case number and its refused documents (label + why). */

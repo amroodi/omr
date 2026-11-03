@@ -184,6 +184,33 @@ export class CustomerService {
     return { ok: true, message: pw ? 'رمز عبور تنظیم شد.' : 'رمز عبور به کد ملی بازنشانی شد.' };
   }
 
+  /** Edit a نماینده's name / mobile (their کد ملی is the login and never changes). */
+  async updateAccount(id: string, input: { fullName?: string; phone?: string }) {
+    const acc = await this.prisma.scoped.customerAccount.findFirst({ where: { id, removedAt: null } });
+    if (!acc || !this.isPerson(acc.nationalCode)) throw new NotFoundException('نماینده یافت نشد');
+    return this.applyIdentity(acc, input, 'CustomerAccount');
+  }
+
+  /**
+   * New name and/or mobile of a person account. A changed mobile is checked with شاهکار again (when on)
+   * against their کد ملی, exactly as when the account was added.
+   */
+  private async applyIdentity(acc: { id: string; tenantId: string; nationalCode: string; phone: string | null }, input: { fullName?: string; phone?: string }, targetType: string) {
+    const data: Record<string, unknown> = {};
+    if (input.fullName !== undefined) data.fullName = input.fullName.trim() ? this.crypto.encrypt(input.fullName.trim()) : null;
+    if (input.phone !== undefined) {
+      const { nid, phone } = this.validatePair(this.crypto.decrypt(acc.nationalCode) ?? '', input.phone);
+      if (phone !== (acc.phone ? this.crypto.decrypt(acc.phone) : null)) {
+        const checked = await this.shahkar.assertMatch(nid, phone);
+        Object.assign(data, { phone: this.crypto.encrypt(phone), phoneHash: this.crypto.blindIndex(phone), shahkarVerifiedAt: checked ? new Date() : null });
+      }
+    }
+    if (!Object.keys(data).length) return { ok: true };
+    await this.prisma.unscoped().customerAccount.update({ where: { id: acc.id }, data });
+    await this.audit.record({ action: AuditAction.EDIT, tenantId: acc.tenantId, targetType, targetId: acc.id, metadata: { changed: Object.keys(data).filter((k) => k !== 'phoneHash' && k !== 'shahkarVerifiedAt') } });
+    return { ok: true };
+  }
+
   /** کارگزاری removes a نماینده: hidden everywhere and signed out; their cases stay as they are. */
   async removeAccount(id: string) {
     const acc = await this.prisma.scoped.customerAccount.findFirst({ where: { id, removedAt: null } });
@@ -421,13 +448,15 @@ export class CustomerService {
     return r;
   }
 
-  async updateAgent(id: string, input: { branchId?: string; active?: boolean }) {
+  async updateAgent(id: string, input: { branchId?: string; active?: boolean; fullName?: string; phone?: string }) {
     const tenantId = await this.insurerId();
     const acc = await this.prisma.unscoped().customerAccount.findFirst({ where: { id, tenantId, removedAt: null } });
     if (!acc || !this.isPerson(acc.nationalCode)) throw new NotFoundException('نماینده یافت نشد');
+    if (input.fullName !== undefined || input.phone !== undefined) await this.applyIdentity(acc, { fullName: input.fullName, phone: input.phone }, 'InsuranceAgent');
     const data: { branchId?: string; isActive?: boolean } = {};
     if (input.branchId) data.branchId = await this.ownBranch(tenantId, input.branchId);
     if (typeof input.active === 'boolean') data.isActive = input.active;
+    if (!Object.keys(data).length) return { ok: true };
     await this.prisma.unscoped().customerAccount.update({ where: { id }, data });
     await this.audit.record({ action: AuditAction.EDIT, tenantId, targetType: 'InsuranceAgent', targetId: id, metadata: data });
     return { ok: true };

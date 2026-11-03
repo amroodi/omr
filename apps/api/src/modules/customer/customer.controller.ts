@@ -22,7 +22,7 @@ import { PERMISSIONS } from '../../common/rbac/permissions';
 import { TenantResolverGuard } from '../../common/tenant/tenant-resolver.guard';
 import { ToAsciiDigits } from '../../common/validation/to-ascii.decorator';
 
-class CreateCustomerDto {
+export class CreateCustomerDto {
   @ToAsciiDigits() @IsString() @Length(8, 12) nationalCode!: string;
   @ToAsciiDigits() @IsString() @Matches(/^0?9\d{9}$/) phone!: string;
   @IsOptional() @IsString() @Length(2, 120) fullName?: string;
@@ -35,30 +35,38 @@ class CreateCustomerDto {
   @IsOptional() @IsString() @Length(0, 200) password?: string;
 }
 
-class AccountPasswordDto {
+export class AccountPasswordDto {
   @IsOptional() @IsString() @Length(0, 200) password?: string;
 }
 
 /** A نماینده added by their own بیمه‌گزار company (the company is the signed-in one). */
-class CompanyRepresentativeDto {
+export class CompanyRepresentativeDto {
   @ToAsciiDigits() @IsString() @Length(8, 12) nationalCode!: string;
   @ToAsciiDigits() @IsString() @Matches(/^0?9\d{9}$/) phone!: string;
   @IsOptional() @IsString() @Length(2, 120) fullName?: string;
   @IsOptional() @IsString() @Length(0, 200) password?: string;
 }
 
-class ActiveDto {
+export class ActiveDto {
   @IsBoolean() active!: boolean;
 }
 
 /** An insurer's نماینده بیمه: the same person details, plus the شعبه they work under. */
-class AgentDto extends CompanyRepresentativeDto {
+export class AgentDto extends CompanyRepresentativeDto {
   @IsUUID() branchId!: string;
 }
 
-class AgentUpdateDto {
+export class AgentUpdateDto {
   @IsOptional() @IsUUID() branchId?: string;
   @IsOptional() @IsBoolean() active?: boolean;
+  @IsOptional() @IsString() @Length(0, 120) fullName?: string;
+  @IsOptional() @ToAsciiDigits() @IsString() @Matches(/^0?9\d{9}$/, { message: 'شماره موبایل نامعتبر است' }) phone?: string;
+}
+
+/** Edit a نماینده: name and mobile (the کد ملی is their login and stays). */
+export class AccountUpdateDto {
+  @IsOptional() @IsString() @Length(0, 120) fullName?: string;
+  @IsOptional() @ToAsciiDigits() @IsString() @Matches(/^0?9\d{9}$/, { message: 'شماره موبایل نامعتبر است' }) phone?: string;
 }
 import { CustomerSignupStatus } from '@prisma/client';
 import { ClaimsService } from '../claims/claims.service';
@@ -193,6 +201,13 @@ export class CustomerController {
     return this.customer.setAccountPassword(id, dto.password);
   }
 
+  /** Edit a نماینده's name / mobile. */
+  @Permissions(PERMISSIONS.CUSTOMER_MANAGE)
+  @Patch('accounts/:id')
+  updateAccount(@Param('id') id: string, @Body() dto: AccountUpdateDto) {
+    return this.customer.updateAccount(id, dto);
+  }
+
   @Permissions(PERMISSIONS.CUSTOMER_MANAGE)
   @Post('accounts/:id/approve')
   approve(@Param('id') id: string) {
@@ -324,7 +339,7 @@ export class CustomerController {
   @Post('coverage-check')
   async coverageCheck(@Body() dto: CoverageCheckDto) {
     const insurerId = await this.claims.insurerOfContract(dto.contractId);
-    const r = await this.coverage.lookup(insurerId, dto.nationalCode);
+    const r = await this.coverage.lookup(insurerId, dto.nationalCode, dto.eventDate ? new Date(dto.eventDate) : null);
     return r ? { enabled: true, ...r } : { enabled: false };
   }
 

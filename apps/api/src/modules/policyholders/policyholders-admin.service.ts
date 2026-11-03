@@ -6,6 +6,10 @@ import { HashService } from '../../common/crypto/hash.service';
 import { fromJalali, toAsciiDigits, toJalali } from '../../common/jalali/jalali.util';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { allKinds, isKind, kindLabel } from '../../common/kinds';
+import { getContext } from '../../common/tenant/tenant-context';
+
+/** Who made a change, for the audit: Super Admin, or the brokerage's own admin (panel 2 «بیمه‌گزاران»). */
+const by = () => (getContext()?.actorType === 'SUPER_ADMIN' ? 'super' : 'org');
 
 
 /** Arabic ي/ك → Persian ی/ک, ZWNJ/extra spaces folded — the export uses Arabic letters. */
@@ -72,7 +76,7 @@ export class PolicyholdersAdminService {
     });
     await this.audit.record({
       action: AuditAction.EDIT, tenantId: brokerTenantId, targetType: 'BrokerPanelSettings',
-      metadata: { manualCompletion: input.manualCompletion, spareDesk: input.spareDesk, by: 'super' },
+      metadata: { manualCompletion: input.manualCompletion, spareDesk: input.spareDesk, by: by() },
     });
     return { ok: true };
   }
@@ -119,7 +123,7 @@ export class PolicyholdersAdminService {
     if (input.policyNumber?.trim() && input.insurerTenantId) {
       await this.addContract(c.id, { insurerTenantId: input.insurerTenantId, line: input.line ?? 'LIFE', policyNumber: input.policyNumber, startDate: input.startDate, endDate: input.endDate });
     }
-    await this.audit.record({ action: AuditAction.CREATE, tenantId: input.brokerTenantId, targetType: 'PolicyholderCompany', targetId: c.id, metadata: { code, by: 'super' } });
+    await this.audit.record({ action: AuditAction.CREATE, tenantId: input.brokerTenantId, targetType: 'PolicyholderCompany', targetId: c.id, metadata: { code, by: by() } });
     return c;
   }
 
@@ -133,7 +137,7 @@ export class PolicyholdersAdminService {
       where: { id },
       data: { ...(input.name ? { name: faName(input.name) } : {}), ...(code !== undefined ? { code: code || null } : {}), ...(input.isActive !== undefined ? { isActive: input.isActive } : {}) },
     });
-    await this.audit.record({ action: AuditAction.EDIT, tenantId: co.tenantId, targetType: 'PolicyholderCompany', targetId: id, metadata: { ...input, by: 'super' } });
+    await this.audit.record({ action: AuditAction.EDIT, tenantId: co.tenantId, targetType: 'PolicyholderCompany', targetId: id, metadata: { ...input, by: by() } });
     return { ok: true };
   }
 
@@ -144,7 +148,7 @@ export class PolicyholdersAdminService {
     const pw = password?.trim() || DEFAULT_POLICYHOLDER_PASSWORD;
     if (pw.length < 8) throw new BadRequestException('رمز عبور باید دست‌کم ۸ نویسه باشد');
     await this.db().policyholderCompany.update({ where: { id }, data: { passwordHash: await this.hash.hashPassword(pw), passwordSetAt: new Date(), mustChangePassword: pw === DEFAULT_POLICYHOLDER_PASSWORD } });
-    await this.audit.record({ action: AuditAction.EDIT, tenantId: co.tenantId, targetType: 'PolicyholderPassword', targetId: id, metadata: { by: 'super' } });
+    await this.audit.record({ action: AuditAction.EDIT, tenantId: co.tenantId, targetType: 'PolicyholderPassword', targetId: id, metadata: { by: by() } });
     return { code: co.code, name: co.name, password: pw };
   }
 
@@ -162,7 +166,7 @@ export class PolicyholdersAdminService {
       data: { companyId: id, insurerTenantId: input.insurerTenantId, line: input.line, policyNumber: toAsciiDigits(input.policyNumber).trim(), startDate, endDate },
       select: { id: true },
     });
-    await this.audit.record({ action: AuditAction.CREATE, tenantId: co.tenantId, targetType: 'PolicyholderContract', targetId: c.id, metadata: { companyId: id, line: input.line, by: 'super' } });
+    await this.audit.record({ action: AuditAction.CREATE, tenantId: co.tenantId, targetType: 'PolicyholderContract', targetId: c.id, metadata: { companyId: id, line: input.line, by: by() } });
     return c;
   }
 
@@ -189,7 +193,7 @@ export class PolicyholdersAdminService {
         db.policyholderCompany.updateMany({ where: { parentId: co.id }, data: { parentId: null } }),
         db.policyholderCompany.delete({ where: { id: co.id } }),
       ]);
-      await this.audit.record({ action: AuditAction.DELETE, tenantId: co.tenantId, targetType: 'PolicyholderCompany', targetId: co.id, metadata: { name: co.name, by: 'super' } });
+      await this.audit.record({ action: AuditAction.DELETE, tenantId: co.tenantId, targetType: 'PolicyholderCompany', targetId: co.id, metadata: { name: co.name, by: by() } });
       deleted++;
     }
     return { deleted, skipped };
@@ -228,7 +232,7 @@ export class PolicyholdersAdminService {
         startDate, endDate,
       },
     });
-    await this.audit.record({ action: AuditAction.EDIT, tenantId: co.tenantId, targetType: 'PolicyholderContract', targetId: contractId, metadata: { ...input, by: 'super' } });
+    await this.audit.record({ action: AuditAction.EDIT, tenantId: co.tenantId, targetType: 'PolicyholderContract', targetId: contractId, metadata: { ...input, by: by() } });
     return { ok: true };
   }
 

@@ -27,22 +27,22 @@ class BrokerSettingsDto {
   @IsOptional() @IsBoolean() manualCompletion?: boolean;
   @IsOptional() @IsBoolean() spareDesk?: boolean;
 }
-class AdminCompanyEditDto {
+export class AdminCompanyEditDto {
   @IsOptional() @IsString() @Length(2, 160) name?: string;
   @IsOptional() @IsString() @Length(0, 40) code?: string;
   @IsOptional() @IsBoolean() isActive?: boolean;
 }
-class AdminPasswordDto {
+export class AdminPasswordDto {
   @IsOptional() @IsString() @Length(0, 200) password?: string;
 }
-class AdminContractDto {
+export class AdminContractDto {
   @IsUUID() insurerTenantId!: string;
   @IsString() @Matches(KIND_CODE) line!: string;
   @IsString() @Length(1, 60) policyNumber!: string;
   @IsOptional() @ValidateIf((_, v) => v !== null && v !== '') @IsISO8601() startDate?: string | null;
   @IsOptional() @ValidateIf((_, v) => v !== null && v !== '') @IsISO8601() endDate?: string | null;
 }
-class AdminContractEditDto {
+export class AdminContractEditDto {
   @IsOptional() @IsBoolean() isActive?: boolean;
   @IsOptional() @IsString() @Matches(KIND_CODE) line?: string;
   @IsOptional() @IsString() @Length(1, 60) policyNumber?: string;
