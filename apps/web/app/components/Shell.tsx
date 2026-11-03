@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { ReactNode, useEffect, useState } from 'react';
-import { signOut, client, getTenantSlug, hasPerm, orgMode, Realm } from '../../lib/client';
+import { assistInfo, signOut, client, getTenantSlug, hasPerm, orgMode, Realm } from '../../lib/client';
 import { lastPanel, PanelKey, PANELS, rememberPanel } from '../../lib/panel';
 import { ChangePasswordModal } from './ChangePasswordModal';
 import { NotificationBell } from './NotificationBell';
@@ -70,11 +70,15 @@ export function Shell({
   const [panel, setPanel] = useState<PanelKey | null>(null);
   // Org sign-ins: panel 1 (data entry) or panel 2 (process); the menu and pages follow it.
   const [mode, setMode] = useState<'ENTRY' | 'PROCESS'>('PROCESS');
+  // Super Admin «ورود به پنل»: a banner, and the whole menu (level 5 both creates and processes).
+  const [assist, setAssist] = useState<{ name: string; endsAt: number } | null>(null);
+  const [left, setLeft] = useState(0);
   const [spareDesk, setSpareDesk] = useState(false);
 
   useEffect(() => {
     setMounted(true);
     if (realm === 'org') setMode(orgMode());
+    if (realm === 'org' || realm === 'customer') setAssist(assistInfo(realm));
     // Every panel starts as an icon rail (like Sinad); each remembers its own choice after that.
     try { const v = localStorage.getItem(railKey); setRail(v !== '0'); } catch {}
     if (realm === 'org' || realm === 'customer') setPanel(lastPanel(realm));
@@ -114,13 +118,21 @@ export function Shell({
   useEffect(() => {
     const item = nav.find((n) => n.href === pathname);
     if (panel && item?.panels && !item.panels.includes(panel)) router.replace(realm === 'customer' ? '/customer' : '/org/work-desk');
-    if (!mounted || realm !== 'org') return;
+    if (!mounted || realm !== 'org' || assist) return;
     // Panel 1 doesn't assess; panel 2 doesn't create cases.
     if ((item?.modes && !item.modes.includes(mode)) || (mode === 'ENTRY' && /^\/org\/claims\/[^/]+\/assess/.test(pathname))) router.replace('/org/work-desk');
-  }, [nav, pathname, panel, realm, router, mode, mounted]);
+  }, [nav, pathname, panel, realm, router, mode, mounted, assist]);
+  useEffect(() => {
+    if (!assist) return;
+    const tick = () => setLeft(Math.max(0, Math.round((assist.endsAt - Date.now()) / 60_000)));
+    tick();
+    const t = setInterval(tick, 20_000);
+    return () => clearInterval(t);
+  }, [assist]);
+  const endAssist = () => { signOut(realm); window.location.href = '/admin'; };
 
   const toggleRail = () => setRail((r) => { const n = !r; try { localStorage.setItem(railKey, n ? '1' : '0'); } catch {} return n; });
-  const visibleNav = nav.filter((n) => (!n.perm || (mounted && hasPerm(realm, n.perm))) && (!n.panels || !panel || n.panels.includes(panel)) && (n.feature !== 'spareDesk' || spareDesk) && (!n.modes || realm !== 'org' || (mounted && n.modes.includes(mode))));
+  const visibleNav = nav.filter((n) => (!n.perm || (mounted && hasPerm(realm, n.perm))) && (!n.panels || !panel || n.panels.includes(panel)) && (n.feature !== 'spareDesk' || spareDesk) && (!n.modes || realm !== 'org' || !!assist || (mounted && n.modes.includes(mode))));
   const info = panel ? PANELS[panel] : null;
   const homeHref = realm === 'customer' ? '/customer' : realm === 'super' ? '/admin' : '/org/work-desk';
   // «بازگشت»: one step back when the user arrived from inside the site, otherwise to the panel home.
@@ -142,6 +154,12 @@ export function Shell({
     <div className={`pshell${info ? ' has-panel' : ''}${realm === 'customer' ? ' is-customer' : ''}`} dir="rtl" style={info ? { ['--panel-accent' as any]: info.accent } : undefined}>
       {/* ── Content column (top bar + scrolling content) ── */}
       <div className="pshell-main">
+        {assist && (
+          <div className="assist-bar no-print" role="status">
+            <span>ورود مدیر سامانه به پنل «{assist.name}» — همهٔ کارها به نام مدیر سامانه ثبت می‌شود — {left.toLocaleString('fa-IR')} دقیقه باقی‌مانده</span>
+            <button type="button" onClick={endAssist}>پایان ورود</button>
+          </div>
+        )}
         <header className="ptopbar">
           <button
             onClick={() => setOpen(true)}

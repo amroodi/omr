@@ -75,16 +75,19 @@ export class AuditService {
   }
 
   private build(input: AuditInput, ctx: ReturnType<typeof getContext>, tenantId: string | null, prevHash: string | null, now: Date) {
+    // Super Admin «ورود به پنل»: the row is the Super Admin's, naming whose panel it was.
+    const assist = ctx?.assistBy ? { assistAs: { type: ctx.actorType, id: ctx.actorId ?? null } } : null;
+    const meta = assist ? { ...(input.metadata ?? {}), ...assist } : input.metadata;
     const row = {
       tenantId,
-      actorType: input.actorType ?? ctx?.actorType ?? 'SYSTEM',
-      actorId: input.actorId ?? ctx?.actorId ?? null,
+      actorType: assist ? 'SUPER_ADMIN' : input.actorType ?? ctx?.actorType ?? 'SYSTEM',
+      actorId: assist ? ctx!.assistBy! : input.actorId ?? ctx?.actorId ?? null,
       action: input.action,
       targetType: input.targetType ?? null,
       targetId: input.targetId ?? null,
       ip: ctx?.ip ?? null,
       userAgent: ctx?.userAgent ?? null,
-      metadata: input.metadata ? JSON.stringify(this.redact(input.metadata)) : null,
+      metadata: meta ? JSON.stringify(this.redact(meta)) : null,
       jalaliTimestamp: toJalali(now),
     };
     const device: DeviceFields = {

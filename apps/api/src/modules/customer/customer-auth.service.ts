@@ -101,7 +101,7 @@ export class CustomerAuthService {
   }
 
   /** The company's own panel account (created on first login); claims it files are linked to it. */
-  private async companyAccount(co: { id: string; tenantId: string; code: string | null; name: string }) {
+  async companyAccount(co: { id: string; tenantId: string; code: string | null; name: string }) {
     const db = this.prisma.unscoped();
     const nationalCodeHash = this.crypto.blindIndex(`company:${co.id}`)!;
     const found = await db.customerAccount.findFirst({ where: { tenantId: co.tenantId, nationalCodeHash }, select: { id: true, nationalCodeHash: true } });

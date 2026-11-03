@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { client, getToken } from '../../../../lib/client';
 import { Design, DesignApi, ThemeDesigner } from '../../../components/ThemeDesigner';
 import { ErrorBox, Field } from '../../../components/ui';
+import { AssistCard } from '../../../components/AssistCard';
 
 /**
  * «طراحی و تنظیمات سازمان» (super admin): design a new or existing organization — the theme, colours and
@@ -36,6 +37,10 @@ export default function OrgDesign() {
         </div>
         <Link href="/admin" className="btn btn-ghost btn-sm">بازگشت به مدیریت سازمان‌ها</Link>
       </div>
+      <section className="card p-5 space-y-3">
+        <h2 className="font-bold">ورود به پنل سازمان</h2>
+        <AssistCard tenantId={id} />
+      </section>
       <section className="card p-5 space-y-3">
         <h2 className="font-bold">طراحی ظاهر پنل‌ها</h2>
         <ThemeDesigner api={api} />

@@ -25,6 +25,7 @@ import { RemindersModule } from './modules/reminders/reminders.module';
 import { HealthController } from './modules/health/health.controller';
 import { PartnerModule } from './modules/partner/partner.module';
 import { PlatformModule } from './modules/platform/platform.module';
+import { AssistModule } from './modules/assist/assist.module';
 import { BrandingModule } from './modules/branding/branding.module';
 import { CasesModule } from './modules/cases/cases.module';
 import { ClaimFieldsModule } from './modules/claim-fields/claim-fields.module';
@@ -95,6 +96,7 @@ import { SecurityModule } from './modules/security/security.module';
     NotificationsModule,
     RemindersModule,
     PlatformModule,
+    AssistModule,
   ],
   controllers: [HealthController],
   providers: [

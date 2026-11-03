@@ -2088,3 +2088,9 @@ html:has(.pshell:not(.is-customer)) .pmodal-body { padding: 10px 14px; }
 .entry-tabs { display: flex; gap: 4px; padding: 4px; border-radius: 999px; background: var(--surface-2); }
 .entry-tabs button { flex: 1; padding: 7px 10px; border-radius: 999px; font-size: .82rem; font-weight: 700; color: var(--muted); transition: background .15s, color .15s; }
 .entry-tabs button.is-on { background: var(--surface); color: var(--brand); box-shadow: 0 1px 4px rgba(0, 0, 0, .08); }
+
+/* Super Admin «ورود به پنل»: impossible to miss while acting in someone else's panel */
+.assist-bar { position: sticky; top: 0; z-index: 60; display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap;
+  padding: 6px 12px; font-size: .8rem; font-weight: 800; color: #fff;
+  background: repeating-linear-gradient(135deg, #b91c1c 0 14px, #991b1b 14px 28px); }
+.assist-bar button { padding: 3px 12px; border-radius: 999px; background: #fff; color: #991b1b; font-weight: 800; }

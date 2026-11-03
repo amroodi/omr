@@ -169,8 +169,8 @@ export class ClaimsService {
   /** Human label for the current actor, for activity messages (e.g. «کارشناس احمدی»). */
   private async actorLabel(): Promise<string> {
     const ctx = getContext();
+    if (ctx?.assistBy || ctx?.actorType === 'SUPER_ADMIN') return 'مدیر سامانه';
     if (ctx?.actorType === 'CUSTOMER') return 'بیمه‌گزار';
-    if (ctx?.actorType === 'SUPER_ADMIN') return 'مدیر سامانه';
     if (ctx?.actorId) {
       const u = await this.db().orgUser.findUnique({ where: { id: ctx.actorId }, select: { displayName: true, username: true } });
       return u?.displayName || u?.username || 'کاربر سازمان';
@@ -1378,7 +1378,7 @@ export class ClaimsService {
     const STATE_VERB: Record<string, string> = { APPROVED: 'تایید کرد', REJECTED: 'رد کرد', PENDING: 'تایید/رد قبلی را برداشت و به «در دست بررسی» برگرداند' };
     const entries = logs.map((l) => {
       const m = this.safeJson(l.metadata) ?? {};
-      const who = (l.actorId && name.get(l.actorId)) || (l.actorType === 'CUSTOMER' || l.actorType === 'INSURED' ? 'بیمه‌گزار' : 'کاربر سامانه');
+      const who = (l.actorId && name.get(l.actorId)) || (l.actorType === 'SUPER_ADMIN' ? 'مدیر سامانه' : l.actorType === 'CUSTOMER' || l.actorType === 'INSURED' ? 'بیمه‌گزار' : 'کاربر سامانه');
       let text: string;
       if (l.targetType === 'ClaimDocumentReview') {
         const stage = this.store.labels(claim.insurerTenantId)[m.stage as Stage] ?? m.stage ?? '—';

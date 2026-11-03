@@ -49,6 +49,13 @@ export class JwtAuthGuard implements CanActivate {
     const ctx = (req as any).context as RequestContext;
     ctx.tenantId = payload.tenantId;
     ctx.actorId = payload.sub;
+    if (typeof payload.assist === 'string') {
+      // Super Admin «ورود به پنل»: never this person's own password or two-step login.
+      ctx.assistBy = payload.assist;
+      if (req.method !== 'GET' && /\/(auth\/(change-password|mfa)|customer\/password)/.test(req.path)) {
+        throw new ForbiddenException('در ورود مدیر سامانه به پنل، رمز عبور و ورود دومرحله‌ای همان کاربر تغییر نمی‌کند');
+      }
+    }
     // Sign-in tokens carry their «امنیت ورود» session; once it's ended the token is dead.
     if (payload.sid) {
       if (!(await this.sessions.isLive(payload.sid))) throw new UnauthorizedException('نشست شما پایان یافته است؛ دوباره وارد شوید');
