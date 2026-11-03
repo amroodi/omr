@@ -3,7 +3,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ArrayMaxSize, ArrayNotEmpty, IsArray, IsOptional, IsString, IsUUID, Length } from 'class-validator';
 import { Response } from 'express';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { BrokerPanelOnly, Permissions } from '../../common/rbac/decorators';
+import { BrokerPanelOnly, EntryOnly, Permissions } from '../../common/rbac/decorators';
 import { PERMISSIONS } from '../../common/rbac/permissions';
 import { SpareService } from './spare.service';
 
@@ -23,6 +23,7 @@ class ShareDto {
 
 /** «میز کار مستقل» of a brokerage. Off (Super Admin) or without `spare:work`, none of this answers. */
 @BrokerPanelOnly()
+@EntryOnly() // «میز کار مستقل» lives on panel 1
 @Permissions(PERMISSIONS.SPARE_WORK)
 @Controller('spare')
 export class SpareController {

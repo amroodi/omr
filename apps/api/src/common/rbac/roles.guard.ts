@@ -2,7 +2,7 @@ import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@
 import { Reflector } from '@nestjs/core';
 import { Request } from 'express';
 import { RequestContext } from '../tenant/tenant-context';
-import { IS_PUBLIC_KEY, PERMISSIONS_KEY, BROKER_PANEL_KEY, SUPER_ADMIN_KEY } from './decorators';
+import { IS_PUBLIC_KEY, PERMISSIONS_KEY, BROKER_PANEL_KEY, SUPER_ADMIN_KEY, ENTRY_KEY } from './decorators';
 import type { Permission } from './permissions';
 
 /**
@@ -37,6 +37,17 @@ export class RolesGuard implements CanActivate {
     ]);
     if (brokerOnly && ctx.actorType === 'ORG_USER' && ctx.panel !== 'BROKER') {
       throw new ForbiddenException('این بخش فقط در پنل کارگزاری در دسترس است');
+    }
+
+    // Only panel 1 creates cases; only panel 2 processes them (see EntryOnly / EntryAllowed).
+    if (ctx.actorType === 'ORG_USER') {
+      const entry = this.reflector.getAllAndOverride<'only' | 'allowed' | undefined>(ENTRY_KEY, [context.getHandler(), context.getClass()]);
+      if (ctx.panelMode === 'ENTRY') {
+        const open = entry || req.method === 'GET' || req.method === 'HEAD' || /\/(auth|security)\//.test(req.path);
+        if (!open) throw new ForbiddenException({ statusCode: 403, code: 'ENTRY_PANEL', message: 'در پنل ورود داده فقط ثبت پرونده و بارگذاری مدارک ممکن است؛ رسیدگی از «ورود برای ارزیابی پرونده‌ها» انجام می‌شود.' });
+      } else if (entry === 'only') {
+        throw new ForbiddenException({ statusCode: 403, code: 'PROCESS_PANEL', message: 'ثبت پرونده فقط از «ورود برای بارگذاری مدارک» در صفحهٔ اصلی ممکن است.' });
+      }
     }
 
     const required = this.reflector.getAllAndOverride<Permission[]>(PERMISSIONS_KEY, [

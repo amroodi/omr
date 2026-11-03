@@ -11,7 +11,7 @@ import { UploadButton } from '../../components/upload';
 type Line = 'LIFE' | 'ACCIDENT';
 interface Contract { id: string; line: Line | null; lineLabel: string | null; policyNumber: string | null; startIso?: string | null; endIso?: string | null; insurerTenantId: string; insurerName: string; startDate: string | null; endDate: string | null; isActive: boolean; inForce: boolean }
 interface Company { id: string; name: string; code: string | null; isActive: boolean; brokerTenantId: string; brokerName: string; hasPassword: boolean; mustChangePassword?: boolean; passwordSetAt: string | null; lines: Line[]; contracts: Contract[] }
-interface Opt { id: string; name: string; slug: string; manualCompletion?: boolean; spareDesk?: boolean; hasBrokerPassword?: boolean }
+interface Opt { id: string; name: string; slug: string; manualCompletion?: boolean; spareDesk?: boolean }
 interface Cred { code: string; name: string; password: string }
 interface ImportResult {
   sheets: { name: string; line: Line; rows: number }[]; companiesCreated: number; companiesUpdated: number;
@@ -55,7 +55,6 @@ export default function AdminPolicyholders() {
   const [cred, setCred] = useState<Cred | null>(null);
   const [nc, setNc] = useState({ line: 'LIFE' as Line, policyNumber: '', start: '', end: '', insurerTenantId: '' });
   const [newCo, setNewCo] = useState({ name: '', code: '', line: 'LIFE' as Line, policyNumber: '', start: '', end: '' });
-  const [brokerPw, setBrokerPw] = useState('');
   const [picked, setPicked] = useState<Set<string>>(new Set());
   // Editing: the open company's name / code / status, and one بیمه‌نامه row at a time.
   const [editCo, setEditCo] = useState<{ id: string; name: string; code: string; isActive: boolean } | null>(null);
@@ -151,8 +150,6 @@ export default function AdminPolicyholders() {
     on ? 'تکمیل دستی پرونده برای این کارگزاری باز شد' : 'تکمیل دستی پرونده برای این کارگزاری قفل شد');
   const setSpare = (on: boolean) => act(async () => { await client.post('/admin/policyholders/broker-settings', { brokerTenantId: broker, spareDesk: on }, 'super'); await reloadOpts(); },
     on ? 'میز کار مستقل برای این کارگزاری فعال شد' : 'میز کار مستقل برای این کارگزاری غیرفعال و پنهان شد');
-  const saveBrokerPw = () => act(async () => { await client.post('/admin/policyholders/broker-settings', { brokerTenantId: broker, brokerPassword: brokerPw }, 'super'); setBrokerPw(''); await reloadOpts(); },
-    'رمز ورود «broker» ذخیره شد');
 
   return (
     <div className="space-y-4">
@@ -233,14 +230,6 @@ export default function AdminPolicyholders() {
               <input type="checkbox" checked={!!brokerOpt.spareDesk} onChange={(e) => setSpare(e.target.checked)} />
               {brokerOpt.spareDesk ? 'فعال است' : 'غیرفعال است'}
             </label>
-          </div>
-          <div className="space-y-2">
-            <div className="font-bold text-sm">ورود کارگزاری در پنل بیمه‌گزار</div>
-            <p className="text-xs" style={{ color: 'var(--muted)' }}>در صفحهٔ ورود بیمه‌گزار، به‌جای کد بیمه‌گزار «broker» و این رمز را وارد کنید؛ همهٔ بیمه‌گزاران این کارگزاری را می‌بینید و برایشان پرونده ثبت می‌کنید. {brokerOpt.hasBrokerPassword ? 'رمز تعیین شده است.' : 'هنوز رمزی تعیین نشده و این ورود غیرفعال است.'}</p>
-            <div className="flex gap-2">
-              <input className="input" type="text" autoComplete="off" style={{ direction: 'ltr', textAlign: 'right' }} placeholder="رمز جدید (دست‌کم ۸ نویسه)" value={brokerPw} onChange={(e) => setBrokerPw(e.target.value)} />
-              <button className="btn btn-primary btn-sm" disabled={brokerPw.length < 8} onClick={saveBrokerPw}>{brokerOpt.hasBrokerPassword ? 'تغییر رمز' : 'تعیین رمز'}</button>
-            </div>
           </div>
         </div>
       )}

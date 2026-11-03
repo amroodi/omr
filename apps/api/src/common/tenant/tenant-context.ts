@@ -29,6 +29,8 @@ export interface RequestContext {
   customerRepresentative?: boolean;
   /** Org user: which panel the session signed in to (کارگزاری / شعبه / ستاد / شورای فنی) — display only. */
   panel?: string;
+  /** Org user: panel 1 (ENTRY: creating cases) or panel 2 (PROCESS: assessment). Tokens without one are PROCESS. */
+  panelMode?: 'ENTRY' | 'PROCESS';
   /** Org user's branch, when branch-bound. */
   branchId?: string;
   /** When true, org queries must be restricted to `branchId` (branch admin / staff). */

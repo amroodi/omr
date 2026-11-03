@@ -62,20 +62,30 @@ export function signOut(realm: Realm): void {
   clearToken(realm);
 }
 
+/** The realm's JWT payload (set at login). UI-gating only — the API checks everything itself. */
+function tokenPayload(realm: Realm): Record<string, any> | null {
+  const t = getToken(realm);
+  if (!t) return null;
+  try {
+    const part = t.split('.')[1];
+    if (!part) return null;
+    const b64 = part.replace(/-/g, '+').replace(/_/g, '/').padEnd(part.length + ((4 - (part.length % 4)) % 4), '=');
+    return JSON.parse(decodeURIComponent(escape(atob(b64))));
+  } catch {
+    return null;
+  }
+}
+
 /** Decode the permissions embedded in the realm's JWT (set at login). UI-gating only — the API
  * independently enforces every permission, so a tampered token still can't perform the action. */
 export function getPermissions(realm: Realm): string[] {
-  const t = getToken(realm);
-  if (!t) return [];
-  try {
-    const part = t.split('.')[1];
-    if (!part) return [];
-    const b64 = part.replace(/-/g, '+').replace(/_/g, '/').padEnd(part.length + ((4 - (part.length % 4)) % 4), '=');
-    const payload = JSON.parse(decodeURIComponent(escape(atob(b64))));
-    return Array.isArray(payload.permissions) ? payload.permissions : [];
-  } catch {
-    return [];
-  }
+  const p = tokenPayload(realm)?.permissions;
+  return Array.isArray(p) ? p : [];
+}
+
+/** Org sign-in: panel 1 «ورود برای بارگذاری مدارک» (ENTRY) or panel 2 «ورود برای ارزیابی پرونده‌ها» (PROCESS). */
+export function orgMode(): 'ENTRY' | 'PROCESS' {
+  return tokenPayload('org')?.mode === 'ENTRY' ? 'ENTRY' : 'PROCESS';
 }
 
 /** True if the realm's token grants the permission (or any of them when given a list). */

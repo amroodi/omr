@@ -47,33 +47,31 @@ export class PolicyholdersAdminService {
   /** Brokerages (that own companies) and insurers, for the page's pickers. */
   async options() {
     const tenants = await this.db().tenant.findMany({ where: { isActive: true }, orderBy: { name: 'asc' }, select: { id: true, name: true, slug: true, kind: true } });
-    const flags = await this.db().tenant.findMany({ where: { kind: 'BROKER' }, select: { id: true, manualCompletion: true, spareDeskEnabled: true, brokerPanelPasswordHash: true } });
+    const flags = await this.db().tenant.findMany({ where: { kind: 'BROKER' }, select: { id: true, manualCompletion: true, spareDeskEnabled: true } });
     const f = new Map(flags.map((x) => [x.id, x]));
     return {
-      brokers: tenants.filter((t) => t.kind === 'BROKER').map((t) => ({ ...t, manualCompletion: f.get(t.id)?.manualCompletion ?? true, spareDesk: !!f.get(t.id)?.spareDeskEnabled, hasBrokerPassword: !!f.get(t.id)?.brokerPanelPasswordHash })),
+      brokers: tenants.filter((t) => t.kind === 'BROKER').map((t) => ({ ...t, manualCompletion: f.get(t.id)?.manualCompletion ?? true, spareDesk: !!f.get(t.id)?.spareDeskEnabled })),
       insurers: tenants.filter((t) => t.kind === 'INSURER'),
     };
   }
 
   /**
-   * Per-brokerage switches: «تکمیل دستی پرونده» (staff may complete a case by hand from «ویرایش») and the
-   * password of the «broker» login on the بیمه‌گزار panel.
+   * Per-brokerage switches: «تکمیل دستی پرونده» (staff may complete a case by hand from «ویرایش») and
+   * «میز کار مستقل».
    */
-  async brokerSettings(brokerTenantId: string, input: { manualCompletion?: boolean; spareDesk?: boolean; brokerPassword?: string }) {
+  async brokerSettings(brokerTenantId: string, input: { manualCompletion?: boolean; spareDesk?: boolean }) {
     const t = await this.db().tenant.findUnique({ where: { id: brokerTenantId }, select: { kind: true } });
     if (t?.kind !== 'BROKER') throw new BadRequestException('کارگزاری نامعتبر است');
-    if (input.brokerPassword !== undefined && input.brokerPassword.length < 8) throw new BadRequestException('رمز عبور باید دست‌کم ۸ نویسه باشد');
     await this.db().tenant.update({
       where: { id: brokerTenantId },
       data: {
         ...(input.manualCompletion !== undefined ? { manualCompletion: input.manualCompletion } : {}),
         ...(input.spareDesk !== undefined ? { spareDeskEnabled: input.spareDesk } : {}),
-        ...(input.brokerPassword ? { brokerPanelPasswordHash: await this.hash.hashPassword(input.brokerPassword) } : {}),
       },
     });
     await this.audit.record({
       action: AuditAction.EDIT, tenantId: brokerTenantId, targetType: 'BrokerPanelSettings',
-      metadata: { manualCompletion: input.manualCompletion, spareDesk: input.spareDesk, brokerPassword: input.brokerPassword ? 'changed' : undefined, by: 'super' },
+      metadata: { manualCompletion: input.manualCompletion, spareDesk: input.spareDesk, by: 'super' },
     });
     return { ok: true };
   }

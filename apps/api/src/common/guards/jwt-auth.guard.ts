@@ -68,6 +68,8 @@ export class JwtAuthGuard implements CanActivate {
       ctx.insuredPhoneHash = payload.sub;
       ctx.permissions = [];
     } else if (payload.kind === 'customer') {
+      // The shared «broker» login was removed: a brokerage's staff use their own accounts on panel 1.
+      if (payload.brokerPanel === true) throw new UnauthorizedException('ورود مشترک کارگزاری حذف شده است؛ با حساب کاربری خود از «ورود برای بارگذاری مدارک» وارد شوید');
       ctx.actorType = 'CUSTOMER';
       ctx.customerNidHash = payload.nidHash;
       ctx.customerCompanyId = payload.companyId ?? undefined;
@@ -92,6 +94,7 @@ export class JwtAuthGuard implements CanActivate {
       ctx.permissions = payload.permissions ?? [];
       ctx.branchId = payload.branchId ?? undefined;
       ctx.panel = payload.panel ?? undefined;
+      ctx.panelMode = payload.mode === 'ENTRY' ? 'ENTRY' : 'PROCESS';
       // Branch-bound users without an org-wide scope see only their branch.
       ctx.branchScoped = !!payload.branchId && !(payload.permissions ?? []).includes('branch:manage');
     }

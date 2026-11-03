@@ -9,12 +9,12 @@ import { ErrorBox, Field } from './ui';
 const toAscii = (s: string) => s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
 
 /**
- * One login page for both customer panels (/customer/login): «نام کاربری» is the کد بیمه‌گزار (company,
- * or «broker») or a نماینده's کد ملی, + password. After login each gets its own panel (پنل بیمه‌گزار /
+ * One login page for both customer panels (/customer/login): «نام کاربری» is the کد بیمه‌گزار (company)
+ * or a نماینده's کد ملی, + password. On /entry/login it is one tab of a chosen organization (`slug`). After login each gets its own panel (پنل بیمه‌گزار /
  * پنل نماینده). «حساب کاربری ندارید؟» sends a نماینده's signup request: name, کد ملی and mobile are
  * checked with شاهکار (when on), the mobile is confirmed by SMS code, then the organization approves it.
  */
-export function CustomerLoginPage() {
+export function CustomerLoginPage({ slug: fixedSlug, switcher }: { slug?: string; switcher?: React.ReactNode } = {}) {
   const info = PANELS.COMPANY;
   const router = useRouter();
   const [mode, setMode] = useState<'login' | 'signup'>('login');
@@ -25,9 +25,9 @@ export function CustomerLoginPage() {
   const [loading, setLoading] = useState(false);
   // The brokerage this site belongs to (config); without it, the last-used organization if it is a
   // brokerage, else the first brokerage — never an insurer chosen on an org login in this browser.
-  const [brokerSlug, setBrokerSlug] = useState<string>(process.env.NEXT_PUBLIC_TENANT_SLUG || '');
+  const [brokerSlug, setBrokerSlug] = useState<string>(fixedSlug || process.env.NEXT_PUBLIC_TENANT_SLUG || '');
   useEffect(() => {
-    if (process.env.NEXT_PUBLIC_TENANT_SLUG) return;
+    if (fixedSlug || process.env.NEXT_PUBLIC_TENANT_SLUG) return;
     fetch(`${client.base}/customer/orgs`).then((r) => (r.ok ? r.json() : [])).then((l: { slug: string; kind?: string }[]) => {
       const brokers = (Array.isArray(l) ? l : []).filter((o) => o.kind === 'BROKER');
       const last = getTenantSlug();
@@ -54,6 +54,7 @@ export function CustomerLoginPage() {
   return (
     <AuthCard title={info.title} subtitle={info.subtitle} bg={{ light: ['cust-day-1', 'cust-day-2'], dark: ['cust-night-1'] }}>
       <form className="space-y-4" onSubmit={login}>
+        {switcher}
         <ErrorBox message={error} />
         <Field label="نام کاربری">
           <input value={code} onChange={(e) => setCode(e.target.value)} className="input latin-digits" autoComplete="username" autoCapitalize="off"

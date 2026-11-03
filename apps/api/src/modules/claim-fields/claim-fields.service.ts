@@ -140,7 +140,7 @@ export class ClaimFieldsService {
         source: fb ? fbSource : v?.source ?? null,
         confidence: v?.confidence ?? null,
         confirmed: !!v?.confirmedAt,
-        canEdit: claim.status !== 'PAID' && (handKept || !MANUAL_FLOW_KEYS.has(d.key)) && (manual || d.editableBy.includes(party)), // archived once paid; the hierarchy fills its own stages
+        canEdit: getContext()?.panelMode !== 'ENTRY' && claim.status !== 'PAID' && (handKept || !MANUAL_FLOW_KEYS.has(d.key)) && (manual || d.editableBy.includes(party)), // archived once paid; the hierarchy fills its own stages
       });
     }
     return { claimId, party, manual, groups, archived: claim.status === 'PAID' };

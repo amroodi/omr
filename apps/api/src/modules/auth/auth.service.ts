@@ -21,7 +21,12 @@ export interface TokenResult {
   mfaSetupRequired?: boolean;
   /** Which org panel this session is (کارگزاری / شعبه / ستاد / شورای فنی). */
   panel?: Panel;
+  /** Panel 1 (ENTRY) or panel 2 (PROCESS). */
+  mode?: 'ENTRY' | 'PROCESS';
 }
+
+/** Roles that may sign in to panel 1: they can create cases in some way. */
+const ENTRY_PERMS = ['claim:file', 'claim:file-on-behalf', 'import:batch', 'spare:work'];
 
 /** The org panels — one per desk, each with its own login page. */
 export type Panel = 'BROKER' | 'BRANCH' | 'HQ' | 'COUNCIL';
@@ -30,12 +35,12 @@ const PANEL_FA: Record<Panel, string> = { BROKER: 'پنل کارگزاری', BRA
 @Injectable()
 export class AuthService {
   /** Display name of the signed-in org user / super admin (the panel's top bar). */
-  async me(actorType?: string, actorId?: string, panel?: string): Promise<{ name: string | null; panel?: string | null; spareDesk?: boolean }> {
+  async me(actorType?: string, actorId?: string, panel?: string, mode?: string): Promise<{ name: string | null; panel?: string | null; mode?: string; spareDesk?: boolean }> {
     if (!actorId) return { name: null };
     const db = this.prisma.unscoped();
     if (actorType === 'ORG_USER') {
       const u = await db.orgUser.findUnique({ where: { id: actorId }, select: { displayName: true, username: true, tenant: { select: { spareDeskEnabled: true } } } });
-      return { name: u?.displayName || u?.username || null, panel: panel ?? null, spareDesk: !!u?.tenant?.spareDeskEnabled };
+      return { name: u?.displayName || u?.username || null, panel: panel ?? null, mode: mode ?? 'PROCESS', spareDesk: !!u?.tenant?.spareDeskEnabled };
     }
     if (actorType === 'SUPER_ADMIN') {
       const a = await db.superAdmin.findUnique({ where: { id: actorId }, select: { email: true } });
@@ -103,6 +108,16 @@ export class AuthService {
       panel = dto.panel;
     }
 
+    // Panel 1 «ورود برای بارگذاری مدارک»: for now only a brokerage's staff (an insurer's comes later),
+    // and only accounts whose role can create cases.
+    const mode = dto.mode === 'ENTRY' ? 'ENTRY' : 'PROCESS';
+    if (mode === 'ENTRY') {
+      if (tenant.kind !== 'BROKER') throw new ForbiddenException({ statusCode: 403, code: 'NO_ENTRY_PANEL', message: 'ورود داده برای بیمه‌گر هنوز فعال نیست؛ از «ورود برای ارزیابی پرونده‌ها» وارد شوید.' });
+      if (!(user!.role?.permissions ?? []).some((p) => ENTRY_PERMS.includes(p))) {
+        throw new ForbiddenException({ statusCode: 403, code: 'NO_ENTRY_PANEL', message: 'این حساب کاربری دسترسی ثبت پرونده ندارد؛ از «ورود برای ارزیابی پرونده‌ها» وارد شوید.' });
+      }
+    }
+
     // Two-step login: with an authenticator set up, the 6-digit code is required too.
     await this.mfa.check({ kind: 'ORG_USER', id: user!.id }, user!, dto.totp);
     // The org requires two-step login but this user hasn't set it up: a token that can only reach
@@ -111,9 +126,9 @@ export class AuthService {
 
     const permissions = user!.role?.permissions ?? [];
     const expiresIn = mfaSetup ? '15m' : this.config.get<string>('JWT_SESSION_TTL', '8h');
-    const sid = await this.sessions.start({ realm: 'ORG', actorId: user!.id, actorLabel: `${user!.displayName || dto.username} (${dto.username})`, tenantId: tenant.id });
+    const sid = await this.sessions.start({ realm: 'ORG', actorId: user!.id, actorLabel: `${user!.displayName || dto.username} (${dto.username})${mode === 'ENTRY' ? ' — ورود داده' : ''}`, tenantId: tenant.id });
     const token = await this.jwt.signAsync(
-      { kind: 'org', sub: user!.id, sid, tenantId: tenant.id, permissions, branchId: user!.branchId ?? null, panel, ...(mfaSetup ? { mfaSetup: true } : {}) },
+      { kind: 'org', sub: user!.id, sid, tenantId: tenant.id, permissions, branchId: user!.branchId ?? null, panel, mode, ...(mfaSetup ? { mfaSetup: true } : {}) },
       { expiresIn: jwtTtl(expiresIn) },
     );
     await db.orgUser.update({ where: { id: user!.id }, data: { lastLoginAt: new Date() } });
@@ -122,6 +137,7 @@ export class AuthService {
       tenantId: tenant.id,
       actorType: 'ORG_USER',
       actorId: user!.id,
+      metadata: { mode },
     });
 
     return {
@@ -129,6 +145,7 @@ export class AuthService {
       expiresIn,
       actor: { id: user!.id, displayName: user!.displayName, permissions },
       panel,
+      mode,
       ...(mfaSetup ? { mfaSetupRequired: true } : {}),
     };
   }
