@@ -2,7 +2,7 @@
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { client, getToken, hasPerm, orgMode } from '../../../lib/client';
+import { assistInfo, client, getToken, hasPerm, orgMode } from '../../../lib/client';
 import { Shell, Icon } from '../../components/Shell';
 import { ORG_NAV } from '../nav';
 import { CLAIM_TYPE_LABELS, claimTypeLabel, ErrorBox, FancyLoader, NoticeModal, Overlay, STATUS_MAP, StatusBadge } from '../../components/ui';
@@ -64,7 +64,7 @@ function WorkDesk() {
   // an SSR/client hydration mismatch.
   const [canFile, setCanFile] = useState(false);
   const [entry, setEntry] = useState(false);
-  useEffect(() => { const e = orgMode() === 'ENTRY'; setEntry(e); setCanFile(e && hasPerm('org', 'claim:file')); }, []);
+  useEffect(() => { const e = orgMode() === 'ENTRY'; setEntry(e); setCanFile((e || !!assistInfo('org')) && hasPerm('org', 'claim:file')); }, []);
 
   useEffect(() => {
     if (!getToken('org')) { router.push('/org/login'); return; }

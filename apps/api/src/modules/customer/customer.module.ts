@@ -10,5 +10,6 @@ import { CustomerService } from './customer.service';
   imports: [AuthModule, ClaimsModule, NotificationsModule], // SmsService + ClaimsService + notifications
   controllers: [CustomerController],
   providers: [CustomerAuthService, CustomerService],
+  exports: [CustomerAuthService], // Super Admin «ورود به پنل» (AssistModule) uses its company account
 })
 export class CustomerModule {}

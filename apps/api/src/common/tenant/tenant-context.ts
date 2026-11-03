@@ -29,6 +29,11 @@ export interface RequestContext {
   customerRepresentative?: boolean;
   /** Org user: which panel the session signed in to (کارگزاری / شعبه / ستاد / شورای فنی) — display only. */
   panel?: string;
+  /**
+   * Super Admin «ورود به پنل»: the Super Admin's id while acting in this person's panel. Every audit row of
+   * the request is written under the Super Admin, and the panel 1 / panel 2 rule doesn't apply.
+   */
+  assistBy?: string;
   /** Org user: panel 1 (ENTRY: creating cases) or panel 2 (PROCESS: assessment). Tokens without one are PROCESS. */
   panelMode?: 'ENTRY' | 'PROCESS';
   /** Org user's branch, when branch-bound. */

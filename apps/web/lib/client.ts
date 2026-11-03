@@ -83,6 +83,12 @@ export function getPermissions(realm: Realm): string[] {
   return Array.isArray(p) ? p : [];
 }
 
+/** Super Admin «ورود به پنل»: whose panel this is and when it ends (null for an ordinary sign-in). */
+export function assistInfo(realm: Realm): { name: string; endsAt: number } | null {
+  const p = tokenPayload(realm);
+  return p?.assist ? { name: String(p.assistName || ''), endsAt: Number(p.exp || 0) * 1000 } : null;
+}
+
 /** Org sign-in: panel 1 «ورود برای بارگذاری مدارک» (ENTRY) or panel 2 «ورود برای ارزیابی پرونده‌ها» (PROCESS). */
 export function orgMode(): 'ENTRY' | 'PROCESS' {
   return tokenPayload('org')?.mode === 'ENTRY' ? 'ENTRY' : 'PROCESS';

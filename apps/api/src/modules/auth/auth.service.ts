@@ -30,6 +30,11 @@ const ENTRY_PERMS = ['claim:file', 'claim:file-on-behalf', 'import:batch', 'spar
 
 /** The org panels — one per desk, each with its own login page. */
 export type Panel = 'BROKER' | 'BRANCH' | 'HQ' | 'COUNCIL';
+/** The desk an org account works at: a brokerage's staff → کارگزاری; an insurer's → its desk or branch. */
+export function homePanel(tenantKind: string, user: { desk?: string | null; branchId?: string | null }): Panel {
+  if (tenantKind === 'BROKER') return 'BROKER';
+  return user.desk === 'HQ' || user.desk === 'COUNCIL' || user.desk === 'BRANCH' ? user.desk : user.branchId ? 'BRANCH' : 'HQ';
+}
 const PANEL_FA: Record<Panel, string> = { BROKER: 'پنل کارگزاری', BRANCH: 'پنل شعبه', HQ: 'پنل ستاد', COUNCIL: 'پنل شورای فنی' };
 
 @Injectable()
@@ -98,7 +103,7 @@ export class AuthService {
 
     // Separate panels: کارگزاری, شعبه, ستاد and شورای فنی each have their own login page. The password
     // was right, so say which panel this account belongs to (an insurer admin may use any of its own).
-    const home: Panel = tenant.kind === 'BROKER' ? 'BROKER' : user!.desk === 'HQ' || user!.desk === 'COUNCIL' || user!.desk === 'BRANCH' ? user!.desk : user!.branchId ? 'BRANCH' : 'HQ';
+    const home: Panel = homePanel(tenant.kind, user!);
     const insurerAdmin = tenant.kind === 'INSURER' && (user!.role?.permissions ?? []).includes('claim:override');
     let panel: Panel = home;
     if (dto.panel && dto.panel !== home) {

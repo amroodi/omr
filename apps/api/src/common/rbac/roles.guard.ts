@@ -40,7 +40,7 @@ export class RolesGuard implements CanActivate {
     }
 
     // Only panel 1 creates cases; only panel 2 processes them (see EntryOnly / EntryAllowed).
-    if (ctx.actorType === 'ORG_USER') {
+    if (ctx.actorType === 'ORG_USER' && !ctx.assistBy) { // level 5 (Super Admin) may create and process anywhere
       const entry = this.reflector.getAllAndOverride<'only' | 'allowed' | undefined>(ENTRY_KEY, [context.getHandler(), context.getClass()]);
       if (ctx.panelMode === 'ENTRY') {
         const open = entry || req.method === 'GET' || req.method === 'HEAD' || /\/(auth|security)\//.test(req.path);

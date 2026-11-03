@@ -5,10 +5,10 @@ import { ENTRY_KEY, PERMISSIONS_KEY } from './decorators';
 
 /** Panel 1 creates cases, panel 2 processes them: the guard enforces both directions. */
 describe('RolesGuard — panel 1 / panel 2', () => {
-  const run = (opts: { mode?: 'ENTRY' | 'PROCESS'; entry?: 'only' | 'allowed'; method?: string; path?: string; actorType?: string }) => {
+  const run = (opts: { mode?: 'ENTRY' | 'PROCESS'; entry?: 'only' | 'allowed'; method?: string; path?: string; actorType?: string; assistBy?: string }) => {
     const meta: Record<string, unknown> = { [ENTRY_KEY]: opts.entry, [PERMISSIONS_KEY]: ['claim:read'] };
     const reflector = { getAllAndOverride: (key: string) => meta[key] } as unknown as Reflector;
-    const req = { method: opts.method ?? 'POST', path: opts.path ?? '/api/v1/claims/x/action', context: { actorType: opts.actorType ?? 'ORG_USER', panelMode: opts.mode ?? 'PROCESS', permissions: ['claim:read'] } };
+    const req = { method: opts.method ?? 'POST', path: opts.path ?? '/api/v1/claims/x/action', context: { actorType: opts.actorType ?? 'ORG_USER', panelMode: opts.mode ?? 'PROCESS', permissions: ['claim:read'], assistBy: opts.assistBy } };
     const ctx = { getHandler: () => null, getClass: () => null, switchToHttp: () => ({ getRequest: () => req }) } as any;
     return () => new RolesGuard(reflector).canActivate(ctx);
   };
@@ -29,6 +29,10 @@ describe('RolesGuard — panel 1 / panel 2', () => {
   it('lets both panels make a write marked for both', () => {
     expect(run({ mode: 'ENTRY', entry: 'allowed' })()).toBe(true);
     expect(run({ mode: 'PROCESS', entry: 'allowed' })()).toBe(true);
+  });
+  it('lets Super Admin «ورود به پنل» create and process in either panel', () => {
+    expect(run({ mode: 'PROCESS', entry: 'only', assistBy: 'super-1' })()).toBe(true);
+    expect(run({ mode: 'ENTRY', assistBy: 'super-1' })()).toBe(true);
   });
   it('leaves panel 2 processing as it was', () => {
     expect(run({ mode: 'PROCESS' })()).toBe(true);

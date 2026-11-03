@@ -19,6 +19,9 @@ export const ALERT_FA: Record<AlertKind, string> = {
   SHARED_DEVICE: 'یک دستگاه برای چند حساب',
   OFF_HOURS: 'ورود خارج از ساعت کاری',
 };
+/** Super Admin «ورود به پنل» — not a check that can be switched off, so not in ALERT_KINDS. */
+export const ASSIST_KIND = 'ASSIST';
+const ASSIST_FA = 'ورود مدیر سامانه به پنل';
 export const REALM_FA: Record<Realm, string> = { INSURED: 'بیمه‌شده', ORG: 'کاربران سازمان‌ها', SUPER: 'مدیر سامانه', CUSTOMER: 'بیمه‌گزار و نمایندگان' };
 
 const ACTIVE_MIN = 15; // «هم‌زمان»: the other session was used within this many minutes
@@ -184,6 +187,22 @@ export class SessionsService {
     if (sent) await this.db().securityAlert.update({ where: { id: alert.id }, data: { smsSent: true } });
   }
 
+  /**
+   * Super Admin entered someone's panel: always recorded, and texted to the Super Admin's own numbers
+   * whenever any are set (whatever the other alert switches say — it's how a stolen Super Admin login shows).
+   */
+  async assistAlert(s: { id: string; actorId: string; actorLabel: string }, message: string) {
+    const alert = await this.db().securityAlert.create({ data: { kind: ASSIST_KIND, sessionId: s.id, realm: 'SUPER', actorId: s.actorId, actorLabel: s.actorLabel, message } });
+    const phones = this.phones(await this.settingsRow());
+    if (!phones.length || !(await this.rateLimit.hit('secalert:sms', SMS_PER_HOUR, 3600))) return;
+    let sent = false;
+    for (const p of phones) {
+      try { await this.sms.sendViaPlatform(p, `امنیت ورود — ${ASSIST_FA}
+${message}`); sent = true; } catch (e) { this.logger.error(`Assist alert SMS failed: ${String(e)}`); }
+    }
+    if (sent) await this.db().securityAlert.update({ where: { id: alert.id }, data: { smsSent: true } });
+  }
+
   // ─────────────────────────── Super Admin ───────────────────────────
   async sessions(q: { active?: string; actor?: string; realm?: string; device?: string; page?: string }) {
     const db = this.db();
@@ -240,7 +259,7 @@ export class SessionsService {
     return {
       total, unseen, page,
       items: rows.map((a) => ({
-        id: a.id, kind: a.kind, kindLabel: ALERT_FA[a.kind as AlertKind] ?? a.kind, realm: a.realm, actorId: a.actorId, actorLabel: a.actorLabel,
+        id: a.id, kind: a.kind, kindLabel: a.kind === ASSIST_KIND ? ASSIST_FA : ALERT_FA[a.kind as AlertKind] ?? a.kind, realm: a.realm, actorId: a.actorId, actorLabel: a.actorLabel,
         message: a.message, smsSent: a.smsSent, seen: !!a.seenAt, createdAt: toJalali(a.createdAt), session: a.session, sessionId: a.sessionId,
       })),
     };
