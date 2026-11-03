@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Query, Uploa
 import { FileInterceptor } from '@nestjs/platform-express';
 import { IsOptional, IsString, Length } from 'class-validator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { Public } from '../../common/rbac/decorators';
+import { Public, Realms } from '../../common/rbac/decorators';
 import { ClaimsService } from '../claims/claims.service';
 import { InsuredService } from './insured.service';
 
@@ -33,12 +33,14 @@ export class InsuredController {
     return this.svc.verifyOtp(dto.phone, dto.code);
   }
 
+  @Realms('INSURED')
   @UseGuards(JwtAuthGuard)
   @Get('cases')
   cases() {
     return this.svc.cases();
   }
 
+  @Realms('INSURED')
   @UseGuards(JwtAuthGuard)
   @Post('cases/:id/documents')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 15 * 1024 * 1024 } }))
@@ -52,6 +54,7 @@ export class InsuredController {
 export class InsuredInviteController {
   constructor(private readonly svc: InsuredService, private readonly claims: ClaimsService) {}
 
+  @Realms('CUSTOMER')
   @UseGuards(JwtAuthGuard)
   @Get()
   async list(@Param('id', ParseUUIDPipe) id: string) {
@@ -59,12 +62,14 @@ export class InsuredInviteController {
     return this.svc.invites(c.id);
   }
 
+  @Realms('CUSTOMER')
   @UseGuards(JwtAuthGuard)
   @Post()
   async invite(@Param('id', ParseUUIDPipe) id: string, @Body() dto: InviteDto) {
     return this.svc.invite(await this.claims.claimForParty(id), dto.phone, dto.fullName);
   }
 
+  @Realms('CUSTOMER')
   @UseGuards(JwtAuthGuard)
   @Delete(':accessId')
   async revoke(@Param('id', ParseUUIDPipe) id: string, @Param('accessId', ParseUUIDPipe) accessId: string) {

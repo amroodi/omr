@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { Public } from '../../common/rbac/decorators';
+import { Public, Realms } from '../../common/rbac/decorators';
 import { TenantResolverGuard } from '../../common/tenant/tenant-resolver.guard';
 import { InquiryMessageDto, RequestOtpDto, VerifyOtpDto } from './dto';
 import { InquiryService } from './inquiry.service';
@@ -50,6 +50,7 @@ export class InquiryController {
   }
 
   /** Step 3 — requires the record token from step 2. Returns that one case only. */
+  @Realms('RECORD')
   @UseGuards(JwtAuthGuard)
   @Get('case')
   getCase() {
@@ -57,6 +58,7 @@ export class InquiryController {
   }
 
   /** «پاسخگوی آنلاین» — the requester (record token) leaves a question for the بیمه‌گزار / کارگزاری. */
+  @Realms('RECORD')
   @UseGuards(JwtAuthGuard)
   @Post('message')
   message(@Body() dto: InquiryMessageDto) {
@@ -64,6 +66,7 @@ export class InquiryController {
   }
 
   /** «گفتگو» — the requester's questions and the کارگزاری's answers on this claim. */
+  @Realms('RECORD')
   @UseGuards(JwtAuthGuard)
   @Get('messages')
   messages() {

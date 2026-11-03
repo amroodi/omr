@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Post, Put, Query } from '@nestjs/common';
 import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
-import { SuperAdminOnly } from '../../common/rbac/decorators';
+import { Realms, SuperAdminOnly } from '../../common/rbac/decorators';
 import { ALERT_KINDS, SessionsService } from './sessions.service';
 
 class AlertSettingsDto {
@@ -27,6 +27,7 @@ class SeenDto {
 export class SecurityController {
   constructor(private readonly sessions: SessionsService) {}
 
+  @Realms('ORG', 'SUPER', 'CUSTOMER', 'INSURED', 'RECORD')
   @Post('logout')
   logout() {
     return this.sessions.logout();

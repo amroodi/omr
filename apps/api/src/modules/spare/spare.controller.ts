@@ -3,7 +3,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ArrayMaxSize, ArrayNotEmpty, IsArray, IsOptional, IsString, IsUUID, Length } from 'class-validator';
 import { Response } from 'express';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { BrokerPanelOnly, EntryOnly, Permissions } from '../../common/rbac/decorators';
+import { BrokerPanelOnly, EntryOnly, Permissions, Realms } from '../../common/rbac/decorators';
 import { PERMISSIONS } from '../../common/rbac/permissions';
 import { SpareService } from './spare.service';
 
@@ -90,14 +90,17 @@ export class SpareController {
 export class SpareSharedController {
   constructor(private readonly spare: SpareService) {}
 
+  @Realms('CUSTOMER')
   @UseGuards(JwtAuthGuard)
   @Get()
   list() { return this.spare.sharedList(); }
 
+  @Realms('CUSTOMER')
   @UseGuards(JwtAuthGuard)
   @Get(':id')
   detail(@Param('id') id: string) { return this.spare.sharedDetail(id); }
 
+  @Realms('CUSTOMER')
   @UseGuards(JwtAuthGuard)
   @Get(':id/documents/:docId/file')
   async file(@Param('id') id: string, @Param('docId') docId: string, @Res() res: Response) {

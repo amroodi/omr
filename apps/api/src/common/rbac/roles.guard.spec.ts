@@ -1,7 +1,7 @@
 import { ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { RolesGuard } from './roles.guard';
-import { ENTRY_KEY, PERMISSIONS_KEY } from './decorators';
+import { ENTRY_KEY, PERMISSIONS_KEY, REALMS_KEY } from './decorators';
 
 /** Panel 1 creates cases, panel 2 processes them: the guard enforces both directions. */
 describe('RolesGuard — panel 1 / panel 2', () => {
@@ -36,5 +36,28 @@ describe('RolesGuard — panel 1 / panel 2', () => {
   });
   it('leaves panel 2 processing as it was', () => {
     expect(run({ mode: 'PROCESS' })()).toBe(true);
+  });
+});
+
+describe('RolesGuard — @Realms (which kind of sign-in a route serves)', () => {
+  const run = (realms: string[], ctxOver: Record<string, unknown>) => {
+    const meta: Record<string, unknown> = { [REALMS_KEY]: realms };
+    const reflector = { getAllAndOverride: (key: string) => meta[key] } as unknown as Reflector;
+    const req = { method: 'POST', path: '/api/v1/customer/claims', context: { permissions: [], ...ctxOver } };
+    const ctx = { getHandler: () => null, getClass: () => null, switchToHttp: () => ({ getRequest: () => req }) } as any;
+    return () => new RolesGuard(reflector).canActivate(ctx);
+  };
+  it("a بیمه‌گزار route refuses staff (panel 2 can't file through it)", () => {
+    expect(run(['CUSTOMER'], { actorType: 'ORG_USER', panelMode: 'PROCESS' })).toThrow(ForbiddenException);
+    expect(run(['CUSTOMER'], { actorType: 'CUSTOMER' })()).toBe(true);
+  });
+  it("the inquiry's token is not a بیمه‌گزار nor staff", () => {
+    expect(run(['CUSTOMER'], { actorType: 'INSURED', scopedClaimId: 'c1' })).toThrow(ForbiddenException);
+    expect(run(['ORG', 'CUSTOMER'], { actorType: 'INSURED', scopedClaimId: 'c1' })).toThrow(ForbiddenException);
+    expect(run(['RECORD'], { actorType: 'INSURED', scopedClaimId: 'c1' })()).toBe(true);
+  });
+  it("پنل بیمه‌شده and the inquiry's token are told apart", () => {
+    expect(run(['INSURED'], { actorType: 'INSURED', insuredPhoneHash: 'h' })()).toBe(true);
+    expect(run(['INSURED'], { actorType: 'INSURED', scopedClaimId: 'c1' })).toThrow(ForbiddenException);
   });
 });

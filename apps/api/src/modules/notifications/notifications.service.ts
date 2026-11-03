@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { NotificationAudience } from '@prisma/client';
 import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -109,6 +109,8 @@ export class NotificationsService {
   private where() {
     const ctx = getContext();
     if (ctx?.actorType === 'CUSTOMER') return { tenantId: ctx.tenantId, audience: 'CUSTOMER' as const, recipientId: ctx.actorId };
+    // Only staff read the organization's inbox — never the public inquiry's token or a پنل بیمه‌شده sign-in.
+    if (ctx?.actorType !== 'ORG_USER' || !ctx.tenantId) throw new ForbiddenException('دسترسی ندارید');
     // org user → the whole-org inbox (recipientId null) PLUS anything addressed to them personally
     // (admin-activity oversight is targeted per-admin via recipientId).
     return { tenantId: ctx?.tenantId, audience: 'ORG' as const, OR: [{ recipientId: null }, { recipientId: ctx?.actorId }] };
