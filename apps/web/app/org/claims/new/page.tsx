@@ -9,6 +9,8 @@ import { JalaliDatePicker } from '../../../components/JalaliDatePicker';
 import { ORG_NAV } from '../../nav';
 import { EVENT_DATE_LABEL, insuredNameLabel } from '../../../components/claim-wording';
 
+/** An insurer's panel 1: its partner کارگزاری‌ها (with their بیمه‌گزاران), شعبه‌ها, and Super Admin's entry way. */
+interface InsurerEntry { way: 'BROKER' | 'BRANCH' | 'ASK'; brokers: { id: string; name: string; companies: { id: string; name: string }[] }[]; branches: { id: string; name: string; code: string }[] }
 interface Company { id: string; name: string; currentInsurer: { id: string; name: string } | null; contracts: { insurerName: string; policyNumber: string | null }[]; accounts: { id: string; fullName: string }[] }
 
 const toAscii = (s: string) => s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
@@ -48,7 +50,9 @@ function PField({ label, help, children }: { label: string; help?: string; child
 /**
  * «پرونده جدید» (from the Work Desk header) — the بیمه‌گزار panel's filing form, for staff. Picking the
  * بیمه‌گزار company routes the case by its insurer contract and shows it in that company's panel; for a
- * case without a company the insurer and sales channel are chosen by hand.
+ * case without a company the insurer and sales channel are chosen by hand. An insurer's staff (panel 1)
+ * pick one of its کارگزاری‌ها and that brokerage's بیمه‌گزار — or a direct sale by a شعبه — and the case
+ * starts where Super Admin's Model View says (the کارگزاری's desk, a شعبه, or their choice).
  */
 export default function NewClaim() {
   const router = useRouter();
@@ -58,8 +62,9 @@ export default function NewClaim() {
   const [f, setF] = useState({
     companyId: '', policyHolderId: '', insurerTenantId: '', channel: 'BROKER', sellingBranchId: '',
     claimType: 'DEATH_ILLNESS', deceasedFullName: '', deceasedNationalCode: '', birthDate: '', eventDate: '', claimedAmount: '', policyNumber: '', description: '',
-    startStage: '',
+    startStage: '', brokerTenantId: '', branchId: '',
   });
+  const [ins, setIns] = useState<InsurerEntry | null>(null);
   // «اعلام خسارت»: may this operator file, and to which desks may the case go?
   const [notice, setNotice] = useState<{ enabled: boolean; targets: string[]; default: string; labels: Record<string, string> } | null>(null);
   const [error, setError] = useState('');
@@ -72,6 +77,7 @@ export default function NewClaim() {
     client.get<{ id: string; name: string }[]>('/claims/insurers', 'org').then(setInsurers).catch((e) => setError(e.message));
     client.get<{ id: string; name: string; code: string }[]>('/branches', 'org').then(setBranches).catch(() => {});
     client.get<any>('/claims/notice-options', 'org').then(setNotice).catch(() => setNotice(null));
+    client.get<InsurerEntry>('/claims/entry-options', 'org').then(setIns).catch(() => setIns(null)); // 403 for a brokerage
     client.get<{ code: string; label: string }[]>('/claims/case-types', 'org').then((l) => { if (l.length) setCaseTypes(Object.fromEntries(l.map((t) => [t.code, t.label]))); }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -83,7 +89,41 @@ export default function NewClaim() {
   const age = ageBetween(f.birthDate ? jalaliToIso(f.birthDate) : null, f.eventDate ? jalaliToIso(f.eventDate) : null);
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF((s) => ({ ...s, [k]: e.target.value }));
 
+  // Insurer: where this case starts — fixed by Model View, or the operator's choice («هر بار انتخاب شود»).
+  const insBroker = ins?.brokers.find((b) => b.id === f.brokerTenantId) ?? null;
+  const insStart = ins ? (ins.way === 'ASK' ? (f.startStage || (insBroker ? 'BROKER' : 'BRANCH')) : ins.way) : null;
+
+  const submitInsurer = async () => {
+    setError('');
+    if (!ins) return;
+    if (insStart === 'BROKER' && !insBroker) return setError('پرونده به میز کارگزاری می‌رود؛ کارگزاری را انتخاب کنید');
+    if (!insBroker && !f.sellingBranchId) return setError('شعبه فروش را انتخاب کنید');
+    if (insStart === 'BRANCH' && insBroker && !f.branchId) return setError('شعبه‌ای را که پرونده به آن می‌رود انتخاب کنید');
+    const iso = f.eventDate ? jalaliToIso(f.eventDate) : null;
+    if (f.eventDate && !iso) return setError(`${eventLabel} نامعتبر است (نمونه: ۱۴۰۵/۰۷/۰۱)`);
+    const birthIso = f.birthDate ? jalaliToIso(f.birthDate) : null;
+    if (f.birthDate && !birthIso) return setError('تاریخ تولد نامعتبر است (نمونه: ۱۳۴۵/۰۵/۱۲)');
+    setBusy(true);
+    try {
+      const payload: Record<string, string> = {
+        channel: insBroker ? 'BROKER' : 'DIRECT', claimType: f.claimType, startStage: insStart!,
+        deceasedFullName: f.deceasedFullName.trim(), deceasedNationalCode: toAscii(f.deceasedNationalCode).trim(),
+        claimedAmount: toAscii(f.claimedAmount).replace(/[^\d]/g, '') || '0',
+      };
+      if (insBroker) { payload.brokerTenantId = insBroker.id; if (f.companyId) payload.policyholderCompanyId = f.companyId; }
+      else payload.sellingBranchId = f.sellingBranchId;
+      if (insStart === 'BRANCH' && f.branchId) payload.branchId = f.branchId;
+      if (iso) payload.eventDate = iso;
+      if (birthIso) payload.deceasedBirthDate = birthIso;
+      if (f.policyNumber.trim()) payload.policyNumber = toAscii(f.policyNumber).trim();
+      if (f.description.trim()) payload.description = f.description.trim();
+      const c = await client.post<{ id: string }>('/claims', payload, 'org');
+      router.push(`/org/claims/${c.id}`);
+    } catch (e: any) { setError(e.message); } finally { setBusy(false); }
+  };
+
   const submit = async () => {
+    if (ins) return submitInsurer();
     setError('');
     if (!manual && !co) return setError('شرکت بیمه‌گزار را انتخاب کنید (یا «بدون شرکت بیمه‌گزار»)');
     if (manual && !f.insurerTenantId) return setError('بیمه‌گر را انتخاب کنید');
@@ -120,7 +160,7 @@ export default function NewClaim() {
         <div className="pinfobox mb-6 text-center">
           پس از ثبت پرونده، مدارک موردنیاز را در صفحهٔ پرونده بارگذاری کنید. لطفاً مشخصات بیمه‌شدهٔ متوفی و نوع پرونده را با دقت وارد نمایید.
           <div className="text-xs mt-1 font-normal">
-            {co
+            {ins ? null : co
               ? <>پرونده برای «{co.name}» ثبت می‌شود و در پنل این بیمه‌گزار هم دیده می‌شود؛ بیمه‌گر از روی قرارداد شرکت{co.contracts.length ? ` (${co.contracts.map((k) => k.insurerName).join('، ')})` : ''} در {eventLabel} تعیین می‌شود.</>
               : manual ? <>پرونده بدون شرکت بیمه‌گزار ثبت می‌شود؛ بیمه‌گر و کانال فروش را خودتان انتخاب کنید.</> : null}
           </div>
@@ -130,7 +170,51 @@ export default function NewClaim() {
         {notice && !notice.enabled && <div className="alert-error mt-3">اعلام خسارت برای شما در «تنظیمات سازمان › اعلام خسارت» غیرفعال است.</div>}
 
         <div className="grid md:grid-cols-2 gap-5 mt-4">
-          {companies.length > 0 && (
+          {ins && (
+            <>
+              <PField label="کارگزاری" help="کارگزاری‌ای که پرونده برای آن ثبت می‌شود؛ برای فروش مستقیم بیمه‌گر «بدون کارگزاری» را انتخاب کنید.">
+                <select className="input" value={f.brokerTenantId} onChange={(e) => setF((s) => ({ ...s, brokerTenantId: e.target.value, companyId: '', sellingBranchId: '', startStage: '' }))}>
+                  <option value="">— بدون کارگزاری (فروش مستقیم بیمه‌گر) —</option>
+                  {ins.brokers.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+              </PField>
+              {insBroker ? (
+                <PField label="بیمه‌گزار (شرکت)" help="اختیاری؛ پرونده در پنل همین بیمه‌گزار هم دیده می‌شود و شماره بیمه‌نامه از قرارداد آن برداشته می‌شود.">
+                  <select className="input" value={f.companyId} onChange={set('companyId')}>
+                    <option value="">— بدون شرکت بیمه‌گزار —</option>
+                    {insBroker.companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </PField>
+              ) : (
+                <PField label="شعبه فروش *">
+                  <select className="input" value={f.sellingBranchId} onChange={set('sellingBranchId')}>
+                    <option value="">— انتخاب شعبه —</option>
+                    {ins.branches.map((b) => <option key={b.id} value={b.id}>{b.name} ({b.code})</option>)}
+                  </select>
+                </PField>
+              )}
+              {ins.way === 'ASK' && (
+                <PField label="پرونده پس از ثبت به" help="راهی که مدیر سامانه برای این بیمه‌گر گذاشته: هر بار انتخاب شود.">
+                  <select className="input" value={insStart ?? ''} onChange={set('startStage')}>
+                    {insBroker && <option value="BROKER">میز کارگزاری (ارزیابی اولیه)</option>}
+                    <option value="BRANCH">مستقیم به شعبه</option>
+                  </select>
+                </PField>
+              )}
+              {insStart === 'BRANCH' && (
+                <PField label={`شعبهٔ رسیدگی${insBroker ? ' *' : ''}`} help={insBroker ? undefined : 'خالی = همان شعبهٔ فروش.'}>
+                  <select className="input" value={f.branchId} onChange={set('branchId')}>
+                    <option value="">{insBroker ? '— انتخاب شعبه —' : '— همان شعبهٔ فروش —'}</option>
+                    {ins.branches.map((b) => <option key={b.id} value={b.id}>{b.name} ({b.code})</option>)}
+                  </select>
+                </PField>
+              )}
+              <div className="md:col-span-2 text-xs" style={{ color: 'var(--muted)' }}>
+                {insStart === 'BROKER' ? 'پرونده پس از ثبت به میز همان کارگزاری می‌رود و ارزیابی اولیه از آنجا شروع می‌شود.' : 'پرونده پس از ثبت مستقیم به شعبه می‌رود.'}
+              </div>
+            </>
+          )}
+          {!ins && companies.length > 0 && (
             <PField label="بیمه‌گزار (شرکت) *" help="شرکتی که متوفی در آن شاغل بوده است؛ پرونده در پنل همین بیمه‌گزار هم نمایش داده می‌شود.">
               <select className="input" value={f.companyId} onChange={(e) => setF((s) => ({ ...s, companyId: e.target.value, policyHolderId: '' }))}>
                 <option value="">— انتخاب شرکت بیمه‌گزار —</option>
@@ -139,7 +223,7 @@ export default function NewClaim() {
               </select>
             </PField>
           )}
-          {co && co.accounts.length > 0 && (
+          {!ins && co && co.accounts.length > 0 && (
             <PField label="نمایندهٔ بیمه‌گزار" help="اختیاری؛ نماینده پرونده را در پنل خود می‌بیند و برای رفع نقص پیام دریافت می‌کند.">
               <select className="input" value={f.policyHolderId} onChange={set('policyHolderId')}>
                 <option value="">— بدون نماینده —</option>
@@ -147,7 +231,7 @@ export default function NewClaim() {
               </select>
             </PField>
           )}
-          {manual && (
+          {!ins && manual && (
             <>
               <PField label="بیمه‌گر *">
                 <select className="input" value={f.insurerTenantId} onChange={set('insurerTenantId')}>
@@ -195,7 +279,7 @@ export default function NewClaim() {
           <PField label="مبلغ خسارت برآوردی (ریال)" help="اختیاری؛ مبلغ قطعی پس از ارزیابی ثبت می‌شود.">
             <input className="input" inputMode="numeric" value={groupDigits(f.claimedAmount)} onChange={(e) => setF((s) => ({ ...s, claimedAmount: toAscii(e.target.value).replace(/[^\d]/g, '') }))} placeholder="۰" style={{ direction: 'ltr', textAlign: 'right' }} />
           </PField>
-          {notice && notice.enabled && notice.targets.length > 1 && (
+          {!ins && notice && notice.enabled && notice.targets.length > 1 && (
             <PField label="ارسال پرونده پس از ثبت به" help="مرحله‌هایی که در «تنظیمات سازمان › اعلام خسارت» مجاز شده‌اند.">
               <select className="input" value={f.startStage || notice.default} onChange={set('startStage')}>
                 {notice.targets.filter((t) => t !== 'BROKER' || !manual || f.channel === 'BROKER').map((t) => <option key={t} value={t}>{notice.labels[t] ?? t}</option>)}

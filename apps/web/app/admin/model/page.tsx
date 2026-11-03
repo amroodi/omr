@@ -18,6 +18,7 @@ interface Model {
   byType: Record<string, Partial<Record<RuleKey, boolean>>>;
   panels: { COMPANY: Rights; REPRESENTATIVE: Rights };
   insured: { enabled: boolean; docCodes: string[]; linkDays: number };
+  entry: { way: 'BROKER' | 'BRANCH' | 'ASK' };
   form: { eventLabel: string; birthDate: Mode; cause: Mode; causeLists: { DEATH: string[]; ACCIDENT: string[] }; lines: { LIFE: LineForm; ACCIDENT: LineForm }; caseTypes: CaseType[]; groups: CompanyGroup[]; dependents: boolean; docsNote: string };
 }
 interface Doc { code: string; label: string; isActive: boolean; appliesToTypes: string[]; requiredTypes: string[] }
@@ -305,6 +306,19 @@ export default function ModelView() {
 
           {tab === 'panels' && (
             <>
+              <Card title="ورود داده بیمه‌گر (پنل ۱)">
+                <p className="text-xs" style={{ color: 'var(--muted)' }}>پرونده‌ای که کارکنان بیمه‌گر از «ورود برای بارگزاری مدارک» برای کارگزاران خود ثبت می‌کنند، از کجا شروع شود؟</p>
+                {([
+                  ['BROKER', 'میز کارگزاری', 'پرونده نخست به ارزیابی اولیهٔ همان کارگزاری می‌رود؛ انگار کارگزاری خودش ثبت کرده است. باید کارگزاری انتخاب شود.'],
+                  ['BRANCH', 'مستقیم به شعبهٔ بیمه‌گر', 'ارزیابی کارگزاری انجام نمی‌شود؛ پرونده به شعبه‌ای که انتخاب می‌شود می‌رود.'],
+                  ['ASK', 'هر بار انتخاب شود', 'در فرم ثبت پرونده، کاربر بیمه‌گر یکی از دو راه بالا را انتخاب می‌کند.'],
+                ] as const).map(([k, l, h]) => (
+                  <label key={k} className="flex items-start gap-2 text-sm cursor-pointer">
+                    <input type="radio" name="entry-way" className="mt-1" checked={m.entry.way === k} onChange={() => setM({ ...m, entry: { way: k } })} />
+                    <span><b>{l}</b><span className="block text-xs mt-0.5" style={{ color: 'var(--muted)' }}>{h}</span></span>
+                  </label>
+                ))}
+              </Card>
               <Card title="پنل‌های بیمه‌گزار و نماینده">
                 <div className="grid sm:grid-cols-2 gap-4">
                   {([['COMPANY', 'پنل بیمه‌گزار'], ['REPRESENTATIVE', 'پنل نماینده']] as const).map(([p, l]) => (

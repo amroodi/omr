@@ -57,6 +57,13 @@ export class ClaimsController {
     return this.claims.caseTypeOptions();
   }
 
+  /** Panel 1 of an insurer: partner کارگزاری‌ها and their companies, شعبه‌ها, and the entry way. */
+  @Permissions(PERMISSIONS.CLAIM_FILE)
+  @Get('entry-options')
+  entryOptions() {
+    return this.claims.insurerEntryOptions();
+  }
+
   @Permissions(PERMISSIONS.CLAIM_FILE)
   @Get('on-behalf/companies')
   onBehalfCompanies() {

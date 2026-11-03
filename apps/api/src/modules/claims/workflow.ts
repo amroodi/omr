@@ -62,11 +62,18 @@ export type Line = 'LIFE' | 'ACCIDENT';
 export interface CaseType { code: string; label: string; causeGroup: 'DEATH' | 'ACCIDENT'; death: boolean }
 /** بیمه‌گزار companies that file different نوع پرونده than the insurer's usual ones (a ticked company covers its subsidiaries). */
 export interface CompanyGroup { id: string; label: string; companyIds: string[]; lines: Record<Line, string[]>; dependents: boolean }
+/**
+ * Where a case the insurer's own staff enter from panel 1 starts: on the کارگزاری's desk (its initial
+ * assessment first, as if the brokerage had filed it), straight at the insurer's شعبه, or chosen each time.
+ */
+export type EntryWay = 'BROKER' | 'BRANCH' | 'ASK';
+export const ENTRY_WAYS: EntryWay[] = ['BROKER', 'BRANCH', 'ASK'];
 export interface WorkflowModel extends CaseRules {
   stages: Record<Stage, { label: string; reviewDocs: boolean }>; // reviewDocs: must this desk ✓ every document before sending on?
   byType: Record<string, Partial<CaseRules>>; // نوع پرونده → what differs from the rules above
   panels: { COMPANY: PanelRights; REPRESENTATIVE: PanelRights };
   insured: { enabled: boolean; docCodes: string[]; linkDays: number }; // پنل بیمه‌شده: what they upload; how long an invitation lasts
+  entry: { way: EntryWay }; // the insurer's own panel-1 filings (see EntryWay)
   form: {
     eventLabel: string;
     birthDate: FieldMode;
@@ -104,6 +111,7 @@ export const DEFAULT_WORKFLOW_MODEL: WorkflowModel = {
   byType: {},
   panels: { COMPANY: { upload: true, submit: true }, REPRESENTATIVE: { upload: true, submit: true } },
   insured: { enabled: false, docCodes: [], linkDays: 7 },
+  entry: { way: 'BROKER' },
   form: {
     eventLabel: 'تاریخ وقوع',
     birthDate: 'optional',
@@ -196,6 +204,7 @@ export function modelFrom(stored: unknown): WorkflowModel {
     byType,
     panels: { COMPANY: rights(raw.panels?.COMPANY, d.panels.COMPANY), REPRESENTATIVE: rights(raw.panels?.REPRESENTATIVE, d.panels.REPRESENTATIVE) },
     insured: { enabled: flag(raw.insured?.enabled, false), docCodes: list(raw.insured?.docCodes), linkDays: days >= 1 && days <= 60 ? Math.round(days) : d.insured.linkDays },
+    entry: { way: ENTRY_WAYS.includes(raw.entry?.way) ? raw.entry.way : d.entry.way },
     form: {
       eventLabel: text(raw.form?.eventLabel, d.form.eventLabel),
       birthDate: mode(raw.form?.birthDate, d.form.birthDate),

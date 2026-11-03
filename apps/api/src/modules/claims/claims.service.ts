@@ -26,7 +26,7 @@ import { beneficiaryHiddenDoc } from '../required-docs/defaults';
 import { toAsciiDigits } from '../../common/jalali/jalali.util';
 import { ModelStore } from '../model-view/model-store.service';
 import { CoverageService } from '../model-view/coverage.service';
-import { above, actionsFor, rulesOf, WorkflowModel, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, physicalActionsFor, PhysicalActionKey, physicalBelow, PhysicalState, Purpose, ReviewDesk, Stage, STAGE_FA, WorkflowAction, caseTypeOf, dependentsFor, typesFor } from './workflow';
+import { above, actionsFor, rulesOf, WorkflowModel, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, physicalActionsFor, PhysicalActionKey, physicalBelow, PhysicalState, Purpose, ReviewDesk, Stage, STAGE_FA, WorkflowAction, caseTypeOf, dependentsFor, EntryWay, typesFor } from './workflow';
 
 const CLAIM_DOC_MIME = new Set([
   'application/pdf', 'image/jpeg', 'image/png',
@@ -200,6 +200,29 @@ export class ClaimsService {
   }
 
   /** Companies the caller's brokerage serves, with their current insurer and representatives — for the on-behalf form. */
+  /**
+   * Panel 1 of an insurer: its partner کارگزاری‌ها with their بیمه‌گزار companies, its شعبه‌ها, and where
+   * Super Admin set its filings to start.
+   */
+  async insurerEntryOptions() {
+    const ctx = getContext();
+    const db = this.prisma.unscoped();
+    const me = await db.tenant.findUnique({ where: { id: getTenantIdOrThrow() }, select: { id: true, kind: true } });
+    if (me?.kind !== 'INSURER') throw new ForbiddenException('فقط بیمه‌گر');
+    const partners = await db.brokerInsurerPartnership.findMany({ where: { insurerTenantId: me.id, isActive: true }, select: { brokerTenantId: true } });
+    const ids = partners.map((p) => p.brokerTenantId);
+    const [brokers, companies, branches] = await Promise.all([
+      db.tenant.findMany({ where: { id: { in: ids }, isActive: true }, orderBy: { name: 'asc' }, select: { id: true, name: true } }),
+      db.policyholderCompany.findMany({ where: { tenantId: { in: ids }, isActive: true }, orderBy: { name: 'asc' }, select: { id: true, name: true, tenantId: true } }),
+      db.branch.findMany({ where: { tenantId: me.id, ...(ctx?.branchScoped && ctx.branchId ? { id: ctx.branchId } : {}) }, orderBy: { name: 'asc' }, select: { id: true, name: true, code: true } }),
+    ]);
+    return {
+      way: (await this.modelOf(me.id)).entry.way,
+      brokers: brokers.map((b) => ({ ...b, companies: companies.filter((c) => c.tenantId === b.id).map(({ id, name }) => ({ id, name })) })),
+      branches,
+    };
+  }
+
   async onBehalfCompanies() {
     const companies = (await this.policyholders.list()).filter((c) => c.isActive);
     const accounts = companies.length
@@ -220,10 +243,16 @@ export class ClaimsService {
     // A بیمه‌گزار doesn't choose the insurer: the brokerage's contract for their company that covered
     // the date of death decides it (and supplies the policy number).
     let companyId = input.policyholderCompanyId ?? null;
+    // An insurer's own staff (panel 1) file against their own insurer, for one of its کارگزاران.
+    const staffKind = ctx?.actorType === 'ORG_USER' && ctx.tenantId ? (await db.tenant.findUnique({ where: { id: ctx.tenantId }, select: { kind: true } }))?.kind ?? null : null;
+    if (staffKind === 'INSURER') {
+      input.insurerTenantId = ctx!.tenantId;
+      if (companyId && (input.channel !== 'BROKER' || !input.brokerTenantId)) throw new BadRequestException('برای بیمه‌گزار، کارگزاری آن را انتخاب کنید');
+    }
     if (companyId && ctx?.actorType === 'ORG_USER') {
-      // Staff may link only a company their own brokerage serves.
+      // Staff may link only a company their own brokerage serves (an insurer: the chosen کارگزاری's).
       const co = await db.policyholderCompany.findUnique({ where: { id: companyId }, select: { tenantId: true } });
-      if (!co || co.tenantId !== ctx.tenantId) throw new NotFoundException('شرکت بیمه‌گزار یافت نشد');
+      if (!co || co.tenantId !== (staffKind === 'INSURER' ? input.brokerTenantId : ctx.tenantId)) throw new NotFoundException('شرکت بیمه‌گزار یافت نشد');
       if (input.policyHolderId) {
         const acc = await db.customerAccount.findUnique({ where: { id: input.policyHolderId }, select: { companyId: true } });
         if (acc?.companyId !== companyId) throw new BadRequestException('نماینده انتخاب‌شده متعلق به این شرکت نیست');
@@ -250,6 +279,12 @@ export class ClaimsService {
       if (contract.line && input.claimType && !typesFor(await this.modelOf(contract.insurerTenantId), contract.line, await this.policyholders.companyChain(companyId)).includes(input.claimType)) {
         throw new BadRequestException('این نوع پرونده برای این بیمه‌نامه فعال نیست');
       }
+    }
+    if (companyId && staffKind === 'INSURER') {
+      // The company's contract on that date must be with this insurer; it supplies the policy number.
+      const k = await this.policyholders.resolveContract(companyId, eventDate, input.claimType ?? null);
+      if (k && k.insurerTenantId !== ctx!.tenantId) throw new BadRequestException('قرارداد این بیمه‌گزار در این تاریخ با بیمه‌گر دیگری است');
+      input.policyNumber = input.policyNumber ?? k?.policyNumber ?? undefined;
     }
     if (companyId && !input.insurerTenantId) {
       const contract = await this.policyholders.resolveContract(companyId, eventDate, input.claimType ?? null);
@@ -304,7 +339,11 @@ export class ClaimsService {
     const notice = await this.noticeOptions(input.channel === 'BROKER' ? input.brokerTenantId! : null, insurerTenantId);
     if (!notice.enabled) throw new ForbiddenException('اعلام خسارت از این پنل غیرفعال است؛ با مدیر سازمان تماس بگیرید.');
     const wanted = input.startStage ?? (input.onBehalf && notice.targets.includes('POLICYHOLDER') ? 'POLICYHOLDER' : notice.default);
-    if (!notice.targets.includes(wanted)) throw new BadRequestException('ارسال پرونده به این مرحله در تنظیمات اعلام خسارت مجاز نیست.');
+    if (!notice.targets.includes(wanted)) {
+      throw new BadRequestException(notice.entryWay
+        ? `پرونده‌هایی که این بیمه‌گر ثبت می‌کند طبق تنظیم مدیر سامانه از «${notice.targets.map((t) => TARGET_FA[t]).join(' یا ')}» شروع می‌شوند.`
+        : 'ارسال پرونده به این مرحله در تنظیمات اعلام خسارت مجاز نیست.');
+    }
     if (wanted === 'BROKER' && input.channel !== 'BROKER') throw new BadRequestException('این پرونده کارگزاری ندارد؛ مرحلهٔ دیگری را انتخاب کنید.');
     const firstStage: Stage = wanted as Stage;
     const byPolicyHolder = firstStage === 'POLICYHOLDER';
@@ -314,6 +353,7 @@ export class ClaimsService {
       if (!b) throw new BadRequestException('شعبه متعلق به بیمه‌گر پرونده نیست');
       startBranchId = b.id;
     }
+    if (staffKind === 'INSURER' && firstStage === 'BRANCH' && !startBranchId) throw new BadRequestException('شعبه‌ای را که پرونده به آن می‌رود انتخاب کنید');
 
     const heirs = this.cleanHeirs(input.heirs);
     const nid = input.deceasedNationalCode;
@@ -407,12 +447,18 @@ export class ClaimsService {
    * With `brokerTenantId` / `insurerTenantId` unknown (before the form is filled) the caller's own org
    * decides, and the insurer is checked again when the claim is filed.
    */
-  async noticeOptions(brokerTenantId?: string | null, insurerTenantId?: string | null): Promise<NoticeRule & { source: NoticeSource; labels: Record<string, string> }> {
+  async noticeOptions(brokerTenantId?: string | null, insurerTenantId?: string | null): Promise<NoticeRule & { source: NoticeSource; labels: Record<string, string>; entryWay?: EntryWay }> {
     const ctx = getContext();
     const db = this.db();
     let source: NoticeSource;
     if (ctx?.actorType === 'CUSTOMER') source = ctx.customerRepresentative ? 'REPRESENTATIVE' : 'POLICYHOLDER';
     else source = ((await this.myDesk()).stage ?? 'BROKER') as NoticeSource;
+    // An insurer's own staff: Super Admin's Model View «ورود داده بیمه‌گر» decides where the case starts.
+    if (ctx?.actorType === 'ORG_USER' && ctx.tenantId && ['BRANCH', 'HQ', 'COUNCIL'].includes(source)) {
+      const way = (await this.modelOf(ctx.tenantId)).entry.way;
+      const targets: NoticeTarget[] = way === 'BROKER' ? ['BROKER'] : way === 'BRANCH' ? ['BRANCH'] : ['BROKER', 'BRANCH'];
+      return { enabled: true, targets, default: targets[0], source, labels: TARGET_FA, entryWay: way };
+    }
     const brokerId = brokerTenantId ?? (ctx?.actorType === 'CUSTOMER' || source === 'BROKER' ? ctx?.tenantId : null);
     const insurerId = insurerTenantId ?? (['BRANCH', 'HQ', 'COUNCIL'].includes(source) ? ctx?.tenantId : null);
     const orgs = await db.tenant.findMany({ where: { id: { in: [brokerId, insurerId].filter((x): x is string => !!x) } }, select: { id: true, kind: true, claimNoticeRules: true } });

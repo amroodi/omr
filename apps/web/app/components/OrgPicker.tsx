@@ -11,7 +11,7 @@ let cache: Org[] | null = null;
 /**
  * The home page's company picker: «ورود برای بارگذاری مدارک» (ENTRY, panel 1) and «ورود برای ارزیابی
  * پرونده‌ها» (PROCESS, panel 2) open it; picking a logo goes to that company's own login page and look.
- * Panel 1 lists brokerages only for now: an insurer's data entry comes with its own step.
+ * Both list brokerages and insurers: an insurer's panel 1 is its own staff filing for its کارگزاران.
  */
 export function OrgPicker({ purpose, onClose }: { purpose: 'ENTRY' | 'PROCESS' | null; onClose: () => void }) {
   const router = useRouter();
@@ -30,9 +30,9 @@ export function OrgPicker({ purpose, onClose }: { purpose: 'ENTRY' | 'PROCESS' |
   }, [purpose, onClose]);
   if (!purpose) return null;
 
-  const list = (orgs ?? []).filter((o) => (purpose === 'ENTRY' ? o.kind === 'BROKER' : o.kind === 'BROKER' || o.kind === 'INSURER'));
+  const list = (orgs ?? []).filter((o) => o.kind === 'BROKER' || o.kind === 'INSURER');
   const go = (o: Org) => router.push(purpose === 'ENTRY' ? entryLogin(o.slug) : `${o.kind === 'INSURER' ? '/insurer/login' : '/org/login'}?org=${encodeURIComponent(o.slug)}`);
-  const groups = purpose === 'ENTRY' ? [{ title: '', items: list }] : [
+  const groups = [
     { title: 'کارگزاری‌ها', items: list.filter((o) => o.kind === 'BROKER') },
     { title: 'بیمه‌گرها', items: list.filter((o) => o.kind === 'INSURER') },
   ].filter((g) => g.items.length);
