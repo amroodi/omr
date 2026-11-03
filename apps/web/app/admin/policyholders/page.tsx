@@ -4,11 +4,11 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toGregorian } from 'jalaali-js';
 import { client, getToken } from '../../../lib/client';
+import { Line, LINE_FA, LINES } from '../../../lib/line';
 import { ErrorBox, Spinner } from '../../components/ui';
 import { JalaliDatePicker } from '../../components/JalaliDatePicker';
 import { UploadButton } from '../../components/upload';
 
-type Line = 'LIFE' | 'ACCIDENT';
 interface Contract { id: string; line: Line | null; lineLabel: string | null; policyNumber: string | null; startIso?: string | null; endIso?: string | null; insurerTenantId: string; insurerName: string; startDate: string | null; endDate: string | null; isActive: boolean; inForce: boolean }
 interface Company { id: string; name: string; code: string | null; isActive: boolean; brokerTenantId: string; brokerName: string; hasPassword: boolean; mustChangePassword?: boolean; passwordSetAt: string | null; lines: Line[]; contracts: Contract[] }
 interface Opt { id: string; name: string; slug: string; manualCompletion?: boolean; spareDesk?: boolean }
@@ -18,7 +18,6 @@ interface ImportResult {
   contractsCreated: number; contractsUpdated: number; contractsSkipped: number; errors: { sheet: string; row: number; message: string }[]; credentials: Cred[];
 }
 
-const LINE_FA: Record<Line, string> = { LIFE: 'عمر', ACCIDENT: 'حوادث' };
 const faN = (n: number) => n.toLocaleString('fa-IR');
 const toAscii = (s: string) => s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
 const jToIso = (v: string) => {
@@ -241,7 +240,7 @@ export default function AdminPolicyholders() {
           <label className="text-sm">کد بیمه‌گزار *<input className="input mt-1 latin-digits" style={{ direction: 'ltr', textAlign: 'right' }} value={newCo.code} onChange={(e) => setNewCo({ ...newCo, code: e.target.value })} /></label>
         </div>
         <div className="grid sm:grid-cols-4 gap-2 items-end">
-          <label className="text-xs">رشته (اختیاری)<select className="input mt-1" value={newCo.line} onChange={(e) => setNewCo({ ...newCo, line: e.target.value as Line })}><option value="LIFE">عمر</option><option value="ACCIDENT">حوادث</option></select></label>
+          <label className="text-xs">رشته (اختیاری)<select className="input mt-1" value={newCo.line} onChange={(e) => setNewCo({ ...newCo, line: e.target.value as Line })}>{LINES.map((l) => <option key={l} value={l}>{LINE_FA[l]}</option>)}</select></label>
           <label className="text-xs">شماره بیمه‌نامه (اختیاری)<input className="input mt-1 latin-digits" style={{ direction: 'ltr', textAlign: 'right' }} value={newCo.policyNumber} onChange={(e) => setNewCo({ ...newCo, policyNumber: e.target.value })} /></label>
           <div className="text-xs">تاریخ شروع (اختیاری)<div className="mt-1"><JalaliDatePicker value={newCo.start} onChange={(v) => setNewCo({ ...newCo, start: v })} placeholder="شروع" /></div></div>
           <div className="text-xs">تاریخ پایان (اختیاری)<div className="mt-1"><JalaliDatePicker value={newCo.end} onChange={(v) => setNewCo({ ...newCo, end: v })} placeholder="پایان" /></div></div>
@@ -313,7 +312,7 @@ export default function AdminPolicyholders() {
                             <tbody>
                               {c.contracts.map((k) => editK?.id === k.id ? (
                                 <tr key={k.id}>
-                                  <td><select className="input" value={editK.line} onChange={(e) => setEditK({ ...editK, line: e.target.value as Line })}><option value="LIFE">عمر</option><option value="ACCIDENT">حوادث</option></select></td>
+                                  <td><select className="input" value={editK.line} onChange={(e) => setEditK({ ...editK, line: e.target.value as Line })}>{LINES.map((l) => <option key={l} value={l}>{LINE_FA[l]}</option>)}</select></td>
                                   <td><input className="input latin-digits" style={{ direction: 'ltr', textAlign: 'right', minWidth: 110 }} value={editK.policyNumber} onChange={(e) => setEditK({ ...editK, policyNumber: e.target.value })} /></td>
                                   <td><select className="input" value={editK.insurerTenantId} onChange={(e) => setEditK({ ...editK, insurerTenantId: e.target.value })}>{opts?.insurers.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}</select></td>
                                   <td style={{ minWidth: 150 }}><JalaliDatePicker value={editK.start} onChange={(v) => setEditK({ ...editK, start: v })} placeholder="شروع" /></td>
@@ -338,7 +337,7 @@ export default function AdminPolicyholders() {
                             </tbody>
                           </table>
                           <div className="grid sm:grid-cols-6 gap-2 items-end mt-3">
-                            <label className="text-xs">رشته<select className="input mt-1" value={nc.line} onChange={(e) => setNc({ ...nc, line: e.target.value as Line })}><option value="LIFE">عمر</option><option value="ACCIDENT">حوادث</option></select></label>
+                            <label className="text-xs">رشته<select className="input mt-1" value={nc.line} onChange={(e) => setNc({ ...nc, line: e.target.value as Line })}>{LINES.map((l) => <option key={l} value={l}>{LINE_FA[l]}</option>)}</select></label>
                             <label className="text-xs">شماره بیمه‌نامهٔ جدید<input className="input mt-1 latin-digits" style={{ direction: 'ltr', textAlign: 'right' }} value={nc.policyNumber} onChange={(e) => setNc({ ...nc, policyNumber: e.target.value })} /></label>
                             <label className="text-xs">بیمه‌گر<select className="input mt-1" value={nc.insurerTenantId || insurer} onChange={(e) => setNc({ ...nc, insurerTenantId: e.target.value })}>{opts?.insurers.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}</select></label>
                             <div className="text-xs">تاریخ شروع<div className="mt-1"><JalaliDatePicker value={nc.start} onChange={(v) => setNc({ ...nc, start: v })} placeholder="شروع" /></div></div>

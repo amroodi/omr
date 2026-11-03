@@ -14,7 +14,7 @@ import { TooManyRequestsException } from '../inquiry/http-exceptions';
 
 const LOGO_MIME = new Set(['image/png', 'image/jpeg', 'image/webp']);
 
-export const LINE_FA: Record<InsuranceLine, string> = { LIFE: 'عمر', ACCIDENT: 'حوادث' };
+export const LINE_FA: Record<InsuranceLine, string> = { LIFE: 'عمر', ACCIDENT: 'حوادث', LIABILITY: 'مسئولیت', CREDIT_LIFE: 'عمر مانده بدهکار', SAVINGS_LIFE: 'عمر پس‌انداز' };
 
 export interface CompanyInput {
   name?: string;
@@ -259,10 +259,11 @@ export class PolicyholdersService {
 
   /**
    * The insurer contract that covered `date` (latest start wins); used to route a new claim. With a
-   * claim type, contracts of a line that doesn't cover it are skipped (unlined contracts always fit).
+   * claim type, contracts of a line that doesn't cover it are skipped (unlined contracts always fit); with a
+   * `line` (the نوع بیمه‌نامه chosen on the panel-1 login), only contracts of that kind count.
    */
-  async resolveContract(companyId: string, date: Date | null, claimType: string | null = null) {
-    const contracts = await this.db().policyholderContract.findMany({ where: { companyId, isActive: true } });
+  async resolveContract(companyId: string, date: Date | null, claimType: string | null = null, line: InsuranceLine | null = null) {
+    const contracts = await this.db().policyholderContract.findMany({ where: { companyId, isActive: true, ...(line ? { line } : {}) } });
     const chain = claimType ? await this.companyChain(companyId) : [];
     const fits = contracts.filter((c) => !claimType || !c.line || typesFor(this.store.get(c.insurerTenantId), c.line, chain).includes(claimType));
     return this.pickContract(fits, date ?? new Date());

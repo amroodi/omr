@@ -1,4 +1,4 @@
-import { above, actionsFor, ActionContext, below, chainOf, DEFAULT_WORKFLOW_MODEL, higher, modelFrom, physicalActionsFor, rulesOf, stageLabels, WorkflowModel } from './workflow';
+import { above, actionsFor, ActionContext, asLine, typesFor, below, chainOf, DEFAULT_WORKFLOW_MODEL, higher, modelFrom, physicalActionsFor, rulesOf, stageLabels, WorkflowModel } from './workflow';
 
 const broker = { brokerTenantId: 'b1' };
 const direct = { brokerTenantId: null };
@@ -199,5 +199,28 @@ describe('Model View: cause lists', () => {
     expect(modelFrom({ form: { causeLists: { DEATH: [] } } }).form.causeLists.DEATH).toEqual([]);
     expect(modelFrom({ form: { causes: ['x'] } }).form.causeLists).toEqual({ DEATH: ['x'], ACCIDENT: ['x'] });
     expect(modelFrom({ form: { causes: [] } }).form.causeLists.ACCIDENT.length).toBe(6);
+  });
+});
+
+describe('نوع بیمه‌نامه (policy kinds)', () => {
+  it('starts the three new kinds with no نوع پرونده (filing closed until set in Model View)', () => {
+    const m = modelFrom({});
+    expect(m.form.lines.LIFE.claimTypes.length).toBeGreaterThan(0);
+    expect(m.form.lines.LIABILITY.claimTypes).toEqual([]);
+    expect(m.form.lines.CREDIT_LIFE.claimTypes).toEqual([]);
+    expect(m.form.lines.SAVINGS_LIFE.claimTypes).toEqual([]);
+    expect(typesFor(m, 'LIABILITY')).toEqual([]);
+  });
+  it('keeps what Super Admin sets for a new kind, in the insurer model and in company groups', () => {
+    const m = modelFrom({ form: { lines: { CREDIT_LIFE: { claimTypes: ['DEATH_ILLNESS', 'NOPE'] } }, groups: [{ id: 'g', companyIds: ['c1'], lines: { CREDIT_LIFE: ['DEATH_ILLNESS'] } }] } });
+    expect(m.form.lines.CREDIT_LIFE.claimTypes).toEqual(['DEATH_ILLNESS']);
+    expect(typesFor(m, 'CREDIT_LIFE', ['c1'])).toEqual(['DEATH_ILLNESS']);
+    expect(typesFor(m, 'SAVINGS_LIFE', ['c1'])).toEqual([]);
+  });
+  it('reads only real kinds from a query', () => {
+    expect(asLine('ACCIDENT')).toBe('ACCIDENT');
+    expect(asLine('SAVINGS_LIFE')).toBe('SAVINGS_LIFE');
+    expect(asLine('X')).toBeUndefined();
+    expect(asLine(undefined)).toBeUndefined();
   });
 });

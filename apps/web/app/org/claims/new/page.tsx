@@ -3,6 +3,7 @@ import { ReactNode, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toGregorian } from 'jalaali-js';
 import { client, getToken } from '../../../../lib/client';
+import { getLine, lineQuery } from '../../../../lib/line';
 import { Shell } from '../../../components/Shell';
 import { CLAIM_TYPE_LABELS, ErrorBox } from '../../../components/ui';
 import { JalaliDatePicker } from '../../../components/JalaliDatePicker';
@@ -78,7 +79,11 @@ export default function NewClaim() {
     client.get<{ id: string; name: string; code: string }[]>('/branches', 'org').then(setBranches).catch(() => {});
     client.get<any>('/claims/notice-options', 'org').then(setNotice).catch(() => setNotice(null));
     client.get<InsurerEntry>('/claims/entry-options', 'org').then(setIns).catch(() => setIns(null)); // 403 for a brokerage
-    client.get<{ code: string; label: string }[]>('/claims/case-types', 'org').then((l) => { if (l.length) setCaseTypes(Object.fromEntries(l.map((t) => [t.code, t.label]))); }).catch(() => {});
+    // Panel 1: only the chosen نوع بیمه‌نامه's نوع پرونده (none yet = filing closed for that kind).
+    client.get<{ code: string; label: string }[]>(`/claims/case-types${lineQuery()}`, 'org').then((l) => {
+      setCaseTypes(Object.fromEntries(l.map((t) => [t.code, t.label])));
+      if (l.length && !l.some((t) => t.code === f.claimType)) setF((s) => ({ ...s, claimType: l[0].code }));
+    }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -106,7 +111,7 @@ export default function NewClaim() {
     setBusy(true);
     try {
       const payload: Record<string, string> = {
-        channel: insBroker ? 'BROKER' : 'DIRECT', claimType: f.claimType, startStage: insStart!,
+        channel: insBroker ? 'BROKER' : 'DIRECT', claimType: f.claimType, startStage: insStart!, ...(getLine() ? { line: getLine()! } : {}),
         deceasedFullName: f.deceasedFullName.trim(), deceasedNationalCode: toAscii(f.deceasedNationalCode).trim(),
         claimedAmount: toAscii(f.claimedAmount).replace(/[^\d]/g, '') || '0',
       };
@@ -138,6 +143,7 @@ export default function NewClaim() {
       const payload: Record<string, string> = {
         channel: manual ? f.channel : 'BROKER',
         claimType: f.claimType,
+        ...(getLine() ? { line: getLine()! } : {}),
         deceasedFullName: f.deceasedFullName.trim(),
         deceasedNationalCode: toAscii(f.deceasedNationalCode).trim(),
         claimedAmount: toAscii(f.claimedAmount).replace(/[^\d]/g, '') || '0',
@@ -168,6 +174,7 @@ export default function NewClaim() {
 
         <ErrorBox message={error} />
         {notice && !notice.enabled && <div className="alert-error mt-3">اعلام خسارت برای شما در «تنظیمات سازمان › اعلام خسارت» غیرفعال است.</div>}
+        {Object.keys(caseTypes).length === 0 && <div className="alert-error mt-3">برای این نوع بیمه‌نامه هنوز نوع پرونده‌ای در Model View تعریف نشده است؛ نوع بیمه‌نامه را از نوار بالا عوض کنید.</div>}
 
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-2.5 mt-3">
           {ins && (
@@ -297,7 +304,7 @@ export default function NewClaim() {
         </div>
 
         <div className="flex justify-center mt-3">
-          <button onClick={submit} disabled={busy || !f.deceasedFullName.trim() || !f.deceasedNationalCode.trim()} className="btn btn-solid btn-solid-lg">
+          <button onClick={submit} disabled={busy || Object.keys(caseTypes).length === 0 || !f.deceasedFullName.trim() || !f.deceasedNationalCode.trim()} className="btn btn-solid btn-solid-lg">
             {busy ? 'در حال ثبت…' : 'ثبت پرونده و ادامه به بارگذاری مدارک'}
           </button>
         </div>

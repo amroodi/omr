@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { client, getToken } from '../../../lib/client';
+import { getLine, lineQuery } from '../../../lib/line';
 import { Shell } from '../../components/Shell';
 import { claimTypeLabel, ErrorBox, FancyLoader, STATUS_MAP } from '../../components/ui';
 import { CUSTOMER_NAV, POLICY_KEY, PolicyRow } from '../nav';
@@ -43,8 +44,8 @@ export default function CustomerTrack() {
     const co = params.get('company') ?? '';
     if (params.get('tab') === 'action') setTab('action');
     setCompanyId(co);
-    client.get<MyClaim[]>('/customer/claims', 'customer').then(setClaims).catch((e) => setError(e.message));
-    client.get<{ contracts: PolicyRow[]; selectedId: string | null; brokerName: string }>(`/customer/dashboard${co ? `?companyId=${encodeURIComponent(co)}` : ''}`, 'customer').then((d) => {
+    client.get<MyClaim[]>(`/customer/claims${lineQuery()}`, 'customer').then(setClaims).catch((e) => setError(e.message));
+    client.get<{ contracts: PolicyRow[]; selectedId: string | null; brokerName: string }>(`/customer/dashboard?${new URLSearchParams({ ...(co ? { companyId: co } : {}), ...(getLine() ? { line: getLine()! } : {}) })}`, 'customer').then((d) => {
       setPolicies(d.contracts); setBroker(d.brokerName);
       let want = '';
       try { want = co ? '' : localStorage.getItem(POLICY_KEY) ?? ''; } catch { /* ignore */ }

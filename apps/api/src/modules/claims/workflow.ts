@@ -57,7 +57,12 @@ export interface PanelRights { upload: boolean; submit: boolean }
 export interface CaseRules { councilEnabled: boolean; requireLossNotice: boolean; requireOriginals: boolean }
 export type FieldMode = 'required' | 'optional' | 'hidden';
 export interface LineForm { insuredLabel: string; claimTypes: string[] }
-export type Line = 'LIFE' | 'ACCIDENT';
+/** نوع بیمه‌نامه. The last three start with no نوع پرونده: filing opens once Super Admin sets them in Model View. */
+export type Line = 'LIFE' | 'ACCIDENT' | 'LIABILITY' | 'CREDIT_LIFE' | 'SAVINGS_LIFE';
+export const LINES: Line[] = ['LIFE', 'ACCIDENT', 'LIABILITY', 'CREDIT_LIFE', 'SAVINGS_LIFE'];
+/** A `?line=` query value, if it is a نوع بیمه‌نامه (anything else = every kind). */
+export const asLine = (v: unknown): Line | undefined => (LINES as unknown[]).includes(v) ? (v as Line) : undefined;
+const perLine = <T>(f: (l: Line) => T) => Object.fromEntries(LINES.map((l) => [l, f(l)])) as Record<Line, T>;
 /** One نوع پرونده. causeGroup: which cause list it shows; death: the case speaks of a متوفی and takes the ذینفع step. */
 export interface CaseType { code: string; label: string; causeGroup: 'DEATH' | 'ACCIDENT'; death: boolean }
 /** بیمه‌گزار companies that file different نوع پرونده than the insurer's usual ones (a ticked company covers its subsidiaries). */
@@ -149,9 +154,12 @@ export const DEFAULT_WORKFLOW_MODEL: WorkflowModel = {
     lines: {
       LIFE: { insuredLabel: 'نام بیمه‌شده (متوفی/از کار افتاده)', claimTypes: LIFE_TYPES },
       ACCIDENT: { insuredLabel: 'نام بیمه‌شده (مصدوم/متوفی)', claimTypes: ACCIDENT_TYPES },
+      LIABILITY: { insuredLabel: 'نام زیان‌دیده', claimTypes: [] },
+      CREDIT_LIFE: { insuredLabel: 'نام بیمه‌شده (متوفی/از کار افتاده)', claimTypes: [] },
+      SAVINGS_LIFE: { insuredLabel: 'نام بیمه‌شده (متوفی/از کار افتاده)', claimTypes: [] },
     },
     caseTypes: DEFAULT_CASE_TYPES,
-    groups: [{ id: 'copper', label: 'شرکت‌های زیرمجموعه صنایع ملی مس ایران', companyIds: [], lines: { LIFE: LIFE_TYPES, ACCIDENT: ['DEATH_ACCIDENT', 'DISABILITY_ACCIDENT'] }, dependents: false }],
+    groups: [{ id: 'copper', label: 'شرکت‌های زیرمجموعه صنایع ملی مس ایران', companyIds: [], lines: { LIFE: LIFE_TYPES, ACCIDENT: ['DEATH_ACCIDENT', 'DISABILITY_ACCIDENT'], LIABILITY: [], CREDIT_LIFE: [], SAVINGS_LIFE: [] }, dependents: false }],
     dependents: true,
     docsNote: 'تصاویر مدارک موجود در پرونده باید خوانا و ممهور به مهر برابر اصل توسط مراجع یا مقامات ذی‌صلاح قانونی باشد.',
   },
@@ -214,11 +222,11 @@ export function modelFrom(stored: unknown): WorkflowModel {
         DEATH: Array.isArray(raw.form?.causeLists?.DEATH) ? list(raw.form.causeLists.DEATH) : list(raw.form?.causes).length ? list(raw.form.causes) : d.form.causeLists.DEATH,
         ACCIDENT: Array.isArray(raw.form?.causeLists?.ACCIDENT) ? list(raw.form.causeLists.ACCIDENT) : list(raw.form?.causes).length ? list(raw.form.causes) : d.form.causeLists.ACCIDENT,
       },
-      lines: { LIFE: line(raw.form?.lines?.LIFE, d.form.lines.LIFE), ACCIDENT: line(raw.form?.lines?.ACCIDENT, d.form.lines.ACCIDENT) },
+      lines: perLine((l) => line(raw.form?.lines?.[l], d.form.lines[l])),
       caseTypes,
       groups: (Array.isArray(raw.form?.groups) ? raw.form.groups : d.form.groups).filter((g: any) => typeof g?.id === 'string' && g.id).slice(0, 20).map((g: any): CompanyGroup => ({
         id: g.id.slice(0, 40), label: text(g.label, 'گروه بیمه‌گزاران', 120), companyIds: list(g.companyIds, 2000),
-        lines: { LIFE: typeList(g.lines?.LIFE, d.form.lines.LIFE.claimTypes), ACCIDENT: typeList(g.lines?.ACCIDENT, d.form.lines.ACCIDENT.claimTypes) },
+        lines: perLine((l) => typeList(g.lines?.[l], d.form.lines[l].claimTypes)),
         dependents: flag(g.dependents, false),
       })),
       dependents: flag(raw.form?.dependents, d.form.dependents),
@@ -231,7 +239,7 @@ export function modelFrom(stored: unknown): WorkflowModel {
 export function typesFor(model: WorkflowModel, line: Line | null | undefined, companyChain: string[] = []): string[] {
   const group = model.form.groups.find((g) => g.companyIds.some((id) => companyChain.includes(id)));
   const of = (l: Line) => group?.lines[l] ?? model.form.lines[l].claimTypes;
-  return line ? of(line) : [...new Set([...of('LIFE'), ...of('ACCIDENT')])];
+  return line ? of(line) : [...new Set(LINES.flatMap(of))];
 }
 
 /** Does this company's filing form ask for «نوع بیمه‌شده»? Its group decides, else the insurer's setting. */

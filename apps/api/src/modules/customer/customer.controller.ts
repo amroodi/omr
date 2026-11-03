@@ -67,6 +67,7 @@ import { CoverageService } from '../model-view/coverage.service';
 import { CoverageCheckDto } from './dto';
 import { CustomerAuthService } from './customer-auth.service';
 import { CustomerService } from './customer.service';
+import { asLine } from '../claims/workflow';
 import { RepresentativeLoginDto, CustomerChangePasswordDto, CustomerCompanyLoginDto, CustomerFileClaimDto, CustomerRequestOtpDto, CustomerSignupDto, CustomerSignupVerifyDto, CustomerVerifyOtpDto } from './dto';
 
 @Controller('customer')
@@ -105,8 +106,8 @@ export class CustomerController {
   @Realms('CUSTOMER')
   @UseGuards(JwtAuthGuard)
   @Get('dashboard')
-  dashboard(@Query('contractId') contractId?: string, @Query('companyId') companyId?: string) {
-    return this.customer.dashboard(contractId, companyId);
+  dashboard(@Query('contractId') contractId?: string, @Query('companyId') companyId?: string, @Query('line') line?: string) {
+    return this.customer.dashboard(contractId, companyId, asLine(line));
   }
 
   /** «broker» login: the brokerage's بیمه‌گزار companies. */
@@ -306,6 +307,7 @@ export class CustomerController {
       heirs: dto.heirs,
       startStage: dto.startStage,
       contractId: dto.contractId,
+      line: dto.line,
       policyholderCompanyId: dto.companyId,
       deceasedFullName: dto.deceasedFullName,
       deceasedNationalCode: dto.deceasedNationalCode,
@@ -336,8 +338,8 @@ export class CustomerController {
   @Realms('CUSTOMER')
   @UseGuards(JwtAuthGuard)
   @Get('claims')
-  myClaims(@Query('q') q?: string) {
-    return this.claims.listMine(q);
+  myClaims(@Query('q') q?: string, @Query('line') line?: string) {
+    return this.claims.listMine(q, asLine(line));
   }
 
   @Realms('CUSTOMER')

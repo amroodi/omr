@@ -1,4 +1,4 @@
-import { SalesChannel } from '@prisma/client';
+import { InsuranceLine, SalesChannel } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -56,6 +56,11 @@ export class HeirsDto {
 }
 
 export class FileClaimDto {
+  // نوع بیمه‌نامه chosen on the panel-1 login
+  @IsOptional()
+  @IsEnum(InsuranceLine)
+  line?: InsuranceLine;
+
   // Omitted when a بیمه‌گزار company is given: its contract for the date of death decides the insurer.
   @IsOptional()
   @IsUUID()
@@ -136,6 +141,11 @@ export class FileClaimDto {
 
 /** کارگزاری files a case as a بیمه‌گزار company (claim:file-on-behalf). The insurer comes from its contract. */
 export class FileOnBehalfDto {
+  // نوع بیمه‌نامه chosen on the panel-1 login
+  @IsOptional()
+  @IsEnum(InsuranceLine)
+  line?: InsuranceLine;
+
   @IsUUID()
   policyholderCompanyId!: string;
 

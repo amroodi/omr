@@ -27,7 +27,7 @@ import { beneficiaryHiddenDoc } from '../required-docs/defaults';
 import { toAsciiDigits } from '../../common/jalali/jalali.util';
 import { ModelStore } from '../model-view/model-store.service';
 import { CoverageService } from '../model-view/coverage.service';
-import { above, actionsFor, rulesOf, WorkflowModel, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, physicalActionsFor, PhysicalActionKey, physicalBelow, PhysicalState, Purpose, ReviewDesk, Stage, STAGE_FA, WorkflowAction, caseTypeOf, dependentsFor, EntryWay, typesFor } from './workflow';
+import { above, actionsFor, rulesOf, WorkflowModel, Line, LINES, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, physicalActionsFor, PhysicalActionKey, physicalBelow, PhysicalState, Purpose, ReviewDesk, Stage, STAGE_FA, WorkflowAction, caseTypeOf, dependentsFor, EntryWay, typesFor } from './workflow';
 
 const CLAIM_DOC_MIME = new Set([
   'application/pdf', 'image/jpeg', 'image/png',
@@ -66,6 +66,7 @@ const DOC_STATUS_LABELS: Record<string, string> = {
 };
 
 interface FileClaimInput {
+  line?: Line; // نوع بیمه‌نامه chosen on the panel-1 login (a picked contract's own kind wins)
   insurerTenantId?: string; // omitted when the بیمه‌گزار files: resolved from its company's insurer contract
   channel: SalesChannel;
   brokerTenantId?: string; // BROKER channel
@@ -240,11 +241,11 @@ export class ClaimsService {
    * Panel 1 of a brokerage filing for one of its بیمه‌گزاران: that company's بیمه‌نامه‌ها with the insurer's
    * form — the same list the بیمه‌گزار's own «ثبت پرونده خسارت» shows.
    */
-  async onBehalfPolicies(companyId: string) {
+  async onBehalfPolicies(companyId: string, line?: Line) {
     const db = this.prisma.unscoped();
     const co = await db.policyholderCompany.findFirst({ where: { id: companyId, tenantId: getTenantIdOrThrow(), isActive: true }, include: { contracts: true } });
     if (!co) throw new NotFoundException('شرکت بیمه‌گزار یافت نشد');
-    const contracts = activeContracts(co.contracts);
+    const contracts = activeContracts(co.contracts).filter((k) => !line || k.line === line);
     const ids = [...new Set(contracts.map((k) => k.insurerTenantId))];
     const [insurers, me] = await Promise.all([
       ids.length ? db.tenant.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }) : Promise.resolve([]),
@@ -296,9 +297,13 @@ export class ClaimsService {
       companyId = acc.companyId;
       input.insurerTenantId = undefined;
     }
+    // نوع بیمه‌نامه of the case: the contract's when there is one, else the one chosen on the login.
+    let line: Line | null = input.line ?? null;
     if (companyId && input.contractId) {
       // The بیمه‌نامه the بیمه‌گزار picked: it must be theirs, fit the claim type, and cover the date.
       const contract = await this.policyholders.contractForClaim(companyId, input.contractId, eventDate);
+      if (input.line && contract.line && contract.line !== input.line) throw new BadRequestException('این بیمه‌نامه از نوع دیگری است');
+      line = contract.line ?? line;
       input.insurerTenantId = contract.insurerTenantId;
       input.policyNumber = contract.policyNumber ?? input.policyNumber ?? undefined;
       // Model View decides which نوع پرونده this line takes, for this company, at this insurer.
@@ -308,13 +313,15 @@ export class ClaimsService {
     }
     if (companyId && staffKind === 'INSURER') {
       // The company's contract on that date must be with this insurer; it supplies the policy number.
-      const k = await this.policyholders.resolveContract(companyId, eventDate, input.claimType ?? null);
+      const k = await this.policyholders.resolveContract(companyId, eventDate, input.claimType ?? null, input.line ?? null);
+      line = k?.line ?? line;
       if (k && k.insurerTenantId !== ctx!.tenantId) throw new BadRequestException('قرارداد این بیمه‌گزار در این تاریخ با بیمه‌گر دیگری است');
       input.policyNumber = input.policyNumber ?? k?.policyNumber ?? undefined;
     }
     if (companyId && !input.insurerTenantId) {
-      const contract = await this.policyholders.resolveContract(companyId, eventDate, input.claimType ?? null);
-      if (!contract && input.claimType && await this.policyholders.resolveContract(companyId, eventDate)) throw new BadRequestException('این نوع پرونده برای این بیمه‌گزار فعال نیست');
+      const contract = await this.policyholders.resolveContract(companyId, eventDate, input.claimType ?? null, input.line ?? null);
+      line = contract?.line ?? line;
+      if (!contract && input.claimType && await this.policyholders.resolveContract(companyId, eventDate, null, input.line ?? null)) throw new BadRequestException('این نوع پرونده برای این بیمه‌گزار فعال نیست');
       if (!contract) throw new BadRequestException('برای این تاریخ فوت، قرارداد فعالی میان کارگزاری و بیمه‌گر برای شرکت شما ثبت نشده است؛ لطفاً با کارگزاری تماس بگیرید.');
       input.insurerTenantId = contract.insurerTenantId;
       input.policyNumber = input.policyNumber ?? contract.policyNumber ?? undefined;
@@ -323,7 +330,11 @@ export class ClaimsService {
     const insurer = await db.tenant.findUnique({ where: { id: input.insurerTenantId }, select: { id: true, kind: true, noticeDays: true } });
     if (!insurer || insurer.kind !== 'INSURER') throw new BadRequestException('بیمه‌گر نامعتبر است');
     const insurerTenantId = insurer.id;
+    // No contract and no chosen kind (e.g. a hand-filed case): the first kind whose نوع پرونده list has it.
+    if (!line) { const m = await this.modelOf(insurerTenantId); line = LINES.find((l) => input.claimType && m.form.lines[l].claimTypes.includes(input.claimType)) ?? null; }
     const form = (await this.modelOf(insurerTenantId)).form;
+    // A kind chosen with no company contract behind it (a نماینده بیمه, a hand-filed case): its own نوع پرونده list.
+    if (input.line && !companyId && input.claimType && !form.lines[input.line].claimTypes.includes(input.claimType)) throw new BadRequestException('این نوع پرونده برای این نوع بیمه‌نامه فعال نیست');
     if (input.claimType && !form.caseTypes.some((t) => t.code === input.claimType)) throw new BadRequestException('نوع پرونده نامعتبر است');
     if (form.birthDate === 'required' && !input.deceasedBirthDate) throw new BadRequestException('تاریخ تولد بیمه‌شده الزامی است');
     if (form.cause === 'required' && !input.causeOfDeath?.trim()) throw new BadRequestException('علت را مشخص کنید');
@@ -410,6 +421,7 @@ export class ClaimsService {
         // The filing بیمه‌گزار account: the caller when a بیمه‌گزار files, else the representative staff picked (if any).
         policyHolderId: input.policyHolderId ?? (ctx?.actorType === 'CUSTOMER' ? ctx.actorId : null) ?? null,
         policyholderCompanyId: companyId,
+        line,
         deceasedBirthDate: input.deceasedBirthDate ? new Date(input.deceasedBirthDate) : null,
         deceasedFullName: this.crypto.encrypt(input.deceasedFullName)!,
         deceasedNationalCode: this.crypto.encrypt(nid)!,
@@ -1851,15 +1863,15 @@ export class ClaimsService {
   }
 
   /** All claims the caller participates in, newest first, flagged if their action is needed. */
-  async listMine(q?: string) {
+  async listMine(q?: string, line?: Line) {
     const ctx = getContext();
     const db = this.db();
     // A بیمه‌گزار's own cases, or staff's desk; nobody else (the inquiry's token reads one case elsewhere).
     if (ctx?.actorType !== 'CUSTOMER' && ctx?.actorType !== 'ORG_USER') throw new ForbiddenException('دسترسی ندارید');
     const where: Prisma.ClaimWhereInput =
       ctx?.actorType === 'CUSTOMER'
-        ? { ...customerClaimWhere(), deletedAt: null }
-        : this.wdScope(ctx?.tenantId);
+        ? { ...customerClaimWhere(), deletedAt: null, ...(line ? { line } : {}) }
+        : { AND: [this.wdScope(ctx?.tenantId), line ? { line } : {}] };
     // Search (بیمه‌گزار panel «جستجو»): a 10-digit term matches the deceased's کد ملی exactly (blind
     // index); anything else matches the claim number or the deceased's name.
     const term = (q ?? '').trim().replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
@@ -2077,14 +2089,18 @@ export class ClaimsService {
   }
 
   /** Every نوع پرونده of the insurers this organization works with, for the staff forms and filters. */
-  async caseTypeOptions() {
+  /** Every نوع پرونده the caller's insurers define; with `line`, only that نوع بیمه‌نامه's (panel 1). */
+  async caseTypeOptions(line?: Line) {
     const tenantId = getTenantIdOrThrow();
     const db = this.db();
     const tenant = await db.tenant.findUnique({ where: { id: tenantId }, select: { kind: true } });
     const insurerIds = tenant?.kind === 'INSURER' ? [tenantId]
       : (await db.brokerInsurerPartnership.findMany({ where: { brokerTenantId: tenantId, isActive: true }, select: { insurerTenantId: true } })).map((p) => p.insurerTenantId);
     const out = new Map<string, { code: string; label: string; causeGroup: string; death: boolean }>();
-    for (const id of insurerIds) for (const t of (await this.modelOf(id)).form.caseTypes) if (!out.has(t.code)) out.set(t.code, t);
+    for (const id of insurerIds) {
+      const m = await this.modelOf(id);
+      for (const t of m.form.caseTypes) if (!out.has(t.code) && (!line || m.form.lines[line].claimTypes.includes(t.code))) out.set(t.code, t);
+    }
     return [...out.values()];
   }
 

@@ -1,13 +1,14 @@
 'use client';
 import { client } from '../../../lib/client';
+import { lineQuery } from '../../../lib/line';
 import type { MyClaim } from '../../customer/case-table';
 
 /** An org case list row, read as the بیمه‌گزار panel's table row (panel 1 of an organization). */
 type OrgRow = MyClaim & { currentStage?: string | null };
 
-/** The organization's cases for panel 1, with «نیازمند اقدام» = sent back for رفع نقص. */
+/** The organization's cases for panel 1 (in the chosen نوع بیمه‌نامه), with «نیازمند اقدام» = sent back for رفع نقص. */
 export async function entryCases(): Promise<MyClaim[]> {
-  const rows = await client.get<OrgRow[]>('/claims', 'org');
+  const rows = await client.get<OrgRow[]>(`/claims${lineQuery()}`, 'org');
   return rows.map((c) => ({ ...c, needsAction: c.status === 'RETURNED_INCOMPLETE' || c.currentStage === 'POLICYHOLDER' }));
 }
 

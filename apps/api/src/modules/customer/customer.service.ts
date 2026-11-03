@@ -6,7 +6,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { customerClaimWhere, getContext, getTenantIdOrThrow } from '../../common/tenant/tenant-context';
 import { LINE_FA } from '../policyholders/policyholders.service';
 import { ModelStore } from '../model-view/model-store.service';
-import { dependentsFor, typesFor } from '../claims/workflow';
+import { dependentsFor, Line, typesFor } from '../claims/workflow';
 import { activeContracts, policyRows } from '../policyholders/policy-rows';
 import { toAsciiDigits, toJalali } from '../../common/jalali/jalali.util';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -294,18 +294,19 @@ export class CustomerService {
    * The بیمه‌گزار panel home: the company's بیمه‌نامه‌ها (عمر and حوادث, every policy year — newest
    * first, the one in force today pre-selected) and, for the chosen one, its claim totals.
    */
-  async dashboard(contractId?: string, companyId?: string) {
+  async dashboard(contractId?: string, companyId?: string, line?: Line) {
     const ctx = getContext();
     if (ctx?.actorType !== 'CUSTOMER' || !ctx.actorId) throw new ForbiddenException('فقط برای بیمه‌گزار');
     const db = this.prisma.unscoped();
     const acc = await db.customerAccount.findUnique({ where: { id: ctx.actorId }, include: { company: { include: { contracts: true } }, tenant: { select: { name: true } } } });
     if (!acc) throw new NotFoundException('حساب یافت نشد');
-    if (ctx.customerAgent) return this.agentDashboard(acc.tenantId, acc.tenant.name);
+    if (ctx.customerAgent) return this.agentDashboard(acc.tenantId, acc.tenant.name, line);
     // The «broker» login looks at whichever company of its brokerage it picked.
     const co = ctx.customerBrokerPanel
       ? (companyId ? await db.policyholderCompany.findFirst({ where: { id: companyId, tenantId: ctx.tenantId }, include: { contracts: true } }) : null)
       : acc.company;
-    const contracts = activeContracts(co?.contracts ?? []);
+    // Panel 1 works in the نوع بیمه‌نامه chosen on the login.
+    const contracts = activeContracts(co?.contracts ?? []).filter((k) => !line || k.line === line);
     const insurerIds = [...new Set(contracts.map((k) => k.insurerTenantId))];
     const insurers = insurerIds.length ? await db.tenant.findMany({ where: { id: { in: insurerIds } }, select: { id: true, name: true } }) : [];
     const iName = new Map(insurers.map((i) => [i.id, i.name]));
@@ -348,17 +349,18 @@ export class CustomerService {
    * An insurer's نماینده بیمه has no company or contract: one «بیمه‌نامه» row standing for the insurer
    * (every نوع پرونده it offers; the policy number is typed on each case), and totals of their own cases.
    */
-  private async agentDashboard(insurerId: string, insurerName: string) {
+  private async agentDashboard(insurerId: string, insurerName: string, line?: Line) {
     const claims = await this.prisma.unscoped().claim.findMany({
-      where: { ...customerClaimWhere(), deletedAt: null, insurerTenantId: insurerId },
+      where: { ...customerClaimWhere(), deletedAt: null, insurerTenantId: insurerId, ...(line ? { line } : {}) },
       select: { status: true, currentStage: true, claimedAmount: true, finalizedAmount: true },
     });
     const sum = claims.filter((c) => c.status === 'PAID').reduce((t, c) => t + BigInt(Math.round(Number(c.finalizedAmount ?? c.claimedAmount ?? 0))), 0n);
     return {
       company: null, brokerName: insurerName, agent: true,
       contracts: [{
-        id: 'agent', line: null, lineLabel: null, policyNumber: null, insurerName, startDate: null, endDate: null, startIso: null, endIso: null, inForce: true,
-        claimTypes: this.store.get(insurerId).form.caseTypes.map((t) => t.code), form: this.formOf(insurerId, null, []),
+        id: 'agent', line: line ?? null, lineLabel: line ? LINE_FA[line] : null, policyNumber: null, insurerName, startDate: null, endDate: null, startIso: null, endIso: null, inForce: true,
+        // The chosen kind's نوع پرونده at this insurer (every one when no kind was chosen).
+        claimTypes: line ? this.store.get(insurerId).form.lines[line].claimTypes : this.store.get(insurerId).form.caseTypes.map((t) => t.code), form: this.formOf(insurerId, line ?? null, []),
       }],
       selectedId: 'agent',
       stats: {
@@ -430,7 +432,7 @@ export class CustomerService {
     return { ok: true };
   }
 
-  private formOf(insurerId: string, line: 'LIFE' | 'ACCIDENT' | null, chain: string[]) {
+  private formOf(insurerId: string, line: Line | null, chain: string[]) {
     const m = this.store.get(insurerId);
     return {
       insuredLabel: m.form.lines[line ?? 'ACCIDENT'].insuredLabel, eventLabel: m.form.eventLabel, birthDate: m.form.birthDate, cause: m.form.cause, causeLists: m.form.causeLists, caseTypes: m.form.caseTypes, dependents: dependentsFor(m, chain),

@@ -20,6 +20,7 @@ import { ClaimFieldsService } from '../claim-fields/claim-fields.service';
 import { CoverageService } from '../model-view/coverage.service';
 import { CoverageCheckDto } from '../customer/dto';
 import { ClaimsService } from './claims.service';
+import { asLine } from './workflow';
 import { ActionDto, DecisionDto, FileClaimDto, FileOnBehalfDto, HeirsDto, LetterDto, LossNoticeDto, PhysicalDto, RectifyDto } from './dto';
 
 const docLimits = { fileSize: 15 * 1024 * 1024 };
@@ -57,8 +58,8 @@ export class ClaimsController {
   // Also feeds the «پرونده جدید» form (any staff who files claims), not only filing on behalf.
   @Permissions(PERMISSIONS.CLAIM_READ)
   @Get('case-types')
-  caseTypes() {
-    return this.claims.caseTypeOptions();
+  caseTypes(@Query('line') line?: string) {
+    return this.claims.caseTypeOptions(asLine(line));
   }
 
   /** Panel 1 of an insurer: partner کارگزاری‌ها and their companies, شعبه‌ها, and the entry way. */
@@ -77,8 +78,8 @@ export class ClaimsController {
   /** One company's بیمه‌نامه‌ها for the filing form (same as the بیمه‌گزار panel's). */
   @Permissions(PERMISSIONS.CLAIM_FILE_ON_BEHALF)
   @Get('on-behalf/companies/:companyId/policies')
-  onBehalfPolicies(@Param('companyId', ParseUUIDPipe) companyId: string) {
-    return this.claims.onBehalfPolicies(companyId);
+  onBehalfPolicies(@Param('companyId', ParseUUIDPipe) companyId: string, @Query('line') line?: string) {
+    return this.claims.onBehalfPolicies(companyId, asLine(line));
   }
 
   /** Coverage inquiry while filing for a بیمه‌گزار (`enabled: false` while Super Admin has it off). */
@@ -101,8 +102,8 @@ export class ClaimsController {
   /** All claims the caller participates in. */
   @Permissions(PERMISSIONS.CLAIM_READ)
   @Get()
-  list() {
-    return this.claims.listMine();
+  list(@Query('line') line?: string) {
+    return this.claims.listMine(undefined, asLine(line)); // panel 1: one نوع بیمه‌نامه
   }
 
   /** Soft-delete a claim (admin only; audit-logged, restorable within the retention window). */

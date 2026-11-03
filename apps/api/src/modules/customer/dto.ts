@@ -1,3 +1,4 @@
+import { InsuranceLine } from '@prisma/client';
 import { Type } from 'class-transformer';
 import { ArrayMaxSize, IsArray, IsEnum, IsIn, IsISO8601, IsOptional, IsString, IsUUID, Length, Matches, ValidateNested } from 'class-validator';
 import { BENEFICIARY_KINDS, HeirDto } from '../claims/dto';
@@ -74,6 +75,11 @@ export class CustomerChangePasswordDto {
 
 /** A بیمه‌گزار files their own claim; channel/معرف/policyHolder are derived from their session. */
 export class CustomerFileClaimDto {
+  // نوع بیمه‌نامه chosen on the panel-1 login
+  @IsOptional()
+  @IsEnum(InsuranceLine)
+  line?: InsuranceLine;
+
   // The insurer is NOT chosen by the بیمه‌گزار — it comes from the brokerage's contract for their company.
   @IsOptional()
   @IsISO8601()

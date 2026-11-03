@@ -1,9 +1,9 @@
 import { toJalali } from '../../common/jalali/jalali.util';
 import type { ModelStore } from '../model-view/model-store.service';
-import { dependentsFor, typesFor } from '../claims/workflow';
+import { dependentsFor, Line, typesFor } from '../claims/workflow';
 import { LINE_FA } from './policyholders.service';
 
-interface ContractRow { id: string; line: 'LIFE' | 'ACCIDENT' | null; policyNumber: string | null; insurerTenantId: string; startDate: Date | null; endDate: Date | null; isActive: boolean }
+interface ContractRow { id: string; line: Line | null; policyNumber: string | null; insurerTenantId: string; startDate: Date | null; endDate: Date | null; isActive: boolean }
 
 /** In force today (no dates = always). */
 export const inForce = (k: { startDate: Date | null; endDate: Date | null }, now = new Date()) => (!k.startDate || k.startDate <= now) && (!k.endDate || k.endDate >= now);

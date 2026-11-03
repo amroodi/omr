@@ -237,6 +237,9 @@ model PolicyholderCompany {
 enum InsuranceLine {
   LIFE // عمر
   ACCIDENT // حوادث
+  LIABILITY // مسئولیت
+  CREDIT_LIFE // عمر مانده بدهکار
+  SAVINGS_LIFE // عمر پس‌انداز
 }
 
 // Which insurer covers a company's employees, and for which period. The brokerage sets and changes
@@ -246,7 +249,7 @@ model PolicyholderContract {
   companyId       String
   company         PolicyholderCompany @relation(fields: [companyId], references: [id])
   insurerTenantId String
-  line            InsuranceLine? // عمر / حوادث
+  line            InsuranceLine? // نوع بیمه‌نامه
   policyNumber    String? // usually renewed (a new number) by the insurer every policy year
   startDate       DateTime?
   endDate         DateTime? // null = open-ended
@@ -873,6 +876,9 @@ model Claim {
   sellingBranchId String? // معرف = insurer branch that sold (DIRECT channel)
   policyHolderId  String? // بیمه‌گزار (CustomerAccount) who files & does رفع نقص
   policyholderCompanyId String? // بیمه‌گزار company (PolicyholderCompany) the deceased worked for
+  // نوع بیمه‌نامه: from the contract it was filed under, else the kind chosen on the panel-1 login.
+  // A death in an accident may have one case per kind (عمر and حوادث), each assessed on its own.
+  line            InsuranceLine?
 
   // Subject (deceased بیمه‌شده / متوفی)
   deceasedFullName         String // ENCRYPTED
@@ -939,6 +945,7 @@ model Claim {
   @@index([brokerTenantId])
   @@index([deceasedNationalCodeHash])
   @@index([mainInsuredNationalCodeHash])
+  @@index([line])
   @@index([policyholderCompanyId])
   @@index([deletedAt])
   @@index([insurerTenantId, currentStage])
