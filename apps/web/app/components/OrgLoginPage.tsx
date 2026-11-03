@@ -155,7 +155,7 @@ export function OrgLoginPage({ kind, mode = 'PROCESS', switcher }: { kind: 'BROK
   }
 
   return (
-    <AuthCard title={info.title} subtitle={mode === 'ENTRY' ? info.subtitle : undefined} bg={{ light: ['org-day-1', 'org-day-2'], dark: ['org-night-1'] }} org={fixedOrg ? kind : undefined} hideNav={mode === 'ENTRY'}>
+    <AuthCard title={info.title} bg={{ light: ['org-day-1', 'org-day-2'], dark: ['org-night-1'] }} org={fixedOrg ? kind : undefined} hideNav={mode === 'ENTRY'}>
       <div className="space-y-4">
         {fields}
         <button onClick={submit} disabled={loading || !username || !password || needLine} className="btn btn-primary w-full">{loading ? '…' : 'ورود'}</button>
