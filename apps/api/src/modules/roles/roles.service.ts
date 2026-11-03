@@ -29,7 +29,7 @@ export class RolesService {
   async list() {
     const roles = await this.prisma.scoped.role.findMany({
       orderBy: { createdAt: 'asc' },
-      select: { id: true, name: true, permissions: true, isSystem: true, _count: { select: { orgUsers: true } } } as any,
+      select: { id: true, name: true, permissions: true, isSystem: true, _count: { select: { orgUsers: { where: { removedAt: null } } } } } as any, // removed users don't count
     });
     return (roles as any[]).map((r) => ({ id: r.id, name: r.name, permissions: r.permissions, isSystem: r.isSystem, locked: isLockedRole(r), users: r._count?.orgUsers ?? 0 }));
   }
@@ -66,7 +66,9 @@ export class RolesService {
     if (!role) throw new NotFoundException('نقش یافت نشد');
     if (isLockedRole(role)) throw new ForbiddenException('نقش‌های مدیریتی قابل حذف نیستند');
     if ((role as any)._count?.orgUsers > 0) {
-      throw new BadRequestException('ابتدا کاربران این نقش را به نقش دیگری منتقل کنید');
+      // Removed users keep their role (their history points at it), so it can't be deleted from under them.
+      if (await this.prisma.scoped.orgUser.count({ where: { roleId: id, removedAt: null } })) throw new BadRequestException('ابتدا کاربران این نقش را به نقش دیگری منتقل کنید');
+      throw new BadRequestException('کاربران حذف‌شده‌ای این نقش را داشته‌اند و برای حفظ سوابقشان نقش حذف نمی‌شود؛ می‌توانید نام یا مجوزهای آن را تغییر دهید.');
     }
     await this.prisma.scoped.role.delete({ where: { id } });
     await this.audit.record({ action: AuditAction.DELETE, targetType: 'Role', targetId: id, metadata: { name: role.name, permissions: role.permissions } });

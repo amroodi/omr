@@ -1,14 +1,13 @@
 import { BadRequestException, Body, Controller, Get, NotFoundException, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common';
 import { AuditAction, Prisma } from '@prisma/client';
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsBoolean, IsInt, IsOptional, IsString, Length, Max, Matches, Min, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsOptional, IsString, Length, ValidateNested } from 'class-validator';
 import { AuditService } from '../../common/audit/audit.service';
-import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { SuperAdminOnly } from '../../common/rbac/decorators';
 import { NOTICE_TARGETS, rulesFor, SOURCE_FA, SOURCES_OF, TARGET_FA, TARGETS_OF } from '../claims/claim-notice';
 import { DEFAULT_WORKFLOW_MODEL, modelFrom } from '../claims/workflow';
-import { CoverageService, coverageFrom } from './coverage.service';
+import { coverageFrom } from './coverage.service';
 import { ModelStore } from './model-store.service';
 import { allKinds } from '../../common/kinds';
 
@@ -24,18 +23,6 @@ class DocRowDto {
 class DocsDto {
   @IsArray() @ArrayMaxSize(200) @ValidateNested({ each: true }) @Type(() => DocRowDto) docs!: DocRowDto[];
 }
-class CoverageDto {
-  @IsBoolean() enabled!: boolean;
-  @IsString() @Length(0, 500) url!: string;
-  @IsString() @Length(1, 60) @Matches(/^[\w-]+$/) nationalCodeParam!: string;
-  @IsString() @Length(1, 60) @Matches(/^[\w-]+$/) authHeader!: string;
-  @IsOptional() @IsString() @Length(0, 2000) secret?: string; // empty/absent keeps the stored one
-  @IsInt() @Min(1) @Max(600) perMinute!: number;
-}
-class CoverageTestDto {
-  @IsString() @Matches(/^\d{10}$/) nationalCode!: string;
-}
-
 /** Model View: Super Admin alone decides how each insurer's chain works. Every save is audited. */
 @SuperAdminOnly()
 @Controller('admin/workflow-model')
@@ -44,8 +31,6 @@ export class ModelViewController {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly store: ModelStore,
-    private readonly coverage: CoverageService,
-    private readonly crypto: FieldCryptoService,
   ) {}
 
   @Get()
@@ -70,7 +55,8 @@ export class ModelViewController {
           id: t.id, name: t.name, customized: t.workflowModel != null, casesAtCouncil: count(atCouncil, t.id), model: modelFrom(t.workflowModel),
           docs: docs.filter((d) => d.tenantId === t.id).map(({ tenantId: _, ...d }) => d),
           companies: [...new Map(contracts.filter((k) => k.insurerTenantId === t.id).map((k) => [k.company.id, k.company])).values()].sort((a, b) => a.name.localeCompare(b.name, 'fa')),
-          coverage: { enabled: c.enabled, url: c.url, nationalCodeParam: c.nationalCodeParam, authHeader: c.authHeader, hasSecret: !!c.secret, perMinute: c.perMinute, notChecked: count(notChecked, t.id) },
+          // Edited in Super Admin › «اتصال فن‌آوران» (admin/coverage); Model View only shows where it stands.
+          coverage: { enabled: c.enabled, url: c.url, hasSecret: !!c.secret, notChecked: count(notChecked, t.id) },
         };
       }),
       notice: orgs.map((o) => ({
@@ -135,28 +121,5 @@ export class ModelViewController {
     await db.tenant.update({ where: { id: orgId }, data: { claimNoticeRules: rules as Prisma.InputJsonValue } });
     await this.audit.record({ action: AuditAction.EDIT, tenantId: orgId, targetType: 'ClaimNoticeRules', targetId: orgId, metadata: rules as any });
     return rules;
-  }
-
-  /** The فن‌آوران connection of one insurer. The secret is write-only. */
-  @Put(':insurerId/coverage')
-  async saveCoverage(@Param('insurerId', ParseUUIDPipe) insurerId: string, @Body() dto: CoverageDto) {
-    const t = await this.insurer(insurerId);
-    const cur = coverageFrom(t.coverageConfig);
-    if (dto.enabled && !dto.url.trim()) throw new BadRequestException('پیش از فعال‌سازی، نشانی سرویس را وارد کنید');
-    if (dto.url.trim()) this.coverage.assertUrl(dto.url.trim());
-    const next = { enabled: dto.enabled, url: dto.url.trim(), nationalCodeParam: dto.nationalCodeParam, authHeader: dto.authHeader, perMinute: dto.perMinute, secret: dto.secret ? this.crypto.encrypt(dto.secret) : cur.secret };
-    await this.prisma.unscoped().tenant.update({ where: { id: insurerId }, data: { coverageConfig: next as unknown as Prisma.InputJsonValue } });
-    await this.audit.record({ action: AuditAction.EDIT, tenantId: insurerId, targetType: 'CoverageConfig', targetId: insurerId, metadata: { enabled: next.enabled, url: next.url, perMinute: next.perMinute } });
-    return { ok: true };
-  }
-
-  /** Try the saved connection with one کد ملی, without touching any case. */
-  @Post(':insurerId/coverage/test')
-  async testCoverage(@Param('insurerId', ParseUUIDPipe) insurerId: string, @Body() dto: CoverageTestDto) {
-    const t = await this.insurer(insurerId);
-    const cfg = coverageFrom(t.coverageConfig);
-    if (!cfg.url) throw new BadRequestException('نشانی سرویس ثبت نشده است');
-    try { return { ok: true, ...(await this.coverage.ask(cfg, dto.nationalCode)) }; }
-    catch (e: any) { return { ok: false, error: String(e?.message ?? e) }; }
   }
 }

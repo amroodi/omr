@@ -103,6 +103,12 @@ export default function AdminDashboard() {
           <button onClick={() => router.push('/admin/kinds')} className="btn btn-primary btn-sm">
             <Icon path="M4 6h16M4 12h16M4 18h10" /> انواع بیمه‌نامه
           </button>
+          <button onClick={() => router.push('/admin/operators')} className="btn btn-primary btn-sm">
+            <Icon path="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM16 11l2 2 4-4" /> کاربران پنل‌ها
+          </button>
+          <button onClick={() => router.push('/admin/fanavaran')} className="btn btn-primary btn-sm">
+            <Icon path="M10 13a5 5 0 007.07 0l1.93-1.93a5 5 0 00-7.07-7.07l-1 1M14 11a5 5 0 00-7.07 0L5 12.93a5 5 0 007.07 7.07l1-1" /> اتصال فن‌آوران
+          </button>
           <button onClick={() => router.push('/admin/policyholders')} className="btn btn-primary btn-sm">
             <Icon path="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" /> بیمه‌گزاران
           </button>

@@ -58,6 +58,12 @@ export const PERMISSIONS = {
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
 
+/** The system role of a panel-1 (ورود داده) staff member. */
+export const PANEL1_STAFF_ROLE = 'کارمند ثبت پرونده (پنل ۱)';
+
+/** Permissions that let an org account sign in to panel 1 (it can create cases in some way). */
+export const ENTRY_PERMISSIONS: string[] = ['claim:file', 'claim:file-on-behalf', 'import:batch', 'spare:work'];
+
 /** Default system roles seeded per tenant. */
 export const SYSTEM_ROLES: Record<string, Permission[]> = {
   'مدیر سازمان': Object.values(PERMISSIONS).filter(
@@ -88,6 +94,14 @@ export const SYSTEM_ROLES: Record<string, Permission[]> = {
     PERMISSIONS.DOC_READ,
     PERMISSIONS.DOC_VERIFY,
     PERMISSIONS.CLAIM_READ,
+  ],
+  // Panel 1 only (ورود برای بارگذاری مدارک): files cases and uploads their documents, nothing in panel 2.
+  [PANEL1_STAFF_ROLE]: [
+    PERMISSIONS.CLAIM_READ,
+    PERMISSIONS.CLAIM_FILE,
+    PERMISSIONS.CLAIM_FILE_ON_BEHALF,
+    PERMISSIONS.DOC_UPLOAD,
+    PERMISSIONS.DOC_READ,
   ],
   // Handles bulk data in/out only.
   'مسئول ورود و خروج داده': [

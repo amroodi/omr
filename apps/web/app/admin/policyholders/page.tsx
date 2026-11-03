@@ -65,7 +65,9 @@ export default function AdminPolicyholders() {
     if (!getToken('super')) { router.push('/admin/login'); return; }
     client.get<{ brokers: Opt[]; insurers: Opt[] }>('/admin/policyholders/options', 'super').then((o) => {
       setOpts(o);
-      setBroker((o.brokers.find((b) => b.slug === 'damuon') ?? o.brokers[0])?.id ?? '');
+      // ?broker=<id> (from «کاربران پنل‌ها») opens that brokerage's companies.
+      const want = new URLSearchParams(window.location.search).get('broker');
+      setBroker((o.brokers.find((b) => b.id === want) ?? o.brokers.find((b) => b.slug === 'damuon') ?? o.brokers[0])?.id ?? '');
       setInsurer((o.insurers.find((i) => i.slug === 'alborz') ?? o.insurers[0])?.id ?? '');
     }).catch((e) => setError(e.message));
     // eslint-disable-next-line react-hooks/exhaustive-deps
