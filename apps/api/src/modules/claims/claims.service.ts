@@ -3,7 +3,7 @@ import JSZip from 'jszip';
 import { uploadName } from '../../common/validation/upload-name';
 import { NoticeRule, NoticeSource, NoticeTarget, SOURCE_FA, TARGET_FA, TARGETS_OF, combine, rulesFor } from './claim-notice';
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { AuditAction, ClaimStatus, InsuranceLine, Prisma, SalesChannel } from '@prisma/client';
+import { AuditAction, ClaimStatus, Prisma, SalesChannel } from '@prisma/client';
 import { AuditService } from '../../common/audit/audit.service';
 import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -13,7 +13,7 @@ import { toJalali, toPersianDigits } from '../../common/jalali/jalali.util';
 import { OcrService } from '../../integrations/ocr/ocr.service';
 import { ClaimFieldsService } from '../claim-fields/claim-fields.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { LINE_FA, PolicyholdersService } from '../policyholders/policyholders.service';
+import { PolicyholdersService } from '../policyholders/policyholders.service';
 import { activeContracts, fitsLine, policyRows } from '../policyholders/policy-rows';
 import { AiReviewQueue } from '../ai-review/ai-review.queue';
 import { AiReviewSettings } from '../ai-review/ai-review.settings';
@@ -27,7 +27,8 @@ import { beneficiaryHiddenDoc } from '../required-docs/defaults';
 import { toAsciiDigits } from '../../common/jalali/jalali.util';
 import { ModelStore } from '../model-view/model-store.service';
 import { CoverageService } from '../model-view/coverage.service';
-import { above, actionsFor, rulesOf, WorkflowModel, Line, LINES, InsuredRelation, RELATION_FA, DEPENDENT_RELATIONS, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, physicalActionsFor, PhysicalActionKey, physicalBelow, PhysicalState, Purpose, ReviewDesk, Stage, STAGE_FA, WorkflowAction, caseTypeOf, dependentsFor, EntryWay, typesFor } from './workflow';
+import { above, actionsFor, rulesOf, WorkflowModel, Line, lineForm, InsuredRelation, RELATION_FA, DEPENDENT_RELATIONS, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, physicalActionsFor, PhysicalActionKey, physicalBelow, PhysicalState, Purpose, ReviewDesk, Stage, STAGE_FA, WorkflowAction, caseTypeOf, dependentsFor, EntryWay, typesFor } from './workflow';
+import { allKinds, docKindWhere, isKind, kindLabel, kindsOf } from '../../common/kinds';
 
 const CLAIM_DOC_MIME = new Set([
   'application/pdf', 'image/jpeg', 'image/png',
@@ -297,7 +298,15 @@ export class ClaimsService {
       companyId = acc.companyId;
       input.insurerTenantId = undefined;
     }
-    // نوع بیمه‌نامه of the case: the contract's when there is one, else the one chosen on the login.
+    // نوع بیمه‌نامه of the case: the contract's when there is one, else the one chosen on the login, which
+    // must be a kind of the catalog that Super Admin opened to the caller's organization.
+    if (input.line) {
+      if (!isKind(input.line)) throw new BadRequestException('نوع بیمه‌نامه نامعتبر است');
+      if (ctx?.tenantId) {
+        const org = await db.tenant.findUnique({ where: { id: ctx.tenantId }, select: { policyKinds: true } });
+        if (!kindsOf(org?.policyKinds).some((k) => k.code === input.line)) throw new BadRequestException('این نوع بیمه‌نامه برای این سازمان فعال نیست');
+      }
+    }
     let line: Line | null = input.line ?? null;
     if (companyId && input.contractId) {
       // The بیمه‌نامه the بیمه‌گزار picked: it must be theirs, fit the claim type, and cover the date.
@@ -331,10 +340,10 @@ export class ClaimsService {
     if (!insurer || insurer.kind !== 'INSURER') throw new BadRequestException('بیمه‌گر نامعتبر است');
     const insurerTenantId = insurer.id;
     // No contract and no chosen kind (e.g. a hand-filed case): the first kind whose نوع پرونده list has it.
-    if (!line) { const m = await this.modelOf(insurerTenantId); line = LINES.find((l) => input.claimType && m.form.lines[l].claimTypes.includes(input.claimType)) ?? null; }
+    if (!line) { const m = await this.modelOf(insurerTenantId); line = allKinds().map((k) => k.code).find((l) => input.claimType && lineForm(m, l).claimTypes.includes(input.claimType)) ?? null; }
     const form = (await this.modelOf(insurerTenantId)).form;
     // A kind chosen with no company contract behind it (a نماینده بیمه, a hand-filed case): its own نوع پرونده list.
-    if (input.line && !companyId && input.claimType && !form.lines[input.line].claimTypes.includes(input.claimType)) throw new BadRequestException('این نوع پرونده برای این نوع بیمه‌نامه فعال نیست');
+    if (input.line && !companyId && input.claimType && !lineForm(await this.modelOf(insurerTenantId), input.line).claimTypes.includes(input.claimType)) throw new BadRequestException('این نوع پرونده برای این نوع بیمه‌نامه فعال نیست');
     if (input.claimType && !form.caseTypes.some((t) => t.code === input.claimType)) throw new BadRequestException('نوع پرونده نامعتبر است');
     if (form.birthDate === 'required' && !input.deceasedBirthDate) throw new BadRequestException('تاریخ تولد بیمه‌شده الزامی است');
     if (form.cause === 'required' && !input.causeOfDeath?.trim()) throw new BadRequestException('علت را مشخص کنید');
@@ -1309,7 +1318,7 @@ export class ClaimsService {
     this.assertParticipant(claim);
 
     const reqs = await db.requiredDocument.findMany({
-      where: { tenantId: claim.insurerTenantId, isActive: true, appliesToTypes: { has: claim.claimType }, code: { not: beneficiaryHiddenDoc(claim.beneficiaryType) ?? undefined } },
+      where: { tenantId: claim.insurerTenantId, isActive: true, appliesToTypes: { has: claim.claimType }, code: { not: beneficiaryHiddenDoc(claim.beneficiaryType) ?? undefined }, ...docKindWhere(claim.line) },
       orderBy: { order: 'asc' },
     });
     const docs = await db.document.findMany({
@@ -2027,6 +2036,7 @@ export class ClaimsService {
     if (clean(q.insurerTenantId)) and.push({ insurerTenantId: clean(q.insurerTenantId) });
     if (clean(q.brokerTenantId)) and.push({ brokerTenantId: clean(q.brokerTenantId) });
     if (q.claimType) and.push({ claimType: q.claimType });
+    if (q.line && isKind(q.line)) and.push({ line: q.line }); // نوع بیمه‌نامه
     if (q.status && (ClaimStatus as any)[q.status]) and.push({ status: q.status as ClaimStatus });
     if (q.channel && (SalesChannel as any)[q.channel]) and.push({ channel: q.channel as SalesChannel });
 
@@ -2099,7 +2109,7 @@ export class ClaimsService {
     const out = new Map<string, { code: string; label: string; causeGroup: string; death: boolean }>();
     for (const id of insurerIds) {
       const m = await this.modelOf(id);
-      for (const t of m.form.caseTypes) if (!out.has(t.code) && (!line || m.form.lines[line].claimTypes.includes(t.code))) out.set(t.code, t);
+      for (const t of m.form.caseTypes) if (!out.has(t.code) && (!line || lineForm(m, line).claimTypes.includes(t.code))) out.set(t.code, t);
     }
     return [...out.values()];
   }
@@ -2171,7 +2181,7 @@ export class ClaimsService {
       eventDate: c.eventDate ? toJalali(c.eventDate, false) : null,
       insuredRelation: c.insuredRelation ?? null,
       line: c.line ?? null, // نوع بیمه‌نامه
-      lineLabel: c.line ? LINE_FA[c.line as InsuranceLine] : null,
+      lineLabel: c.line ? kindLabel(c.line) : null,
       mainInsuredName: c.mainInsuredName ? this.crypto.decrypt(c.mainInsuredName) : null,
       mainInsuredNationalCode: c.mainInsuredNationalCode ? this.crypto.decrypt(c.mainInsuredNationalCode) : null,
       deceasedBirthDate: c.deceasedBirthDate ? toJalali(c.deceasedBirthDate, false) : null,

@@ -9,7 +9,7 @@ import { jwtTtl } from '../../common/crypto/jwt-ttl';
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { AuditAction, InsuranceLine } from '@prisma/client';
+import { AuditAction } from '@prisma/client';
 import { AuditService } from '../../common/audit/audit.service';
 import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
 import { HashService } from '../../common/crypto/hash.service';
@@ -20,13 +20,14 @@ import { toJalali, toPersianDigits } from '../../common/jalali/jalali.util';
 import { SmsService } from '../auth/sms.service';
 import { RequestOtpDto, VerifyOtpDto } from './dto';
 import { caseTypeOf, chainOf, InsuredRelation, RELATION_FA, Stage } from '../claims/workflow';
-import { LINE_FA } from '../policyholders/policyholders.service';
+
 import { ModelStore } from '../model-view/model-store.service';
 import { ageAt } from '../claims/claims.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ClaimFieldsService } from '../claim-fields/claim-fields.service';
 import { PolicyholdersService } from '../policyholders/policyholders.service';
 import { beneficiaryHiddenDoc } from '../required-docs/defaults';
+import { docKindWhere, kindLabel } from '../../common/kinds';
 
 /**
  * The secure replacement for the legacy IDOR endpoints (`get_fields.php`,
@@ -239,7 +240,7 @@ export class InquiryService {
         id: c.id, claimNumber: c.claimNumber, status: c.status,
         name: c.deceasedFullName ? this.crypto.decrypt(c.deceasedFullName) : null,
         relation: RELATION_FA[(c.insuredRelation ?? 'MAIN') as InsuredRelation] ?? 'اصلی',
-        line: (c as any).line ? LINE_FA[(c as any).line as InsuranceLine] : null,
+        line: (c as any).line ? kindLabel((c as any).line) : null,
         claimType: caseTypeOf(m, c.claimType)?.label ?? c.claimType,
         insurerName: iName.get(c.insurerTenantId) ?? null,
         eventDate: c.eventDate ? toJalali(c.eventDate, false) : null,
@@ -428,7 +429,7 @@ export class InquiryService {
     return {
       kind: 'claim',
       id: c.id, // which of the looked-up cases this is (the picker)
-      line: c.line ? LINE_FA[c.line as InsuranceLine] : null, // نوع بیمه‌نامه
+      line: c.line ? kindLabel(c.line) : null, // نوع بیمه‌نامه
       claimNumber: c.claimNumber,
       status: c.status,
       claimType: c.claimType,
@@ -490,10 +491,10 @@ export class InquiryService {
   }
 
   /** Read-only document checklist of a claim for the inquiry («بررسی وضعیت مدارک»). */
-  private async documentStatus(c: { id: string; insurerTenantId: string; claimType: any; beneficiaryType?: string | null }, manual: boolean) {
+  private async documentStatus(c: { id: string; insurerTenantId: string; claimType: any; beneficiaryType?: string | null; line?: string | null }, manual: boolean) {
     const db = this.prisma.unscoped();
     const [reqs, docs] = await Promise.all([
-      db.requiredDocument.findMany({ where: { tenantId: c.insurerTenantId, isActive: true, appliesToTypes: { has: c.claimType }, code: { not: beneficiaryHiddenDoc(c.beneficiaryType) ?? undefined } }, orderBy: { order: 'asc' } }),
+      db.requiredDocument.findMany({ where: { tenantId: c.insurerTenantId, isActive: true, appliesToTypes: { has: c.claimType }, code: { not: beneficiaryHiddenDoc(c.beneficiaryType) ?? undefined }, ...docKindWhere(c.line) }, orderBy: { order: 'asc' } }),
       db.document.findMany({ where: { claimId: c.id }, orderBy: { createdAt: 'desc' }, select: { id: true, docCode: true, createdAt: true, verificationStatus: true } }),
     ]);
     const reviews = docs.length && !manual ? await db.documentReview.findMany({ where: { documentId: { in: docs.map((d) => d.id) } } }) : [];

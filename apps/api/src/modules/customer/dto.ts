@@ -1,9 +1,10 @@
 import { INSURED_RELATIONS, InsuredRelation } from '../claims/workflow';
-import { InsuranceLine } from '@prisma/client';
+
 import { Type } from 'class-transformer';
 import { ArrayMaxSize, IsArray, IsEnum, IsIn, IsISO8601, IsOptional, IsString, IsUUID, Length, Matches, ValidateNested } from 'class-validator';
 import { BENEFICIARY_KINDS, HeirDto } from '../claims/dto';
 import { ToAsciiDigits } from '../../common/validation/to-ascii.decorator';
+import { KIND_CODE } from '../../common/kinds';
 
 export class CustomerRequestOtpDto {
   @ToAsciiDigits()
@@ -78,8 +79,9 @@ export class CustomerChangePasswordDto {
 export class CustomerFileClaimDto {
   // نوع بیمه‌نامه chosen on the panel-1 login
   @IsOptional()
-  @IsEnum(InsuranceLine)
-  line?: InsuranceLine;
+  @IsString()
+  @Matches(KIND_CODE)
+  line?: string;
 
   // The insurer is NOT chosen by the بیمه‌گزار — it comes from the brokerage's contract for their company.
   @IsOptional()

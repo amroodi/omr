@@ -1,5 +1,6 @@
-import { InsuranceLine } from '@prisma/client';
-import { IsBoolean, IsEmail, IsEnum, IsISO8601, IsOptional, IsString, IsUUID, Length, ValidateIf } from 'class-validator';
+
+import { IsBoolean, IsEmail, IsEnum, IsISO8601, IsOptional, IsString, IsUUID, Length, Matches, ValidateIf } from 'class-validator';
+import { KIND_CODE } from '../../common/kinds';
 
 export class CompanyDto {
   @IsOptional()
@@ -49,8 +50,9 @@ export class ContractDto {
 
   @IsOptional()
   @ValidateIf((_, v) => v !== null)
-  @IsEnum(InsuranceLine)
-  line?: InsuranceLine | null;
+  @IsString()
+  @Matches(KIND_CODE)
+  line?: string | null;
 
   @IsOptional()
   @IsString()

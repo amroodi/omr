@@ -11,7 +11,7 @@ type RuleKey = 'councilEnabled' | 'requireLossNotice' | 'requireOriginals';
 interface Rights { upload: boolean; submit: boolean }
 interface LineForm { insuredLabel: string; claimTypes: string[] }
 interface CaseType { code: string; label: string; causeGroup: 'DEATH' | 'ACCIDENT'; death: boolean }
-type Line = 'LIFE' | 'ACCIDENT' | 'LIABILITY' | 'CREDIT_LIFE' | 'SAVINGS_LIFE';
+type Line = string; // a code of Super Admin's نوع بیمه‌نامه catalog
 interface CompanyGroup { id: string; label: string; companyIds: string[]; lines: Record<Line, string[]>; dependents: boolean }
 interface Model {
   councilEnabled: boolean; requireLossNotice: boolean; requireOriginals: boolean;
@@ -22,17 +22,15 @@ interface Model {
   entry: { way: 'BROKER' | 'BRANCH' | 'ASK' };
   form: { eventLabel: string; birthDate: Mode; cause: Mode; causeLists: { DEATH: string[]; ACCIDENT: string[] }; lines: Record<Line, LineForm>; caseTypes: CaseType[]; groups: CompanyGroup[]; dependents: boolean; docsNote: string };
 }
-interface Doc { code: string; label: string; isActive: boolean; appliesToTypes: string[]; requiredTypes: string[] }
+interface Doc { code: string; label: string; isActive: boolean; appliesToTypes: string[]; requiredTypes: string[]; kinds?: string[] }
 interface Coverage { enabled: boolean; url: string; nationalCodeParam: string; authHeader: string; hasSecret: boolean; perMinute: number; notChecked: number; secret?: string }
 interface Insurer { id: string; name: string; customized: boolean; casesAtCouncil: number; model: Model; docs: Doc[]; companies: { id: string; name: string; parentId: string | null }[]; coverage: Coverage }
 interface NoticeRule { enabled: boolean; targets: string[]; default: string }
 interface NoticeOrg { id: string; name: string; kind: string; sources: { key: string; label: string; allowed: string[]; rule: NoticeRule }[] }
-interface Data { defaults: Model; insurers: Insurer[]; notice: NoticeOrg[]; targets: { key: string; label: string }[] }
+interface Kind { code: string; label: string; active: boolean }
+interface Data { defaults: Model; kinds: Kind[]; insurers: Insurer[]; notice: NoticeOrg[]; targets: { key: string; label: string }[] }
 
 const STAGES: Stage[] = ['POLICYHOLDER', 'BROKER', 'BRANCH', 'HQ', 'COUNCIL'];
-// نوع بیمه‌نامه; the last three start with no نوع پرونده until set here.
-const LINES: Line[] = ['LIFE', 'ACCIDENT', 'LIABILITY', 'CREDIT_LIFE', 'SAVINGS_LIFE'];
-const LINE_FA: Record<Line, string> = { LIFE: 'عمر', ACCIDENT: 'حوادث', LIABILITY: 'مسئولیت', CREDIT_LIFE: 'عمر مانده بدهکار', SAVINGS_LIFE: 'عمر پس‌انداز' };
 const RULE_FA: Record<RuleKey, string> = { councilEnabled: 'شورای فنی', requireLossNotice: 'الزام اعلام خسارت', requireOriginals: 'الزام اصل مدارک' };
 const TABS = [['stages', 'مراحل'], ['types', 'قوانین نوع پرونده'], ['form', 'فرم ثبت پرونده'], ['docs', 'مدارک'], ['panels', 'پنل‌ها'], ['notice', 'اعلام خسارت'], ['coverage', 'استعلام فن‌آوران']] as const;
 const tabStyle = (on: boolean) => (on ? { background: 'var(--brand)', color: '#fff' } : { background: 'var(--surface-2)', color: 'var(--muted)', border: '1px solid var(--border)' });
@@ -89,7 +87,10 @@ export default function ModelView() {
   const setStage = (s: Stage, p: Partial<Model['stages'][Stage]>) => m && setM({ ...m, stages: { ...m.stages, [s]: { ...m.stages[s], ...p } } });
   const setPanel = (p: keyof Model['panels'], k: keyof Rights, v: boolean) => m && setM({ ...m, panels: { ...m.panels, [p]: { ...m.panels[p], [k]: v } } });
   const setForm = (p: Partial<Model['form']>) => m && setM({ ...m, form: { ...m.form, ...p } });
-  const setLine = (l: Line, p: Partial<LineForm>) => m && setForm({ lines: { ...m.form.lines, [l]: { ...m.form.lines[l], ...p } } });
+  const kinds = data?.kinds ?? [];
+  const kindTitle = (k: Kind) => `${k.label}${k.active ? '' : ' (غیرفعال)'}`;
+  const lineOf = (l: Line): LineForm => m?.form.lines[l] ?? { insuredLabel: 'نام بیمه‌شده', claimTypes: [] };
+  const setLine = (l: Line, p: Partial<LineForm>) => m && setForm({ lines: { ...m.form.lines, [l]: { ...lineOf(l), ...p } } });
   const setOverride = (t: string, k: RuleKey, v: string) => {
     if (!m) return;
     const o = { ...(m.byType[t] ?? {}) };
@@ -119,6 +120,7 @@ export default function ModelView() {
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <h1 className="text-2xl font-extrabold">Model View</h1>
         <div className="flex gap-2 flex-wrap">
+          <Link href="/admin/kinds" className="btn btn-ghost btn-sm">انواع بیمه‌نامه</Link>
           <Link href="/admin/network" className="btn btn-ghost btn-sm">نقشهٔ اتصال‌ها</Link>
           <Link href="/admin" className="btn btn-ghost btn-sm">بازگشت به مدیریت سازمان‌ها</Link>
         </div>
@@ -205,22 +207,22 @@ export default function ModelView() {
                       <input className="input" aria-label="نام نوع پرونده" value={t.label} maxLength={120} onChange={(e) => setType(t.code, { label: e.target.value })} />
                       <select className="input" aria-label="فهرست علت خسارت" value={t.causeGroup} onChange={(e) => setType(t.code, { causeGroup: e.target.value as CaseType['causeGroup'] })}><option value="DEATH">فهرست علت: فوت</option><option value="ACCIDENT">فهرست علت: حادثه</option></select>
                       <Toggle on={t.death} onChange={(v) => setType(t.code, { death: v })}>پروندهٔ فوت</Toggle>
-                      {data.defaults.form.caseTypes.some((x) => x.code === t.code) ? <span /> : <button className="btn btn-ghost btn-sm" onClick={() => setForm({ caseTypes: m.form.caseTypes.filter((x) => x.code !== t.code), lines: Object.fromEntries(LINES.map((l) => [l, { ...m.form.lines[l], claimTypes: m.form.lines[l].claimTypes.filter((x) => x !== t.code) }])) as Record<Line, LineForm> })}>حذف</button>}
+                      {data.defaults.form.caseTypes.some((x) => x.code === t.code) ? <span /> : <button className="btn btn-ghost btn-sm" onClick={() => setForm({ caseTypes: m.form.caseTypes.filter((x) => x.code !== t.code), lines: Object.fromEntries(Object.entries(m.form.lines).map(([l, f]) => [l, { ...f, claimTypes: f.claimTypes.filter((x) => x !== t.code) }])) as Record<Line, LineForm> })}>حذف</button>}
                     </div>
                   ))}
                 </div>
                 <button className="btn btn-ghost btn-sm" onClick={() => setForm({ caseTypes: [...m.form.caseTypes, { code: `T_${Date.now().toString(36).toUpperCase()}`, label: 'نوع پروندهٔ جدید', causeGroup: 'ACCIDENT', death: false }] })}>افزودن نوع پرونده</button>
               </Card>
-              {LINES.map((l) => (
-                <Card key={l} title={`بیمه‌نامهٔ ${LINE_FA[l]}`}>
+              {kinds.map((k) => k.code).map((l) => (
+                <Card key={l} title={`بیمه‌نامهٔ ${kindTitle(kinds.find((k) => k.code === l)!)}`}>
                   <label className="text-sm block">عنوان نام بیمه‌شده
-                    <input className="input mt-1" value={m.form.lines[l].insuredLabel} maxLength={80} onChange={(e) => setLine(l, { insuredLabel: e.target.value })} />
+                    <input className="input mt-1" value={lineOf(l).insuredLabel} maxLength={80} onChange={(e) => setLine(l, { insuredLabel: e.target.value })} />
                   </label>
                   <div className="text-sm font-bold">نوع پرونده‌های مجاز برای سایر بیمه‌گزاران</div>
-                  {m.form.lines[l].claimTypes.length === 0 && <div className="text-xs" style={{ color: 'var(--danger)' }}>هنوز نوع پرونده‌ای انتخاب نشده؛ ثبت پرونده در این نوع بیمه‌نامه بسته است.</div>}
+                  {lineOf(l).claimTypes.length === 0 && <div className="text-xs" style={{ color: 'var(--danger)' }}>هنوز نوع پرونده‌ای انتخاب نشده؛ ثبت پرونده در این نوع بیمه‌نامه بسته است.</div>}
                   <div className="flex flex-wrap gap-4">
                     {m.form.caseTypes.map((t) => (
-                      <Toggle key={t.code} on={m.form.lines[l].claimTypes.includes(t.code)} onChange={(v) => setLine(l, { claimTypes: toggled(m.form.lines[l].claimTypes, t.code, v) })}>{t.label}</Toggle>
+                      <Toggle key={t.code} on={lineOf(l).claimTypes.includes(t.code)} onChange={(v) => setLine(l, { claimTypes: toggled(lineOf(l).claimTypes, t.code, v) })}>{t.label}</Toggle>
                     ))}
                   </div>
                 </Card>
@@ -243,17 +245,17 @@ export default function ModelView() {
                         {cur.companies.map((c) => <Toggle key={c.id} on={g.companyIds.includes(c.id)} onChange={(v) => setGroup(g.id, { companyIds: toggled(g.companyIds, c.id, v) })}>{c.name}</Toggle>)}
                       </div>
                     )}
-                    {LINES.map((l) => (
+                    {kinds.map((k) => k.code).map((l) => (
                       <div key={l} className="space-y-1">
-                        <div className="text-sm font-bold">نوع پرونده‌های {LINE_FA[l]}</div>
+                        <div className="text-sm font-bold">نوع پرونده‌های {kindTitle(kinds.find((k) => k.code === l)!)}</div>
                         <div className="flex flex-wrap gap-4">
-                          {m.form.caseTypes.map((t) => <Toggle key={t.code} on={g.lines[l].includes(t.code)} onChange={(v) => setGroup(g.id, { lines: { ...g.lines, [l]: toggled(g.lines[l], t.code, v) } })}>{t.label}</Toggle>)}
+                          {m.form.caseTypes.map((t) => <Toggle key={t.code} on={(g.lines[l] ?? []).includes(t.code)} onChange={(v) => setGroup(g.id, { lines: { ...g.lines, [l]: toggled(g.lines[l] ?? [], t.code, v) } })}>{t.label}</Toggle>)}
                         </div>
                       </div>
                     ))}
                   </div>
                 ))}
-                <button className="btn btn-ghost btn-sm" onClick={() => setForm({ groups: [...m.form.groups, { id: `g${Date.now().toString(36)}`, label: 'گروه جدید', companyIds: [], lines: Object.fromEntries(LINES.map((l) => [l, m.form.lines[l].claimTypes])) as Record<Line, string[]>, dependents: m.form.dependents }] })}>افزودن گروه</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setForm({ groups: [...m.form.groups, { id: `g${Date.now().toString(36)}`, label: 'گروه جدید', companyIds: [], lines: Object.fromEntries(kinds.map((k) => [k.code, lineOf(k.code).claimTypes])) as Record<Line, string[]>, dependents: m.form.dependents }] })}>افزودن گروه</button>
               </Card>
               <Card title="فیلدها">
                 <div className="grid sm:grid-cols-3 gap-3">
@@ -284,7 +286,7 @@ export default function ModelView() {
                     {m.form.caseTypes.map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}
                   </select>
                 </label>
-                <p className="text-xs" style={{ color: 'var(--muted)' }}>بدون مدارک «الزامی» پرونده ارسال نمی‌شود؛ «برحسب نیاز» در فهرست می‌آید ولی مانع ارسال نیست. غیرفعال‌کردن مدرک آن را از همهٔ نوع پرونده‌ها برمی‌دارد و فایل‌های قبلی در «سایر مدارک» می‌ماند.</p>
+                <p className="text-xs" style={{ color: 'var(--muted)' }}>هر مدرک فقط در پرونده‌های نوع بیمه‌نامهٔ تیک‌خورده می‌آید (بدون تیک = همهٔ انواع). «حذف» با ذخیره انجام می‌شود؛ مدرکی که پرونده‌ای فایلش را دارد فقط غیرفعال می‌شود. بدون مدارک «الزامی» پرونده ارسال نمی‌شود؛ «برحسب نیاز» در فهرست می‌آید ولی مانع ارسال نیست. غیرفعال‌کردن مدرک آن را از همهٔ نوع پرونده‌ها برمی‌دارد و فایل‌های قبلی در «سایر مدارک» می‌ماند.</p>
                 <div className="space-y-2">
                   {[...docs.filter((d) => d.appliesToTypes.includes(docType)), ...docs.filter((d) => !d.appliesToTypes.includes(docType))].map((d) => (
                     <div key={d.code} className="grid md:grid-cols-[1fr_9rem_auto] gap-2 items-start">
@@ -292,7 +294,15 @@ export default function ModelView() {
                       <select className="input" aria-label="وضعیت در این نوع پرونده" value={!d.appliesToTypes.includes(docType) ? 'off' : d.requiredTypes.includes(docType) ? 'required' : 'optional'} onChange={(e) => setDocMode(d.code, e.target.value)}>
                         <option value="off">نیاز نیست</option><option value="optional">برحسب نیاز</option><option value="required">الزامی</option>
                       </select>
-                      <Toggle on={d.isActive} onChange={(v) => setDocs(docs.map((x) => (x.code === d.code ? { ...x, isActive: v } : x)))}>فعال</Toggle>
+                      <span className="flex items-center gap-2">
+                        <Toggle on={d.isActive} onChange={(v) => setDocs(docs.map((x) => (x.code === d.code ? { ...x, isActive: v } : x)))}>فعال</Toggle>
+                        <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} title="با ذخیره حذف می‌شود؛ اگر پرونده‌ای فایل این مدرک را دارد، فقط غیرفعال می‌شود" onClick={() => setDocs(docs.filter((x) => x.code !== d.code))}>حذف</button>
+                      </span>
+                      {/* نوع بیمه‌نامه this document belongs to; none ticked = every kind. */}
+                      <div className="md:col-span-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs pb-2" style={{ borderBottom: '1px solid var(--border)' }}>
+                        <span style={{ color: 'var(--muted)' }}>نوع بیمه‌نامه{(d.kinds ?? []).length ? '' : ' (همه)'}:</span>
+                        {kinds.map((k) => <Toggle key={k.code} on={(d.kinds ?? []).includes(k.code)} onChange={(v) => setDocs(docs.map((x) => (x.code === d.code ? { ...x, kinds: toggled(x.kinds ?? [], k.code, v) } : x)))}>{kindTitle(k)}</Toggle>)}
+                      </div>
                     </div>
                   ))}
                 </div>

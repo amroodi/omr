@@ -1,7 +1,8 @@
 import { toJalali } from '../../common/jalali/jalali.util';
 import type { ModelStore } from '../model-view/model-store.service';
-import { dependentsFor, Line, typesFor } from '../claims/workflow';
-import { LINE_FA } from './policyholders.service';
+import { dependentsFor, Line, lineForm, typesFor } from '../claims/workflow';
+import { kindLabel } from '../../common/kinds';
+
 
 interface ContractRow { id: string; line: Line | null; policyNumber: string | null; insurerTenantId: string; startDate: Date | null; endDate: Date | null; isActive: boolean }
 
@@ -24,13 +25,13 @@ export function policyRows(contracts: ContractRow[], insurerNames: Map<string, s
   return contracts.map((k) => {
     const m = store.get(k.insurerTenantId);
     return {
-      id: k.id, line: k.line, lineLabel: k.line ? LINE_FA[k.line] : null, policyNumber: k.policyNumber,
+      id: k.id, line: k.line, lineLabel: k.line ? kindLabel(k.line) : null, policyNumber: k.policyNumber,
       insurerName: insurerNames.get(k.insurerTenantId) ?? '—',
       startDate: k.startDate ? toJalali(k.startDate, false) : null, endDate: k.endDate ? toJalali(k.endDate, false) : null,
       startIso: k.startDate?.toISOString() ?? null, endIso: k.endDate?.toISOString() ?? null,
       inForce: inForce(k), claimTypes: k.line ? typesFor(m, k.line, chain) : null,
       form: {
-        insuredLabel: m.form.lines[k.line ?? 'ACCIDENT'].insuredLabel, eventLabel: m.form.eventLabel, birthDate: m.form.birthDate, cause: m.form.cause,
+        insuredLabel: lineForm(m, k.line ?? 'ACCIDENT').insuredLabel, eventLabel: m.form.eventLabel, birthDate: m.form.birthDate, cause: m.form.cause,
         causeLists: m.form.causeLists, caseTypes: m.form.caseTypes, dependents: dependentsFor(m, chain),
       },
     };

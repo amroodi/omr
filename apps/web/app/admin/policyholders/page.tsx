@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toGregorian } from 'jalaali-js';
 import { client, getToken } from '../../../lib/client';
-import { Line, LINE_FA, LINES } from '../../../lib/line';
+import { kindName, Line, useCatalog } from '../../../lib/line';
 import { ErrorBox, Spinner } from '../../components/ui';
 import { JalaliDatePicker } from '../../components/JalaliDatePicker';
 import { UploadButton } from '../../components/upload';
@@ -41,6 +41,7 @@ function downloadCreds(rows: Cred[], name = 'policyholder-logins.csv') {
  * new policy numbers for the next year can also be added by hand.
  */
 export default function AdminPolicyholders() {
+  const catalog = useCatalog(); // نوع بیمه‌نامه (Super Admin › انواع بیمه‌نامه)
   const router = useRouter();
   const [opts, setOpts] = useState<{ brokers: Opt[]; insurers: Opt[] } | null>(null);
   const [broker, setBroker] = useState('');
@@ -184,7 +185,7 @@ export default function AdminPolicyholders() {
           <div className="alert-success space-y-1">
             <div className="font-bold">ورود انجام شد.</div>
             <div className="text-sm">
-              {result.sheets.map((s) => `${s.name} (${LINE_FA[s.line]}): ${faN(s.rows)} ردیف`).join(' — ')}<br />
+              {result.sheets.map((s) => `${s.name} (${kindName(catalog, s.line)}): ${faN(s.rows)} ردیف`).join(' — ')}<br />
               بیمه‌گزار جدید: {faN(result.companiesCreated)} — به‌روزشده: {faN(result.companiesUpdated)} — بیمه‌نامهٔ جدید: {faN(result.contractsCreated)} — به‌روزشده: {faN(result.contractsUpdated)} — تکراری (بدون تغییر): {faN(result.contractsSkipped)}
             </div>
             {result.credentials.length > 0 && (
@@ -240,7 +241,7 @@ export default function AdminPolicyholders() {
           <label className="text-sm">کد بیمه‌گزار *<input className="input mt-1 latin-digits" style={{ direction: 'ltr', textAlign: 'right' }} value={newCo.code} onChange={(e) => setNewCo({ ...newCo, code: e.target.value })} /></label>
         </div>
         <div className="grid sm:grid-cols-4 gap-2 items-end">
-          <label className="text-xs">رشته (اختیاری)<select className="input mt-1" value={newCo.line} onChange={(e) => setNewCo({ ...newCo, line: e.target.value as Line })}>{LINES.map((l) => <option key={l} value={l}>{LINE_FA[l]}</option>)}</select></label>
+          <label className="text-xs">رشته (اختیاری)<select className="input mt-1" value={newCo.line} onChange={(e) => setNewCo({ ...newCo, line: e.target.value as Line })}>{catalog.map((x) => <option key={x.code} value={x.code}>{x.label}</option>)}</select></label>
           <label className="text-xs">شماره بیمه‌نامه (اختیاری)<input className="input mt-1 latin-digits" style={{ direction: 'ltr', textAlign: 'right' }} value={newCo.policyNumber} onChange={(e) => setNewCo({ ...newCo, policyNumber: e.target.value })} /></label>
           <div className="text-xs">تاریخ شروع (اختیاری)<div className="mt-1"><JalaliDatePicker value={newCo.start} onChange={(v) => setNewCo({ ...newCo, start: v })} placeholder="شروع" /></div></div>
           <div className="text-xs">تاریخ پایان (اختیاری)<div className="mt-1"><JalaliDatePicker value={newCo.end} onChange={(v) => setNewCo({ ...newCo, end: v })} placeholder="پایان" /></div></div>
@@ -280,7 +281,7 @@ export default function AdminPolicyholders() {
                         onChange={() => setPicked((cur) => { const n = new Set(cur); if (n.has(c.id)) n.delete(c.id); else n.add(c.id); return n; })} /></td>
                       <td className="latin-digits">{c.code || '—'}</td>
                       <td className="font-semibold">{c.name}</td>
-                      <td>{c.lines.length ? c.lines.map((l) => <span key={l} className={`badge ${l === 'LIFE' ? 'badge-success' : 'badge-warning'} ml-1`}>{LINE_FA[l]}</span>) : '—'}</td>
+                      <td>{c.lines.length ? c.lines.map((l) => <span key={l} className={`badge ${l === 'LIFE' ? 'badge-success' : 'badge-warning'} ml-1`}>{kindName(catalog, l)}</span>) : '—'}</td>
                       <td className="text-xs">{current.length ? current.map((k) => `${k.lineLabel ?? ''} ${k.policyNumber ?? ''}`).join(' — ') : <span style={{ color: 'var(--danger)' }}>بیمه‌نامهٔ جاری ندارد</span>}</td>
                       <td className="text-xs">{!c.hasPassword ? <span className="badge badge-danger">ندارد</span> : c.mustChangePassword ? <span className="badge badge-warning">رمز پیش‌فرض</span> : <span className="badge badge-success">تغییر داده</span>}</td>
                       <td style={{ whiteSpace: 'nowrap' }}>
@@ -312,7 +313,7 @@ export default function AdminPolicyholders() {
                             <tbody>
                               {c.contracts.map((k) => editK?.id === k.id ? (
                                 <tr key={k.id}>
-                                  <td><select className="input" value={editK.line} onChange={(e) => setEditK({ ...editK, line: e.target.value as Line })}>{LINES.map((l) => <option key={l} value={l}>{LINE_FA[l]}</option>)}</select></td>
+                                  <td><select className="input" value={editK.line} onChange={(e) => setEditK({ ...editK, line: e.target.value as Line })}>{catalog.map((x) => <option key={x.code} value={x.code}>{x.label}</option>)}</select></td>
                                   <td><input className="input latin-digits" style={{ direction: 'ltr', textAlign: 'right', minWidth: 110 }} value={editK.policyNumber} onChange={(e) => setEditK({ ...editK, policyNumber: e.target.value })} /></td>
                                   <td><select className="input" value={editK.insurerTenantId} onChange={(e) => setEditK({ ...editK, insurerTenantId: e.target.value })}>{opts?.insurers.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}</select></td>
                                   <td style={{ minWidth: 150 }}><JalaliDatePicker value={editK.start} onChange={(v) => setEditK({ ...editK, start: v })} placeholder="شروع" /></td>
@@ -337,7 +338,7 @@ export default function AdminPolicyholders() {
                             </tbody>
                           </table>
                           <div className="grid sm:grid-cols-6 gap-2 items-end mt-3">
-                            <label className="text-xs">رشته<select className="input mt-1" value={nc.line} onChange={(e) => setNc({ ...nc, line: e.target.value as Line })}>{LINES.map((l) => <option key={l} value={l}>{LINE_FA[l]}</option>)}</select></label>
+                            <label className="text-xs">رشته<select className="input mt-1" value={nc.line} onChange={(e) => setNc({ ...nc, line: e.target.value as Line })}>{catalog.map((x) => <option key={x.code} value={x.code}>{x.label}</option>)}</select></label>
                             <label className="text-xs">شماره بیمه‌نامهٔ جدید<input className="input mt-1 latin-digits" style={{ direction: 'ltr', textAlign: 'right' }} value={nc.policyNumber} onChange={(e) => setNc({ ...nc, policyNumber: e.target.value })} /></label>
                             <label className="text-xs">بیمه‌گر<select className="input mt-1" value={nc.insurerTenantId || insurer} onChange={(e) => setNc({ ...nc, insurerTenantId: e.target.value })}>{opts?.insurers.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}</select></label>
                             <div className="text-xs">تاریخ شروع<div className="mt-1"><JalaliDatePicker value={nc.start} onChange={(v) => setNc({ ...nc, start: v })} placeholder="شروع" /></div></div>

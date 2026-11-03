@@ -3,6 +3,7 @@ import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { assistInfo, client, getToken, hasPerm, orgMode } from '../../../lib/client';
+import { useKinds } from '../../../lib/line';
 import { Shell, Icon } from '../../components/Shell';
 import { ORG_NAV } from '../nav';
 import { CLAIM_TYPE_LABELS, claimTypeLabel, ErrorBox, FancyLoader, NoticeModal, Overlay, STATUS_MAP, StatusBadge } from '../../components/ui';
@@ -14,11 +15,11 @@ import { INSURED_RELATIONS } from '../../components/claim-wording';
 
 interface Tile { key: string; label: string; count: number; actionable: boolean; href?: string }
 interface WorkDesk { userName: string | null; role: string; roleLabel: string; tiles: Tile[]; summary: { pendingActions: number; queues: number } }
-interface QueueRow { id: string; claimNumber: string; policyNumber?: string | null; deceasedNationalCode?: string | null; status: string; claimType: string; deceasedName: string | null; claimedAmount: string; payableAmount?: string; finalizedAmount?: string | null; insurerTenantId?: string; claimTypeLabel?: string | null; insuredRelation?: string | null; mainInsuredName?: string | null; mainInsuredNationalCode?: string | null; companyName?: string | null; policyStart?: string | null; policyEnd?: string | null }
+interface QueueRow { id: string; claimNumber: string; policyNumber?: string | null; deceasedNationalCode?: string | null; status: string; claimType: string; deceasedName: string | null; claimedAmount: string; payableAmount?: string; finalizedAmount?: string | null; insurerTenantId?: string; claimTypeLabel?: string | null; lineLabel?: string | null; insuredRelation?: string | null; mainInsuredName?: string | null; mainInsuredNationalCode?: string | null; companyName?: string | null; policyStart?: string | null; policyEnd?: string | null }
 
 const fa = (n: number) => n.toLocaleString('fa-IR');
 const EMPTY = {
-  policyNumber: '', mainNationalCode: '', subNationalCode: '', deceasedName: '', claimType: '', insurerTenantId: '',
+  policyNumber: '', mainNationalCode: '', subNationalCode: '', deceasedName: '', claimType: '', line: '', insurerTenantId: '',
   eventFrom: '', eventTo: '', status: '', channel: '', createdFrom: '', createdTo: '', estMin: '', estMax: '', finMin: '', finMax: '', docCode: '', beneficiaryType: '',
 };
 const STATUS_OPTIONS: [string, string][] = [
@@ -42,6 +43,7 @@ export default function WorkDeskPage() {
 
 function WorkDesk() {
   const [caseTypes, setCaseTypes] = useState<Record<string, string>>(CLAIM_TYPE_LABELS);
+  const kinds = useKinds({ all: true }); // نوع بیمه‌نامه filter (panel 2 sees every kind)
   useEffect(() => { client.get<{ code: string; label: string }[]>('/claims/case-types', 'org').then((l) => { if (l.length) setCaseTypes(Object.fromEntries(l.map((t) => [t.code, t.label]))); }).catch(() => {}); }, []);
   const router = useRouter();
   const [data, setData] = useState<WorkDesk | null>(null);
@@ -155,6 +157,7 @@ function WorkDesk() {
     set('subNationalCode', toAscii(f.subNationalCode).replace(/\D/g, ''));
     set('deceasedName', f.deceasedName.trim());
     set('claimType', f.claimType);
+    set('line', f.line);
     set('insurerTenantId', f.insurerTenantId);
     set('status', f.status);
     set('channel', f.channel);
@@ -197,6 +200,11 @@ function WorkDesk() {
           <select className="input" value={f.claimType} onChange={(e) => setF({ ...f, claimType: e.target.value })}>
             <option value="">— نوع پرونده —</option>
             {Object.entries(caseTypes).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+          {/* نوع بیمه‌نامه: panel 2 sees every kind; this narrows the list to one. */}
+          <select className="input" value={f.line} onChange={(e) => setF({ ...f, line: e.target.value })} aria-label="نوع بیمه‌نامه">
+            <option value="">— نوع بیمه‌نامه —</option>
+            {kinds?.map((k) => <option key={k.code} value={k.code}>{k.label}</option>)}
           </select>
           <select className="input" value={f.insurerTenantId} onChange={(e) => setF({ ...f, insurerTenantId: e.target.value })}>
             <option value="">— بیمه‌گر —</option>
@@ -311,7 +319,7 @@ function WorkDesk() {
                         <input type="checkbox" aria-label="انتخاب همهٔ ردیف‌های این صفحه" checked={pageRows.length > 0 && pageRows.every((r) => picked.has(r.id))}
                           onChange={(e) => setPicked((cur) => { const n = new Set(cur); pageRows.forEach((r) => (e.target.checked ? n.add(r.id) : n.delete(r.id))); return n; })} />
                       </th>
-                      {['#', 'عملیات', 'نام و نام خانوادگی', 'کد ملی', 'نسبت', 'بیمه‌گزار', 'شماره بیمه‌نامه', 'نوع پرونده', 'آغاز پوشش', 'پایان پوشش', 'مبلغ (ریال)', 'وضعیت'].map((h) => <th key={h}>{h}</th>)}
+                      {['#', 'عملیات', 'نام و نام خانوادگی', 'کد ملی', 'نسبت', 'بیمه‌گزار', 'شماره بیمه‌نامه', 'نوع بیمه‌نامه', 'نوع پرونده', 'آغاز پوشش', 'پایان پوشش', 'مبلغ (ریال)', 'وضعیت'].map((h) => <th key={h}>{h}</th>)}
                     </tr></thead>
                     <tbody>
                       {/* Rows don't open on click (too many mis-clicks) — only the «مشاهده» / «ارزیابی» buttons do. */}
@@ -331,6 +339,7 @@ function WorkDesk() {
                           <td title={r.mainInsuredName ? `بیمه‌شدهٔ اصلی: ${r.mainInsuredName} — ${r.mainInsuredNationalCode ?? ''}` : undefined}>{INSURED_RELATIONS[r.insuredRelation ?? 'MAIN']}</td>
                           <td>{r.companyName || '—'}</td>
                           <td className="ltr-num">{r.policyNumber || '—'}</td>
+                          <td>{r.lineLabel || '—'}</td>
                           <td>{claimTypeLabel(r)}</td>
                           <td className="ltr-num">{r.policyStart || '—'}</td>
                           <td className="ltr-num">{r.policyEnd || '—'}</td>

@@ -72,7 +72,7 @@ export function CustomerLoginPage({ slug: fixedSlug, switcher, agent }: { slug?:
     <>
         {switcher}
         <ErrorBox message={error} />
-        <LineSelect onChange={setLine} />
+        <LineSelect slug={slug()} onChange={setLine} />
         <Field label="نام کاربری">
           <input value={code} onChange={(e) => setCode(e.target.value)} className="input latin-digits" autoComplete="username" autoCapitalize="off"
             placeholder={agent ? 'کد ملی' : 'کد بیمه‌گزار / کد ملی'} style={{ direction: 'ltr', textAlign: 'right' }} autoFocus />

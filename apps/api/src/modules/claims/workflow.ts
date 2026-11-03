@@ -1,3 +1,4 @@
+import { allKinds, KIND_CODE } from '../../common/kinds';
 /**
  * Claim chain (workflow v2) — pure rules, no I/O. See docs/CLAIMS-WORKFLOW.md.
  *
@@ -66,12 +67,20 @@ export type InsuredRelation = (typeof INSURED_RELATIONS)[number];
 export const DEPENDENT_RELATIONS: InsuredRelation[] = ['SPOUSE', 'CHILD', 'FATHER', 'MOTHER', 'OTHER'];
 export const RELATION_FA: Record<InsuredRelation, string> = { MAIN: 'اصلی', SPOUSE: 'همسر', CHILD: 'فرزند', FATHER: 'پدر', MOTHER: 'مادر', OTHER: 'سایر' };
 
-/** نوع بیمه‌نامه. The last three start with no نوع پرونده: filing opens once Super Admin sets them in Model View. */
-export type Line = 'LIFE' | 'ACCIDENT' | 'LIABILITY' | 'CREDIT_LIFE' | 'SAVINGS_LIFE';
-export const LINES: Line[] = ['LIFE', 'ACCIDENT', 'LIABILITY', 'CREDIT_LIFE', 'SAVINGS_LIFE'];
-/** A `?line=` query value, if it is a نوع بیمه‌نامه (anything else = every kind). */
-export const asLine = (v: unknown): Line | undefined => (LINES as unknown[]).includes(v) ? (v as Line) : undefined;
-const perLine = <T>(f: (l: Line) => T) => Object.fromEntries(LINES.map((l) => [l, f(l)])) as Record<Line, T>;
+/**
+ * نوع بیمه‌نامه: a code of Super Admin's catalog (common/kinds.ts). A kind starts with no نوع پرونده at an
+ * insurer: filing in it opens once Super Admin ticks its types in Model View (عمر and حوادث come preset).
+ */
+export type Line = string;
+export { asLine } from '../../common/kinds';
+const EMPTY_LINE: LineForm = { insuredLabel: 'نام بیمه‌شده', claimTypes: [] };
+/** A kind's form settings at an insurer (a kind added after the model was saved has none yet). */
+export function lineForm(model: WorkflowModel, line: Line): LineForm { return model.form.lines[line] ?? EMPTY_LINE; }
+/** Every kind the model should hold settings for: the catalog's, plus any it already has. */
+const perLine = <T>(stored: unknown, f: (l: Line) => T) => {
+  const keys = new Set([...allKinds().map((k) => k.code), ...(stored && typeof stored === 'object' ? Object.keys(stored).filter((k) => KIND_CODE.test(k)) : [])]);
+  return Object.fromEntries([...keys].map((l) => [l, f(l)])) as Record<Line, T>;
+};
 /** One نوع پرونده. causeGroup: which cause list it shows; death: the case speaks of a متوفی and takes the ذینفع step. */
 export interface CaseType { code: string; label: string; causeGroup: 'DEATH' | 'ACCIDENT'; death: boolean }
 /** بیمه‌گزار companies that file different نوع پرونده than the insurer's usual ones (a ticked company covers its subsidiaries). */
@@ -231,11 +240,11 @@ export function modelFrom(stored: unknown): WorkflowModel {
         DEATH: Array.isArray(raw.form?.causeLists?.DEATH) ? list(raw.form.causeLists.DEATH) : list(raw.form?.causes).length ? list(raw.form.causes) : d.form.causeLists.DEATH,
         ACCIDENT: Array.isArray(raw.form?.causeLists?.ACCIDENT) ? list(raw.form.causeLists.ACCIDENT) : list(raw.form?.causes).length ? list(raw.form.causes) : d.form.causeLists.ACCIDENT,
       },
-      lines: perLine((l) => line(raw.form?.lines?.[l], d.form.lines[l])),
+      lines: perLine(raw.form?.lines, (l) => line(raw.form?.lines?.[l], lineForm(d, l))),
       caseTypes,
       groups: (Array.isArray(raw.form?.groups) ? raw.form.groups : d.form.groups).filter((g: any) => typeof g?.id === 'string' && g.id).slice(0, 20).map((g: any): CompanyGroup => ({
         id: g.id.slice(0, 40), label: text(g.label, 'گروه بیمه‌گزاران', 120), companyIds: list(g.companyIds, 2000),
-        lines: perLine((l) => typeList(g.lines?.[l], d.form.lines[l].claimTypes)),
+        lines: perLine(g.lines, (l) => typeList(g.lines?.[l], lineForm(d, l).claimTypes)),
         dependents: flag(g.dependents, false),
       })),
       dependents: flag(raw.form?.dependents, d.form.dependents),
@@ -247,8 +256,8 @@ export function modelFrom(stored: unknown): WorkflowModel {
 /** The نوع پرونده a بیمه‌نامه line offers this company (`companyChain`: the company and its parents). */
 export function typesFor(model: WorkflowModel, line: Line | null | undefined, companyChain: string[] = []): string[] {
   const group = model.form.groups.find((g) => g.companyIds.some((id) => companyChain.includes(id)));
-  const of = (l: Line) => group?.lines[l] ?? model.form.lines[l].claimTypes;
-  return line ? of(line) : [...new Set(LINES.flatMap(of))];
+  const of = (l: Line) => group?.lines[l] ?? lineForm(model, l).claimTypes;
+  return line ? of(line) : [...new Set(Object.keys(model.form.lines).flatMap(of))];
 }
 
 /** Does this company's filing form ask for «نوع بیمه‌شده»? Its group decides, else the insurer's setting. */

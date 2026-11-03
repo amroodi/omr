@@ -119,7 +119,7 @@ export function OrgLoginPage({ kind, mode = 'PROCESS', switcher }: { kind: 'BROK
           )}
         </Field>
       )}
-      {mode === 'ENTRY' && <LineSelect onChange={setLine} />}
+      {mode === 'ENTRY' && <LineSelect slug={tenantSlug || undefined} onChange={setLine} />}
       <Field label="نام کاربری"><input className="input" value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" /></Field>
       <Field label="رمز عبور"><input type="password" className="input" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" onKeyDown={(e) => e.key === 'Enter' && submit()} /></Field>
       {totp !== null && (

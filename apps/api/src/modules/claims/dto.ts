@@ -1,5 +1,5 @@
 import { INSURED_RELATIONS, InsuredRelation } from './workflow';
-import { InsuranceLine, SalesChannel } from '@prisma/client';
+import { SalesChannel } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -17,6 +17,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { ToAsciiDigits } from '../../common/validation/to-ascii.decorator';
+import { KIND_CODE } from '../../common/kinds';
 
 export const BENEFICIARY_KINDS = ['ذینفع قانونی', 'وراث قانونی'] as const;
 
@@ -59,8 +60,9 @@ export class HeirsDto {
 export class FileClaimDto {
   // نوع بیمه‌نامه chosen on the panel-1 login
   @IsOptional()
-  @IsEnum(InsuranceLine)
-  line?: InsuranceLine;
+  @IsString()
+  @Matches(KIND_CODE)
+  line?: string;
 
   // Omitted when a بیمه‌گزار company is given: its contract for the date of death decides the insurer.
   @IsOptional()
@@ -144,8 +146,9 @@ export class FileClaimDto {
 export class FileOnBehalfDto {
   // نوع بیمه‌نامه chosen on the panel-1 login
   @IsOptional()
-  @IsEnum(InsuranceLine)
-  line?: InsuranceLine;
+  @IsString()
+  @Matches(KIND_CODE)
+  line?: string;
 
   @IsUUID()
   policyholderCompanyId!: string;

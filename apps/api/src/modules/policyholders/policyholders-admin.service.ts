@@ -1,11 +1,12 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { AuditAction, InsuranceLine } from '@prisma/client';
+import { AuditAction } from '@prisma/client';
 import * as ExcelJS from 'exceljs';
 import { AuditService } from '../../common/audit/audit.service';
 import { HashService } from '../../common/crypto/hash.service';
 import { fromJalali, toAsciiDigits, toJalali } from '../../common/jalali/jalali.util';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { LINE_FA } from './policyholders.service';
+import { allKinds, isKind, kindLabel } from '../../common/kinds';
+
 
 /** Arabic ي/ك → Persian ی/ک, ZWNJ/extra spaces folded — the export uses Arabic letters. */
 const fa = (s: string) => s.replace(/ي/g, 'ی').replace(/ك/g, 'ک').replace(/‌/g, ' ').replace(/\s+/g, ' ').trim();
@@ -17,7 +18,7 @@ const NAME_CODE = /^(.*?)\s*کد\s*[:：]?\s*([0-9۰-۹]+)\s*$/;
 export const DEFAULT_POLICYHOLDER_PASSWORD = 'Aa123456';
 
 export interface ImportResult {
-  sheets: { name: string; line: InsuranceLine; rows: number }[];
+  sheets: { name: string; line: string; rows: number }[];
   companiesCreated: number;
   companiesUpdated: number;
   contractsCreated: number;
@@ -94,9 +95,9 @@ export class PolicyholdersAdminService {
     return rows.map((r) => ({
       id: r.id, name: r.name, code: r.code, isActive: r.isActive, brokerTenantId: r.tenantId, brokerName: tName.get(r.tenantId) ?? '—',
       hasPassword: !!r.passwordHash, mustChangePassword: r.mustChangePassword, passwordSetAt: r.passwordSetAt ? toJalali(r.passwordSetAt) : null,
-      lines: [...new Set(r.contracts.filter((c) => c.isActive && c.line).map((c) => c.line as InsuranceLine))],
+      lines: [...new Set(r.contracts.filter((c) => c.isActive && c.line).map((c) => c.line as string))],
       contracts: r.contracts.map((c) => ({
-        id: c.id, line: c.line, lineLabel: c.line ? LINE_FA[c.line] : null, policyNumber: c.policyNumber,
+        id: c.id, line: c.line, lineLabel: c.line ? kindLabel(c.line) : null, policyNumber: c.policyNumber,
         startIso: c.startDate?.toISOString() ?? null, endIso: c.endDate?.toISOString() ?? null,
         insurerTenantId: c.insurerTenantId, insurerName: tName.get(c.insurerTenantId) ?? '—',
         startDate: c.startDate ? toJalali(c.startDate, false) : null, endDate: c.endDate ? toJalali(c.endDate, false) : null,
@@ -105,7 +106,7 @@ export class PolicyholdersAdminService {
     }));
   }
 
-  async create(input: { brokerTenantId: string; name: string; code: string; insurerTenantId?: string; line?: InsuranceLine; policyNumber?: string; startDate?: string | null; endDate?: string | null }) {
+  async create(input: { brokerTenantId: string; name: string; code: string; insurerTenantId?: string; line?: string; policyNumber?: string; startDate?: string | null; endDate?: string | null }) {
     const broker = await this.db().tenant.findUnique({ where: { id: input.brokerTenantId }, select: { kind: true } });
     if (broker?.kind !== 'BROKER') throw new BadRequestException('کارگزاری نامعتبر است');
     const code = toAsciiDigits(input.code).trim();
@@ -148,7 +149,8 @@ export class PolicyholdersAdminService {
   }
 
   /** Add a policy year (a new بیمه‌نامه number, usually issued yearly by the insurer). */
-  async addContract(id: string, input: { insurerTenantId: string; line: InsuranceLine; policyNumber: string; startDate?: string | null; endDate?: string | null }) {
+  async addContract(id: string, input: { insurerTenantId: string; line: string; policyNumber: string; startDate?: string | null; endDate?: string | null }) {
+    if (!isKind(input.line)) throw new BadRequestException('نوع بیمه‌نامه نامعتبر است');
     const co = await this.company(id);
     await this.assertInsurer(input.insurerTenantId);
     await this.ensurePartnership(co.tenantId, input.insurerTenantId);
@@ -201,7 +203,7 @@ export class PolicyholdersAdminService {
 
   /** Edit a بیمه‌نامه: number, line, insurer, dates or active state (only the fields sent change). */
   async updateContract(id: string, contractId: string, input: {
-    isActive?: boolean; line?: InsuranceLine; policyNumber?: string; insurerTenantId?: string; startDate?: string | null; endDate?: string | null;
+    isActive?: boolean; line?: string; policyNumber?: string; insurerTenantId?: string; startDate?: string | null; endDate?: string | null;
   }) {
     const co = await this.company(id);
     const c = await this.db().policyholderContract.findFirst({ where: { id: contractId, companyId: id } });
@@ -220,7 +222,7 @@ export class PolicyholdersAdminService {
       where: { id: contractId },
       data: {
         ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
-        ...(input.line ? { line: input.line } : {}),
+        ...(input.line && isKind(input.line) ? { line: input.line } : {}),
         ...(number !== undefined ? { policyNumber: number } : {}),
         ...(input.insurerTenantId ? { insurerTenantId: input.insurerTenantId } : {}),
         startDate, endDate,
@@ -244,16 +246,15 @@ export class PolicyholdersAdminService {
     try { await wb.xlsx.load(buffer as any); } catch { throw new BadRequestException('فایل اکسل خوانده نشد؛ قالب XLSX لازم است'); }
 
     const out: ImportResult = { sheets: [], companiesCreated: 0, companiesUpdated: 0, contractsCreated: 0, contractsUpdated: 0, contractsSkipped: 0, errors: [], credentials: [] };
-    type Row = { sheet: string; row: number; line: InsuranceLine; policyNumber: string; name: string; code: string; start: Date | null; end: Date | null };
+    type Row = { sheet: string; row: number; line: string; policyNumber: string; name: string; code: string; start: Date | null; end: Date | null };
     const rows: Row[] = [];
 
     wb.eachSheet((ws) => {
       const title = fa(ws.name);
-      // The sheet's name says the نوع بیمه‌نامه (the longer names first: «عمر مانده بدهکار» also contains «عمر»).
-      const t = title.replace(/‌/g, ' ');
-      const line: InsuranceLine | null = t.includes('مانده بدهکار') ? 'CREDIT_LIFE' : t.includes('پس انداز') ? 'SAVINGS_LIFE' : t.includes('مسئولیت') ? 'LIABILITY'
-        : t.includes('عمر') ? 'LIFE' : t.includes('حوادث') ? 'ACCIDENT' : null;
-      if (!line) { out.errors.push({ sheet: ws.name, row: 0, message: 'نام برگه باید نوع بیمه‌نامه را داشته باشد (عمر، حوادث، مسئولیت، عمر مانده بدهکار یا عمر پس‌انداز)؛ این برگه وارد نشد' }); return; }
+      // The sheet's name says the نوع بیمه‌نامه: the catalog's longest matching name wins («عمر مانده بدهکار» also contains «عمر»).
+      const norm = (x: string) => x.replace(/‌/g, ' ').replace(/\s+/g, ' ').trim();
+      const line = [...allKinds()].sort((x, y) => y.label.length - x.label.length).find((k) => norm(title).includes(norm(k.label)))?.code ?? null;
+      if (!line) { out.errors.push({ sheet: ws.name, row: 0, message: `نام برگه باید نوع بیمه‌نامه را داشته باشد (${allKinds().map((k) => k.label).join('، ')})؛ این برگه وارد نشد` }); return; }
       // Header row: the first row that names the policy-number column.
       let header = 0; const col: Record<string, number> = {};
       for (let r = 1; r <= Math.min(10, ws.rowCount) && !header; r++) {
