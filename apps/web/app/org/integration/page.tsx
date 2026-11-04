@@ -4,6 +4,7 @@ import { client } from '../../../lib/client';
 import { Shell } from '../../components/Shell';
 import { ErrorBox, Field } from '../../components/ui';
 import { ORG_NAV } from '../nav';
+import { Flash } from '../../components/Toaster';
 
 const SCOPE_LABELS: Record<string, string> = {
   'claim:status': 'استعلام وضعیت پرونده (بدون اطلاعات شخصی)',
@@ -62,7 +63,7 @@ function EmbedTab() {
       <div className="card p-5 space-y-3">
         <h3 className="font-bold text-sm">دامنه‌های مجاز برای نمایش ویجت</h3>
         <p className="text-xs" style={{ color: 'var(--muted)' }}>فقط دامنه‌هایی که اینجا ثبت می‌کنید اجازه دارند ویجت را در iframe نمایش دهند (محافظت در برابر clickjacking).</p>
-        {msg && <div className={msg.t === 'ok' ? 'alert-success' : 'alert-error'}>{msg.m}</div>}
+        <Flash id={msg} text={msg?.m} ok={!!msg && msg.t === 'ok'} />
         <div className="flex gap-2">
           <input className="input" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="https://damuon.ir" style={{ direction: 'ltr', textAlign: 'left' }} onKeyDown={(e) => e.key === 'Enter' && add()} />
           <button onClick={add} className="btn btn-primary btn-sm" style={{ whiteSpace: 'nowrap' }}>افزودن</button>
@@ -118,7 +119,7 @@ function KeysTab() {
     <div className="grid grid-cols-[minmax(0,1fr)] lg:grid-cols-[340px_minmax(0,1fr)] gap-5">
       <div className="card p-4 space-y-3 h-fit">
         <h3 className="font-semibold text-sm">ساخت کلید API</h3>
-        {msg && <div className={msg.t === 'ok' ? 'alert-success' : 'alert-error'}>{msg.m}</div>}
+        <Flash id={msg} text={msg?.m} ok={!!msg && msg.t === 'ok'} />
         <Field label="نام (برای یادآوری کاربرد)"><input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="وب‌سایت دامون" /></Field>
         <div>
           <label className="block text-sm mb-1" style={{ color: 'var(--muted)' }}>دسترسی‌ها</label>

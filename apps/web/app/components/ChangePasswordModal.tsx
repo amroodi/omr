@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { client, Realm } from '../../lib/client';
 import { Field } from './ui';
+import { Flash } from './Toaster';
 
 /** Self-service password change for any authenticated realm (super or org). */
 export function ChangePasswordModal({ realm = 'super', onClose }: { realm?: Realm; onClose: () => void }) {
@@ -33,7 +34,7 @@ export function ChangePasswordModal({ realm = 'super', onClose }: { realm?: Real
           <h3 className="font-bold">تغییر رمز عبور</h3>
           <button onClick={onClose} className="text-sm" style={{ color: 'var(--muted)' }}>✕</button>
         </div>
-        {msg && <div className={msg.t === 'ok' ? 'alert-success' : 'alert-error'}>{msg.m}</div>}
+        <Flash id={msg} text={msg?.m} ok={!!msg && msg.t === 'ok'} />
         <Field label="رمز فعلی"><input type="password" className="input" value={cur} onChange={(e) => setCur(e.target.value)} autoComplete="current-password" style={{ direction: 'ltr', textAlign: 'left' }} /></Field>
         <Field label="رمز جدید (حداقل ۸ کاراکتر)"><input type="password" className="input" value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" style={{ direction: 'ltr', textAlign: 'left' }} /></Field>
         <Field label="تکرار رمز جدید"><input type="password" className="input" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" style={{ direction: 'ltr', textAlign: 'left' }} onKeyDown={(e) => e.key === 'Enter' && submit()} /></Field>

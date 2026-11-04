@@ -4,6 +4,7 @@ import { client } from '../../../lib/client';
 import { Shell } from '../../components/Shell';
 import { Spinner } from '../../components/ui';
 import { ORG_NAV } from '../nav';
+import { Flash } from '../../components/Toaster';
 
 interface Msg { id: string; claimId: string; claimNumber: string; companyName: string | null; phone: string; message: string; createdAt: string; handled: boolean; replies?: { id: string; message: string; at: string; by: string | null }[] }
 
@@ -30,7 +31,7 @@ export default function OnlineSupport() {
 
   return (
     <Shell title="پاسخگوی آنلاین" subtitle="پرسش‌های استعلام‌کنندگان دربارهٔ پرونده‌ها و پاسخ‌های کارگزاری" nav={ORG_NAV} realm="org">
-      {msg && <div className={`${msg.t === 'ok' ? 'alert-success' : 'alert-error'} mb-3`}>{msg.m}</div>}
+      <Flash id={msg} text={msg?.m} ok={msg?.t === 'ok'} />
       {!rows ? <div className="card p-8 text-center"><Spinner /></div>
         : rows.length === 0 ? <div className="card p-8 text-center text-sm" style={{ color: 'var(--muted)' }}>پیامی از استعلام‌کنندگان دریافت نشده است.</div>
         : (

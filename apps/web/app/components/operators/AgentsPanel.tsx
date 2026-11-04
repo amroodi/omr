@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { client } from '../../../lib/client';
 import { ErrorBox, Field, Overlay } from '../ui';
+import { Flash } from '../Toaster';
 
 interface Branch { id: string; name: string; code: string }
 interface Agent { id: string; fullName: string | null; nationalCode: string; phone: string; branchId: string | null; branchName: string | null; isActive: boolean; mustChangePassword: boolean; lastLoginAt: string | null }
@@ -46,7 +47,7 @@ export function AgentsPanel({ realm, base }: { realm: 'org' | 'super'; base: str
   return (
     <div className="space-y-4">
       <ErrorBox message={error} />
-      {msg && <div className="alert-success">{msg}</div>}
+      <Flash id={msg} text={msg} ok />
       <section className="card p-4 space-y-3">
         <h2 className="font-bold">افزودن نماینده بیمه</h2>
         <p className="text-xs" style={{ color: 'var(--muted)' }}>نماینده با کد ملی و رمز عبور از «ورود برای بارگذاری مدارک › نماینده بیمه» وارد پنل ۱ این بیمه‌گر می‌شود، برای مشتریان خود پرونده ثبت می‌کند و با «ارسال»، پرونده به شعبهٔ او می‌رود.</p>

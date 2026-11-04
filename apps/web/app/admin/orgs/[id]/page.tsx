@@ -6,6 +6,7 @@ import { client, getToken } from '../../../../lib/client';
 import { Design, DesignApi, ThemeDesigner } from '../../../components/ThemeDesigner';
 import { ErrorBox, Field } from '../../../components/ui';
 import { AssistCard } from '../../../components/AssistCard';
+import { Flash } from '../../../components/Toaster';
 
 /**
  * «طراحی و تنظیمات سازمان» (super admin): design a new or existing organization — the theme, colours and
@@ -75,7 +76,7 @@ function OrgSettings({ id }: { id: string }) {
   };
   return (
     <div className="grid md:grid-cols-2 gap-4 max-w-4xl">
-      {msg && <div className={`md:col-span-2 ${msg.t === 'ok' ? 'alert-success' : 'alert-error'}`}>{msg.m}</div>}
+      <Flash id={msg} text={msg?.m} ok={!!msg && msg.t === 'ok'} />
       <Field label="نام سازمان"><input className="input" value={s.name || ''} onChange={(e) => setS({ ...s, name: e.target.value })} /></Field>
       <Field label="سربرگ تماس (در خروجی‌ها)"><input className="input" value={s.contactHeader || ''} onChange={(e) => setS({ ...s, contactHeader: e.target.value })} /></Field>
       <Field label="مهلت اعلام خسارت (روز)"><input className="input" type="number" value={s.noticeDays ?? 30} onChange={(e) => setS({ ...s, noticeDays: e.target.value })} style={{ direction: 'ltr', textAlign: 'right' }} /></Field>

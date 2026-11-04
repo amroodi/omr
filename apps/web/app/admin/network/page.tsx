@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { client, getToken } from '../../../lib/client';
 import { Spinner } from '../../components/ui';
 import { NetworkTab } from './network';
+import { Flash } from '../../components/Toaster';
 
 /** Super Admin only: which بیمه‌گزار connects through which کارگزاری to which بیمه‌گر. */
 export default function AdminNetwork() {
@@ -35,7 +36,7 @@ export default function AdminNetwork() {
           </label>
         </div>
       )}
-      {msg && <div className={msg.t === 'ok' ? 'alert-success' : 'alert-error'}>{msg.m}</div>}
+      <Flash id={msg} text={msg?.m} ok={!!msg && msg.t === 'ok'} />
       {broker && <NetworkTab brokerTenantId={broker} setMsg={setMsg} />}
     </div>
   );

@@ -4,6 +4,7 @@ import { toGregorian } from 'jalaali-js';
 import { client } from '../../../lib/client';
 import { JalaliDatePicker } from '../JalaliDatePicker';
 import { ErrorBox, Field, Overlay } from '../ui';
+import { Flash } from '../Toaster';
 
 interface Contract { id: string; line: string | null; lineLabel: string | null; policyNumber: string | null; insurerTenantId: string; insurerName: string; startDate: string | null; endDate: string | null; isActive: boolean; inForce: boolean }
 interface Company { id: string; name: string; code: string | null; isActive: boolean; hasPassword: boolean; mustChangePassword?: boolean; contracts: Contract[] }
@@ -109,7 +110,7 @@ export function CompaniesPanel() {
   return (
     <div className="space-y-4">
       <ErrorBox message={error} />
-      {msg && <div className="alert-success">{msg}</div>}
+      <Flash id={msg} text={msg} ok />
       {cred && (
         <div className="pinfobox text-sm space-y-1">
           <div>ورود پنل «{cred.name}» — این رمز فقط همین یک بار نمایش داده می‌شود:</div>

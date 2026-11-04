@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { client, getToken } from '../../../lib/client';
 import { ErrorBox, Spinner } from '../../components/ui';
+import { Flash } from '../../components/Toaster';
 
 interface SessionRow {
   id: string; realm: string; realmLabel: string; actorId: string; actorLabel: string | null; tenantName: string | null;
@@ -233,7 +234,7 @@ function AlertSettings({ setError }: { setError: (s: string) => void }) {
           )}
         </div>
         <button className="btn btn-ghost btn-sm" disabled={busy || !s.phones.length} onClick={test}>ارسال پیامک آزمایشی</button>
-        {msg && <div className="alert-success text-sm">{msg}</div>}
+        <Flash id={msg} text={msg} ok />
         <p className="text-xs" style={{ color: 'var(--muted)' }}>پیامک‌ها از درگاه پیامک سکو ارسال می‌شوند. یک هشدار تکراری دربارهٔ یک حساب، حداکثر هر ۶ ساعت یک بار پیامک می‌شود (ولی همیشه در «هشدارها» ثبت می‌شود).</p>
       </div>
 

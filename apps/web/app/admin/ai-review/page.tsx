@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { client, getToken } from '../../../lib/client';
 import { Field } from '../../components/ui';
+import { Flash } from '../../components/Toaster';
 
 interface Settings {
   enabled: boolean; baseUrl: string; model: string; maxConcurrency: number; threshold: number;
@@ -78,7 +79,7 @@ export default function AiReviewAdmin() {
         </div>
         <Link href="/admin" className="btn btn-ghost btn-sm">بازگشت به مدیریت سازمان‌ها</Link>
       </div>
-      {msg && <div className={msg.t === 'ok' ? 'alert-success' : 'alert-error'}>{msg.m}</div>}
+      <Flash id={msg} text={msg?.m} ok={!!msg && msg.t === 'ok'} />
       {!s ? <p className="text-sm" style={{ color: 'var(--muted)' }}>در حال بارگذاری…</p> : (
         <>
           <div className="card p-5 space-y-3">

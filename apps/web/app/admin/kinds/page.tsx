@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { client, getToken } from '../../../lib/client';
 import { Spinner } from '../../components/ui';
+import { Flash } from '../../components/Toaster';
 
 interface KindRow { code?: string; label: string; active: boolean; contracts?: number; cases?: number }
 interface Org { id: string; name: string; kind: 'BROKER' | 'INSURER'; kinds: string[] }
@@ -42,7 +43,7 @@ export default function AdminKinds() {
           <Link href="/admin" className="btn btn-ghost btn-sm">بازگشت</Link>
         </div>
       </div>
-      {msg && <div className={msg.ok ? 'alert-success' : 'alert-error'}>{msg.text}</div>}
+      <Flash id={msg} text={msg?.text} ok={!!msg && msg.ok} />
       {!data ? <div className="card p-10 flex justify-center"><Spinner /></div> : (
         <>
           <div className="card p-4 space-y-3">

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { pickedClaim, inquiryApi, InquiryThread } from '../../../lib/api';
 import { EstelamFrame, SIDE_MENU, SubHead } from '../shared';
+import { Flash } from '../../components/Toaster';
 
 const REFRESH_MS = 20_000;
 const expiredText = (e: any) => (/token|expired|منقضی|Unauthorized/i.test(e?.message ?? '') ? 'زمان این استعلام به پایان رسیده است؛ لطفاً دوباره استعلام کنید.' : e?.message);
@@ -48,7 +49,7 @@ function Chat({ token }: { token: string }) {
           </div>
         ))}
       </div>
-      {note && <div className={note.ok ? 'alert-success' : 'alert-error'}>{note.text}</div>}
+      <Flash id={note} text={note?.text} ok={!!note && note.ok} />
       {expired ? <Link href="/" className="est-btn inline-flex">برای ادامهٔ گفتگو دوباره استعلام کنید</Link> : (
         <>
           <textarea className="input" rows={4} value={msg} onChange={(e) => setMsg(e.target.value)} maxLength={2000} placeholder="متن پیام…" />

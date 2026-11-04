@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { client, getToken } from '../../../lib/client';
 import { Shell } from '../../components/Shell';
 import { CUSTOMER_NAV } from '../nav';
+import { Flash } from '../../components/Toaster';
 
 /** «تغییر کلمه عبور» of the بیمه‌گزار panel, as a page of its own (like the insurer's portal). */
 export default function CustomerPassword() {
@@ -42,7 +43,7 @@ export default function CustomerPassword() {
           <input className="input cu-pill" type="password" autoComplete="current-password" placeholder="کلمه عبور فعلی" value={f.cur} onChange={(e) => setF({ ...f, cur: e.target.value })} />
           <input className="input cu-pill" type="password" autoComplete="new-password" placeholder="کلمه عبور جدید" value={f.next} onChange={(e) => setF({ ...f, next: e.target.value })} />
           <input className="input cu-pill" type="password" autoComplete="new-password" placeholder="تکرار کلمه عبور جدید" value={f.again} onChange={(e) => setF({ ...f, again: e.target.value })} />
-          {msg && <div className={msg.ok ? 'alert-success' : 'alert-error'}>{msg.text}</div>}
+          <Flash id={msg} text={msg?.text} ok={!!msg && msg.ok} />
           <button type="submit" className="cu-go" disabled={busy || !f.cur || !f.next || !f.again}>{busy ? '…' : 'کلمه عبور من را تغییر بده'}</button>
         </div>
       </form>

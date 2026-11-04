@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { client, getToken, setToken } from '../../../lib/client';
+import { Flash } from '../../components/Toaster';
 
 /** «پنل بیمه‌شده»: sign in with the mobile the بیمه‌گزار / نماینده invited, and an SMS code. */
 export default function InsuredLogin() {
@@ -34,8 +35,8 @@ export default function InsuredLogin() {
       <div className="card p-6 w-full max-w-md space-y-4">
         <h1 className="text-xl font-extrabold">ورود به پنل بیمه‌شده</h1>
         <p className="text-sm" style={{ color: 'var(--muted)' }}>با شماره‌ای وارد شوید که برای پرونده به شما دعوت‌نامه پیامک شده است.</p>
-        {error && <div className="alert-error">{error}</div>}
-        {sent && <div className="alert-success text-sm">{sent}</div>}
+        <Flash text={error} ok={false} />
+        <Flash id={sent} text={sent} ok />
         <div>
           <label className="label" htmlFor="ins-phone">شماره موبایل</label>
           <input id="ins-phone" className="input latin-digits" inputMode="numeric" autoComplete="tel" style={{ direction: 'ltr', textAlign: 'right' }} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="09xxxxxxxxx" disabled={!!sent} />

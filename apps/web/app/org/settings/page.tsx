@@ -8,6 +8,7 @@ import { applyTheme } from '../../../lib/theme';
 import { Shell } from '../../components/Shell';
 import { CLAIM_TYPE_LABELS, ErrorBox, Field } from '../../components/ui';
 import { ORG_NAV } from '../nav';
+import { Flash } from '../../components/Toaster';
 
 const TABS = [
   ['branding', 'برندینگ و تنظیمات'],
@@ -76,7 +77,7 @@ function BrandingTab() {
   if (!s) return null;
   return (
     <div className="card p-5 max-w-lg space-y-3">
-      {msg && <div className={msg.t === 'ok' ? 'alert-success' : 'alert-error'}>{msg.m}</div>}
+      <Flash id={msg} text={msg?.m} ok={!!msg && msg.t === 'ok'} />
       <Field label="نام سازمان"><input className="input" value={s.name || ''} onChange={(e) => setS({ ...s, name: e.target.value })} /></Field>
       <Field label="سربرگ تماس (در خروجی‌ها)"><input className="input" value={s.contactHeader || ''} onChange={(e) => setS({ ...s, contactHeader: e.target.value })} /></Field>
       {s.kind === 'INSURER' && (
@@ -165,7 +166,7 @@ function SmsTab() {
   const fields = DRIVER_FIELDS[f.driver] || [];
   return (
     <div className="card p-5 max-w-lg space-y-3">
-      {msg && <div className={msg.t === 'ok' ? 'alert-success' : 'alert-error'}>{msg.m}</div>}
+      <Flash id={msg} text={msg?.m} ok={!!msg && msg.t === 'ok'} />
       <p className="text-xs" style={{ color: 'var(--muted)' }}>درگاه پیامک این سازمان. برای ارسال کد تایید ورود و اطلاع‌رسانی ثبت‌نام‌ها استفاده می‌شود. اطلاعات اعتباری به‌صورت رمزنگاری‌شده ذخیره می‌شود.</p>
       {c.platformAvailable && (
         <div className="rounded-xl p-3" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}>

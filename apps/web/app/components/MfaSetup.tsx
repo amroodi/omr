@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { client } from '../../lib/client';
 import { ErrorBox, Field } from './ui';
+import { Flash } from './Toaster';
 
 type Realm = 'org' | 'super';
 const toAscii = (s: string) => s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
@@ -45,7 +46,7 @@ export function MfaSetup({ realm, onEnabled }: { realm: Realm; onEnabled?: () =>
   return (
     <div className="space-y-3 text-sm">
       <ErrorBox message={error} />
-      {ok && <div className="alert-success">{ok}</div>}
+      <Flash id={ok} text={ok} ok />
       <div className="flex items-center gap-2">
         <span className="font-semibold">وضعیت:</span>
         {st.enabled ? <span className="badge badge-success">فعال</span> : <span className="badge badge-warning">غیرفعال</span>}

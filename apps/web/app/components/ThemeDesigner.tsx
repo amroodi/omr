@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { OnProgress, UploadButton } from './upload';
 import { Field } from './ui';
+import { Flash } from './Toaster';
 
 type Theme = Record<string, string>;
 export interface Design {
@@ -71,7 +72,7 @@ export function ThemeDesigner({ api }: { api: DesignApi }) {
 
   return (
     <div className="space-y-4">
-      {msg && <div className={msg.t === 'ok' ? 'alert-success' : 'alert-error'}>{msg.m}</div>}
+      <Flash id={msg} text={msg?.m} ok={!!msg && msg.t === 'ok'} />
       <div className="flex flex-wrap gap-2">
         <button onClick={() => setTab('ORG')} className={`btn btn-sm ${isOrg ? 'btn-primary' : 'btn-ghost'}`}>سازمان (پیش‌فرض همهٔ پنل‌ها)</button>
         {d.panels.map((p) => <button key={p.key} onClick={() => setTab(p.key)} className={`btn btn-sm ${tab === p.key ? 'btn-primary' : 'btn-ghost'}`}>{p.label}</button>)}

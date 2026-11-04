@@ -16,6 +16,7 @@ import { AI_QUEUED_FA, aiVerdict, ChecklistItem, ClaimDoc, dateOnly, STATUS_FA, 
 import { DocUploadTile, OnProgress, UploadButton } from './upload';
 import { BENEFICIARY_FORM, BeneficiaryChoice, INHERITANCE_CERT, NO_FORM_LETTER } from './heirs';
 import { JalaliDatePicker } from './JalaliDatePicker';
+import { Flash } from './Toaster';
 
 const DESK_FA: Record<string, string> = { BROKER: 'کارگزاری', BRANCH: 'شعبه', HQ: 'مدیریت ستاد', COUNCIL: 'شورای فنی' };
 const OK = 'M20 6L9 17l-5-5';
@@ -60,7 +61,7 @@ function FilingEditor({ claim, api, realm, onSaved, onCancel }: { claim: any; ap
   const set = (k: keyof FilingForm) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
   return (
     <div className="space-y-3 mt-3">
-      {error && <div className="alert-error text-sm">{error}</div>}
+      <Flash text={error} ok={false} />
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-2.5">
         <label className="block"><span className="label">کد ملی بیمه‌شده</span><input className="input latin-digits" value={f.nid} onChange={set('nid')} inputMode="numeric" maxLength={10} style={{ direction: 'ltr', textAlign: 'right' }} placeholder={claim.deceasedNationalCode ?? ''} /></label>
         <label className="block"><span className="label">نام بیمه‌شده</span><input className="input" value={f.name} onChange={set('name')} maxLength={120} /></label>
@@ -122,7 +123,7 @@ function InsuredAccess({ claimId }: { claimId: string }) {
     <section className="pcard cu-spec">
       <h2 className="cu-spec-h"><span>پنل بیمه‌شده</span></h2>
       <p className="text-sm" style={{ color: 'var(--muted)' }}>بیمه‌شده یا افراد تحت تکفل با این شماره وارد می‌شوند و فقط مدارک خود را بارگذاری می‌کنند.</p>
-      {state && <div className={state.t === 'ok' ? 'alert-success' : 'alert-error'}>{state.m}</div>}
+      <Flash id={state} text={state?.m} ok={!!state && state.t === 'ok'} />
       <div className="flex gap-2 flex-wrap">
         <input className="input max-w-xs" value={name} onChange={(e) => setName(e.target.value)} placeholder="نام (اختیاری)" maxLength={120} aria-label="نام" />
         <input className="input max-w-xs" inputMode="numeric" style={{ direction: 'ltr', textAlign: 'right' }} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="09xxxxxxxxx" aria-label="موبایل" />
@@ -241,7 +242,7 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
       ) : undefined}>
       <div className="cu-home">
         <ErrorBox message={error} />
-        {sentOk && <div className="alert-success">مدارک ثبت نهایی شد و پرونده برای رسیدگی ارسال شد.</div>}
+        <Flash text={sentOk ? 'مدارک ثبت نهایی شد و پرونده برای رسیدگی ارسال شد.' : null} ok />
         {!claim ? <div className="pcard p-10 flex justify-center"><Spinner /></div> : (
           <>
             {/* مشخصات پرونده — laid out like the home's «مشخصات بیمه نامه» */}
@@ -321,7 +322,7 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
                 {checklist && <span className={`badge ${checklist.complete ? 'badge-success' : 'badge-warning'}`}>{checklist.complete ? 'کامل' : 'ناقص'}</span>}
               </h2>
               <p className="text-xs mb-3" style={{ color: 'var(--muted)' }}>مدارک ستاره‌دار (*) الزامی است؛ بقیه را برحسب مورد بارگذاری کنید.{checklist?.note ? ` ${checklist.note}` : ''}</p>
-              {aiNote && <div className="alert-success mb-3 text-sm">{AI_QUEUED_FA}</div>}
+              <Flash text={aiNote ? AI_QUEUED_FA : null} ok />
               <div className="space-y-2.5">
                 {checklist?.items.map((it) => {
                   // دارد / ندارد not answered yet: one row asks; the answer decides which document stays.
