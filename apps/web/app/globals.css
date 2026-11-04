@@ -2125,3 +2125,76 @@ a.cu-card.is-link:hover { transform: translateY(-2px); box-shadow: 0 0 0 2px var
 .co-pick li.is-hi { background: var(--brand-soft); }
 .co-pick li.is-off { color: var(--muted); cursor: not-allowed; }
 .co-pick li.is-empty { color: var(--muted); cursor: default; }
+
+/* ═══════════ «پیگیری آخرین وضعیت پرونده خسارت» in panel 1 («مراحل و وضعیت گردش کار», «بررسی وضعیت مدارک»,
+   «روند پرونده»): the panel's own white boxes instead of the navy sheet — the header like «مشخصات بیمه نامه»
+   (title with its rule), person boxes like the home cards, tables with grey heads like «پیگیری خسارت»,
+   brand buttons. Look only: the same parts and behaviour as everywhere else. ═══════════ */
+.is-customer .cs-sheet { --cs-navy: var(--cu-ink); --cs-body: var(--panel-card); --cs-row: var(--panel-card); --cs-ink: var(--text); --cs-cap: var(--muted); --cs-grid: var(--border); gap: 8px; }
+.is-customer .cs-ico { width: auto; height: auto; background: none; color: var(--cu-ink); border-radius: 0; }
+.is-customer .cs-ico svg { width: 20px; height: 20px; }
+.is-customer .cs-ico.sm svg { width: 18px; height: 18px; }
+.is-customer .cs-hero, .is-customer .cs-person, .is-customer .cs-table, .is-customer .cs-card {
+  background: var(--panel-card); color: var(--text); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 1px 1px rgba(16,24,40,0.04), 0 10px 28px -14px rgba(16,24,40,0.22);
+}
+:root.dark .is-customer .cs-hero, :root.dark .is-customer .cs-person, :root.dark .is-customer .cs-table, :root.dark .is-customer .cs-card { box-shadow: 0 1px 1px rgba(0,0,0,0.3), 0 12px 30px -14px rgba(0,0,0,0.6); }
+/* header: title + rule, the case's company under it, the dates as plain facts; status and buttons aside */
+.is-customer .cs-hero { padding: 8px 12px; gap: 6px 20px; }
+.is-customer .cs-hero-title { font-size: 13px; font-weight: 700; gap: 10px; }
+.is-customer .cs-hero-title::after { content: ''; flex: 1; height: 2px; background: var(--cu-ink); opacity: .8; border-radius: 2px; }
+.is-customer .cs-hero-sub { margin-top: 4px; font-size: 12px; color: var(--muted); opacity: 1; }
+.is-customer .cs-dates { margin-top: 6px; gap: 2px 18px; }
+.is-customer .cs-date { background: none; color: var(--text); border-radius: 0; padding: 0; font-size: 12px; gap: 6px; }
+.is-customer .cs-date .cap { color: var(--muted); font-size: 12px; margin-inline-end: 2px; }
+.is-customer .cs-date svg { color: var(--cu-ink); width: 18px; height: 18px; }
+.is-customer .cs-hero-side { gap: 6px; }
+.is-customer .cs-notes { gap: 3px; }
+.is-customer .cs-notes .cap { font-size: 12px; color: var(--muted); opacity: 1; }
+.is-customer .cs-pill { border-radius: 4px; padding: 2px 10px; font-size: 12px; font-weight: 600; }
+.is-customer .cs-hero .cs-pill.tone-ok { background: color-mix(in srgb, #16a34a 14%, var(--panel-card)); color: #15803d; }
+.is-customer .cs-btn-back, .is-customer .cs-btn-exit { border-radius: 5px; padding: 5px 12px; font-size: 13px; font-weight: 600; }
+.is-customer .cs-btn-back { background: var(--brand); color: #fff; }
+.is-customer .cs-btn-back:hover { filter: brightness(1.06); }
+.is-customer .cs-btn-exit { background: transparent; color: var(--danger); box-shadow: inset 0 0 0 1px currentColor; }
+/* person boxes: like the home's summary cards */
+.is-customer .cs-people { gap: 8px; }
+.is-customer .cs-person { padding: 8px 12px; gap: 12px; }
+.is-customer .cs-person .cap { font-size: 12px; color: var(--muted); }
+.is-customer .cs-person b { font-size: 13px; color: var(--text); }
+.is-customer .cs-person-ico { color: var(--cu-ink); }
+.is-customer .cs-person-ico svg { width: 30px; height: 30px; }
+/* tables: a white box, grey head row, ruled rows */
+.is-customer .cs-table { overflow: hidden; }
+.is-customer .cs-table-h { background: var(--surface-2); color: var(--text); font-size: 12px; font-weight: 700; padding: 6px 10px; }
+.is-customer .cs-th-main { font-size: 13px; }
+.is-customer .cs-table-h.cs-grid-wf, .is-customer .cs-table-h.cs-grid-route, .is-customer .cs-table-h.cs-grid-docs { padding: 0; font-size: 12px; }
+.is-customer .cs-table-h.cs-grid-wf > *, .is-customer .cs-table-h.cs-grid-route > *, .is-customer .cs-table-h.cs-grid-docs > * { padding-block: 6px; }
+.is-customer .cs-table-h.cs-grid-wf > * + *, .is-customer .cs-table-h.cs-grid-route > * + *, .is-customer .cs-table-h.cs-grid-docs > * + * { border-inline-start-color: var(--border); }
+.is-customer .cs-tr { min-height: 0; font-size: 12px; background: var(--panel-card); color: var(--text); }
+.is-customer .cs-tr:nth-child(even) { background: var(--panel-card); }
+.is-customer .cs-tr:hover { background: var(--surface-2); }
+.is-customer .cs-tr.is-done { background: color-mix(in srgb, #16a34a 8%, var(--panel-card)); }
+.is-customer .cs-grid-wf > *, .is-customer .cs-grid-route > *, .is-customer .cs-grid-docs > * { padding: 5px 10px; }
+.is-customer .cs-td-main { font-weight: 600; }
+.is-customer .cs-td-date { font-weight: 600; }
+.is-customer .cs-table .cs-mark { width: 24px; height: 24px; border-radius: 4px; }
+.is-customer .cs-table .cs-mark svg { width: 14px; height: 14px; }
+.is-customer .cs-upload { background: var(--brand); border-radius: 4px; padding: 3px 9px; font-size: 11.5px; font-weight: 600; }
+.is-customer .cs-foot-l { font-size: 13px; font-weight: 700; }
+.is-customer .cs-tr.cs-foot { padding: 6px 10px; }
+/* the case's info boxes (where shown) */
+.is-customer .cs-cols { gap: 8px; }
+.is-customer .cs-card-h { background: var(--surface-2); color: var(--text); padding: 6px 12px; font-size: 13px; font-weight: 700; }
+.is-customer .cs-card-b { padding: 0; gap: 0; }
+.is-customer .cs-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; border-radius: 0; padding: 5px 12px; border-bottom: 1px solid var(--border); background: transparent; }
+.is-customer .cs-row:last-child { border-bottom: 0; }
+.is-customer .cs-row-l { font-size: 12px; }
+.is-customer .cs-row-v { font-size: 12px; font-weight: 600; margin: 0; }
+/* buttons under the sheet */
+.is-customer .cs-actions { gap: 6px; justify-content: flex-start; }
+.is-customer .cs-act { min-width: 0; padding: 5px 14px; border-radius: 5px; font-size: 13px; font-weight: 600; background: var(--brand); color: #fff; box-shadow: none; }
+.is-customer .cs-act:not(:disabled):hover { filter: brightness(1.06); transform: none; }
+.is-customer .cs-act.is-alt { background: var(--panel-card); color: var(--cu-ink); box-shadow: inset 0 0 0 1px var(--cu-ink); }
+.is-customer .cs-act svg { width: 16px; height: 16px; }
+@media (max-width: 760px) { .is-customer .cs-act { flex: 1 1 100%; } }

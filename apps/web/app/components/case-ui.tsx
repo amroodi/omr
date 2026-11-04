@@ -153,10 +153,10 @@ export function CaseHero({ title, claim, notes, notesLabel = 'توضیحات پ�
       <div className="cs-hero-side">
         <div className="cs-notes"><span className="cap">{notesLabel}</span><NotesPill text={notes} /></div>
         <div className="cs-hero-btns no-pdf">
+          {/* panel 1: «مرحله بعد» first, then «مرحله قبل» (as on «جزئیات پرونده») */}
+          {steps && <button type="button" className="cs-btn-back" onClick={() => router.push(exitHref)}>مرحله بعد <Icon path="M15 18l-6-6 6-6" /></button>}
           {back && <Link href={back} className="cs-btn-back"><Icon path={ICONS.back} /> {steps ? 'مرحله قبل' : 'بازگشت'}</Link>}
-          {steps
-            ? <button type="button" className="cs-btn-back" onClick={() => router.push(exitHref)}>مرحله بعد <Icon path="M15 18l-6-6 6-6" /></button>
-            : <button type="button" className="cs-btn-exit" onClick={() => router.push(exitHref)}><Icon path={ICONS.exit} /> خروج</button>}
+          {!steps && <button type="button" className="cs-btn-exit" onClick={() => router.push(exitHref)}><Icon path={ICONS.exit} /> خروج</button>}
         </div>
       </div>
     </div>
