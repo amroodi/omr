@@ -55,7 +55,13 @@ function details(m: any): string {
 export default function AdminAudit() {
   const router = useRouter();
   const [tenants, setTenants] = useState<{ id: string; name: string }[]>([]);
-  const [f, setF] = useState({ tenantId: '', action: '', actorType: '', targetType: '', from: '', to: '' });
+  const [f, setF] = useState({ tenantId: '', action: '', actorType: '', targetType: '', from: '', to: '', actorId: '' });
+  // The chosen organization's own people (each شعبه / ستاد / شورای فنی operator has an account of their own).
+  const [people, setPeople] = useState<{ id: string; displayName: string; username: string; branch?: { name: string } | null; desk?: string | null }[]>([]);
+  useEffect(() => {
+    setPeople([]); setF((s) => ({ ...s, actorId: '' }));
+    if (f.tenantId) client.get<any[]>(`/admin/operators/${f.tenantId}/users`, 'super').then(setPeople).catch(() => setPeople([]));
+  }, [f.tenantId]);
   const [page, setPage] = useState(1);
   const [data, setData] = useState<{ total: number; items: Row[] } | null>(null);
   const [error, setError] = useState('');
@@ -73,6 +79,7 @@ export default function AdminAudit() {
     if (f.tenantId) q.set('tenantId', f.tenantId);
     if (f.action) q.set('action', f.action);
     if (f.actorType) q.set('actorType', f.actorType);
+    if (f.actorId) q.set('actorId', f.actorId);
     if (f.targetType) q.set('targetType', f.targetType);
     if (f.from && jToIso(f.from)) q.set('from', jToIso(f.from));
     if (f.to && jToIso(f.to, true)) q.set('to', jToIso(f.to, true));
@@ -105,6 +112,10 @@ export default function AdminAudit() {
         <select className="input" value={f.actorType} onChange={(e) => setF({ ...f, actorType: e.target.value })}>
           <option value="">— همهٔ انجام‌دهندگان —</option>
           {Object.entries(ACTOR_FA).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
+        <select className="input" value={f.actorId} onChange={(e) => setF({ ...f, actorId: e.target.value })} disabled={!f.tenantId} title={f.tenantId ? '' : 'ابتدا سازمان را انتخاب کنید'}>
+          <option value="">{f.tenantId ? '— همهٔ کاربران این سازمان —' : '— کاربر (پس از انتخاب سازمان) —'}</option>
+          {people.map((u) => <option key={u.id} value={u.id}>{u.displayName} ({u.username}){u.branch ? ` — شعبه ${u.branch.name}` : u.desk === 'COUNCIL' ? ' — شورای فنی' : u.desk === 'HQ' ? ' — ستاد' : ''}</option>)}
         </select>
         <select className="input" value={f.targetType} onChange={(e) => setF({ ...f, targetType: e.target.value })}>
           <option value="">— همهٔ موضوع‌ها —</option>

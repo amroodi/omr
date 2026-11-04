@@ -352,12 +352,15 @@ export interface ActionContext {
 }
 
 // ── Original (physical) documents ──
-// They go بیمه‌گزار → شعبه and stay there, unless ستاد or شورای فنی ask for them; a request travels
-// down one desk at a time (شورا → ستاد → شعبه) until it reaches whoever holds the originals.
+// They go to شعبه and stay there, unless ستاد or شورای فنی ask for them; a request travels down one desk
+// at a time (شورا → ستاد → شعبه) until it reaches whoever holds the originals. The insurer never reaches
+// past a کارگزاری: on a broker's case شعبه asks the کارگزاری (who gets them from its بیمه‌گزار), and on
+// a direct sale the بیمه‌گزار desk.
 export type PhysicalActionKey = 'PHYSICAL_SEND' | 'PHYSICAL_RELAY' | 'PHYSICAL_RECEIVE' | 'PHYSICAL_RETURN';
 
 export interface PhysicalState {
-  at: Stage | null; // null = still with the بیمه‌گزار
+  at: Stage | null; // null = not yet with the insurer (with `base`)
+  base?: Stage; // where the originals start: BROKER on a broker's case, else POLICYHOLDER
   open: { requesterStage: Stage; holderStage: Stage; status: 'REQUESTED' | 'SENT' } | null;
 }
 
@@ -366,15 +369,22 @@ export interface PhysicalAction {
   label: string;
 }
 
-const PHYSICAL_CHAIN: Stage[] = ['POLICYHOLDER', 'BRANCH', 'HQ', 'COUNCIL'];
-
-export function physicalBelow(s: Stage): Stage | null {
-  const i = PHYSICAL_CHAIN.indexOf(s);
-  return i > 0 ? PHYSICAL_CHAIN[i - 1] : null;
+export function physicalBelow(s: Stage, base: Stage = 'POLICYHOLDER'): Stage | null {
+  const chain: Stage[] = [base, 'BRANCH', 'HQ', 'COUNCIL'];
+  const i = chain.indexOf(s);
+  return i > 0 ? chain[i - 1] : null;
 }
 
 export function custodyOf(p: PhysicalState): Stage {
-  return p.at ?? 'POLICYHOLDER';
+  return p.at ?? p.base ?? 'POLICYHOLDER';
+}
+
+/**
+ * How far down a manager's «مستقیم» hand-off may go from desk `s`: the بیمه‌گزار — but from the insurer's
+ * desks never past the کارگزاری of a broker's case (the insurer deals only with its کارگزاری).
+ */
+export function directTarget(claim: { brokerTenantId: string | null }, s: Stage): Stage {
+  return claim.brokerTenantId && s !== 'BROKER' && s !== 'POLICYHOLDER' ? 'BROKER' : 'POLICYHOLDER';
 }
 
 /** Physical-document actions for the desk `me` sits at on this claim (independent of the claim's position). */
@@ -382,8 +392,9 @@ export function physicalActionsFor(me: Stage | null, p: PhysicalState, fa: Recor
   if (!me) return [];
   const o = p.open;
   if (o?.status === 'REQUESTED' && o.holderStage === me) {
-    if (custodyOf(p) === me) return [{ key: 'PHYSICAL_SEND', label: `ارسال اصل مدارک به ${fa[o.requesterStage]}` }];
-    const next = physicalBelow(me);
+    // (the بیمه‌گزار desk can always send what was asked of it — requests made before کارگزاری sat in the chain)
+    if (custodyOf(p) === me || me === 'POLICYHOLDER') return [{ key: 'PHYSICAL_SEND', label: `ارسال اصل مدارک به ${fa[o.requesterStage]}` }];
+    const next = physicalBelow(me, p.base);
     return next ? [{ key: 'PHYSICAL_RELAY', label: `ارسال درخواست اصل مدارک به ${fa[next]}` }] : [];
   }
   if (o?.status === 'SENT' && o.requesterStage === me) return [{ key: 'PHYSICAL_RECEIVE', label: 'تایید دریافت اصل مدارک' }];
@@ -424,19 +435,21 @@ export function actionsFor(ctx: ActionContext): WorkflowAction[] {
       return out;
     }
     if (dn) out.push({ key: 'DOWN_FORWARD', label: `ارسال به ${fa[dn]}`, tone: 'primary' });
-    if (ctx.isAdmin && dn && dn !== 'POLICYHOLDER') {
-      out.push({ key: 'DOWN_DIRECT', label: 'ارسال مستقیم به بیمه‌گزار (اختیار مدیریت)', tone: 'ghost', adminOnly: true });
+    const bottom = directTarget(claim, s);
+    if (ctx.isAdmin && dn && dn !== 'POLICYHOLDER' && dn !== bottom) {
+      out.push({ key: 'DOWN_DIRECT', label: `ارسال مستقیم به ${fa[bottom]} (اختیار مدیریت)`, tone: 'ghost', adminOnly: true });
     }
     return out;
   }
 
   // ── UP: this desk is reviewing ──
   const ph = ctx.physical;
+  const phBase: Stage = ph.base ?? 'POLICYHOLDER';
   const waitingOriginals = ph.open?.requesterStage === s ? 'در انتظار دریافت اصل مدارک' : undefined;
   if (s === 'BROKER' || s === 'BRANCH') {
     let disabled = notApproved;
     if (!disabled && s === 'BRANCH' && rules.requireLossNotice && !claim.lossNoticeNumber) disabled = 'ابتدا اعلام خسارت را ثبت کنید';
-    if (!disabled && s === 'BRANCH' && !ph.at && (rules.requireOriginals || waitingOriginals)) disabled = waitingOriginals ?? 'ابتدا اصل مدارک را از بیمه‌گزار دریافت کنید';
+    if (!disabled && s === 'BRANCH' && !ph.at && (rules.requireOriginals || waitingOriginals)) disabled = waitingOriginals ?? `ابتدا اصل مدارک را از ${fa[phBase]} دریافت کنید`;
     if (!disabled && s === 'BROKER' && !ctx.branches.length) disabled = 'بیمه‌گر هیچ شعبه‌ای تعریف نکرده است';
     out.push({
       key: 'FORWARD',
@@ -446,6 +459,7 @@ export function actionsFor(ctx: ActionContext): WorkflowAction[] {
       ...(s === 'BROKER' ? { branchOptions: ctx.branches, selectedBranchId: claim.handlingBranchId } : {}),
     });
   } else if (s === 'HQ') {
+    const noAmount = 'مبلغ خسارت قطعی را شعبه ثبت نکرده است؛ پرونده را برای ثبت آن به شعبه برگردانید';
     const council = { key: 'REFER_COUNCIL' as const, label: 'ارجاع به شورای فنی', tone: 'primary' as const, disabled: notApproved ?? waitingOriginals };
     if (claim.returnTargetStage === 'COUNCIL') {
       // شورای فنی returned it — after the fix it must go back to the council, not be paid here.
@@ -454,31 +468,34 @@ export function actionsFor(ctx: ActionContext): WorkflowAction[] {
       const payable = Number((claim.finalizedAmount ?? claim.claimedAmount).toString());
       const ceiling = ctx.hqCeiling != null ? Number(ctx.hqCeiling.toString()) : null;
       let disabled = notApproved ?? waitingOriginals;
-      if (!disabled && claim.finalizedAmount == null) disabled = 'ابتدا مبلغ خسارت قطعی را ثبت کنید';
+      if (!disabled && claim.finalizedAmount == null) disabled = noAmount;
       if (!disabled && rules.councilEnabled && ceiling != null && payable > ceiling) disabled = 'مبلغ بیش از سقف اختیار مدیریت ستاد است؛ پرونده را به شورای فنی ارجاع دهید';
       out.push({ key: 'PAY_ORDER', label: 'دستور پرداخت — ارسال به شعبه', tone: 'primary', disabled });
       if (rules.councilEnabled) out.push(council);
     }
   } else if (s === 'COUNCIL') {
     let disabled = notApproved ?? waitingOriginals;
-    if (!disabled && claim.finalizedAmount == null) disabled = 'ابتدا مبلغ خسارت قطعی را ثبت کنید';
+    if (!disabled && claim.finalizedAmount == null) disabled = 'مبلغ خسارت قطعی را شعبه ثبت نکرده است';
     out.push({ key: 'PAY_ORDER', label: 'دستور پرداخت — ارسال به مدیریت ستاد', tone: 'primary', disabled });
   }
 
-  // Ask for the originals: شعبه from بیمه‌گزار (after approving the scans), ستاد from شعبه, شورا via ستاد.
+  // Ask for the originals: شعبه from the کارگزاری (a broker's case) or the بیمه‌گزار (after approving the
+  // scans), ستاد from شعبه, شورا via ستاد.
   if (s !== 'BROKER' && !ph.open && custodyOf(ph) !== s) {
-    const label = s === 'BRANCH' ? 'درخواست اصل مدارک از بیمه‌گزار' : s === 'HQ' ? 'درخواست اصل مدارک از شعبه' : 'درخواست اصل مدارک (از طریق مدیریت ستاد)';
+    const label = s === 'BRANCH' ? `درخواست اصل مدارک از ${fa[phBase]}` : s === 'HQ' ? 'درخواست اصل مدارک از شعبه' : 'درخواست اصل مدارک (از طریق مدیریت ستاد)';
     out.push({ key: 'REQUEST_PHYSICAL', label, tone: 'ghost', disabled: s === 'BRANCH' ? notApproved : undefined });
   }
 
   if (dn) {
-    // ستاد (سرپرستی) sends a case back to شعبه as «برگشت از سرپرستی به شعبه».
-    const back = s === 'HQ' && dn === 'BRANCH' ? 'برگشت از سرپرستی به شعبه' : `ارسال به ${fa[dn]} (عودت برای رفع نقص)`;
+    // ستاد (سرپرستی) sends a case back to شعبه as «برگشت از سرپرستی به شعبه»; شعبه to the desk below it
+    // (the کارگزاری of a broker's case) as «برگشت از شعبه».
+    const back = s === 'HQ' && dn === 'BRANCH' ? 'برگشت از سرپرستی به شعبه' : s === 'BRANCH' ? 'برگشت از شعبه' : `ارسال به ${fa[dn]} (عودت برای رفع نقص)`;
     out.push({ key: 'RETURN', label: back, tone: 'warning', needsDeficiencies: true });
-    if (ctx.isAdmin && dn !== 'POLICYHOLDER') {
-      // Skips every desk below — the panel asks the operator to confirm (yes / no) before it goes.
+    const bottom = directTarget(claim, s);
+    if (ctx.isAdmin && dn !== 'POLICYHOLDER' && dn !== bottom) {
+      // Skips every desk below (not past a کارگزاری) — the panel asks the operator to confirm (yes / no) first.
       const from = s === 'HQ' ? 'سرپرستی' : fa[s] ?? '';
-      out.push({ key: 'RETURN_DIRECT', label: `برگشت از ${from} به بیمه‌گزار`, tone: 'ghost', adminOnly: true, needsDeficiencies: true, confirm: true });
+      out.push({ key: 'RETURN_DIRECT', label: `برگشت از ${from} به ${fa[bottom]}`, tone: 'ghost', adminOnly: true, needsDeficiencies: true, confirm: true });
     }
   }
   if (s !== 'BROKER') out.push({ key: 'REJECT_FINAL', label: 'رد نهایی پرونده', tone: 'danger', needsNote: true });

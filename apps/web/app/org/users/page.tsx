@@ -13,7 +13,7 @@ type Msg = { t: 'ok' | 'err'; m: string } | null;
 const PERM_GROUPS: { title: string; items: [string, string][] }[] = [
   { title: 'پرونده‌های خسارت', items: [
     ['claim:read', 'مشاهدهٔ پرونده‌ها'], ['claim:file', 'ثبت پرونده و بارگذاری مدرک'], ['claim:file-on-behalf', 'ثبت پرونده به جای بیمه‌گزار'],
-    ['claim:process', 'اقدام در گردش کار و مبلغ قطعی'], ['claim:override', 'اختیار مدیریت (عودت مستقیم، همهٔ مراحل)'], ['claim:delete', 'حذف پرونده (سطل بازیافت)'],
+    ['claim:process', 'اقدام در گردش کار و مبلغ قطعی'], ['claim:override', 'اختیار مدیریت (عودت مستقیم، همهٔ مراحل)'], 
     ['level:manage', 'تنظیم سطوح و سقف تایید'],
   ] },
   { title: 'مدارک', items: [['doc:upload', 'بارگذاری مدرک'], ['doc:read', 'مشاهدهٔ مدارک'], ['doc:verify', 'تایید/رد مدارک'], ['ocr:run', 'استخراج خودکار (OCR)']] },

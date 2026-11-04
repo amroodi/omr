@@ -27,7 +27,7 @@ import { beneficiaryHiddenDocs } from '../required-docs/defaults';
 import { toAsciiDigits } from '../../common/jalali/jalali.util';
 import { ModelStore } from '../model-view/model-store.service';
 import { CoverageService } from '../model-view/coverage.service';
-import { above, actionsFor, rulesOf, WorkflowModel, Line, lineForm, InsuredRelation, RELATION_FA, DEPENDENT_RELATIONS, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, physicalActionsFor, PhysicalActionKey, physicalBelow, PhysicalState, Purpose, ReviewDesk, Stage, STAGE_FA, WorkflowAction, caseTypeOf, dependentsFor, EntryWay, typesFor } from './workflow';
+import { above, actionsFor, rulesOf, WorkflowModel, Line, lineForm, InsuredRelation, RELATION_FA, DEPENDENT_RELATIONS, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, physicalActionsFor, PhysicalActionKey, physicalBelow, PhysicalState, directTarget, Purpose, ReviewDesk, Stage, STAGE_FA, WorkflowAction, caseTypeOf, dependentsFor, EntryWay, typesFor } from './workflow';
 import { allKinds, docKindWhere, isKind, kindLabel, kindsOf } from '../../common/kinds';
 
 const CLAIM_DOC_MIME = new Set([
@@ -750,7 +750,7 @@ export class ClaimsService {
         const docs = await this.deskDocFacts(claim);
         const items = [...docs.rejectedLabels.map((l) => `مدرک ردشده: ${l}`), ...(input.deficiencies ?? []).map((x) => x.trim()).filter(Boolean)];
         if (!items.length) throw new BadRequestException('حداقل یک مدرک را رد کنید یا یک مورد نقص بنویسید');
-        const to: Stage = a.key === 'RETURN_DIRECT' ? 'POLICYHOLDER' : dn!;
+        const to: Stage = a.key === 'RETURN_DIRECT' ? directTarget(claim, s) : dn!;
         await db.claimDeficiency.create({ data: { claimId, raisedByTenantId: getContext()?.tenantId ?? null, raisedByStepId: step.id, items: JSON.stringify(items) } });
         await this.move(claim, step, { ...base, closeState: 'RETURNED_INCOMPLETE', to, direction: 'DOWN', purpose: 'DEFICIENCY', status: ClaimStatus.RETURNED_INCOMPLETE, extra: { returnTargetStage: higher(claim.returnTargetStage as Stage | null, s) } });
         await this.audit.record({ action: AuditAction.CLAIM_RETURN_INCOMPLETE, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { by: s, to, items } });
@@ -759,7 +759,7 @@ export class ClaimsService {
       }
       case 'DOWN_FORWARD':
       case 'DOWN_DIRECT': {
-        const to: Stage = a.key === 'DOWN_DIRECT' ? 'POLICYHOLDER' : dn!;
+        const to: Stage = a.key === 'DOWN_DIRECT' ? directTarget(claim, s) : dn!;
         const purpose = claim.flowPurpose as Purpose;
         await this.move(claim, step, { ...base, closeState: 'FORWARDED', to, direction: 'DOWN', purpose, status: claim.status });
         await this.audit.record({ action: AuditAction.CLAIM_FORWARD, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { from: s, to, purpose } });
@@ -777,7 +777,7 @@ export class ClaimsService {
       }
       case 'REQUEST_PHYSICAL': {
         // Side track: the claim stays at this desk; the request goes one desk down.
-        const holder = physicalBelow(s)!;
+        const holder = physicalBelow(s, claim.brokerTenantId ? 'BROKER' : 'POLICYHOLDER')!;
         const req = await db.claimPhysicalRequest.create({ data: { claimId, requesterStage: s, holderStage: holder, createdById: this.actor() } });
         const ev = await db.claimPhysicalEvent.create({ data: { requestId: req.id, claimId, stage: s, action: 'REQUEST', note, actorId: this.actor() } });
         if (input.letterId) await db.claimLetter.update({ where: { id: input.letterId }, data: { physicalEventId: ev.id } });
@@ -900,7 +900,8 @@ export class ClaimsService {
 
   private async physicalState(claim: any): Promise<PhysicalState> {
     const o = await this.openPhysicalRequest(claim.id);
-    return { at: (claim.physicalAt as Stage | null) ?? null, open: o ? { requesterStage: o.requesterStage as Stage, holderStage: o.holderStage as Stage, status: o.status as 'REQUESTED' | 'SENT' } : null };
+    // On a broker's case the insurer gets the originals from its کارگزاری, never from the بیمه‌گزار directly.
+    return { at: (claim.physicalAt as Stage | null) ?? null, base: claim.brokerTenantId ? 'BROKER' : 'POLICYHOLDER', open: o ? { requesterStage: o.requesterStage as Stage, holderStage: o.holderStage as Stage, status: o.status as 'REQUESTED' | 'SENT' } : null };
   }
 
   /** The desks the caller sits at on this claim, for physical-document actions (an org user acting for بیمه‌گزار counts too). */
@@ -927,8 +928,8 @@ export class ClaimsService {
     const uMap = new Map(users.map((u) => [u.id, u.displayName]));
     const o = state.open;
     return {
-      at: state.at ?? 'POLICYHOLDER',
-      atLabel: this.store.labels(claim.insurerTenantId)[state.at ?? 'POLICYHOLDER'],
+      at: state.at ?? state.base ?? 'POLICYHOLDER',
+      atLabel: this.store.labels(claim.insurerTenantId)[state.at ?? state.base ?? 'POLICYHOLDER'],
       collected: !!state.at,
       open: o ? { ...o, requesterLabel: this.store.labels(claim.insurerTenantId)[o.requesterStage], holderLabel: this.store.labels(claim.insurerTenantId)[o.holderStage] } : null,
       actions,
@@ -968,7 +969,7 @@ export class ClaimsService {
 
     switch (input.action) {
       case 'PHYSICAL_RELAY': {
-        const next = physicalBelow(seat)!;
+        const next = physicalBelow(seat, state.base)!;
         await db.claimPhysicalRequest.update({ where: { id: open!.id }, data: { holderStage: next } });
         await event(open!.id, 'RELAY');
         await this.notifyHolder(claim, next, 'درخواست اصل مدارک', `${this.store.labels(claim.insurerTenantId)[open!.requesterStage as Stage]} اصل مدارک پروندهٔ ${claim.claimNumber} را درخواست کرده است (ارسال از طریق ${this.store.labels(claim.insurerTenantId)[seat]}).`);
@@ -1047,6 +1048,8 @@ export class ClaimsService {
     if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
     this.assertParticipant(claim);
     assertNotPaid(claim); // archived once paid
+    // Only a شعبه sets it (not ستاد / شورای فنی, nor a کارگزاری); Super Admin inside a panel may too.
+    if (!getContext()?.assistBy && (await this.myDesk()).stage !== 'BRANCH') throw new ForbiddenException('مبلغ خسارت قطعی را فقط شعبه ثبت می‌کند');
     const normalized = String(amount ?? '').replace(/[^\d.]/g, '');
     if (normalized === '' || isNaN(Number(normalized)) || Number(normalized) < 0) throw new BadRequestException('مبلغ قطعی نامعتبر است');
     await db.claim.update({ where: { id: claimId }, data: { finalizedAmount: new Prisma.Decimal(normalized) } });
@@ -1061,8 +1064,8 @@ export class ClaimsService {
    * (claim:delete) and audit-logged. The permanent removal happens later in purgeExpired().
    */
   async remove(claimId: string) {
-    // Never a بیمه‌گزار (company login, نماینده or the «broker» panel login) — only org staff with claim:delete.
-    if (getContext()?.actorType !== 'ORG_USER') throw new ForbiddenException('حذف پرونده فقط توسط کاربران سازمان ممکن است');
+    // Level 5 only: Super Admin inside a panel («ورود به پنل»); no organization's own staff (see RolesGuard).
+    if (getContext()?.actorType !== 'ORG_USER' || !getContext()?.assistBy) throw new ForbiddenException('حذف پرونده فقط توسط مدیر سامانه (سطح ۵) ممکن است');
     const u = this.prisma.unscoped();
     const claim = await u.claim.findUnique({
       where: { id: claimId },
@@ -1087,6 +1090,7 @@ export class ClaimsService {
 
   /** Undo a soft-delete while still within the retention window. Audit-logged. */
   async restore(claimId: string) {
+    if (!getContext()?.assistBy) throw new ForbiddenException('بازیابی پرونده فقط توسط مدیر سامانه (سطح ۵) ممکن است');
     const u = this.prisma.unscoped();
     const claim = await u.claim.findUnique({
       where: { id: claimId },

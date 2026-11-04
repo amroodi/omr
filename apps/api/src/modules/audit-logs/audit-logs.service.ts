@@ -7,6 +7,7 @@ import { getTenantIdOrThrow } from '../../common/tenant/tenant-context';
 export interface AuditQuery {
   action?: AuditAction;
   actorType?: string;
+  actorId?: string;
   targetType?: string;
   from?: string; // ISO date
   to?: string; // ISO date
@@ -45,6 +46,7 @@ export class AuditLogsService {
     const where: Prisma.AuditLogWhereInput = {};
     if (query.action) where.action = query.action;
     if (query.actorType) where.actorType = query.actorType;
+    if (query.actorId) where.actorId = query.actorId;
     if (query.targetType) where.targetType = query.targetType;
     if (query.from || query.to) {
       where.createdAt = {};
