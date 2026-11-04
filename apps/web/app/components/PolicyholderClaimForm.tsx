@@ -11,6 +11,7 @@ import { Shell } from './Shell';
 import { CUSTOMER_NAV, POLICY_KEY, PolicyRow } from '../customer/nav';
 import { ORG_NAV } from '../org/nav';
 import { CAUSE_LABEL, EVENT_DATE_LABEL, INSURED_RELATIONS, insuredNameLabel } from './claim-wording';
+import { useDraft } from '../../lib/draft';
 
 const toAscii = (s: string) => s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
 // Death claims ask for the date of death; accident disability / medical claims for the accident date.
@@ -97,18 +98,19 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
   const [company, setCompany] = useState<{ name: string } | null | undefined>(undefined);
   // An insurer's نماینده بیمه: no company or contract; they type the policy number, and «ارسال» sends to their شعبه.
   const [agent, setAgent] = useState(false);
-  const [policyNumber, setPolicyNumber] = useState('');
+  const [policyNumber, setPolicyNumber, clearPolicyNumber] = useDraft('policyNumber', '');
   const [policies, setPolicies] = useState<PolicyRow[] | null>(null);
   const [broker, setBroker] = useState('');
   const [policyId, setPolicyId] = useState('');
   // «broker» login: which company this claim is for (from ?company=…)
   const [brokerFor, setBrokerFor] = useState<{ id: string; name: string } | null | undefined>(undefined);
   const [isBroker, setIsBroker] = useState(false);
-  const [f, setF] = useState({ claimType: 'DEATH_ILLNESS', eventDate: '', birthDate: '', deceasedFullName: '', deceasedNationalCode: '', relation: '', mainName: '', mainCode: '', causeOfDeath: '', description: '', startStage: '' });
+  // The typed / picked fields survive a page refresh (lib/draft); the company comes back from ?company=.
+  const [f, setF, clearF] = useDraft('claim', { claimType: 'DEATH_ILLNESS', eventDate: '', birthDate: '', deceasedFullName: '', deceasedNationalCode: '', relation: '', mainName: '', mainCode: '', causeOfDeath: '', description: '', startStage: '' });
   // «اعلام خسارت»: is filing allowed from this login, and to which desks?
   const [notice, setNotice] = useState<{ enabled: boolean; targets: string[]; default: string; labels: Record<string, string> } | null>(null);
   useEffect(() => { client.get<any>(org ? '/claims/notice-options' : '/customer/notice-options', realm).then(setNotice).catch(() => setNotice(null)); }, []);
-  const [causes, setCauses] = useState<string[]>([]);
+  const [causes, setCauses, clearCauses] = useDraft<string[]>('causes', []);
   // فن‌آوران coverage inquiry on the insured's کد ملی (the form's first field); null while Super Admin has it
   // off for this insurer, 'checking' while it asks. `blocked` = this person can't be filed (as Super Admin set).
   const [coverage, setCoverage] = useState<Coverage | 'checking' | null>(null);
@@ -119,6 +121,12 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
   /** Panel 1: the staff pick the بیمه‌گزار; its بیمه‌نامه‌ها then come exactly as on its own panel. */
   const pickCompany = (co: StaffCompany | null) => {
     setBrokerFor(co ? { id: co.id, name: co.name } : null); setCompany(co ? { name: co.name } : null);
+    // Keep the pick in the address (?company=…), so a refresh opens the form on the same company.
+    try {
+      const u = new URL(window.location.href);
+      if (co) u.searchParams.set('company', co.id); else u.searchParams.delete('company');
+      if (u.href !== window.location.href) window.history.replaceState(window.history.state, '', u.href);
+    } catch { /* the address just isn't updated */ }
     setExtra({ policyHolderId: co?.accounts.length === 1 ? co.accounts[0].id : '' });
     setPolicies(co ? null : []); setPolicyId(''); setCoverage(null);
     if (!co) return;
@@ -259,10 +267,12 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
         payload.policyholderCompanyId = brokerFor.id;
         if (extra.policyHolderId) payload.policyHolderId = extra.policyHolderId;
         const c = await client.post<{ id: string }>('/claims/on-behalf', payload, 'org');
+        clearF(); clearCauses(); clearPolicyNumber();
         router.push(`/org/claims/${c.id}`);
         return;
       }
       const c = await client.post<{ id: string }>('/customer/claims', payload, 'customer');
+      clearF(); clearCauses(); clearPolicyNumber();
       router.push(`/customer/claims/${c.id}`);
     } catch (e: any) { setError(e.message); } finally { setBusy(false); }
   };

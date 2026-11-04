@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toGregorian, toJalaali } from 'jalaali-js';
 import { Overlay } from './ui';
 
@@ -41,6 +41,9 @@ export function JalaliDatePicker({ value, onChange, placeholder }: { value: stri
   })();
   const t = todayJ();
   const [open, setOpen] = useState(false);
+  const field = useRef<HTMLInputElement>(null);
+  // Close the calendar and give the keyboard back to the field (so Enter / PageDown carry on from there).
+  const close = () => { setOpen(false); setTimeout(() => field.current?.focus(), 0); };
   const [view, setView] = useState({ y: parsed?.jy ?? t.jy, m: parsed?.jm ?? t.jm });
   useEffect(() => { if (open && parsed && parsed.jy >= FIRST_YEAR) setView({ y: parsed.jy, m: parsed.jm }); /* eslint-disable-next-line */ }, [open]);
 
@@ -49,7 +52,9 @@ export function JalaliDatePicker({ value, onChange, placeholder }: { value: stri
   const cells: (number | null)[] = [...Array(lead).fill(null), ...Array.from({ length: nDays }, (_, i) => i + 1)];
   const prev = () => setView((v) => (v.m === 1 ? { y: Math.max(FIRST_YEAR, v.y - 1), m: v.y > FIRST_YEAR ? 12 : 1 } : { y: v.y, m: v.m - 1 }));
   const next = () => setView((v) => (v.m === 12 ? { y: v.y + 1, m: 1 } : { y: v.y, m: v.m + 1 }));
-  const pick = (d: number) => { onChange(`${view.y}/${pad(view.m)}/${pad(d)}`); setOpen(false); };
+  const pick = (d: number) => { onChange(`${view.y}/${pad(view.m)}/${pad(d)}`); close(); };
+  // Enter in the calendar's own typing box: a whole, real date is taken and the calendar closes.
+  const complete = !!parsed && parsed.jy >= FIRST_YEAR && parsed.jd >= 1 && parsed.jd <= daysInJMonth(parsed.jy, parsed.jm) && /^\d{4}\/\d{2}\/\d{2}$/.test(asc(value || ''));
   const isSel = (d: number) => parsed && parsed.jy === view.y && parsed.jm === view.m && parsed.jd === d;
   const isToday = (d: number) => t.jy === view.y && t.jm === view.m && t.jd === d;
   const years = Array.from({ length: t.jy + 2 - FIRST_YEAR + 1 }, (_, i) => t.jy + 2 - i); // newest first
@@ -74,7 +79,7 @@ export function JalaliDatePicker({ value, onChange, placeholder }: { value: stri
 
   return (
     <div style={{ position: 'relative' }}>
-      <input className="input" value={value ? fa(value) : ''} placeholder={placeholder || '۱۴۰۵/۰۷/۰۱'} inputMode="numeric"
+      <input ref={field} className="input" value={value ? fa(value) : ''} placeholder={placeholder || '۱۴۰۵/۰۷/۰۱'} inputMode="numeric"
         onChange={(e) => onType(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Escape' || e.key === 'Enter') setOpen(false); if (e.key === 'ArrowDown') { e.preventDefault(); setOpen(true); } }}
         style={{ direction: 'ltr', textAlign: 'right', paddingLeft: 40 }} aria-haspopup="dialog" aria-expanded={open} />
@@ -86,8 +91,10 @@ export function JalaliDatePicker({ value, onChange, placeholder }: { value: stri
         <div className="card jdp-pop" role="dialog" aria-label="انتخاب تاریخ" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center justify-between gap-2 mb-3">
             <b className="text-sm">{placeholder || 'انتخاب تاریخ'}</b>
-            <input className="input jdp-type" value={value ? fa(value) : ''} onChange={(e) => onType(e.target.value)} inputMode="numeric" placeholder="۱۴۰۵/۰۷/۰۱" aria-label="تایپ تاریخ" />
-            <button type="button" onClick={() => setOpen(false)} className="pmodal-x" aria-label="بستن">×</button>
+            <input className="input jdp-type" value={value ? fa(value) : ''} onChange={(e) => onType(e.target.value)} inputMode="numeric" placeholder="۱۴۰۵/۰۷/۰۱" aria-label="تایپ تاریخ" autoFocus
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (complete || !value) close(); } }}
+              style={value && !complete && asc(value).replace(/\D/g, '').length === 8 ? { borderColor: 'var(--danger)' } : undefined} title="تاریخ را تایپ کنید و Enter بزنید" />
+            <button type="button" onClick={close} className="pmodal-x" aria-label="بستن">×</button>
           </div>
           {/* Header: ‹ month ▾ year ▾ › */}
           <div className="jdp-head mb-3">
@@ -114,9 +121,9 @@ export function JalaliDatePicker({ value, onChange, placeholder }: { value: stri
           </div>
 
           <div className="flex items-center justify-between mt-3 gap-2">
-            <button type="button" onClick={() => { const n = todayJ(); onChange(`${n.jy}/${pad(n.jm)}/${pad(n.jd)}`); setOpen(false); }} className="btn btn-ghost btn-sm">امروز</button>
-            <span className="text-xs" style={{ color: 'var(--muted)' }}>می‌توانید تاریخ را تایپ هم کنید</span>
-            {value ? <button type="button" onClick={() => { onChange(''); setOpen(false); }} className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }}>پاک کردن</button> : <span />}
+            <button type="button" onClick={() => { const n = todayJ(); onChange(`${n.jy}/${pad(n.jm)}/${pad(n.jd)}`); close(); }} className="btn btn-ghost btn-sm">امروز</button>
+            <span className="text-xs" style={{ color: 'var(--muted)' }}>تاریخ را تایپ کنید و Enter بزنید</span>
+            {value ? <button type="button" onClick={() => { onChange(''); close(); }} className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }}>پاک کردن</button> : <span />}
           </div>
         </div>
         </Overlay>

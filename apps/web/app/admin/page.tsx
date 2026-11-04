@@ -8,6 +8,7 @@ import { MfaSetup } from '../components/MfaSetup';
 import { Icon } from '../components/Shell';
 import { ChangePasswordModal } from '../components/ChangePasswordModal';
 import { Flash } from '../components/Toaster';
+import { PasswordInput } from '../components/PasswordInput';
 
 interface Tenant {
   id: string; slug: string; name: string; kind: string; isActive: boolean;
@@ -281,7 +282,7 @@ function ShahkarCard() {
         </Field>
         <Field label="نشانی سرویس (https://…)"><input className="input" value={f.baseUrl} onChange={(e) => setF({ ...f, baseUrl: e.target.value })} placeholder={f.provider === 'finnotech' ? 'https://api.finnotech.ir' : 'https://…/shahkar'} style={{ direction: 'ltr', textAlign: 'left' }} /></Field>
         {f.provider === 'finnotech' && <Field label="Client ID"><input className="input" value={f.clientId} onChange={(e) => setF({ ...f, clientId: e.target.value })} style={{ direction: 'ltr', textAlign: 'left' }} /></Field>}
-        <Field label={`توکن دسترسی${c.hasToken ? ' (تنظیم‌شده)' : ''}`}><input className="input" type="password" value={f.token} onChange={(e) => setF({ ...f, token: e.target.value })} placeholder={c.hasToken ? '••••••' : ''} style={{ direction: 'ltr', textAlign: 'left' }} /></Field>
+        <Field label={`توکن دسترسی${c.hasToken ? ' (تنظیم‌شده)' : ''}`}><PasswordInput className="input" value={f.token} onChange={(e) => setF({ ...f, token: e.target.value })} placeholder={c.hasToken ? '••••••' : ''} style={{ direction: 'ltr', textAlign: 'left' }} /></Field>
       </div>
       <button onClick={() => save()} className="btn btn-primary btn-sm">ذخیرهٔ تنظیمات شاهکار</button>
     </div>
@@ -325,7 +326,7 @@ function PlatformSms() {
             {k === 'otpTemplate' ? (
               <textarea className="input" rows={3} value={f[k] || ''} onChange={(e) => setF({ ...f, [k]: e.target.value })} placeholder={'کد تایید دامون: {code}\nاعتبار: ۵ دقیقه\nکارگزاری رسمی بیمه آتیه اندیشان دامون'} />
             ) : (
-              <input className="input" type={SECRET.has(k) ? 'password' : 'text'} value={f[k] || ''} onChange={(e) => setF({ ...f, [k]: e.target.value })} placeholder={SECRET.has(k) ? '••••••' : ''} style={{ direction: 'ltr', textAlign: 'left' }} />
+              <PasswordInput plain={!SECRET.has(k)} className="input" value={f[k] || ''} onChange={(e) => setF({ ...f, [k]: e.target.value })} placeholder={SECRET.has(k) ? '••••••' : ''} style={{ direction: 'ltr', textAlign: 'left' }} />
             )}
           </Field>
         ))}

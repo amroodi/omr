@@ -48,6 +48,8 @@ export function setToken(realm: Realm, token: string): void {
 export function clearToken(realm: Realm): void {
   try {
     localStorage.removeItem(TOKEN_KEYS[realm]);
+    // Sign-out: unsent form drafts of this tab (lib/draft) go too.
+    Object.keys(sessionStorage).filter((k) => k.startsWith('omr_draft:')).forEach((k) => sessionStorage.removeItem(k));
   } catch {
     /* ignore */
   }

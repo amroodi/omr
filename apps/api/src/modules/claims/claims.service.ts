@@ -212,7 +212,7 @@ export class ClaimsService {
     const db = this.prisma.unscoped();
     const me = await db.tenant.findUnique({ where: { id: getTenantIdOrThrow() }, select: { id: true, kind: true } });
     if (me?.kind !== 'INSURER') throw new ForbiddenException('فقط بیمه‌گر');
-    const partners = await db.brokerInsurerPartnership.findMany({ where: { insurerTenantId: me.id, isActive: true }, select: { brokerTenantId: true } });
+    const partners = await db.brokerInsurerPartnership.findMany({ where: { insurerTenantId: me.id, isActive: true }, select: { brokerTenantId: true, brokerCode: true } });
     const ids = partners.map((p) => p.brokerTenantId);
     const [brokers, companies, branches] = await Promise.all([
       db.tenant.findMany({ where: { id: { in: ids }, isActive: true }, orderBy: { name: 'asc' }, select: { id: true, name: true } }),
@@ -224,12 +224,22 @@ export class ClaimsService {
       way: model.entry.way,
       // The filing form's own fields, as set in Model View (the server checks them again).
       form: {
-        cause: model.form.cause, birthDate: model.form.birthDate, causeLists: model.form.causeLists,
+        cause: model.form.cause, birthDate: model.form.birthDate, causeLists: model.form.causeLists, causeNotes: model.form.causeNotes,
         caseTypes: model.form.caseTypes.map((t) => ({ code: t.code, causeGroup: t.causeGroup })),
       },
-      brokers: brokers.map((b) => ({ ...b, companies: companies.filter((c) => c.tenantId === b.id).map(({ id, name }) => ({ id, name })) })),
+      brokers: brokers.map((b) => ({ ...b, code: partners.find((p) => p.brokerTenantId === b.id)?.brokerCode ?? null, companies: companies.filter((c) => c.tenantId === b.id).map(({ id, name }) => ({ id, name })) })),
       branches,
+      // The operator's own شعبه: it handles the cases it files (no «شعبهٔ رسیدگی» to pick then).
+      myBranchId: await this.callerBranchId(),
     };
+  }
+
+  /** The شعبه of the calling insurer operator (their account's, else their login's), if any. */
+  private async callerBranchId(): Promise<string | null> {
+    const ctx = getContext();
+    if (ctx?.actorType !== 'ORG_USER' || !ctx.actorId) return null;
+    const u = await this.prisma.unscoped().orgUser.findUnique({ where: { id: ctx.actorId }, select: { branchId: true } });
+    return u?.branchId ?? ctx.branchId ?? null;
   }
 
   async onBehalfCompanies() {
@@ -400,6 +410,12 @@ export class ClaimsService {
     const firstStage: Stage = wanted as Stage;
     const byPolicyHolder = firstStage === 'POLICYHOLDER';
     let startBranchId = moarefBranchId;
+    // An insurer's شعبه files a case: that شعبه handles it (whoever sold the بیمه‌نامه).
+    const ownBranch = staffKind === 'INSURER' && firstStage === 'BRANCH' ? await this.callerBranchId() : null;
+    if (ownBranch) {
+      const b = await db.branch.findFirst({ where: { id: ownBranch, tenantId: insurerTenantId }, select: { id: true } });
+      if (b) startBranchId = b.id;
+    }
     if (firstStage === 'BRANCH' && !startBranchId && input.branchId) {
       const b = await db.branch.findFirst({ where: { id: input.branchId, tenantId: insurerTenantId }, select: { id: true } });
       if (!b) throw new BadRequestException('شعبه متعلق به بیمه‌گر پرونده نیست');

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { client, getToken } from '../../../lib/client';
 import { Field } from '../../components/ui';
 import { Flash } from '../../components/Toaster';
+import { PasswordInput } from '../../components/PasswordInput';
 
 interface Settings {
   enabled: boolean; baseUrl: string; model: string; maxConcurrency: number; threshold: number;
@@ -96,7 +97,7 @@ export default function AiReviewAdmin() {
               <Field label="نشانی سرویس"><input className="input" value={s.baseUrl} readOnly style={{ ...ltr, opacity: 0.7 }} /></Field>
               <Field label="مدل"><input className="input" value={f.model} onChange={(e) => setF({ ...f, model: e.target.value })} style={ltr} placeholder="gemini-3.8-flash" /></Field>
               <Field label={`کلید AvalAI${s.hasKey ? (s.keyFromEnv ? ' (از فایل تنظیمات سرور)' : ' (تنظیم‌شده)') : ''}`}>
-                <input className="input" type="password" value={f.apiKey} onChange={(e) => setF({ ...f, apiKey: e.target.value })} placeholder={s.hasKey ? '••••••' : 'sk-…'} style={ltr} autoComplete="off" />
+                <PasswordInput className="input" value={f.apiKey} onChange={(e) => setF({ ...f, apiKey: e.target.value })} placeholder={s.hasKey ? '••••••' : 'sk-…'} style={ltr} autoComplete="off" />
               </Field>
               <Field label="حداکثر بررسی هم‌زمان (۱ تا ۵۰)"><input className="input" type="number" min={1} max={50} value={f.maxConcurrency} onChange={(e) => setF({ ...f, maxConcurrency: Number(e.target.value) })} style={ltr} /></Field>
               <Field label="حداقل اطمینان برای رد فایل (۰٫۵ تا ۱)"><input className="input" type="number" min={0.5} max={1} step={0.05} value={f.threshold} onChange={(e) => setF({ ...f, threshold: Number(e.target.value) })} style={ltr} /></Field>

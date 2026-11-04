@@ -8,6 +8,7 @@ import { LineSelect } from './LineSelect';
 import type { Line } from '../../lib/line';
 import { applyTheme, TenantTheme } from '../../lib/theme';
 import { ErrorBox, Field } from './ui';
+import { PasswordInput } from './PasswordInput';
 
 const toAscii = (s: string) => s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
 
@@ -23,7 +24,6 @@ export function CustomerLoginPage({ slug: fixedSlug, switcher, agent }: { slug?:
   const router = useRouter();
   const [code, setCode] = useState('');
   const [password, setPassword] = useState('');
-  const [show, setShow] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   // Panel 1 works in one نوع بیمه‌نامه, chosen here before signing in.
@@ -75,13 +75,8 @@ export function CustomerLoginPage({ slug: fixedSlug, switcher, agent }: { slug?:
             placeholder={agent ? 'کد ملی' : 'کد بیمه‌گزار / کد ملی'} style={{ direction: 'ltr', textAlign: 'right' }} autoFocus />
         </Field>
         <Field label="رمز عبور">
-          <div className="relative">
-            <input value={password} onChange={(e) => setPassword(e.target.value)} className="input" type={show ? 'text' : 'password'} autoComplete="current-password"
-              style={{ direction: 'ltr', textAlign: 'right', paddingLeft: 64 }} />
-            <button type="button" onClick={() => setShow((v) => !v)} className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-bold" style={{ color: 'var(--brand)' }}>
-              {show ? 'پنهان' : 'نمایش'}
-            </button>
-          </div>
+          <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} className="input" autoComplete="current-password"
+            style={{ direction: 'ltr', textAlign: 'right' }} />
         </Field>
     </>
   );

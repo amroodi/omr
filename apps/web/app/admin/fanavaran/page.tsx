@@ -7,6 +7,7 @@ import { client, getToken } from '../../../lib/client';
 import { Spinner } from '../../components/ui';
 import { JalaliDatePicker } from '../../components/JalaliDatePicker';
 import { Flash } from '../../components/Toaster';
+import { PasswordInput } from '../../components/PasswordInput';
 
 interface Fields { valid: string; firstName: string; lastName: string; insuredCode: string; birthYear: string; nationalCode: string; policyNumber: string; policyStart: string; policyEnd: string }
 interface Config {
@@ -180,7 +181,7 @@ export default function AdminFanavaran() {
                   <label className="text-sm">نام پارامتر کد ملی<input className="input mt-1" style={{ direction: 'ltr' }} value={cfg.nationalCodeParam} onChange={(e) => set({ nationalCodeParam: e.target.value })} /></label>
                   <label className="text-sm">نام هدر احراز هویت<input className="input mt-1" style={{ direction: 'ltr' }} value={cfg.authHeader} onChange={(e) => set({ authHeader: e.target.value })} /></label>
                   <label className="text-sm sm:col-span-2">مقدار هدر {cfg.hasSecret && !clearSecret ? '(ثبت شده؛ خالی بماند تا تغییر نکند)' : ''}
-                    <input className="input mt-1" type="password" autoComplete="off" style={{ direction: 'ltr' }} value={secret} onChange={(e) => setSecret(e.target.value)} placeholder="مثلاً Bearer …" />
+                    <PasswordInput className="input mt-1" autoComplete="off" style={{ direction: 'ltr' }} value={secret} onChange={(e) => setSecret(e.target.value)} placeholder="مثلاً Bearer …" />
                     {cfg.hasSecret && <label className="flex items-center gap-1.5 text-xs mt-1"><input type="checkbox" checked={clearSecret} onChange={(e) => setClearSecret(e.target.checked)} /> پاک کردن مقدار ثبت‌شده</label>}
                   </label>
                   <label className="text-sm sm:col-span-2">پارامترهای ثابت (هر خط «نام=مقدار»)

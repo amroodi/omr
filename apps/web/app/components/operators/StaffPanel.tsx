@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { client } from '../../../lib/client';
 import { Field, Overlay } from '../ui';
 import { Flash } from '../Toaster';
+import { PasswordInput } from '../PasswordInput';
 
 export interface StaffRole { id: string; name: string; entry: boolean }
 export interface StaffBranch { id: string; name: string; code: string }
@@ -150,7 +151,7 @@ export function StaffPanel({ realm, base, roles, branches, isInsurer, onChanged 
           <Field label="نام کاربری"><input value={nu.username} onChange={(e) => setNu({ ...nu, username: e.target.value })} className="input" autoComplete="off" style={{ direction: 'ltr', textAlign: 'right' }} /></Field>
           <Field label="نام نمایشی (اختیاری)"><input value={nu.displayName} onChange={(e) => setNu({ ...nu, displayName: e.target.value })} className="input" /></Field>
           <Field label="شمارهٔ همراه (اختیاری)"><input value={nu.phone} onChange={(e) => setNu({ ...nu, phone: e.target.value })} className="input" inputMode="numeric" placeholder="۰۹۱۲…" style={{ direction: 'ltr', textAlign: 'right' }} /></Field>
-          <Field label="رمز عبور"><input type="password" value={nu.password} onChange={(e) => setNu({ ...nu, password: e.target.value })} className="input" placeholder="حداقل ۸ نویسه" autoComplete="new-password" /></Field>
+          <Field label="رمز عبور"><PasswordInput value={nu.password} onChange={(e) => setNu({ ...nu, password: e.target.value })} className="input" placeholder="حداقل ۸ نویسه" autoComplete="new-password" /></Field>
           <Field label="نقش">
             <select value={nu.roleId} onChange={(e) => setNu({ ...nu, roleId: e.target.value })} className="input">
               <option value="">— انتخاب نقش —</option>
@@ -194,7 +195,7 @@ export function StaffPanel({ realm, base, roles, branches, isInsurer, onChanged 
                 <input type="checkbox" checked={ue.isActive} onChange={(e) => setUe({ ...ue, isActive: e.target.checked })} /> حساب فعال است
               </label>
               <Field label="رمز عبور جدید (اختیاری)">
-                <input type="password" className="input" value={ue.password} onChange={(e) => setUe({ ...ue, password: e.target.value })} placeholder="خالی بماند = بدون تغییر — حداقل ۸ نویسه" autoComplete="new-password" />
+                <PasswordInput className="input" value={ue.password} onChange={(e) => setUe({ ...ue, password: e.target.value })} placeholder="خالی بماند = بدون تغییر — حداقل ۸ نویسه" autoComplete="new-password" />
               </Field>
               <MsgBox v={ueMsg} />
             </div>

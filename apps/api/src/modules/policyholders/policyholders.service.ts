@@ -207,7 +207,7 @@ export class PolicyholdersService {
     return {
       broker: { name: broker?.name ?? '', slug: broker?.slug ?? '', hasLogo: !!broker?.logoKey },
       companies,
-      insurers: allInsurers.filter((i) => active.has(i.id)).map((i) => ({ id: i.id, name: i.name, slug: i.slug, hasLogo: !!i.logoKey, color: color(i), companies: routed(i.id) })),
+      insurers: allInsurers.filter((i) => active.has(i.id)).map((i) => ({ id: i.id, name: i.name, slug: i.slug, hasLogo: !!i.logoKey, color: color(i), companies: routed(i.id), brokerCode: parts.find((p) => p.insurerTenantId === i.id)?.brokerCode ?? null })),
       available: allInsurers.filter((i) => !active.has(i.id)).map((i) => ({ id: i.id, name: i.name })),
     };
   }
@@ -227,6 +227,17 @@ export class PolicyholdersService {
       create: { brokerTenantId, insurerTenantId, isActive: enabled },
     });
     await this.audit.record({ action: AuditAction.EDIT, targetType: 'BrokerInsurerPartnership', targetId: insurerTenantId, metadata: { enabled } });
+    return { ok: true };
+  }
+
+  /** «کد کارگزار»: this brokerage's code at a partner insurer ('' clears it). */
+  async setBrokerCode(brokerTenantId: string, insurerTenantId: string, code: string) {
+    const db = this.db();
+    const p = await db.brokerInsurerPartnership.findUnique({ where: { brokerTenantId_insurerTenantId: { brokerTenantId, insurerTenantId } }, select: { id: true, isActive: true } });
+    if (!p?.isActive) throw new BadRequestException('این کارگزاری با این بیمه‌گر همکاری فعال ندارد');
+    const brokerCode = code.trim() || null;
+    await db.brokerInsurerPartnership.update({ where: { id: p.id }, data: { brokerCode } });
+    await this.audit.record({ action: AuditAction.EDIT, targetType: 'BrokerInsurerPartnership', targetId: insurerTenantId, metadata: { brokerCode } });
     return { ok: true };
   }
 

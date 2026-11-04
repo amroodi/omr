@@ -5,6 +5,7 @@ import { client, getToken } from '../../../lib/client';
 import { Shell } from '../../components/Shell';
 import { CUSTOMER_NAV } from '../nav';
 import { Flash } from '../../components/Toaster';
+import { PasswordInput } from '../../components/PasswordInput';
 
 /** «تغییر کلمه عبور» of the بیمه‌گزار panel, as a page of its own (like the insurer's portal). */
 export default function CustomerPassword() {
@@ -40,9 +41,9 @@ export default function CustomerPassword() {
           <svg viewBox="0 0 24 24"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zM8 11V7a4 4 0 118 0v4" /></svg>
         </span>
         <div className="cu-pw-fields">
-          <input className="input cu-pill" type="password" autoComplete="current-password" placeholder="کلمه عبور فعلی" value={f.cur} onChange={(e) => setF({ ...f, cur: e.target.value })} />
-          <input className="input cu-pill" type="password" autoComplete="new-password" placeholder="کلمه عبور جدید" value={f.next} onChange={(e) => setF({ ...f, next: e.target.value })} />
-          <input className="input cu-pill" type="password" autoComplete="new-password" placeholder="تکرار کلمه عبور جدید" value={f.again} onChange={(e) => setF({ ...f, again: e.target.value })} />
+          <PasswordInput className="input cu-pill" autoComplete="current-password" placeholder="کلمه عبور فعلی" value={f.cur} onChange={(e) => setF({ ...f, cur: e.target.value })} />
+          <PasswordInput className="input cu-pill" autoComplete="new-password" placeholder="کلمه عبور جدید" value={f.next} onChange={(e) => setF({ ...f, next: e.target.value })} />
+          <PasswordInput className="input cu-pill" autoComplete="new-password" placeholder="تکرار کلمه عبور جدید" value={f.again} onChange={(e) => setF({ ...f, again: e.target.value })} />
           <Flash id={msg} text={msg?.text} ok={!!msg && msg.ok} />
           <button type="submit" className="cu-go" disabled={busy || !f.cur || !f.next || !f.again}>{busy ? '…' : 'کلمه عبور من را تغییر بده'}</button>
         </div>

@@ -200,6 +200,11 @@ describe('Model View: cause lists', () => {
     expect(modelFrom({ form: { causes: ['x'] } }).form.causeLists).toEqual({ DEATH: ['x'], ACCIDENT: ['x'] });
     expect(modelFrom({ form: { causes: [] } }).form.causeLists.ACCIDENT.length).toBe(6);
   });
+  it('keeps each cause\'s ready text («متن»), strings only', () => {
+    expect(modelFrom({ form: {} }).form.causeNotes).toEqual({});
+    expect(modelFrom({ form: { causeNotes: { ' سرطان ': ' متن ', بیماری: '', x: 5, '': 'y' } } }).form.causeNotes).toEqual({ سرطان: 'متن' });
+    expect(modelFrom({ form: { causeNotes: ['a'] } }).form.causeNotes).toEqual({});
+  });
 });
 
 describe('نوع بیمه‌نامه (policy kinds)', () => {

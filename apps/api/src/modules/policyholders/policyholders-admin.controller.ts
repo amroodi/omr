@@ -22,6 +22,10 @@ class AdminPartnerDto {
   @IsUUID() brokerTenantId!: string;
   @IsBoolean() enabled!: boolean;
 }
+class BrokerCodeDto {
+  @IsUUID() brokerTenantId!: string;
+  @IsString() @Length(0, 20) code!: string;
+}
 class BrokerSettingsDto {
   @IsUUID() brokerTenantId!: string;
   @IsOptional() @IsBoolean() manualCompletion?: boolean;
@@ -74,6 +78,12 @@ export class PolicyholdersAdminController {
   @Put('partners/:insurerId')
   setPartner(@Param('insurerId', ParseUUIDPipe) insurerId: string, @Body() dto: AdminPartnerDto) {
     return this.companies.setPartner(dto.brokerTenantId, insurerId, dto.enabled);
+  }
+
+  /** «کد کارگزار»: the brokerage's code at this partner insurer. */
+  @Put('partners/:insurerId/code')
+  setBrokerCode(@Param('insurerId', ParseUUIDPipe) insurerId: string, @Body() dto: BrokerCodeDto) {
+    return this.companies.setBrokerCode(dto.brokerTenantId, insurerId, dto.code);
   }
 
   @Get('options')
