@@ -21,7 +21,7 @@ interface Model {
   panels: { COMPANY: Rights; REPRESENTATIVE: Rights };
   insured: { enabled: boolean; docCodes: string[]; linkDays: number };
   entry: { way: 'BROKER' | 'BRANCH' | 'ASK' };
-  form: { eventLabel: string; birthDate: Mode; cause: Mode; causeLists: { DEATH: string[]; ACCIDENT: string[] }; lines: Record<Line, LineForm>; caseTypes: CaseType[]; groups: CompanyGroup[]; dependents: boolean; docsNote: string };
+  form: { eventLabel: string; birthDate: Mode; cause: Mode; causeLists: { DEATH: string[]; ACCIDENT: string[] }; causeNotes?: Record<string, string>; lines: Record<Line, LineForm>; caseTypes: CaseType[]; groups: CompanyGroup[]; dependents: boolean; docsNote: string };
 }
 interface Doc { code: string; label: string; isActive: boolean; appliesToTypes: string[]; requiredTypes: string[]; kinds?: string[] }
 interface Coverage { enabled: boolean; url: string; hasSecret: boolean; notChecked: number }
@@ -280,9 +280,8 @@ export default function ModelView() {
                 </div>
                 <div className="grid md:grid-cols-2 gap-3">
                   {([['DEATH', 'گزینه‌های علت خسارت — فوت و ازکارافتادگی ناشی از بیماری'], ['ACCIDENT', 'گزینه‌های علت خسارت — حادثه']] as const).map(([g, l]) => (
-                    <label key={g} className="text-sm block">{l} (هر خط یک گزینه؛ کادر تایپ همیشه می‌ماند)
-                      <textarea className="input mt-1" rows={12} value={m.form.causeLists[g].join('\n')} onChange={(e) => setForm({ causeLists: { ...m.form.causeLists, [g]: e.target.value.split('\n') } })} onBlur={() => setForm({ causeLists: { ...m.form.causeLists, [g]: m.form.causeLists[g].map((c) => c.trim()).filter(Boolean) } })} />
-                    </label>
+                    <CauseEditor key={g} title={l} list={m.form.causeLists[g]} notes={m.form.causeNotes ?? {}}
+                      onChange={(list, causeNotes) => setForm({ causeLists: { ...m.form.causeLists, [g]: list }, causeNotes })} />
                   ))}
                 </div>
               </Card>
@@ -451,6 +450,45 @@ export default function ModelView() {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * One «علت خسارت» list of Model View: each cause with its «متن» — the text that goes into «شرح» on panel 1
+ * when the operator picks it (they can still edit it there). Notes are kept by cause text, so renaming a
+ * cause carries its note along.
+ */
+function CauseEditor({ title, list, notes, onChange }: { title: string; list: string[]; notes: Record<string, string>; onChange: (list: string[], notes: Record<string, string>) => void }) {
+  const [q, setQ] = useState('');
+  const others = (i: number, v: string) => list.some((x, j) => j !== i && x === v);
+  const rename = (i: number, v: string) => {
+    const old = list[i]; const nl = [...list]; nl[i] = v; const nn = { ...notes };
+    if (nn[old] !== undefined && !others(i, old) && nn[v] === undefined) { nn[v] = nn[old]; delete nn[old]; }
+    onChange(nl, nn);
+  };
+  const setNote = (i: number, t: string) => { const nn = { ...notes }; if (t) nn[list[i]] = t; else delete nn[list[i]]; onChange(list, nn); };
+  const remove = (i: number) => { const nn = { ...notes }; if (!others(i, list[i])) delete nn[list[i]]; onChange(list.filter((_, j) => j !== i), nn); };
+  const shown = list.map((c, i) => ({ c, i })).filter(({ c }) => !q.trim() || c.includes(q.trim()) || (notes[c] ?? '').includes(q.trim()));
+  return (
+    <div className="text-sm">
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <b>{title}</b>
+        <span className="text-xs" style={{ color: 'var(--muted)' }}>{list.filter((c) => c.trim()).length.toLocaleString('fa-IR')} گزینه</span>
+      </div>
+      <input className="input mb-2" value={q} onChange={(e) => setQ(e.target.value)} placeholder="جست‌وجو در گزینه‌ها…" />
+      <div className="space-y-2" style={{ maxHeight: 520, overflowY: 'auto' }}>
+        {shown.map(({ c, i }) => (
+          <div key={i} className="rounded-lg p-2" style={{ border: '1px solid var(--border)' }}>
+            <div className="flex gap-2 items-center">
+              <input className="input flex-1" value={c} maxLength={120} placeholder="عنوان علت" onChange={(e) => rename(i, e.target.value)} />
+              <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => remove(i)} title="حذف این گزینه">حذف</button>
+            </div>
+            <textarea className="input mt-1.5" rows={2} maxLength={1000} value={notes[c] ?? ''} placeholder="متن (اختیاری): با انتخاب این علت در پنل ۱ به «شرح» افزوده می‌شود" onChange={(e) => setNote(i, e.target.value)} />
+          </div>
+        ))}
+      </div>
+      <button type="button" className="btn btn-ghost btn-sm mt-2" onClick={() => { setQ(''); onChange([...list, ''], notes); }}>افزودن گزینه</button>
     </div>
   );
 }

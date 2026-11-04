@@ -4,6 +4,7 @@ import QRCode from 'qrcode';
 import { client } from '../../lib/client';
 import { ErrorBox, Field } from './ui';
 import { Flash } from './Toaster';
+import { PasswordInput } from './PasswordInput';
 
 type Realm = 'org' | 'super';
 const toAscii = (s: string) => s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
@@ -59,7 +60,7 @@ export function MfaSetup({ realm, onEnabled }: { realm: Realm; onEnabled?: () =>
       {!st.enabled && !setup && (
         <div className="space-y-2 max-w-sm">
           <Field label="رمز عبور فعلی (برای شروع)">
-            <input type="password" className="input" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" onKeyDown={(e) => e.key === 'Enter' && password && start()} />
+            <PasswordInput className="input" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" onKeyDown={(e) => e.key === 'Enter' && password && start()} />
           </Field>
           <button onClick={start} disabled={busy || !password} className="btn btn-primary btn-sm">{busy ? '…' : 'راه‌اندازی ورود دومرحله‌ای'}</button>
         </div>
@@ -94,7 +95,7 @@ export function MfaSetup({ realm, onEnabled }: { realm: Realm; onEnabled?: () =>
       {st.enabled && !st.required && (
         off ? (
           <div className="space-y-2 max-w-sm">
-            <Field label="رمز عبور"><input type="password" className="input" value={password} onChange={(e) => setPassword(e.target.value)} /></Field>
+            <Field label="رمز عبور"><PasswordInput className="input" value={password} onChange={(e) => setPassword(e.target.value)} /></Field>
             <Field label="کد ۶ رقمی برنامه"><input className="input latin-digits" value={code} onChange={(e) => setCode(e.target.value)} inputMode="numeric" maxLength={6} style={{ direction: 'ltr', textAlign: 'center' }} /></Field>
             <div className="flex gap-2">
               <button onClick={disable} disabled={busy || !password || toAscii(code).trim().length !== 6} className="btn btn-sm" style={{ color: 'var(--danger)' }}>خاموش کردن</button>

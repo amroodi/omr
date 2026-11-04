@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { client, Realm } from '../../lib/client';
 import { Field } from './ui';
 import { Flash } from './Toaster';
+import { PasswordInput } from './PasswordInput';
 
 /** Self-service password change for any authenticated realm (super or org). */
 export function ChangePasswordModal({ realm = 'super', onClose }: { realm?: Realm; onClose: () => void }) {
@@ -35,9 +36,9 @@ export function ChangePasswordModal({ realm = 'super', onClose }: { realm?: Real
           <button onClick={onClose} className="text-sm" style={{ color: 'var(--muted)' }}>✕</button>
         </div>
         <Flash id={msg} text={msg?.m} ok={!!msg && msg.t === 'ok'} />
-        <Field label="رمز فعلی"><input type="password" className="input" value={cur} onChange={(e) => setCur(e.target.value)} autoComplete="current-password" style={{ direction: 'ltr', textAlign: 'left' }} /></Field>
-        <Field label="رمز جدید (حداقل ۸ کاراکتر)"><input type="password" className="input" value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" style={{ direction: 'ltr', textAlign: 'left' }} /></Field>
-        <Field label="تکرار رمز جدید"><input type="password" className="input" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" style={{ direction: 'ltr', textAlign: 'left' }} onKeyDown={(e) => e.key === 'Enter' && submit()} /></Field>
+        <Field label="رمز فعلی"><PasswordInput className="input" value={cur} onChange={(e) => setCur(e.target.value)} autoComplete="current-password" style={{ direction: 'ltr', textAlign: 'left' }} /></Field>
+        <Field label="رمز جدید (حداقل ۸ کاراکتر)"><PasswordInput className="input" value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" style={{ direction: 'ltr', textAlign: 'left' }} /></Field>
+        <Field label="تکرار رمز جدید"><PasswordInput className="input" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" style={{ direction: 'ltr', textAlign: 'left' }} onKeyDown={(e) => e.key === 'Enter' && submit()} /></Field>
         <button onClick={submit} disabled={busy || !cur || !next} className="btn btn-primary w-full btn-sm">{busy ? '…' : 'ثبت رمز جدید'}</button>
       </div>
     </div>

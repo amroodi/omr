@@ -102,6 +102,7 @@ export interface WorkflowModel extends CaseRules {
     birthDate: FieldMode;
     cause: FieldMode;
     causeLists: { DEATH: string[]; ACCIDENT: string[] }; // ticks above the typed cause, by causeGroup
+    causeNotes: Record<string, string>; // a cause's ready text («متن»): picking it on panel 1 adds this to «شرح»
     lines: Record<Line, LineForm>;
     caseTypes: CaseType[];
     groups: CompanyGroup[];
@@ -179,9 +180,20 @@ export const DEFAULT_WORKFLOW_MODEL: WorkflowModel = {
     caseTypes: DEFAULT_CASE_TYPES,
     groups: [{ id: 'copper', label: 'شرکت‌های زیرمجموعه صنایع ملی مس ایران', companyIds: [], lines: { LIFE: LIFE_TYPES, ACCIDENT: ['DEATH_ACCIDENT', 'DISABILITY_ACCIDENT'], LIABILITY: [], CREDIT_LIFE: [], SAVINGS_LIFE: [] }, dependents: false }],
     dependents: true,
+    causeNotes: {},
     docsNote: 'تصاویر مدارک موجود در پرونده باید خوانا و ممهور به مهر برابر اصل توسط مراجع یا مقامات ذی‌صلاح قانونی باشد.',
   },
 };
+
+/** «متن» of each علت خسارت: cause text → its note (strings only; at most 200, 1000 characters each). */
+function notesOf(v: unknown): Record<string, string> {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return {};
+  const out: Record<string, string> = {};
+  for (const [k, n] of Object.entries(v as Record<string, unknown>).slice(0, 200)) {
+    if (typeof n === 'string' && n.trim() && k.trim()) out[k.trim().slice(0, 120)] = n.trim().slice(0, 1000);
+  }
+  return out;
+}
 
 /** The stored model over the defaults; anything missing or malformed keeps its default. */
 export function modelFrom(stored: unknown): WorkflowModel {
@@ -240,6 +252,7 @@ export function modelFrom(stored: unknown): WorkflowModel {
         DEATH: Array.isArray(raw.form?.causeLists?.DEATH) ? list(raw.form.causeLists.DEATH) : list(raw.form?.causes).length ? list(raw.form.causes) : d.form.causeLists.DEATH,
         ACCIDENT: Array.isArray(raw.form?.causeLists?.ACCIDENT) ? list(raw.form.causeLists.ACCIDENT) : list(raw.form?.causes).length ? list(raw.form.causes) : d.form.causeLists.ACCIDENT,
       },
+      causeNotes: notesOf(raw.form?.causeNotes),
       lines: perLine(raw.form?.lines, (l) => line(raw.form?.lines?.[l], lineForm(d, l))),
       caseTypes,
       groups: (Array.isArray(raw.form?.groups) ? raw.form.groups : d.form.groups).filter((g: any) => typeof g?.id === 'string' && g.id).slice(0, 20).map((g: any): CompanyGroup => ({

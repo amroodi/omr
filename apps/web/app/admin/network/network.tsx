@@ -10,7 +10,7 @@ import { appZoom } from '../../../lib/scale';
 
 interface Contract { id: string; insurerTenantId: string; insurerName: string; policyNumber: string | null; startDate: string | null; endDate: string | null; isActive: boolean; isCurrent: boolean }
 interface Company { id: string; name: string; code: string | null; parentId: string | null; isActive: boolean; hasLogo: boolean; accounts: number; currentInsurer: { id: string; name: string } | null; contracts: Contract[] }
-interface Insurer { id: string; name: string; slug: string; hasLogo: boolean; color: string; companies: number }
+interface Insurer { id: string; name: string; slug: string; hasLogo: boolean; color: string; companies: number; brokerCode?: string | null }
 interface Network { broker: { name: string; slug: string; hasLogo: boolean }; companies: Company[]; insurers: Insurer[]; available: { id: string; name: string }[] }
 interface Line { key: string; d: string; color: string; dashed?: boolean; width: number; dim: boolean }
 
@@ -35,6 +35,8 @@ export function NetworkTab({ brokerTenantId, setMsg }: { brokerTenantId: string;
   const [newCo, setNewCo] = useState('');
   const [newCode, setNewCode] = useState('');
   const [addIns, setAddIns] = useState('');
+  const [code, setCode] = useState<string | null>(null); // «کد کارگزار» being typed for the selected insurer
+  useEffect(() => { setCode(null); }, [sel]);
   const [lines, setLines] = useState<Line[]>([]);
   const [stacked, setStacked] = useState(false);
   const [coQ, setCoQ] = useState('');
@@ -259,6 +261,13 @@ export function NetworkTab({ brokerTenantId, setMsg }: { brokerTenantId: string;
       {selInsurer && (
         <div className="card p-4 text-sm flex items-center justify-between gap-2 flex-wrap">
           <span><b>{selInsurer.name}</b> — {fa(selInsurer.companies)} بیمه‌گزار از طریق کارگزاری به این بیمه‌گر متصل است.</span>
+          <span className="flex items-center gap-2">
+            <label className="text-xs font-bold" htmlFor="broker-code">کد کارگزار نزد این بیمه‌گر</label>
+            <input id="broker-code" className="input" style={{ width: 120, direction: 'ltr', textAlign: 'right' }} maxLength={20}
+              value={code ?? selInsurer.brokerCode ?? ''} onChange={(e) => setCode(e.target.value)} />
+            <button className="btn btn-primary btn-sm" disabled={code == null || code.trim() === (selInsurer.brokerCode ?? '')}
+              onClick={() => act(async () => { await client.put(`/admin/policyholders/partners/${selInsurer.id}/code`, { brokerTenantId, code: (code ?? '').trim() }, 'super'); setCode(null); }, 'کد کارگزار ذخیره شد')}>ذخیره کد</button>
+          </span>
                       <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }}
               onClick={() => { if (window.confirm(`پایان همکاری با «${selInsurer.name}»؟`)) act(async () => { await client.put(`/admin/policyholders/partners/${selInsurer.id}`, { brokerTenantId, enabled: false }, 'super'); setSel(null); }, 'همکاری با بیمه‌گر پایان یافت'); }}>
               پایان همکاری با این بیمه‌گر

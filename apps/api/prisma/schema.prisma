@@ -162,6 +162,8 @@ model BrokerInsurerPartnership {
   brokerTenantId  String
   insurerTenantId String
   isActive        Boolean  @default(true)
+  // «کد کارگزار»: the brokerage's code at this insurer (e.g. shown beside its name as «معرف» on the insurer's panel 1).
+  brokerCode      String?
   createdAt       DateTime @default(now())
 
   @@unique([brokerTenantId, insurerTenantId])

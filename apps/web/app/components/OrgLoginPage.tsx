@@ -12,6 +12,7 @@ import { AuthCard, LoginNav } from './auth-card';
 import { LineSelect } from './LineSelect';
 import type { Line } from '../../lib/line';
 import { ErrorBox, Field } from './ui';
+import { PasswordInput } from './PasswordInput';
 
 interface OrgBrand { slug: string; name: string; hasLogo: boolean; theme: TenantTheme | null }
 interface Org { slug: string; name: string; kind?: string }
@@ -119,7 +120,7 @@ export function OrgLoginPage({ kind, mode = 'PROCESS', switcher }: { kind: 'BROK
       )}
       {mode === 'ENTRY' && <LineSelect slug={tenantSlug || undefined} onChange={setLine} />}
       <Field label="نام کاربری"><input className="input" value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" /></Field>
-      <Field label="رمز عبور"><input type="password" className="input" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" onKeyDown={(e) => e.key === 'Enter' && submit()} /></Field>
+      <Field label="رمز عبور"><PasswordInput className="input" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" onKeyDown={(e) => e.key === 'Enter' && submit()} /></Field>
       {totp !== null && (
         <Field label="کد ورود دومرحله‌ای (برنامهٔ احراز هویت گوشی)">
           <input className="input latin-digits" value={totp} onChange={(e) => setTotp(e.target.value)} inputMode="numeric" maxLength={6} autoComplete="one-time-code" autoFocus

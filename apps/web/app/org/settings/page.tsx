@@ -9,6 +9,7 @@ import { Shell } from '../../components/Shell';
 import { CLAIM_TYPE_LABELS, ErrorBox, Field } from '../../components/ui';
 import { ORG_NAV } from '../nav';
 import { Flash } from '../../components/Toaster';
+import { PasswordInput } from '../../components/PasswordInput';
 
 const TABS = [
   ['branding', 'برندینگ و تنظیمات'],
@@ -192,7 +193,7 @@ function SmsTab() {
           {k === 'otpTemplate' ? (
             <textarea className="input" rows={3} value={f[k] || ''} onChange={(e) => setF({ ...f, [k]: e.target.value })} placeholder={'کد تایید دامون: {code}\nاعتبار: ۵ دقیقه\nکارگزاری رسمی بیمه آتیه اندیشان دامون'} />
           ) : (
-            <input className="input" type={SECRET.has(k) ? 'password' : 'text'} value={f[k] || ''} onChange={(e) => setF({ ...f, [k]: e.target.value })} placeholder={SECRET.has(k) ? '••••••••' : ''} style={{ direction: 'ltr', textAlign: 'left' }} />
+            <PasswordInput plain={!SECRET.has(k)} className="input" value={f[k] || ''} onChange={(e) => setF({ ...f, [k]: e.target.value })} placeholder={SECRET.has(k) ? '••••••••' : ''} style={{ direction: 'ltr', textAlign: 'left' }} />
           )}
         </Field>
       ))}

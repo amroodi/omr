@@ -4,6 +4,7 @@ import { AppHeader } from './components/AppHeader';
 import { SiteFooter } from './components/SiteFooter';
 import { ThemeApplier } from './components/ThemeApplier';
 import { Toaster } from './components/Toaster';
+import { FieldKeys } from './components/FieldKeys';
 import { THEME_BOOT_SCRIPT } from '../lib/theme';
 import { SCALE_BOOT_SCRIPT } from '../lib/scale';
 import { WALL_BOOT_SCRIPT } from '../lib/wallpaper';
@@ -43,6 +44,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
         <SiteFooter />
         <Toaster />
+        <FieldKeys />
       </body>
     </html>
   );

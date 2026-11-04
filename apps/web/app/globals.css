@@ -2208,3 +2208,20 @@ a.cu-card.is-link:hover { transform: translateY(-2px); box-shadow: 0 0 0 2px var
 .toast-text { min-width: 0; overflow-wrap: anywhere; }
 @keyframes toastIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
 @media (max-width: 640px) { .toasts { right: 10px; top: 60px; width: calc(100vw - 20px); } }
+
+/* Password fields (components/PasswordInput): an eye at the left edge; hold it to see the password. */
+.pw-wrap { position: relative; display: block; }
+.pw-wrap > input { width: 100%; }
+.pw-eye { position: absolute; left: 6px; top: 50%; transform: translateY(-50%); width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; color: var(--muted); background: transparent; border: 0; cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.pw-eye:hover, .pw-eye[aria-pressed="true"] { color: var(--brand); background: var(--surface-2); }
+.pw-eye svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+/* Mandatory-field star: red on the forms that ask for it (an insurer's panel-1 filing). */
+.red-stars .req-star { color: #dc2626; font-weight: 800; }
+/* «علت خسارت» picker (org/claims/new): the list is .co-pick; picked causes are chips. */
+.co-pick li.cause-opt { display: flex; align-items: center; gap: 8px; }
+.cause-tick { flex: none; width: 18px; height: 18px; border-radius: 5px; border: 1.5px solid var(--border-strong); display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; color: #fff; }
+.co-pick li.is-on .cause-tick { background: var(--brand); border-color: var(--brand); }
+.cause-has-note { flex: none; font-size: .7rem; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 0 8px; }
+.cause-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 6px 3px 10px; border-radius: 999px; background: var(--brand-soft); color: var(--text); font-size: .8rem; font-weight: 600; }
+.cause-chip button { width: 18px; height: 18px; border-radius: 50%; border: 0; background: rgba(0,0,0,.08); color: inherit; cursor: pointer; line-height: 1; }
+.cause-chip button:hover { background: #dc2626; color: #fff; }
