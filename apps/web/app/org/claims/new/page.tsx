@@ -61,48 +61,43 @@ function PField({ label, help, children }: { label: string; help?: string; child
 const norm = (t: string) => t.replace(/ي/g, 'ی').replace(/ك/g, 'ک').replace(/\u200c/g, ' ').trim();
 
 /**
- * «علت خسارت» of an insurer's panel 1: type part of a cause to find it; ↑/↓ and Enter pick or drop one
- * (several may be picked), Esc closes. The picked causes show as chips under the field.
+ * A searchable list (an insurer's panel 1: «علت خسارت», «بیمه‌گزار (شرکت)»): type part of a name to find
+ * it; ↑/↓ and Enter pick, Esc closes. `none` adds an empty choice at the top (e.g. «بدون شرکت بیمه‌گزار»).
  */
-function CausePicker({ options, value, onToggle, notes }: { options: string[]; value: string[]; onToggle: (c: string) => void; notes: Record<string, string> }) {
+function SearchPick({ options, value, onPick, placeholder, none, label, badge }: {
+  options: { id: string; name: string }[]; value: string; onPick: (id: string) => void; placeholder: string;
+  none?: string; label: string; badge?: (id: string) => string | null;
+}) {
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
   const [hi, setHi] = useState(0);
-  const shown = options.filter((c) => !q.trim() || norm(c).includes(norm(q)));
+  const picked = options.find((o) => o.id === value) ?? null;
+  // While typing only the matches show, so Enter takes the first one.
+  const list = [...(none && !q.trim() ? [{ id: '', name: none }] : []), ...options.filter((o) => !q.trim() || norm(o.name).includes(norm(q)))];
+  const choose = (id: string) => { onPick(id); setQ(''); setOpen(false); };
   return (
-    <div>
-      <div style={{ position: 'relative' }}>
-        <input className="input" role="combobox" aria-expanded={open} aria-label="جستجوی علت خسارت"
-          value={q} placeholder={value.length ? 'علت دیگری هم هست؟ تایپ کنید…' : 'علت خسارت را تایپ یا از فهرست انتخاب کنید…'}
-          onFocus={() => { setOpen(true); setHi(0); }} onClick={() => setOpen(true)} onBlur={() => { setOpen(false); setQ(''); }}
-          onChange={(e) => { setQ(e.target.value); setHi(0); setOpen(true); }}
-          onKeyDown={(e) => {
-            if (e.key === 'ArrowDown') { e.preventDefault(); setOpen(true); setHi((h) => Math.min(h + 1, shown.length - 1)); }
-            else if (e.key === 'ArrowUp') { e.preventDefault(); setHi((h) => Math.max(h - 1, 0)); }
-            else if (e.key === 'Enter') { e.preventDefault(); if (open && shown[hi]) { onToggle(shown[hi]); setQ(''); } else setOpen(true); }
-            else if (e.key === 'Escape') setOpen(false);
-          }} />
-        {open && (
-          <ul className="co-pick" role="listbox" aria-multiselectable="true">
-            {shown.length === 0 ? <li className="is-empty">علتی با این عنوان نیست</li> : shown.map((c, i) => (
-              <li key={c} role="option" aria-selected={value.includes(c)} className={`cause-opt${i === hi ? ' is-hi' : ''}${value.includes(c) ? ' is-on' : ''}`}
-                onMouseDown={(e) => { e.preventDefault(); onToggle(c); }} onMouseEnter={() => setHi(i)} title={notes[c] || undefined}>
-                <span className="cause-tick" aria-hidden="true">{value.includes(c) ? '✓' : ''}</span>
-                <span className="flex-1">{c}</span>
-                {notes[c] && <span className="cause-has-note">متن آماده</span>}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-      {value.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mt-1.5">
-          {value.map((c) => (
-            <span key={c} className="cause-chip">{c}
-              <button type="button" tabIndex={-1} onClick={() => onToggle(c)} aria-label={`حذف ${c}`} title="حذف">×</button>
-            </span>
+    <div style={{ position: 'relative' }}>
+      <input className="input" role="combobox" aria-expanded={open} aria-label={label} title={picked?.name}
+        value={open ? q : picked?.name ?? ''} placeholder={open && picked ? picked.name : placeholder}
+        onFocus={() => { setOpen(true); setQ(''); setHi(0); }} onClick={() => setOpen(true)} onBlur={() => { setOpen(false); setQ(''); }}
+        onChange={(e) => { setQ(e.target.value); setHi(0); setOpen(true); }}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowDown') { e.preventDefault(); setOpen(true); setHi((h) => Math.min(h + 1, list.length - 1)); }
+          else if (e.key === 'ArrowUp') { e.preventDefault(); setHi((h) => Math.max(h - 1, 0)); }
+          else if (e.key === 'Enter') { e.preventDefault(); if (open && list[hi]) choose(list[hi].id); else setOpen(true); }
+          else if (e.key === 'Escape') setOpen(false);
+        }} />
+      <span className="spick-caret" aria-hidden="true">▾</span>
+      {open && (
+        <ul className="co-pick" role="listbox">
+          {list.length === 0 ? <li className="is-empty">موردی با این نام نیست</li> : list.map((o, k) => (
+            <li key={o.id || '__none'} role="option" aria-selected={o.id === value} className={`cause-opt${k === hi ? ' is-hi' : ''}${o.id === value ? ' is-on' : ''}${o.id ? '' : ' is-none'}`}
+              onMouseDown={(e) => { e.preventDefault(); choose(o.id); }} onMouseEnter={() => setHi(k)}>
+              <span className="flex-1">{o.name}</span>
+              {o.id && badge?.(o.id) && <span className="cause-has-note">{badge(o.id)}</span>}
+            </li>
           ))}
-        </div>
+        </ul>
       )}
     </div>
   );
@@ -161,7 +156,7 @@ export default function NewClaim() {
   // «علت خسارت»: the insurer's ticks for this نوع پرونده (its own panel 1), plus typed text; Model View may require it.
   const form = ins?.form;
   const causeOptions = form?.causeLists[form.caseTypes.find((t) => t.code === f.claimType)?.causeGroup ?? 'ACCIDENT'] ?? [];
-  const picked = causes.filter((c) => causeOptions.includes(c));
+  const picked = causes.filter((c) => causeOptions.includes(c)).slice(0, ins ? 1 : undefined); // an insurer's panel 1: one cause
   // An insurer's panel 1 picks from its list (the typed «علت دیگر» only where the list is empty).
   const typedCause = ins && causeOptions.length > 0 ? '' : f.causeOfDeath.trim();
   const cause = [...picked, typedCause].filter(Boolean).join('، ');
@@ -172,16 +167,22 @@ export default function NewClaim() {
     : form?.birthDate === 'required' && !f.birthDate ? 'تاریخ تولد بیمه‌شده را وارد کنید'
     : descRequired && !f.description.trim() ? `شرح را بنویسید (${CAUSE_LABEL} انتخاب نشده است)`
     : f.description.length > 2000 ? 'شرح طولانی‌تر از ۲۰۰۰ نویسه است؛ آن را کوتاه کنید' : '');
-  /** Pick or drop a cause; its ready text («متن») goes into / comes out of «شرح» (still editable there). */
-  const toggleCause = (c: string) => {
-    const on = !causes.includes(c);
-    setCauses((l) => (on ? [...l, c] : l.filter((x) => x !== c)));
-    const note = causeNotes[c]?.trim();
-    if (!note) return;
+  /**
+   * Pick the one «علت خسارت» ('' = none): the previous cause's ready text («متن») leaves «شرح» (if it is
+   * still there unchanged) and the new one's comes in; the operator can still edit شرح.
+   */
+  const pickCause = (c: string) => {
+    const old = picked[0] ?? '';
+    if (c === old) return;
+    setCauses(c ? [c] : []);
+    const oldNote = old ? causeNotes[old]?.trim() : '';
+    const newNote = c ? causeNotes[c]?.trim() : '';
+    if (!oldNote && !newNote) return;
     setF((s) => {
-      const d = s.description;
-      if (on) return d.includes(note) ? s : { ...s, description: d.trim() ? `${d.replace(/\s+$/, '')}\n${note}` : note };
-      return d.includes(note) ? { ...s, description: d.replace(note, '').replace(/\n{2,}/g, '\n').trim() } : s;
+      let d = s.description;
+      if (oldNote && d.includes(oldNote)) d = d.replace(oldNote, '').replace(/\n{2,}/g, '\n').trim();
+      if (newNote && !d.includes(newNote)) d = d.trim() ? `${d.replace(/\s+$/, '')}\n${newNote}` : newNote;
+      return { ...s, description: d };
     });
   };
 
@@ -319,15 +320,13 @@ export default function NewClaim() {
               <PField label="معرف" help="کارگزاری‌ای که پرونده برای آن ثبت می‌شود (با کد کارگزار)؛ برای فروش مستقیم بیمه‌گر «بدون کارگزاری» را انتخاب کنید.">
                 <select className="input" value={f.brokerTenantId} onChange={(e) => setF((s) => ({ ...s, brokerTenantId: e.target.value, companyId: '', sellingBranchId: '', startStage: '' }))}>
                   <option value="">— بدون کارگزاری (فروش مستقیم بیمه‌گر) —</option>
-                  {ins.brokers.map((b) => <option key={b.id} value={b.id}>{b.name}{b.code ? ` — کد کارگزار ${b.code}` : ''}</option>)}
+                  {ins.brokers.map((b) => <option key={b.id} value={b.id}>{b.name}{b.code ? ` ${b.code}` : ''}</option>)}
                 </select>
               </PField>
               {insBroker ? (
                 <PField label="بیمه‌گزار (شرکت)" help="اختیاری؛ پرونده در پنل همین بیمه‌گزار هم دیده می‌شود و شماره بیمه‌نامه از قرارداد آن برداشته می‌شود.">
-                  <select className="input" value={f.companyId} onChange={set('companyId')}>
-                    <option value="">— بدون شرکت بیمه‌گزار —</option>
-                    {insBroker.companies.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
+                  <SearchPick label="بیمه‌گزار (شرکت)" options={insBroker.companies} value={f.companyId} onPick={(id) => setF((s) => ({ ...s, companyId: id }))}
+                    placeholder="نام بیمه‌گزار را تایپ کنید…" none="— بدون شرکت بیمه‌گزار —" />
                 </PField>
               ) : (
                 <PField label="واحد صدور *">
@@ -435,8 +434,11 @@ export default function NewClaim() {
           )}
 
           {form?.cause !== 'hidden' && (
-            <div className="md:col-span-2 lg:col-span-3"><PField label={`${CAUSE_LABEL}${form?.cause === 'required' ? ' *' : ''}`} help={ins && causeOptions.length ? 'علت را تایپ کنید یا از فهرست انتخاب کنید (چند مورد هم می‌شود)؛ متن آمادهٔ هر علت به «شرح» افزوده می‌شود و می‌توانید آن را ویرایش کنید.' : 'علت را همان‌طور که می‌دانید بنویسید؛ مثلاً «ایست قلبی»، «تصادف رانندگی» یا «سقوط از ارتفاع».'}>
-              {ins && causeOptions.length > 0 && <CausePicker options={causeOptions} value={picked} onToggle={toggleCause} notes={causeNotes} />}
+            <div className="md:col-span-2 lg:col-span-3"><PField label={`${CAUSE_LABEL}${form?.cause === 'required' ? ' *' : ''}`} help={ins && causeOptions.length ? 'یک علت را تایپ کنید یا از فهرست انتخاب کنید؛ متن آمادهٔ آن به «شرح» افزوده می‌شود و می‌توانید آن را ویرایش کنید.' : 'علت را همان‌طور که می‌دانید بنویسید؛ مثلاً «ایست قلبی»، «تصادف رانندگی» یا «سقوط از ارتفاع».'}>
+              {ins && causeOptions.length > 0 && (
+                <SearchPick label="علت خسارت" options={causeOptions.map((c) => ({ id: c, name: c }))} value={picked[0] ?? ''} onPick={pickCause}
+                  placeholder="علت خسارت را تایپ یا از فهرست انتخاب کنید…" none="— انتخاب نشده —" badge={(c) => (causeNotes[c] ? 'متن آماده' : null)} />
+              )}
               {!ins && causeOptions.length > 0 && (
                 <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1 mb-2">
                   {causeOptions.map((c) => (
@@ -454,7 +456,7 @@ export default function NewClaim() {
         <div className={`mt-2.5${ins ? ' red-stars' : ''}`}>
           <label className="label">{ins ? <>شرح{descRequired && <> <span className="req-star">*</span></>}</> : 'توضیحات (اختیاری)'}</label>
           <textarea className="input" rows={ins ? 4 : 2} value={f.description} onChange={set('description')} maxLength={2000}
-            placeholder={ins ? (descRequired ? `${CAUSE_LABEL} انتخاب نشده است؛ شرح حادثه را بنویسید.` : 'متن آمادهٔ علت‌های انتخاب‌شده اینجا می‌آید؛ می‌توانید آن را ویرایش یا تکمیل کنید.') : 'هر توضیح یا جزئیاتی که لازم می‌دانید بنویسید؛ مثلاً شرح حادثه یا موارد خاص پرونده.'} />
+            placeholder={ins ? (descRequired ? `${CAUSE_LABEL} انتخاب نشده است؛ شرح حادثه را بنویسید.` : 'متن آمادهٔ علت انتخاب‌شده اینجا می‌آید؛ می‌توانید آن را ویرایش یا تکمیل کنید.') : 'هر توضیح یا جزئیاتی که لازم می‌دانید بنویسید؛ مثلاً شرح حادثه یا موارد خاص پرونده.'} />
         </div>
 
         <div className="flex justify-center mt-3">

@@ -50,9 +50,9 @@ export default function InsuredPanel() {
                 <div className="text-sm" style={{ color: 'var(--muted)' }}>{claimTypeLabel(c)} — وضعیت: {c.where}</div>
               </div>
               {c.documents.length === 0 && <p className="text-sm" style={{ color: 'var(--muted)' }}>مدرکی برای بارگذاری شما تعریف نشده است.</p>}
-              {c.documents.map((d) => (
+              {c.documents.map((d, i) => (
                 <div key={d.code} className="p-3 rounded-lg space-y-2" style={{ border: '1px solid var(--border)' }}>
-                  <div className="text-sm font-bold">{d.label}</div>
+                  <div className="text-sm font-bold"><span className="doc-n">{(i + 1).toLocaleString('fa-IR')}</span>{d.label}</div>
                   <div className="text-xs" style={{ color: STATE[d.state].color }}>{STATE[d.state].text}{d.fileName ? <> — <bdi>{d.fileName}</bdi></> : null}</div>
                   {d.reason && <div className="text-xs" style={{ color: 'var(--danger)' }}>{d.reason}</div>}
                   {!c.closed && d.state !== 'APPROVED' && (

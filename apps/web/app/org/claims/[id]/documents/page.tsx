@@ -90,7 +90,7 @@ export default function CaseDocumentsPage() {
             <PersonCards claim={claim} fv={fv} />
 
             <section className="cs-table">
-              <div className="cs-table-h cs-grid-docs" style={{ ['--desks' as any]: desks.length }}>
+              <div className={`cs-table-h cs-grid-docs${desks.length ? '' : ' no-desks'}`} style={{ ['--desks' as any]: desks.length }}>
                 <span className="cs-th-n"><span className="cs-ico sm"><Icon path={ICONS.list} /></span></span>
                 <span>بارگذاری</span>
                 {desks.map((s) => <span key={s}>{DESK_FA[s]}</span>)}
@@ -98,7 +98,7 @@ export default function CaseDocumentsPage() {
               </div>
               <div className="cs-table-b">
                 {rows.map((r, i) => (
-                  <div key={r.key} className={`cs-tr cs-grid-docs${r.doc?.status === 'VERIFIED' ? ' is-done' : ''}`} style={{ ['--desks' as any]: desks.length }}>
+                  <div key={r.key} className={`cs-tr cs-grid-docs${desks.length ? '' : ' no-desks'}${r.doc?.status === 'VERIFIED' ? ' is-done' : ''}`} style={{ ['--desks' as any]: desks.length }}>
                     <span className="cs-td-n">{faN(i + 1)}</span>
                     <span className="cs-td-up">
                       <Mark state={r.doc && r.doc.ai?.status !== 'MISMATCH' ? 'ok' : 'no'} title={r.doc ? `بارگذاری شده — ${r.doc.uploadedAt ?? ''}${r.doc.ai?.status === 'MISMATCH' ? ' (رد در بررسی هوشمند)' : ''}` : 'بارگذاری نشده'} />

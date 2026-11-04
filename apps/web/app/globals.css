@@ -2222,6 +2222,15 @@ a.cu-card.is-link:hover { transform: translateY(-2px); box-shadow: 0 0 0 2px var
 .cause-tick { flex: none; width: 18px; height: 18px; border-radius: 5px; border: 1.5px solid var(--border-strong); display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; color: #fff; }
 .co-pick li.is-on .cause-tick { background: var(--brand); border-color: var(--brand); }
 .cause-has-note { flex: none; font-size: .7rem; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 0 8px; }
+.spick-caret { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); pointer-events: none; color: var(--muted); font-size: .8rem; }
+.co-pick li.is-none { color: var(--muted); }
+.co-pick li.is-on { font-weight: 700; color: var(--brand); }
 .cause-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 6px 3px 10px; border-radius: 999px; background: var(--brand-soft); color: var(--text); font-size: .8rem; font-weight: 600; }
 .cause-chip button { width: 18px; height: 18px; border-radius: 50%; border: 0; background: rgba(0,0,0,.08); color: inherit; cursor: pointer; line-height: 1; }
 .cause-chip button:hover { background: #dc2626; color: #fff; }
+
+/* «بررسی وضعیت مدارک» with no review desks (e.g. an insurer's panel 1): `repeat(0, …)` is not valid CSS. */
+.cs-grid-docs.no-desks { grid-template-columns: 36px 170px minmax(0, 1fr); }
+@media (max-width: 760px) { .cs-grid-docs.no-desks { grid-template-columns: 26px minmax(0, 1fr); } }
+/* Number of each document in the upload lists. */
+.doc-n { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 6px; margin-inline-end: 8px; border-radius: 999px; background: var(--surface-2); color: var(--text); font-size: .75rem; font-weight: 800; vertical-align: middle; }
