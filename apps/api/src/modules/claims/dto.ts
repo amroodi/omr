@@ -78,6 +78,12 @@ export class HeirsDto {
 }
 
 export class FileClaimDto {
+  // «علت خسارت» (ticked items and/or typed text); Model View may make it required
+  @IsOptional()
+  @IsString()
+  @Length(0, 1500)
+  causeOfDeath?: string;
+
   // نوع بیمه‌نامه chosen on the panel-1 login
   @IsOptional()
   @IsString()
