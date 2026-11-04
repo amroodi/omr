@@ -12,13 +12,14 @@ import { OrgLoginPage } from '../../components/OrgLoginPage';
  */
 export default function EntryLogin() {
   const [slug, setSlug] = useState<string | null>(null);
-  const [tab, setTab] = useState<'customer' | 'staff'>('customer');
+  // «کارکنان سازمان» first; ?as=customer opens the بیمه‌گزار / نماینده (or نماینده بیمه) tab.
+  const [tab, setTab] = useState<'customer' | 'staff'>('staff');
   const [kind, setKind] = useState<'BROKER' | 'INSURER' | null>(null);
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
     const s = (q.get('org') || '').trim().toLowerCase();
     setSlug(s);
-    if (q.get('as') === 'staff') setTab('staff');
+    if (q.get('as') === 'customer') setTab('customer');
     fetch(`${client.base}/customer/orgs`).then((r) => (r.ok ? r.json() : [])).then((l: { slug: string; kind?: string }[]) => {
       setKind((Array.isArray(l) ? l : []).find((o) => o.slug === s)?.kind === 'INSURER' ? 'INSURER' : 'BROKER');
     }).catch(() => setKind('BROKER'));
