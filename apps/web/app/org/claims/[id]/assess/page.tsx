@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { client, hasPerm } from '../../../../../lib/client';
+import { client, hasPerm, assistInfo } from '../../../../../lib/client';
 import { Shell, Icon } from '../../../../components/Shell';
 import { ClaimTypeBadge, ErrorBox, FancyLoader, Overlay, ReviewButtons, Spinner, StatusBadge } from '../../../../components/ui';
 import { ORG_NAV } from '../../../nav';
@@ -260,8 +260,8 @@ export default function AssessClaim() {
                 )}
               </div>
 
-              {/* Finalized amount — set by the insurer's desks, not on the کارگزاری panel */}
-              {canProcess && !closed && lastPanel('org') !== 'BROKER' && (
+              {/* Finalized amount — set only by شعبه (not ستاد, شورای فنی or the کارگزاری); Super Admin inside a panel too */}
+              {canProcess && !closed && (lastPanel('org') === 'BRANCH' || !!assistInfo('org')) && (
                 <div className="border-t pt-3" style={{ borderColor: 'var(--border)' }}>
                   <label className="label">مبلغ خسارت قطعی (پس از ارزیابی)</label>
                   <div className="flex items-center gap-2">

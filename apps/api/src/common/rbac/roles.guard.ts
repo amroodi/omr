@@ -82,7 +82,13 @@ export class RolesGuard implements CanActivate {
       throw new ForbiddenException('این دسترسی مخصوص کاربران سازمان است');
     }
 
-    const held = new Set(ctx.permissions ?? []);
+    const held = new Set<string>(ctx.permissions ?? []);
+    // Removing a case (and the recycle bin) is level 5 only: Super Admin inside a panel («ورود به پنل»),
+    // whatever the organization's own roles say.
+    if ((required as string[]).includes('claim:delete')) {
+      if (!ctx.assistBy) throw new ForbiddenException('حذف پرونده فقط توسط مدیر سامانه (سطح ۵) ممکن است');
+      held.add('claim:delete');
+    }
     const missing = required.filter((p) => !held.has(p));
     if (missing.length > 0) {
       throw new ForbiddenException(`Missing permission(s): ${missing.join(', ')}`);

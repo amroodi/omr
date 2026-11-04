@@ -81,8 +81,10 @@ function tokenPayload(realm: Realm): Record<string, any> | null {
 /** Decode the permissions embedded in the realm's JWT (set at login). UI-gating only — the API
  * independently enforces every permission, so a tampered token still can't perform the action. */
 export function getPermissions(realm: Realm): string[] {
-  const p = tokenPayload(realm)?.permissions;
-  return Array.isArray(p) ? p : [];
+  const t = tokenPayload(realm);
+  const p: string[] = Array.isArray(t?.permissions) ? t.permissions : [];
+  // Removing a case is level 5 only: Super Admin inside a panel («ورود به پنل»), never the org's own staff.
+  return realm === 'org' ? [...p.filter((x) => x !== 'claim:delete'), ...(t?.assist ? ['claim:delete'] : [])] : p;
 }
 
 /** Super Admin «ورود به پنل»: whose panel this is and when it ends (null for an ordinary sign-in). */

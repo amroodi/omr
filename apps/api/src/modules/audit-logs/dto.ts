@@ -11,6 +11,11 @@ export class AuditQueryDto {
   @IsString()
   actorType?: string;
 
+  /** One person (e.g. a شعبه / ستاد / شورای فنی operator). */
+  @IsOptional()
+  @IsUUID()
+  actorId?: string;
+
   @IsOptional()
   @IsString()
   targetType?: string;

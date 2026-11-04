@@ -1,4 +1,4 @@
-import { above, actionsFor, ActionContext, asLine, typesFor, below, chainOf, DEFAULT_WORKFLOW_MODEL, higher, modelFrom, physicalActionsFor, rulesOf, stageLabels, WorkflowModel } from './workflow';
+import { above, actionsFor, ActionContext, asLine, typesFor, below, chainOf, DEFAULT_WORKFLOW_MODEL, directTarget, higher, modelFrom, physicalActionsFor, rulesOf, stageLabels, WorkflowModel } from './workflow';
 
 const broker = { brokerTenantId: 'b1' };
 const direct = { brokerTenantId: null };
@@ -85,7 +85,19 @@ describe('actionsFor', () => {
     expect(keys(ctx(down, { isAdmin: true }))).toContain('DOWN_DIRECT');
     // the desk just above بیمه‌گزار has nothing to skip
     expect(keys(ctx({ ...down, currentStage: 'BROKER' }, { isAdmin: true }))).toEqual(['DOWN_FORWARD']);
-    expect(get(ctx({ currentStage: 'BRANCH' }), 'RETURN')?.label).toBe('ارسال به کارگزاری (عودت برای رفع نقص)');
+    expect(get(ctx({ currentStage: 'BRANCH' }), 'RETURN')?.label).toBe('برگشت از شعبه');
+  });
+
+  it('the insurer never skips past the کارگزاری of a broker case', () => {
+    expect(directTarget(broker, 'HQ')).toBe('BROKER');
+    expect(directTarget(broker, 'BROKER')).toBe('POLICYHOLDER');
+    expect(directTarget(direct, 'HQ')).toBe('POLICYHOLDER');
+    const hq = { currentStage: 'HQ' as const, finalizedAmount: '1' };
+    expect(get(ctx(hq, { isAdmin: true }), 'RETURN_DIRECT')?.label).toBe('برگشت از سرپرستی به کارگزاری');
+    // شعبه: the desk below is already the کارگزاری — nothing to skip
+    expect(keys(ctx({ currentStage: 'BRANCH' }, { isAdmin: true }))).not.toContain('RETURN_DIRECT');
+    const down = { currentStage: 'HQ' as const, flowDirection: 'DOWN' as const, flowPurpose: 'DEFICIENCY' as const };
+    expect(get(ctx(down, { isAdmin: true }), 'DOWN_DIRECT')?.label).toBe('ارسال مستقیم به کارگزاری (اختیار مدیریت)');
   });
 
   it('closed claims offer nothing', () => {
@@ -119,6 +131,18 @@ describe('physical documents', () => {
     expect(physicalActionsFor('HQ', open('BRANCH'))).toEqual([]);
     expect(physicalActionsFor('POLICYHOLDER', { at: null, open: { requesterStage: 'BRANCH', holderStage: 'POLICYHOLDER', status: 'REQUESTED' } })[0].label).toBe('ارسال اصل مدارک به شعبه');
     expect(physicalActionsFor('COUNCIL', { at: 'COUNCIL', open: null })[0].key).toBe('PHYSICAL_RETURN');
+  });
+
+  it('on a broker case شعبه asks the کارگزاری, which sends them on', () => {
+    const at = { currentStage: 'BRANCH' as const, lossNoticeNumber: '1' };
+    const viaBroker = { at: null, base: 'BROKER' as const, open: null };
+    expect(get(ctx(at, { physical: viaBroker }), 'REQUEST_PHYSICAL')?.label).toBe('درخواست اصل مدارک از کارگزاری');
+    expect(get(ctx(at, { physical: viaBroker }), 'FORWARD')?.disabled).toBe('ابتدا اصل مدارک را از کارگزاری دریافت کنید');
+    const asked = { at: null, base: 'BROKER' as const, open: { requesterStage: 'BRANCH' as const, holderStage: 'BROKER' as const, status: 'REQUESTED' as const } };
+    expect(physicalActionsFor('BROKER', asked)).toEqual([{ key: 'PHYSICAL_SEND', label: 'ارسال اصل مدارک به شعبه' }]);
+    // a council request reaches the کارگزاری only if the originals never left it
+    const council = { ...asked, open: { ...asked.open, requesterStage: 'COUNCIL' as const, holderStage: 'BRANCH' as const } };
+    expect(physicalActionsFor('BRANCH', council)).toEqual([{ key: 'PHYSICAL_RELAY', label: 'ارسال درخواست اصل مدارک به کارگزاری' }]);
   });
 });
 
