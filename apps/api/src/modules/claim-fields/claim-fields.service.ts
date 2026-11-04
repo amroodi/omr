@@ -255,10 +255,13 @@ export class ClaimFieldsService {
       : claim.flowPurpose === 'PAYMENT' ? 'در انتظار پرداخت'
       : claim.currentStage ? `نزد ${this.store.labels(claim.insurerTenantId)[claim.currentStage as Stage]}` : null;
     const manual = await this.isManual(claim.id);
+    // The death is reported when the case leaves the بیمه‌گزار («ثبت نهایی»). A case filed straight onto a
+    // later desk (staff filing past the بیمه‌گزار) is reported by its filing. Still at the بیمه‌گزار: not yet.
+    const filedPast = !!allSteps[0] && allSteps[0].stage !== 'POLICYHOLDER';
+    const noticeAt = submitted?.decidedAt ?? (filedPast ? claim.createdAt : null);
     const hierarchy: Record<string, string | null> = {
-      // The death is reported when the case is filed (by the بیمه‌گزار, or by staff for them).
-      death_notice_date: jd(submitted?.decidedAt ?? claim.createdAt),
-      death_notice_status: 'انجام شد',
+      death_notice_date: jd(noticeAt),
+      death_notice_status: noticeAt ? 'انجام شد' : null,
       broker_to_insurer_date: at(brokerFwd),
       broker_to_insurer_status: brokerFwd ? 'پرونده و مدارک به بیمه‌گر ارسال شد' : null,
       execution_stages: stageNow,
