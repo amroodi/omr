@@ -27,12 +27,20 @@ const STEP_STATE_FA: Record<string, string> = {
  * what was typed, and nothing is filled in from the hierarchy's own hand-offs.
  */
 export const MANUAL_FLOW_KEYS = new Set([
-  'death_notice_date', 'death_notice_status', 'broker_to_insurer_date', 'broker_to_insurer_status',
+  'broker_to_insurer_date', 'broker_to_insurer_status',
   'docs_request_date', 'docs_request_status', 'docs_receive_date', 'docs_receive_status',
   'missing_docs_request_date', 'missing_docs_request_status', 'case_complete', 'case_complete_date', 'case_complete_status',
   'send_to_hq_date', 'send_to_hq_status', 'return_to_branch_date', 'return_to_branch_status',
   'council_approve_date', 'council_approve_status', 'payment_order_date', 'payment_order_status', 'payment_order', 'case_stage',
 ]);
+
+/**
+ * «اعلام فوت»: the day the death was announced to us (the letter arrived) — it may be weeks after the death
+ * and has nothing to do with filing. Always typed by an operator in «ویرایش», on any case; typing it
+ * doesn't make the case hand-completed, and the hierarchy never fills it. Kept in the typed history.
+ */
+const TYPED_ONLY_KEYS = new Set(['death_notice_date', 'death_notice_status']);
+const HISTORY_KEYS = [...MANUAL_FLOW_KEYS, ...TYPED_ONLY_KEYS];
 
 /** Fields the hierarchy fills from its own hand-offs (see claimFacts) — shown, never auto-saved. */
 const FLOW_DERIVED = new Set([...MANUAL_FLOW_KEYS, 'execution_stages', 'case_notes']);
@@ -177,7 +185,7 @@ export class ClaimFieldsService {
    */
   async manualHistory(claim: { id: string; insurerTenantId: string }) {
     const [logs, defs] = await Promise.all([
-      this.db().claimFieldLog.findMany({ where: { claimId: claim.id, key: { in: [...MANUAL_FLOW_KEYS] } }, orderBy: { createdAt: 'asc' } }),
+      this.db().claimFieldLog.findMany({ where: { claimId: claim.id, key: { in: HISTORY_KEYS } }, orderBy: { createdAt: 'asc' } }),
       this.db().claimFieldDef.findMany({ where: { tenantId: claim.insurerTenantId }, select: { key: true, label: true, type: true } }),
     ]);
     const d = new Map(defs.map((x) => [x.key, x]));
@@ -255,13 +263,8 @@ export class ClaimFieldsService {
       : claim.flowPurpose === 'PAYMENT' ? 'در انتظار پرداخت'
       : claim.currentStage ? `نزد ${this.store.labels(claim.insurerTenantId)[claim.currentStage as Stage]}` : null;
     const manual = await this.isManual(claim.id);
-    // The death is reported when the case leaves the بیمه‌گزار («ثبت نهایی»). A case filed straight onto a
-    // later desk (staff filing past the بیمه‌گزار) is reported by its filing. Still at the بیمه‌گزار: not yet.
-    const filedPast = !!allSteps[0] && allSteps[0].stage !== 'POLICYHOLDER';
-    const noticeAt = submitted?.decidedAt ?? (filedPast ? claim.createdAt : null);
+    // «اعلام فوت» is not here: only an operator knows when the death announcement arrived (TYPED_ONLY_KEYS).
     const hierarchy: Record<string, string | null> = {
-      death_notice_date: jd(noticeAt),
-      death_notice_status: noticeAt ? 'انجام شد' : null,
       broker_to_insurer_date: at(brokerFwd),
       broker_to_insurer_status: brokerFwd ? 'پرونده و مدارک به بیمه‌گر ارسال شد' : null,
       execution_stages: stageNow,
@@ -329,7 +332,7 @@ export class ClaimFieldsService {
     });
     await this.syncPolicyNumber(claimId, key, saved.value);
     await this.syncClaimData(claimId, key, saved.value);
-    if (MANUAL_FLOW_KEYS.has(key) && (existing?.value ?? '') !== (saved.value ?? '')) {
+    if ((MANUAL_FLOW_KEYS.has(key) || TYPED_ONLY_KEYS.has(key)) && (existing?.value ?? '') !== (saved.value ?? '')) {
       await this.db().claimFieldLog.create({ data: { claimId, key, value: saved.value, byId: actor } });
     }
     await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'ClaimField', targetId: claimId, metadata: { key, source } });
