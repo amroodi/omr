@@ -324,13 +324,14 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
               <p className="text-xs mb-3" style={{ color: 'var(--muted)' }}>مدارک ستاره‌دار (*) الزامی است؛ بقیه را برحسب مورد بارگذاری کنید.{checklist?.note ? ` ${checklist.note}` : ''}</p>
               <Flash text={aiNote ? AI_QUEUED_FA : null} ok />
               <div className="space-y-2.5">
-                {checklist?.items.map((it) => {
+                {(() => { let n = 0; return checklist?.items.map((it) => {
                   // دارد / ندارد not answered yet: one row asks; the answer decides which document stays.
                   const unchosen = checklist.items.some((x) => x.code === BENEFICIARY_FORM) && checklist.items.some((x) => x.code === INHERITANCE_CERT);
                   const isBeneficiary = it.code === BENEFICIARY_FORM || it.code === INHERITANCE_CERT;
                   if (unchosen && (it.code === INHERITANCE_CERT || it.code === NO_FORM_LETTER)) return null;
                   // The کارگزاری's own panel-1 list: what it doesn't require shows greyed (still uploadable).
                   const greyed = !!checklist.entryList && !it.required && !it.uploaded;
+                  const no = ++n; // number in the list (rows hidden above don't count)
                   const story = docStory(it, !!claim.story?.manual);
                   const st = up[it.code];
                   const d = it.documents[0] as ClaimDoc | undefined;
@@ -339,7 +340,7 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
                     <div key={it.code} className={`doc-row cu-doc tone-${story.tone}${greyed ? ' is-optional' : ''}`}>
                       <div className="cu-doc-head">
                         <div className="text-sm min-w-0">
-                          <div className="font-bold">{it.label}{it.required && <span style={{ color: 'var(--danger)' }}> *</span>}</div>
+                          <div className="font-bold"><span className="doc-n">{(no).toLocaleString('fa-IR')}</span>{it.label}{it.required && <span style={{ color: 'var(--danger)' }}> *</span>}</div>
                           <div className="cu-story">{story.text}</div>
                         </div>
                         <div className="cu-doc-up">
@@ -383,7 +384,7 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
                       )}
                     </div>
                   );
-                })}
+                }); })()}
               </div>
             </section>
 

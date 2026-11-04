@@ -61,9 +61,9 @@ export default function SpareCasePage() {
           {tab === 'data' ? <CaseEditForm claimId={id} base={base} title={c.fullName || c.claimTypeLabel} onSaved={loadCase} /> : (
             <div className="pcard p-5">
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {list?.items.map((it) => (
+                {list?.items.map((it, i) => (
                   <div key={it.code} className="spare-doc">
-                    <div className="spare-doc-t">{it.label}{it.required && <span style={{ color: 'var(--danger)' }}> *</span>}</div>
+                    <div className="spare-doc-t"><span className="doc-n">{(i + 1).toLocaleString('fa-IR')}</span>{it.label}{it.required && <span style={{ color: 'var(--danger)' }}> *</span>}</div>
                     <DocUploadTile label={it.label} required={it.required} uploaded={it.documents.length > 0} compact
                       onUpload={async (file, onP) => { const fd = new FormData(); fd.append('file', file); await client.upload(`${base}/documents?docCode=${encodeURIComponent(it.code)}`, fd, 'org', onP); await loadDocs(); }} />
                     {files(it.documents)}

@@ -49,9 +49,9 @@ export default function FixDocuments() {
                   <>
                     <p className="text-sm">مدارک زیر در جای درست بارگذاری نشده بود. برای هر کدام، همان مدرکی را که عنوانش آمده است بارگذاری کنید:</p>
                     <div className="space-y-3">
-                      {info.items.map((it) => (
+                      {info.items.map((it, i) => (
                         <div key={it.code} className="p-3 rounded-lg space-y-2" style={{ border: '1px solid var(--border)' }}>
-                          <div className="text-sm font-bold">{it.label}</div>
+                          <div className="text-sm font-bold"><span className="doc-n">{(i + 1).toLocaleString('fa-IR')}</span>{it.label}</div>
                           {it.reason && <div className="text-xs" style={{ color: 'var(--danger)' }}>{it.reason}</div>}
                           <UploadButton className="btn btn-primary btn-sm" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" maxMB={15} camera
                             title="بارگذاری مدرک" subtitle={it.label} onUpload={(f, onP) => upload(it.code, f, onP)}>
