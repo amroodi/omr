@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { client, getToken } from '../../../lib/client';
 import { Shell } from '../../components/Shell';
 import { CUSTOMER_NAV } from '../nav';
+import { Flash } from '../../components/Toaster';
 
 interface Rep { id: string; fullName: string | null; nationalCode: string | null; phone: string | null; active: boolean; mustChangePassword: boolean; createdAt: string | null; lastLoginAt: string | null }
 const EMPTY = { fullName: '', nationalCode: '', phone: '', password: '' };
@@ -63,7 +64,7 @@ export default function Representatives() {
             <input className="input cu-pill" placeholder="موبایل * (۰۹۱۲…)" inputMode="numeric" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} style={{ direction: 'ltr', textAlign: 'right' }} />
             <input className="input cu-pill" type="text" autoComplete="new-password" placeholder="رمز عبور (خالی = کد ملی)" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} style={{ direction: 'ltr', textAlign: 'right' }} />
           </div>
-          {msg && <div className={msg.ok ? 'alert-success' : 'alert-error'}>{msg.text}</div>}
+          <Flash id={msg} text={msg?.text} ok={!!msg && msg.ok} />
           <button type="submit" className="cu-go" disabled={busy || !f.nationalCode || !f.phone}>{busy ? '…' : 'ثبت نماینده'}</button>
         </form>
 

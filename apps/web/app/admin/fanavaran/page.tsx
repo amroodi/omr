@@ -6,6 +6,7 @@ import { toGregorian } from 'jalaali-js';
 import { client, getToken } from '../../../lib/client';
 import { Spinner } from '../../components/ui';
 import { JalaliDatePicker } from '../../components/JalaliDatePicker';
+import { Flash } from '../../components/Toaster';
 
 interface Fields { valid: string; firstName: string; lastName: string; insuredCode: string; birthYear: string; nationalCode: string; policyNumber: string; policyStart: string; policyEnd: string }
 interface Config {
@@ -142,7 +143,7 @@ export default function AdminFanavaran() {
           <Link href="/admin" className="btn btn-ghost btn-sm">بازگشت</Link>
         </div>
       </div>
-      {msg && <div className={msg.ok ? 'alert-success' : 'alert-error'}>{msg.text}</div>}
+      <Flash id={msg} text={msg?.text} ok={!!msg && msg.ok} />
 
       {!list ? <div className="card p-10 flex justify-center"><Spinner /></div> : !list.length ? <div className="card p-6 text-sm">هیچ بیمه‌گری تعریف نشده است.</div> : (
         <>

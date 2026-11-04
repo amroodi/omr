@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { client } from '../../../lib/client';
 import { Field, Overlay } from '../ui';
+import { Flash } from '../Toaster';
 
 interface Acc {
   id: string; fullName: string | null; nationalCode: string | null; nationalCodeMasked: string | null; phone: string | null; phoneMasked: string | null;
@@ -95,7 +96,7 @@ export function RepresentativesPanel({ realm, base }: { realm: 'org' | 'super'; 
       </div>
 
       <div className="space-y-3">
-        {msg && <div className={msg.t === 'ok' ? 'alert-success' : 'alert-error'}>{msg.m}</div>}
+        <Flash id={msg} text={msg?.m} ok={!!msg && msg.t === 'ok'} />
         <div className="flex gap-2">
           <button onClick={() => setFilter('PENDING')} className="btn btn-sm" style={chip(filter === 'PENDING')}>در دست بررسی{pending > 0 ? ` (${pending.toLocaleString('fa-IR')})` : ''}</button>
           <button onClick={() => setFilter('ALL')} className="btn btn-sm" style={chip(filter === 'ALL')}>همه</button>
@@ -152,7 +153,7 @@ export function RepresentativesPanel({ realm, base }: { realm: 'org' | 'super'; 
               <Field label={edit.acc.phone ? 'موبایل' : 'موبایل تازه (خالی = بدون تغییر)'}>
                 <input className="input" value={edit.phone} onChange={(e) => setEdit({ ...edit, phone: e.target.value })} inputMode="numeric" maxLength={11} placeholder={edit.acc.phoneMasked || '۰۹۱۲…'} style={{ direction: 'ltr', textAlign: 'right' }} />
               </Field>
-              {msg?.t === 'err' && <div className="alert-error">{msg.m}</div>}
+              <Flash id={msg} text={msg?.t === 'err' ? msg.m : null} ok={false} />
             </div>
             <div className="ur-modal-btns">
               <button onClick={saveEdit} disabled={busy} className="btn btn-primary btn-sm">{busy ? '…' : 'ذخیره'}</button>

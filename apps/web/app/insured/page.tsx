@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { client, getToken, signOut } from '../../lib/client';
 import { claimTypeLabel, Spinner } from '../components/ui';
 import { OnProgress, UploadButton } from '../components/upload';
+import { Flash } from '../components/Toaster';
 
 interface InsuredDoc { code: string; label: string; fileName: string | null; state: 'MISSING' | 'SENT' | 'APPROVED' | 'REFUSED'; reason: string | null }
 interface InsuredCase { id: string; claimNumber: string; claimType: string; closed: boolean; where: string; documents: InsuredDoc[] }
@@ -39,7 +40,7 @@ export default function InsuredPanel() {
           <h1 className="text-xl font-extrabold">پنل بیمه‌شده</h1>
           <button className="btn btn-ghost btn-sm" onClick={() => { signOut('insured'); router.replace('/insured/login'); }}>خروج</button>
         </div>
-        {error && <div className="alert-error">{error}</div>}
+        <Flash text={error} ok={false} />
         {!cases ? <div className="card p-8 text-center"><Spinner /></div>
           : cases.length === 0 ? <div className="card p-6 text-sm">پرونده‌ای برای این شماره فعال نیست.</div>
           : cases.map((c) => (

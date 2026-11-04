@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { client, Realm } from '../../lib/client';
 import { UploadButton } from './upload';
+import { Flash } from './Toaster';
 
 /**
  * «فرم تعیین/تغییر ذینفع» on a case: دارد → the form and each ذینفع (name, شبا; کد ملی and سهم ٪ if known);
@@ -151,7 +152,7 @@ export function BeneficiaryChoice({ claimId, realm, onChosen, onMissing }: { cla
 
   return (
     <div className="mt-3 space-y-3 text-sm">
-      {error && <div className="alert-error">{error}</div>}
+      <Flash text={error} ok={false} />
       {d.canEdit && (
         <div className="flex items-center gap-2 flex-wrap">
           <b>فرم تعیین/تغییر ذینفع:</b>
@@ -210,7 +211,7 @@ export function HeirsCard({ claimId, realm, className = 'card p-4' }: { claimId:
           </div>
         )}
       </div>
-      {error && <div className="alert-error mb-3 text-sm">{error}</div>}
+      <Flash text={error} ok={false} />
       <div className="text-sm mb-3 flex items-center gap-2 flex-wrap">
         <b>فرم تعیین ذینفع / وراث:</b>
         {d.form

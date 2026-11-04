@@ -1,6 +1,7 @@
 'use client';
 import { ReactNode, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { toast } from './Toaster';
 
 /**
  * Full-screen pop-up layer (dimmed backdrop, centred content). Rendered straight into <body> so it
@@ -29,9 +30,10 @@ export function Field({ label, children }: { label: string; children: ReactNode 
   );
 }
 
+/** An error message: shown as a toast at the top right of the screen (see Toaster), nothing in place. */
 export function ErrorBox({ message }: { message?: string }) {
-  if (!message) return null;
-  return <div className="alert-error fade-up">{message}</div>;
+  useEffect(() => { if (message) toast(message, 'error'); }, [message]);
+  return null;
 }
 
 export function StatCard({ label, value, icon, tone = 'brand' }: { label: string; value: ReactNode; icon?: ReactNode; tone?: 'brand' | 'success' | 'warning' | 'muted' }) {

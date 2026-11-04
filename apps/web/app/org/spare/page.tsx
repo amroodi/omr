@@ -7,6 +7,7 @@ import { Shell } from '../../components/Shell';
 import { ErrorBox, FancyLoader } from '../../components/ui';
 import { UploadButton } from '../../components/upload';
 import { ORG_NAV } from '../nav';
+import { Flash } from '../../components/Toaster';
 
 interface Row {
   id: string; number: number; claimType: string; claimTypeLabel: string; fullName: string | null; nationalCode: string | null; companyName: string | null;
@@ -76,7 +77,7 @@ export default function SpareDesk() {
   return (
     <Shell title="میز کار مستقل" breadcrumb="میز کار مستقل" nav={ORG_NAV} realm="org">
       <ErrorBox message={error} />
-      {msg && <div className="alert-success mb-2">{msg}</div>}
+      <Flash id={msg} text={msg} ok />
       {!opts ? (error ? null : <div className="pcard p-10 flex justify-center"><FancyLoader label="در حال دریافت" /></div>) : (
         <>
           <div className="pcard p-5 pform sn-search">

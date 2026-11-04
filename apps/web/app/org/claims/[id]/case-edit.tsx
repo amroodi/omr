@@ -5,6 +5,7 @@ import { Icon } from '../../../components/Shell';
 import { JalaliDatePicker } from '../../../components/JalaliDatePicker';
 import { FieldRow, FieldsData, notesTone } from '../../../components/case-ui';
 import { DocUploadTile, OnProgress } from '../../../components/upload';
+import { Flash } from '../../../components/Toaster';
 
 /**
  * «ویرایش» of a case, after the operator forms (to-ui-editing 1–3): three columns (بیمه‌شده / بیمه‌نامه /
@@ -176,7 +177,7 @@ export function CaseEditForm({ claimId, title, onSaved, base = `/claims/${claimI
         </>
       )}
 
-      {msg && <div className={msg.ok ? 'alert-success mt-4' : 'alert-error mt-4'}>{msg.text}</div>}
+      <Flash id={msg} text={msg?.text} ok={!!msg && msg.ok} />
       <div className="ce-btns">
         <button type="button" className="ce-save" onClick={save} disabled={busy || dirty.length === 0}>
           <Icon path="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2zM17 21v-8H7v8M7 3v5h8" />

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { client, getToken } from '../../../lib/client';
 import { ErrorBox, Spinner, STATUS_MAP } from '../../components/ui';
+import { Flash } from '../../components/Toaster';
 
 interface Row {
   id: string; claimNumber: string; policyNumber: string | null; status: string; legacyStatus: string | null; deceasedName: string | null;
@@ -76,7 +77,7 @@ export default function ImportedClaims() {
         {rows && rows.length > 0 && <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} disabled={busy} onClick={() => del('all')}>{q.trim() || tenantId ? `حذف همهٔ نتایج (${faN(rows.length)})` : `حذف همه (${faN(rows.length)})`}</button>}
       </div>
       <ErrorBox message={error} />
-      {msg && <div className="alert-success">{msg}</div>}
+      <Flash id={msg} text={msg} ok />
 
       <div className="card overflow-x-auto">
         {!rows ? <div className="p-10 flex justify-center"><Spinner /></div> : (

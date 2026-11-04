@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { client, getToken } from '../../../lib/client';
 import { Spinner } from '../../components/ui';
+import { Flash } from '../../components/Toaster';
 
 type Stage = 'POLICYHOLDER' | 'BROKER' | 'BRANCH' | 'HQ' | 'COUNCIL';
 type Mode = 'required' | 'optional' | 'hidden';
@@ -136,7 +137,7 @@ export default function ModelView() {
           <Link href="/admin" className="btn btn-ghost btn-sm">بازگشت به مدیریت سازمان‌ها</Link>
         </div>
       </div>
-      {msg && <div className={msg.t === 'ok' ? 'alert-success' : 'alert-error'}>{msg.m}</div>}
+      <Flash id={msg} text={msg?.m} ok={!!msg && msg.t === 'ok'} />
       {!data ? <div className="card p-8 text-center"><Spinner /></div> : !m || !cur || !cov ? <div className="card p-6 text-sm">بیمه‌گری ثبت نشده است.</div> : (
         <>
           <div className="card p-4 space-y-3">

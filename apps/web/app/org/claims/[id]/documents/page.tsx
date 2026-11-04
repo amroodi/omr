@@ -11,6 +11,7 @@ import { caseTitle } from '../../../../../lib/caseTitle';
 import { downloadPdf } from '../../../../../lib/pdf';
 import { AI_QUEUED_FA, aiVerdict, CaseHero, ClaimDoc, ICONS, NotesPill, PersonCards, phaseText, useCase } from '../../../../components/case-ui';
 import { OnProgress, UploadButton } from '../../../../components/upload';
+import { Flash } from '../../../../components/Toaster';
 
 const DESK_FA: Record<string, string> = { BROKER: 'کارگزاری', BRANCH: 'شعبه', HQ: 'ستاد', COUNCIL: 'شورای فنی' };
 const OK = 'M20 6L9 17l-5-5';
@@ -81,7 +82,7 @@ export default function CaseDocumentsPage() {
   return (
     <Shell title={claim ? `مدارک — ${caseTitle(claim)}` : 'بررسی وضعیت مدارک'} breadcrumb="بررسی وضعیت مدارک" nav={ORG_NAV} realm="org">
       <ErrorBox message={error} />
-      {aiNote && <div className="alert-success mb-3 text-sm">{AI_QUEUED_FA}</div>}
+      <Flash text={aiNote ? AI_QUEUED_FA : null} ok />
       {!claim || !checklist ? <div className="card p-12 flex justify-center"><FancyLoader label="در حال بارگذاری مدارک" /></div> : (
         <>
           <div ref={sheet} className="cs-sheet">

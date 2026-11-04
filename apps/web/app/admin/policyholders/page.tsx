@@ -8,6 +8,7 @@ import { kindName, Line, useCatalog } from '../../../lib/line';
 import { ErrorBox, Spinner } from '../../components/ui';
 import { JalaliDatePicker } from '../../components/JalaliDatePicker';
 import { UploadButton } from '../../components/upload';
+import { Flash } from '../../components/Toaster';
 
 interface Contract { id: string; line: Line | null; lineLabel: string | null; policyNumber: string | null; startIso?: string | null; endIso?: string | null; insurerTenantId: string; insurerName: string; startDate: string | null; endDate: string | null; isActive: boolean; inForce: boolean }
 interface Company { id: string; name: string; code: string | null; isActive: boolean; brokerTenantId: string; brokerName: string; hasPassword: boolean; mustChangePassword?: boolean; passwordSetAt: string | null; lines: Line[]; contracts: Contract[] }
@@ -211,7 +212,7 @@ export default function AdminPolicyholders() {
           </div>
         )}
         <ErrorBox message={error} />
-        {msg && <div className="alert-success">{msg}</div>}
+        <Flash id={msg} text={msg} ok />
       </div>
 
       {/* Brokerage switches: manual completion, and the «broker» login of the بیمه‌گزار panel */}

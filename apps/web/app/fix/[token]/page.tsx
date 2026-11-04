@@ -4,6 +4,7 @@ import { useParams } from 'next/navigation';
 import { client } from '../../../lib/client';
 import { FancyLoader } from '../../components/ui';
 import { OnProgress, UploadButton } from '../../components/upload';
+import { Flash } from '../../components/Toaster';
 
 interface LinkInfo {
   claimNumber: string; archived: boolean; expiresAt: string; checking: number;
@@ -39,7 +40,7 @@ export default function FixDocuments() {
             <p className="text-sm" style={{ color: 'var(--muted)' }}>پروندهٔ {info.claimNumber}</p>
             {info.archived ? <div className="alert-success">این پرونده بسته شده است و نیازی به بارگذاری ندارد.</div> : (
               <>
-                {sent > 0 && <div className="alert-success text-sm">مدرک دریافت شد و دوباره بررسی می‌شود. نتیجه با پیامک به شما اعلام می‌شود.</div>}
+                <Flash id={sent} text={sent > 0 ? 'مدرک دریافت شد و دوباره بررسی می‌شود. نتیجه با پیامک به شما اعلام می‌شود.' : null} ok />
                 {info.items.length === 0 ? (
                   <div className="alert-success text-sm">
                     {info.checking > 0 ? 'مدارک شما در حال بررسی است؛ نتیجه با پیامک اعلام می‌شود.' : 'همهٔ مدارک در جای درست بارگذاری شده است و کاری لازم نیست.'}

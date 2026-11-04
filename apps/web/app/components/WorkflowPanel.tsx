@@ -5,6 +5,7 @@ import { client } from '../../lib/client';
 import { JalaliDatePicker } from './JalaliDatePicker';
 import { Overlay } from './ui';
 import { UploadButton } from './upload';
+import { Flash } from './Toaster';
 
 /** Shape of `workflow` on GET /claims/:id (see apps/api/src/modules/claims/workflow.ts). */
 export interface WorkflowAction {
@@ -221,7 +222,7 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact }: 
       ) : w.currentStage ? (
         <div className="text-xs" style={{ color: 'var(--muted)' }}>پرونده در حال حاضر نزد «{w.currentStageLabel}» است؛ اقدامی برای شما در این مرحله نیست.</div>
       ) : null}
-      {err && !open && <div className="alert-error text-sm">{err}</div>}
+      <Flash text={err && !open ? err : null} ok={false} />
 
       {open && (
         <Overlay onClose={() => !busy && setOpen(null)}>
@@ -272,7 +273,7 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact }: 
                   </div>
                 </details>
               )}
-              {err && <div className="alert-error">{err}</div>}
+              <Flash text={err} ok={false} />
               {sure && (
                 <div className="rounded-lg p-3 font-bold" style={{ background: 'var(--surface-2)', color: 'var(--danger)' }} role="alert">
                   آیا مطمئن هستید که این پرونده را به بیمه‌گزار برمی‌گردانید؟

@@ -7,6 +7,7 @@ import { ErrorBox, Field, StatCard } from '../components/ui';
 import { MfaSetup } from '../components/MfaSetup';
 import { Icon } from '../components/Shell';
 import { ChangePasswordModal } from '../components/ChangePasswordModal';
+import { Flash } from '../components/Toaster';
 
 interface Tenant {
   id: string; slug: string; name: string; kind: string; isActive: boolean;
@@ -265,7 +266,7 @@ function ShahkarCard() {
     <div className="card p-5 space-y-3 mt-5">
       <h3 className="font-semibold">استعلام شاهکار (تطبیق کد ملی و شمارهٔ همراه)</h3>
       <p className="text-xs" style={{ color: 'var(--muted)' }}>هنگام ثبت‌نام یا تعریف نماینده، از سامانهٔ شاهکار بررسی می‌شود که کد ملی و شمارهٔ همراه متعلق به یک نفر باشند. اگر خاموش باشد، نماینده فقط با تایید کاربر سازمان فعال می‌شود.</p>
-      {msg && <div className={msg.t === 'ok' ? 'alert-success' : 'alert-error'}>{msg.m}</div>}
+      <Flash id={msg} text={msg?.m} ok={!!msg && msg.t === 'ok'} />
       <label className="flex items-center gap-2 text-sm cursor-pointer">
         <input type="checkbox" checked={!!c.enabled} onChange={(e) => save(e.target.checked)} />
         <span className="font-semibold">استعلام شاهکار فعال باشد</span>
@@ -316,7 +317,7 @@ function PlatformSms() {
     <div className="card p-5 space-y-3">
       <h3 className="font-semibold">درگاه پیامک سکو (میزبان)</h3>
       <p className="text-xs" style={{ color: 'var(--muted)' }}>این درگاه کدهای تایید ثبت‌نام (پیش از عضویت در سازمان) را ارسال می‌کند و در اختیار سازمان‌هایی که درگاه اختصاصی ندارند و تاییدشان کرده‌اید قرار می‌گیرد.</p>
-      {msg && <div className={msg.t === 'ok' ? 'alert-success' : 'alert-error'}>{msg.m}</div>}
+      <Flash id={msg} text={msg?.m} ok={!!msg && msg.t === 'ok'} />
       <div className="grid sm:grid-cols-2 gap-3">
         <Field label="ارائه‌دهنده"><select className="input" value={f.driver} onChange={(e) => setF({ ...f, driver: e.target.value })}>{(c.drivers || []).map((d: string) => <option key={d} value={d}>{DLABEL[d] || d}</option>)}</select></Field>
         {fields.map((k) => (

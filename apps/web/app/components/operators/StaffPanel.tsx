@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { client } from '../../../lib/client';
 import { Field, Overlay } from '../ui';
+import { Flash } from '../Toaster';
 
 export interface StaffRole { id: string; name: string; entry: boolean }
 export interface StaffBranch { id: string; name: string; code: string }
@@ -14,7 +15,7 @@ type Msg = { t: 'ok' | 'err'; m: string } | null;
 
 const seatLabel = (u: User) => (u.branch ? `شعبه: ${u.branch.name}` : u.desk === 'COUNCIL' ? 'شورای فنی' : 'مدیریت ستاد');
 const seatValue = (u: User) => (u.branch ? `branch:${u.branch.id}` : u.desk === 'COUNCIL' ? 'COUNCIL' : 'HQ');
-const MsgBox = ({ v }: { v: Msg }) => (v ? <div className={v.t === 'ok' ? 'alert-success' : 'alert-error'}>{v.m}</div> : null);
+const MsgBox = ({ v }: { v: Msg }) => <Flash id={v} text={v?.m} ok={v?.t === 'ok'} />; // a toast at the top of the screen
 
 /** Roles grouped: the ones that open panel 1 (ثبت پرونده) first. */
 function RoleOptions({ roles }: { roles: StaffRole[] }) {

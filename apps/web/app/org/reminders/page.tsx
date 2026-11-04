@@ -7,6 +7,7 @@ import { Shell } from '../../components/Shell';
 import { ErrorBox, Field, Spinner } from '../../components/ui';
 import { JalaliDatePicker } from '../../components/JalaliDatePicker';
 import { ORG_NAV } from '../nav';
+import { Flash } from '../../components/Toaster';
 
 interface Reminder {
   id: string; title: string; note: string | null; claimId: string | null; claimNumber: string | null; sms: boolean; smsSent: boolean;
@@ -73,7 +74,7 @@ function Reminders() {
         <div className="card p-4 space-y-3 h-fit">
           <h3 className="font-semibold text-sm">یادآور تازه{claimNumber ? ` — پروندهٔ ${claimNumber}` : ''}</h3>
           <ErrorBox message={error} />
-          {ok && <div className="alert-success text-sm">{ok}</div>}
+          <Flash id={ok} text={ok} ok />
           <Field label="عنوان *"><input className="input" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} maxLength={200} placeholder="مثلاً تماس با بیمه‌گزار برای کسری مدارک" /></Field>
           <Field label="توضیحات"><textarea className="input" rows={2} value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} maxLength={1000} /></Field>
           <Field label="یادآوری به">
