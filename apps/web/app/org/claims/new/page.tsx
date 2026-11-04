@@ -9,10 +9,13 @@ import { CLAIM_TYPE_LABELS, ErrorBox } from '../../../components/ui';
 import { JalaliDatePicker } from '../../../components/JalaliDatePicker';
 import { Coverage, CoverageNote, coverageText } from '../../../components/CoverageNote';
 import { ORG_NAV } from '../../nav';
-import { EVENT_DATE_LABEL, insuredNameLabel } from '../../../components/claim-wording';
+import { CAUSE_LABEL, EVENT_DATE_LABEL, insuredNameLabel } from '../../../components/claim-wording';
 
 /** An insurer's panel 1: its partner کارگزاری‌ها (with their بیمه‌گزاران), شعبه‌ها, and Super Admin's entry way. */
-interface InsurerEntry { way: 'BROKER' | 'BRANCH' | 'ASK'; brokers: { id: string; name: string; companies: { id: string; name: string }[] }[]; branches: { id: string; name: string; code: string }[] }
+type FieldMode = 'hidden' | 'optional' | 'required';
+/** The filing form of an insurer's panel 1, as Model View sets it: «علت خسارت» and تاریخ تولد, and each نوع پرونده's cause list. */
+interface EntryForm { cause: FieldMode; birthDate: FieldMode; causeLists: { DEATH: string[]; ACCIDENT: string[] }; caseTypes: { code: string; causeGroup: 'DEATH' | 'ACCIDENT' }[] }
+interface InsurerEntry { way: 'BROKER' | 'BRANCH' | 'ASK'; form?: EntryForm; brokers: { id: string; name: string; companies: { id: string; name: string }[] }[]; branches: { id: string; name: string; code: string }[] }
 interface Company { id: string; name: string; currentInsurer: { id: string; name: string } | null; contracts: { insurerName: string; policyNumber: string | null }[]; accounts: { id: string; fullName: string }[] }
 
 const toAscii = (s: string) => s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
@@ -64,8 +67,9 @@ export default function NewClaim() {
   const [f, setF] = useState({
     companyId: '', policyHolderId: '', insurerTenantId: '', channel: 'BROKER', sellingBranchId: '',
     claimType: 'DEATH_ILLNESS', deceasedFullName: '', deceasedNationalCode: '', birthDate: '', eventDate: '', claimedAmount: '', policyNumber: '', description: '',
-    startStage: '', brokerTenantId: '', branchId: '',
+    startStage: '', brokerTenantId: '', branchId: '', causeOfDeath: '',
   });
+  const [causes, setCauses] = useState<string[]>([]); // ticked items of «علت خسارت»
   const [ins, setIns] = useState<InsurerEntry | null>(null);
   // «اعلام خسارت»: may this operator file, and to which desks may the case go?
   const [notice, setNotice] = useState<{ enabled: boolean; targets: string[]; default: string; labels: Record<string, string> } | null>(null);
@@ -97,6 +101,11 @@ export default function NewClaim() {
   const eventLabel = EVENT_DATE_LABEL;
   const age = ageBetween(f.birthDate ? jalaliToIso(f.birthDate) : null, f.eventDate ? jalaliToIso(f.eventDate) : null);
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF((s) => ({ ...s, [k]: e.target.value }));
+  // «علت خسارت»: the insurer's ticks for this نوع پرونده (its own panel 1), plus typed text; Model View may require it.
+  const form = ins?.form;
+  const causeOptions = form?.causeLists[form.caseTypes.find((t) => t.code === f.claimType)?.causeGroup ?? 'ACCIDENT'] ?? [];
+  const cause = [...causes.filter((c) => causeOptions.includes(c)), f.causeOfDeath.trim()].filter(Boolean).join('، ');
+  const formProblem = () => (form?.cause === 'required' && !cause ? `${CAUSE_LABEL} را مشخص کنید` : form?.birthDate === 'required' && !f.birthDate ? 'تاریخ تولد بیمه‌شده را وارد کنید' : '');
 
   /**
    * Ask فن‌آوران about this کد ملی. The insurer that answers: an insurer's own staff → their insurer; a
@@ -132,6 +141,7 @@ export default function NewClaim() {
     if (insStart === 'BROKER' && !insBroker) return setError('پرونده به میز کارگزاری می‌رود؛ کارگزاری را انتخاب کنید');
     if (!insBroker && !f.sellingBranchId) return setError('شعبه فروش را انتخاب کنید');
     if (insStart === 'BRANCH' && insBroker && !f.branchId) return setError('شعبه‌ای را که پرونده به آن می‌رود انتخاب کنید');
+    if (formProblem()) return setError(formProblem());
     const iso = f.eventDate ? jalaliToIso(f.eventDate) : null;
     if (f.eventDate && !iso) return setError(`${eventLabel} نامعتبر است (نمونه: ۱۴۰۵/۰۷/۰۱)`);
     const birthIso = f.birthDate ? jalaliToIso(f.birthDate) : null;
@@ -146,6 +156,7 @@ export default function NewClaim() {
       if (insBroker) { payload.brokerTenantId = insBroker.id; if (f.companyId) payload.policyholderCompanyId = f.companyId; }
       else payload.sellingBranchId = f.sellingBranchId;
       if (insStart === 'BRANCH' && f.branchId) payload.branchId = f.branchId;
+      if (cause) payload.causeOfDeath = cause;
       if (iso) payload.eventDate = iso;
       if (birthIso) payload.deceasedBirthDate = birthIso;
       if (f.policyNumber.trim()) payload.policyNumber = toAscii(f.policyNumber).trim();
@@ -184,6 +195,7 @@ export default function NewClaim() {
       if (f.policyNumber.trim()) payload.policyNumber = toAscii(f.policyNumber).trim();
       if (f.description.trim()) payload.description = f.description.trim();
       if (f.startStage) payload.startStage = f.startStage;
+      if (cause) payload.causeOfDeath = cause;
       const c = await client.post<{ id: string }>('/claims', payload, 'org');
       router.push(`/org/claims/${c.id}`);
     } catch (e: any) { setError(e.message); } finally { setBusy(false); }
@@ -311,9 +323,9 @@ export default function NewClaim() {
               {Object.entries(caseTypes).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
           </PField>
-          <PField label="تاریخ تولد بیمه‌شده (شمسی)" help="سن بیمه‌شده به‌طور خودکار محاسبه می‌شود.">
+          {form?.birthDate !== 'hidden' && <PField label={`تاریخ تولد بیمه‌شده (شمسی)${form?.birthDate === 'required' ? ' *' : ''}`} help="سن بیمه‌شده به‌طور خودکار محاسبه می‌شود.">
             <JalaliDatePicker value={f.birthDate} onChange={(v) => setF((s) => ({ ...s, birthDate: v }))} placeholder="۱۳۴۵/۰۵/۱۲" />
-          </PField>
+          </PField>}
           <PField label={`${eventLabel} (شمسی)${co ? ' *' : ''}`}>
             <JalaliDatePicker value={f.eventDate} onChange={(v) => setF((s) => ({ ...s, eventDate: v }))} placeholder="۱۴۰۵/۰۷/۰۱" />
           </PField>
@@ -333,6 +345,21 @@ export default function NewClaim() {
           <PField label="شماره بیمه‌نامه" help={co ? 'اگر خالی بماند از قرارداد شرکت برداشته می‌شود.' : 'اختیاری.'}>
             <input className="input" value={f.policyNumber} onChange={set('policyNumber')} style={{ direction: 'ltr', textAlign: 'right' }} />
           </PField>
+
+          {form?.cause !== 'hidden' && (
+            <div className="md:col-span-2 lg:col-span-3"><PField label={`${CAUSE_LABEL}${form?.cause === 'required' ? ' *' : ''}`} help="علت را همان‌طور که می‌دانید بنویسید؛ مثلاً «ایست قلبی»، «تصادف رانندگی» یا «سقوط از ارتفاع».">
+              {causeOptions.length > 0 && (
+                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1 mb-2">
+                  {causeOptions.map((c) => (
+                    <label key={c} className="flex items-start gap-1.5 text-sm cursor-pointer">
+                      <input type="checkbox" className="mt-1" checked={causes.includes(c)} onChange={(e) => setCauses(e.target.checked ? [...causes, c] : causes.filter((x) => x !== c))} /> {c}
+                    </label>
+                  ))}
+                </div>
+              )}
+              <input className="input" value={f.causeOfDeath} onChange={set('causeOfDeath')} maxLength={300} placeholder={causeOptions.length > 0 ? 'علت دیگر (تایپ کنید)…' : 'شرح علت'} />
+            </PField></div>
+          )}
         </div>
 
         <div className="mt-2.5">

@@ -219,8 +219,14 @@ export class ClaimsService {
       db.policyholderCompany.findMany({ where: { tenantId: { in: ids }, isActive: true }, orderBy: { name: 'asc' }, select: { id: true, name: true, tenantId: true } }),
       db.branch.findMany({ where: { tenantId: me.id, ...(ctx?.branchScoped && ctx.branchId ? { id: ctx.branchId } : {}) }, orderBy: { name: 'asc' }, select: { id: true, name: true, code: true } }),
     ]);
+    const model = await this.modelOf(me.id);
     return {
-      way: (await this.modelOf(me.id)).entry.way,
+      way: model.entry.way,
+      // The filing form's own fields, as set in Model View (the server checks them again).
+      form: {
+        cause: model.form.cause, birthDate: model.form.birthDate, causeLists: model.form.causeLists,
+        caseTypes: model.form.caseTypes.map((t) => ({ code: t.code, causeGroup: t.causeGroup })),
+      },
       brokers: brokers.map((b) => ({ ...b, companies: companies.filter((c) => c.tenantId === b.id).map(({ id, name }) => ({ id, name })) })),
       branches,
     };
