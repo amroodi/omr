@@ -1,7 +1,7 @@
 'use client';
 import { LogoTile } from '../../components/LogoTile';
 import { API_BASE } from '../../../lib/api';
-import { EstelamFrame, InfoCol, InfoRow, PANELS, SubHead } from '../shared';
+import { CONTACT, EstelamFrame, InfoCol, InfoRow, SubHead } from '../shared';
 
 const link = { color: 'var(--est-accent)', fontWeight: 700 } as const;
 
@@ -13,7 +13,7 @@ export default function EstelamContact() {
         const co = r.company;
         return (
           <>
-            <SubHead title={PANELS[4].label} icon={PANELS[4].icon} />
+            <SubHead title={CONTACT.label} icon={CONTACT.icon} />
             <div className="est-cols est-cols-2">
               <InfoCol title="بیمه‌گزار">
                 {co ? (

@@ -275,6 +275,7 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
               </div>
               <div className="pcard cu-card">
                 <div><div className="cu-card-t">بیمه‌شده (متوفی)</div><div className="cu-card-v">{claim.deceasedName || '—'}</div>
+                  {claim.deceasedNationalCode && <div className="cu-card-s">کد ملی: <bdi className="latin-digits">{claim.deceasedNationalCode}</bdi></div>}
                   <div className="cu-card-s">{claim.claimTypeDeath === false ? 'تاریخ حادثه' : 'تاریخ فوت'}: {claim.eventDate || '—'}</div>
                   {claim.causeOfDeath && <div className="cu-card-s">علت: {claim.causeOfDeath}</div>}</div>
                 <span className="cu-card-ico"><BigIcon path={IC.user} size={34} /></span>

@@ -31,7 +31,7 @@ export default function EstelamDocuments() {
         const desks = manual ? [] : order.filter((s) => seen.has(s)).length ? order.filter((s) => seen.has(s)) : ['BROKER', 'BRANCH', 'HQ'];
         return (
           <>
-            <SubHead title="بررسی وضعیت مدارک" icon="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM14 2v6h6M8 13h8M8 17h5" />
+            <SubHead title="آخرین وضعیت مدارک" icon="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM14 2v6h6M8 13h8M8 17h5" />
             {docs.length === 0 ? (
               <div className="est-card p-6 text-sm" style={{ color: 'var(--muted)' }}>فهرست مدارک این پرونده هنوز در دسترس نیست.</div>
             ) : (

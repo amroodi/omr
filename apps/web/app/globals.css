@@ -2285,3 +2285,11 @@ a.cu-card.is-link:hover { transform: translateY(-2px); box-shadow: 0 0 0 2px var
 /* A case number in its parts: «سال ۱۴۰۴ — بیمه‌نامه 14/6990/153 — ردیف ۲» */
 .case-no { display: inline-flex; flex-wrap: wrap; gap: 2px 0; }
 .case-no > span + span::before { content: '—'; margin: 0 6px; opacity: .55; }
+
+/* Panel 3: the three info columns side by side again, each its own white card (stacked on phones). */
+.est .est-cols { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; background: none; border: 0; padding: 0; box-shadow: none; }
+.est .est-cols.est-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.est .est-cols.est-cols-1 { grid-template-columns: minmax(0, 1fr); }
+.est .est-col { background: var(--est-card); border: 1px solid var(--est-line); border-radius: 16px; box-shadow: 0 2px 10px rgba(0,0,0,.04); padding: 0 16px 12px; overflow: hidden; }
+.est .est-col .est-row { grid-template-columns: minmax(96px, 42%) minmax(0, 1fr); padding: 8px 10px; }
+@media (max-width: 1000px) { .est .est-cols, .est .est-cols.est-cols-2 { grid-template-columns: minmax(0, 1fr); } }
