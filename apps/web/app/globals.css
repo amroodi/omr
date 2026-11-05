@@ -2281,3 +2281,7 @@ a.cu-card.is-link:hover { transform: translateY(-2px); box-shadow: 0 0 0 2px var
   .est .est-row, .est .est-step { grid-template-columns: 120px minmax(0, 1fr); }
   .est .est-cols { padding: 6px 12px 12px; }
 }
+
+/* A case number in its parts: «سال ۱۴۰۴ — بیمه‌نامه 14/6990/153 — ردیف ۲» */
+.case-no { display: inline-flex; flex-wrap: wrap; gap: 2px 0; }
+.case-no > span + span::before { content: '—'; margin: 0 6px; opacity: .55; }

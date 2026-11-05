@@ -1,7 +1,7 @@
 'use client';
 import { claimTypeLabel } from './ui';
 import { ACTION_FA, STATE_FA, TimelineStep } from './WorkflowPanel';
-import { blankVal, CaseClaim, DEATH_TYPES, fmtAmount, STATUS_FA, StatusHistoryButton, WF_STEPS } from './case-ui';
+import { blankVal, CaseClaim, CaseNo, DEATH_TYPES, fmtAmount, STATUS_FA, StatusHistoryButton, WF_STEPS } from './case-ui';
 
 const faD = (s: string) => s.replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[+d]);
 
@@ -25,13 +25,13 @@ export function ResultBox({ c }: { c: CaseClaim & { payableAmount?: string; paid
         <dt>مبلغ خسارت قطعی (تایید شده):</dt><dd>{rial(c.finalizedAmount)}</dd>
         <dt>قابل پرداخت:</dt><dd><b>{rial(c.finalizedAmount || c.payableKnown ? c.payableAmount : null)}</b></dd>
       </dl>
-      {paid && <p>دستور پرداخت مبلغ {rial(c.payableAmount)}{c.paidDate ? ` در تاریخ ${c.paidDate}` : ''} صادر شده است.</p>}
+      {paid && <p>دستور پرداخت مبلغ {rial(c.payableAmount)}{c.paidDate && !blankVal(c.paidDate) ? ` در تاریخ ${c.paidDate}` : ''} صادر شده است.</p>}
     </div>
   );
 }
 
 /** «فرایند رسیدگی پرونده»: a vertical timeline — filing, then every hand-off, then payment. */
-export function ProcessTimeline({ c, fv }: { c: CaseClaim & { steps?: TimelineStep[]; paidDate?: string | null; createdAt?: string | null }; fv: Record<string, string> }) {
+export function ProcessTimeline({ c, fv, splitNumber = false }: { c: CaseClaim & { steps?: TimelineStep[]; paidDate?: string | null; createdAt?: string | null }; fv: Record<string, string>; splitNumber?: boolean }) {
   // A hand-completed case («ویرایش») tells only what was typed; otherwise the hierarchy's hand-offs.
   const manual = !!c.story?.manual;
   // A case brought in from Excel (or completed by hand without a history): the stages typed for it.
@@ -43,7 +43,7 @@ export function ProcessTimeline({ c, fv }: { c: CaseClaim & { steps?: TimelineSt
       <ol>
         <li className="is-done">
           <div className="cu-node-t">ثبت پرونده :</div>
-          <div className="cu-kv"><b>شماره پرونده :</b><span className="latin-digits">{c.claimNumber}</span></div>
+          <div className="cu-kv"><b>شماره پرونده :</b>{splitNumber ? <span><CaseNo n={c.claimNumber} /></span> : <span className="latin-digits">{c.claimNumber}</span>}</div>
           <div className="cu-kv"><b>نوع خسارت :</b><span>{claimTypeLabel(c)}</span></div>
           {!(c.imported && (c.status === 'PAID' || c.status === 'REJECTED')) && <div className="cu-kv"><b>تاریخ ثبت پرونده :</b><span>{c.createdAt ?? '—'}</span></div>}
           <div className="cu-kv"><b>{(c.claimTypeDeath ?? DEATH_TYPES.has(c.claimType)) ? 'تاریخ فوت' : 'تاریخ وقوع'} :</b><span>{c.eventDate ?? '—'}</span></div>
@@ -84,7 +84,7 @@ export function ProcessTimeline({ c, fv }: { c: CaseClaim & { steps?: TimelineSt
           <li className="is-done">
             <div className="cu-node-t">پرداخت خسارت :</div>
             <div className="cu-kv"><b>وضعیت :</b><span>دستور پرداخت صادر شد</span></div>
-            {c.paidDate && <div className="cu-kv"><b>تاریخ دستور پرداخت :</b><span>{c.paidDate}</span></div>}
+            {c.paidDate && !blankVal(c.paidDate) && <div className="cu-kv"><b>تاریخ دستور پرداخت :</b><span>{c.paidDate}</span></div>}
             <div className="cu-kv"><b>مبلغ قابل پرداخت :</b><span>{rial(c.payableAmount)}</span></div>
           </li>
         )}

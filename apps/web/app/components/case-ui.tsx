@@ -241,6 +241,29 @@ export function PersonCards({ claim, fv }: { claim: CaseClaim; fv: Record<string
 /** A typed stage value that means nothing happened: empty, «ندارد», or a dash (as imported Excel cells say). */
 export const blankVal = (v?: string | null) => !v || /^\s*(ندارد|ندارد\.|-+|—|ـ+)\s*$/.test(v);
 
+/**
+ * A case number «year/policy/row» (e.g. 1404/14/6990/153/02) in its parts — easier to read than the
+ * whole string, above all for imported cases whose policy numbers are long. null = not that shape.
+ */
+export function caseNoParts(n?: string | null): { year: string; policy: string; row: string } | null {
+  const p = String(n ?? '').split('/');
+  if (p.length < 3 || !/^\d{4}$/.test(p[0])) return null;
+  return { year: p[0], policy: p.slice(1, -1).join('/'), row: p[p.length - 1] };
+}
+
+/** «سال ۱۴۰۴ — بیمه‌نامه 14/6990/153 — ردیف ۲» (the whole number on hover). */
+export function CaseNo({ n }: { n?: string | null }) {
+  const x = caseNoParts(n);
+  if (!x) return <bdi className="latin-digits">{n || '—'}</bdi>;
+  return (
+    <span className="case-no" title={n ?? ''}>
+      <span>سال {faD(x.year)}</span>
+      <span>بیمه‌نامه <bdi className="latin-digits">{x.policy && x.policy !== '0' ? x.policy : '—'}</bdi></span>
+      <span>ردیف {Number(x.row).toLocaleString('fa-IR')}</span>
+    </span>
+  );
+}
+
 export const WF_STEPS: { label: string; date?: string; status?: string; amount?: boolean }[] = [
   // In the order things happen: the death is reported first, then the brokerage reports it to the insurer.
   { label: 'اعلام فوت', date: 'death_notice_date', status: 'death_notice_status' },

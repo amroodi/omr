@@ -6,7 +6,7 @@ import { Spinner } from '../components/ui';
 import { BrandMark } from '../components/brand';
 import { Icon } from '../components/Shell';
 import { InquiryCase, inquiryApi, pickedClaim } from '../../lib/api';
-import { notesTone } from '../components/case-ui';
+import { CaseNo, notesTone } from '../components/case-ui';
 
 /**
  * مشاهده سریع و استعلام پرونده — shared pieces of the inquiry pages (/estelam and its five sub-pages).
@@ -126,8 +126,9 @@ export function EstelamSide({ r }: { r: any }) {
     <aside className="est-side" aria-label="منوی پرونده">
       <div className="est-side-head">
         <span className="est-side-k">پرونده</span>
-        <span className="est-side-v latin-digits">{r?.claimNumber || r?.caseNumber || '—'}</span>
-        {r?.deceasedName && <span className="est-side-n">{r.deceasedName}</span>}
+        {/* The person first; the number in its parts (year — policy — row) */}
+        {r?.deceasedName && <span className="est-side-v">{r.deceasedName}</span>}
+        <span className="est-side-n"><CaseNo n={r?.claimNumber || r?.caseNumber} /></span>
       </div>
       <nav className="est-side-nav" ref={nav}>
         {SIDE_MENU.map((m) => (
@@ -212,7 +213,7 @@ function CasePicker({ cases, current, onPick }: { cases: InquiryCase[]; current?
             <b>{c.name || '—'}</b>
             <span>{c.relation}{c.line ? ` — ${c.line}` : ''}</span>
             <span>{c.claimType}{c.eventDate ? ` — ${c.eventDate}` : ''}</span>
-            <span className="latin-digits">{c.claimNumber}</span>
+            <span><CaseNo n={c.claimNumber} /></span>
           </button>
         ))}
       </div>
