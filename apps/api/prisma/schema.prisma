@@ -49,6 +49,7 @@ model Tenant {
   // field, which also moves the case's status), outside the insurer hierarchy? Super admin can lock it.
   manualCompletion Boolean @default(true)
   spareDeskEnabled Boolean @default(false) // «میز کار مستقل» (brokerages; set only by Super Admin)
+  chargoonEnabled  Boolean @default(false) // the organization's letters go through چارگون: letters ask «شماره چارگون»
   // نوع بیمه‌نامه this organization's panel 1 offers (Super Admin); empty = every active kind of the catalog.
   policyKinds      String[] @default([])
   spareCases SpareCase[]
@@ -1048,6 +1049,7 @@ model ClaimLetter {
   number           String?
   letterDate       DateTime?
   subject          String?
+  chargoonNo       String? // «شماره چارگون» (organizations using چارگون correspondence)
   storageKey       String? // encrypted scan
   fileName         String?
   mimeType         String?

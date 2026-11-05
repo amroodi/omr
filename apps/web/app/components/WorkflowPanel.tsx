@@ -20,6 +20,7 @@ export interface Workflow {
   returnTargetStage: string | null; returnTargetLabel: string | null;
   myStage: string | null; holdsDesk: boolean;
   lossNotice: { number: string | null; date: string | null; at?: string | null } | null; canRecordLossNotice: boolean;
+  chargoon?: boolean; // the viewer's organization uses چارگون: letters ask «شماره چارگون»
   lossNoticeAsksNumber?: boolean; // false: شعبه records اعلام خسارت with one click (no number / date)
   actions: WorkflowAction[];
   physical?: PhysicalView;
@@ -66,7 +67,7 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact }: 
   const [note, setNote] = useState('');
   const [defs, setDefs] = useState('');
   const [branchId, setBranchId] = useState('');
-  const [letter, setLetter] = useState({ number: '', date: '', subject: '' });
+  const [letter, setLetter] = useState({ number: '', date: '', subject: '', chargoonNo: '' });
   const [letterFile, setLetterFile] = useState<File | null>(null);
   const [ln, setLn] = useState({ number: '', date: '' });
   const [busy, setBusy] = useState(false);
@@ -77,7 +78,7 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact }: 
   const asksNumber = w.lossNoticeAsksNumber !== false;
 
   const start = (a: WorkflowAction & { physical?: boolean }) => {
-    setErr(''); setNote(''); setDefs(''); setTracking(''); setSure(false); setLetter({ number: '', date: '', subject: '' }); setLetterFile(null);
+    setErr(''); setNote(''); setDefs(''); setTracking(''); setSure(false); setLetter({ number: '', date: '', subject: '', chargoonNo: '' }); setLetterFile(null);
     setBranchId(a.selectedBranchId || (a.branchOptions?.length === 1 ? a.branchOptions[0].id : ''));
     setOpen(a);
   };
@@ -92,9 +93,10 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact }: 
         else await client.post(`${base}/${claimId}/rectify`, { note: note || undefined }, 'customer');
       } else {
         let letterId: string | undefined;
-        if (letter.number.trim() || letterFile) {
+        if (letter.number.trim() || letter.chargoonNo.trim() || letterFile) {
           const fd = new FormData();
           if (letter.number.trim()) fd.append('number', letter.number.trim());
+          if (letter.chargoonNo.trim()) fd.append('chargoonNo', letter.chargoonNo.trim());
           const iso = letter.date ? jalaliToIso(letter.date) : undefined;
           if (iso) fd.append('date', iso);
           if (letter.subject.trim()) fd.append('subject', letter.subject.trim());
@@ -202,7 +204,7 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact }: 
                     {e.trackingNo && <span> — کد رهگیری: {e.trackingNo}</span>}
                     {e.note && <div>«{e.note}»</div>}
                     {(e.letters || []).map((l) => (
-                      <div key={l.id} style={{ color: 'var(--muted)' }}>نامه {l.number ? `شمارهٔ ${l.number}` : ''}{l.date ? ` — ${l.date}` : ''}
+                      <div key={l.id} style={{ color: 'var(--muted)' }}>نامه {l.number ? `شمارهٔ ${l.number}` : ''}{l.chargoonNo ? ` — چارگون ${l.chargoonNo}` : ''}{l.date ? ` — ${l.date}` : ''}
                         {l.hasFile && realm === 'org' && <button className="btn btn-ghost btn-sm" onClick={() => client.view(`/claims/${claimId}/letters/${l.id}/file`, 'org')}>مشاهده</button>}
                       </div>
                     ))}
@@ -269,10 +271,11 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact }: 
                 <textarea className="input" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
               </div>
               {realm === 'org' && (
-                <details className="rounded-lg p-2" style={{ background: 'var(--surface-2)' }} open={!!letter.number}>
+                <details className="rounded-lg p-2" style={{ background: 'var(--surface-2)' }} open={!!letter.number || !!letter.chargoonNo}>
                   <summary className="cursor-pointer font-semibold">پیوست نامه (مکاتبه) — اختیاری</summary>
                   <div className="grid sm:grid-cols-2 gap-2 mt-2">
                     <input className="input" placeholder="شمارهٔ نامه" value={letter.number} onChange={(e) => setLetter({ ...letter, number: e.target.value })} />
+                    {w.chargoon && <input className="input" placeholder="شماره چارگون" value={letter.chargoonNo} onChange={(e) => setLetter({ ...letter, chargoonNo: e.target.value })} style={{ direction: 'ltr', textAlign: 'right' }} />}
                     <JalaliDatePicker value={letter.date} onChange={(v) => setLetter({ ...letter, date: v })} placeholder="تاریخ نامه" />
                     <input className="input sm:col-span-2" placeholder="موضوع" value={letter.subject} onChange={(e) => setLetter({ ...letter, subject: e.target.value })} />
                     <div className="sm:col-span-2 flex items-center gap-2 flex-wrap">
@@ -309,7 +312,7 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact }: 
 }
 
 export const ACTION_FA: Record<string, string> = {
-  LOSS_NOTICE: 'ثبت اعلام خسارت به بیمه‌گر',
+  LOSS_NOTICE: 'ثبت اعلام خسارت',
   SUBMIT: 'ارسال', FORWARD: 'تایید و ارسال', REFER_COUNCIL: 'ارجاع به شورای فنی', PAY_ORDER: 'دستور پرداخت',
   RETURN: 'عودت برای رفع نقص', RETURN_DIRECT: 'برگشت از سرپرستی به بیمه‌گزار', DOWN_FORWARD: 'ارسال به سطح پایین‌تر',
   DOWN_DIRECT: 'ارسال مستقیم به بیمه‌گزار (اختیار مدیریت)', MARK_PAID: 'ثبت پرداخت', REJECT_FINAL: 'رد نهایی',
@@ -324,7 +327,7 @@ export interface TimelineStep {
   order: number; stage?: string | null; stageLabel?: string | null; direction?: string; purpose?: string | null;
   state: string; action?: string | null; note?: string | null; decidedAt?: string | null; decidedByName?: string | null;
   holderName?: string | null; branchName?: string | null;
-  letters?: { id: string; number: string | null; subject: string | null; date: string | null; hasFile: boolean; fileName: string | null }[];
+  letters?: { id: string; number: string | null; chargoonNo?: string | null; subject: string | null; date: string | null; hasFile: boolean; fileName: string | null }[];
 }
 
 /** The case's «ثبت اعلام خسارت» (from the API), placed among its hand-offs. */
@@ -360,7 +363,7 @@ export function WorkflowTimeline({ claimId, steps, realm }: { claimId: string; s
               {s.note && <div className="text-xs mt-0.5">«{s.note}»</div>}
               {(s.letters || []).map((l) => (
                 <div key={l.id} className="text-xs mt-0.5 flex items-center gap-2" style={{ color: 'var(--muted)' }}>
-                  <span>نامه {l.number ? `شمارهٔ ${l.number}` : ''}{l.date ? ` — ${l.date}` : ''}{l.subject ? ` — ${l.subject}` : ''}</span>
+                  <span>نامه {l.number ? `شمارهٔ ${l.number}` : ''}{l.chargoonNo ? ` — چارگون ${l.chargoonNo}` : ''}{l.date ? ` — ${l.date}` : ''}{l.subject ? ` — ${l.subject}` : ''}</span>
                   {l.hasFile && realm === 'org' && <button className="btn btn-ghost btn-sm" onClick={() => client.view(`/claims/${claimId}/letters/${l.id}/file`, 'org')}>مشاهده</button>}
                 </div>
               ))}

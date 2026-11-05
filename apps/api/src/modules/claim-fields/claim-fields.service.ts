@@ -220,7 +220,7 @@ export class ClaimFieldsService {
     // «ثبت اعلام خسارت» by شعبه, in its place among the hand-offs.
     if (claim.lossNoticeDate) moves.push({
       t: claim.lossNoticeDate.getTime(), at: toJalali(claim.lossNoticeDate, true, true),
-      title: `${this.store.labels(claim.insurerTenantId).BRANCH}: ثبت اعلام خسارت به بیمه‌گر`, detail: claim.lossNoticeNumber ? `شماره ${claim.lossNoticeNumber}` : null,
+      title: `${this.store.labels(claim.insurerTenantId).BRANCH}: ثبت اعلام خسارت`, detail: claim.lossNoticeNumber ? `شماره ${claim.lossNoticeNumber}` : null,
     });
     moves.sort((a, b) => a.t - b.t);
     const history = [
