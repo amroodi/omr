@@ -27,7 +27,7 @@ export default function EstelamProcess() {
           ) : (
             <div className="est-card p-6 space-y-5">
               <ResultBox c={asClaim(r) as any} />
-              <ProcessTimeline c={asClaim(r) as any} fv={{ ...(r.stages ?? {}), cause_of_death: r.causeOfDeath ?? '' }} />
+              <ProcessTimeline splitNumber c={asClaim(r) as any} fv={{ ...(r.stages ?? {}), cause_of_death: r.causeOfDeath ?? '' }} />
             </div>
           )}
         </>
