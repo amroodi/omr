@@ -36,7 +36,7 @@ export default function EstelamDocuments() {
               <div className="est-card p-6 text-sm" style={{ color: 'var(--muted)' }}>فهرست مدارک این پرونده هنوز در دسترس نیست.</div>
             ) : (
               <section className="cs-table">
-                <div className="cs-table-h cs-grid-docs" style={{ ['--desks' as any]: desks.length }}>
+                <div className={`cs-table-h cs-grid-docs${desks.length ? '' : ' no-desks'}`} style={{ ['--desks' as any]: desks.length }}>
                   <span className="cs-th-n" />
                   <span>بارگذاری</span>
                   {desks.map((s) => <span key={s}>{DESK_FA[s]}</span>)}
@@ -44,7 +44,7 @@ export default function EstelamDocuments() {
                 </div>
                 <div className="cs-table-b">
                   {docs.map((d, i) => (
-                    <div key={i} className={`cs-tr cs-grid-docs${d.verified ? ' is-done' : ''}`} style={{ ['--desks' as any]: desks.length }}>
+                    <div key={i} className={`cs-tr cs-grid-docs${desks.length ? '' : ' no-desks'}${d.verified ? ' is-done' : ''}`} style={{ ['--desks' as any]: desks.length }}>
                       <span className="cs-td-n">{faN(i + 1)}</span>
                       <span className="cs-td-up"><Mark state={d.uploaded ? 'ok' : 'no'} title={d.uploaded ? `بارگذاری شده — ${d.uploadedAt ?? ''}` : 'بارگذاری نشده'} /></span>
                       {desks.map((s) => {

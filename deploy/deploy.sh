@@ -34,8 +34,20 @@ echo "==> Prisma: generate client + apply migrations + sync system-role permissi
 # uses a limited role for row-level security (deploy/rls-role.sh); otherwise both use DATABASE_URL.
 ( cd apps/api && export DATABASE_URL="${MIGRATE_DATABASE_URL:-$DATABASE_URL}" && npx prisma generate && npx prisma migrate deploy && npx ts-node prisma/sync-roles.ts && npx ts-node prisma/renumber-claims.ts && npx ts-node prisma/fix-file-names.ts )
 
+# The TypeScript builds need more than Node's default heap on a small server (the API build ran out at
+# ~490 MB). OMR_BUILD_HEAP_MB in /etc/omr/api.env overrides it; add swap if the server has little RAM.
+export NODE_OPTIONS="--max-old-space-size=${OMR_BUILD_HEAP_MB:-2048}"
+
 echo "==> Building API"
-npm --workspace apps/api run build
+# `nest build` empties dist/ first: keep the previous build and put it back if this one fails, so the
+# API that is still running (and a restart of it) is never left without its code.
+( cd apps/api && rm -rf dist.prev && if [ -d dist ]; then cp -a dist dist.prev; fi )
+if ! npm --workspace apps/api run build; then
+  echo "!! API build failed — the previous build is restored and the services were NOT restarted."
+  ( cd apps/api && if [ -d dist.prev ]; then rm -rf dist && mv dist.prev dist; fi )
+  exit 1
+fi
+rm -rf apps/api/dist.prev
 
 echo "==> Building web (NEXT_PUBLIC_API_BASE=$PUBLIC_API_BASE, NEXT_PUBLIC_TENANT_SLUG=$PUBLIC_TENANT_SLUG)"
 NEXT_PUBLIC_API_BASE="$PUBLIC_API_BASE" NEXT_PUBLIC_TENANT_SLUG="$PUBLIC_TENANT_SLUG" \

@@ -27,7 +27,7 @@ interface Doc { code: string; label: string; isActive: boolean; appliesToTypes: 
 interface Coverage { enabled: boolean; url: string; hasSecret: boolean; notChecked: number }
 interface Insurer { id: string; name: string; customized: boolean; casesAtCouncil: number; model: Model; docs: Doc[]; companies: { id: string; name: string; parentId: string | null }[]; coverage: Coverage }
 interface NoticeRule { enabled: boolean; targets: string[]; default: string }
-interface NoticeOrg { id: string; name: string; kind: string; entryRequiredDocs?: string[]; sources: { key: string; label: string; allowed: string[]; rule: NoticeRule }[] }
+interface NoticeOrg { id: string; name: string; kind: string; entryRequiredDocs?: string[]; entryAccidentDocs?: string[]; sources: { key: string; label: string; allowed: string[]; rule: NoticeRule }[] }
 interface Kind { code: string; label: string; active: boolean }
 interface Data { defaults: Model; kinds: Kind[]; insurers: Insurer[]; notice: NoticeOrg[]; targets: { key: string; label: string }[] }
 
@@ -58,6 +58,7 @@ export default function ModelView() {
   const [docKind, setDocKind] = useState(''); // '' = every نوع بیمه‌نامه
   const [entryBroker, setEntryBroker] = useState('');
   const [entryCodes, setEntryCodes] = useState<string[] | null>(null);
+  const [entryCrash, setEntryCrash] = useState<string[]>([]); // required only in a traffic accident
   const [cov, setCov] = useState<Coverage | null>(null);
   const [noticeOrg, setNoticeOrg] = useState('');
   const [notice, setNotice] = useState<NoticeOrg | null>(null);
@@ -336,7 +337,7 @@ export default function ModelView() {
               <Card title="مدارک الزامی پنل ۱ کارگزاری">
                 <p className="text-xs" style={{ color: 'var(--muted)' }}>در پنل ۱ این کارگزاری (کارکنان، بیمه‌گزاران و نمایندگان آن) فقط مدارک تیک‌خورده برای «ثبت نهایی» الزامی است و بقیه اختیاری و خاکستری نمایش داده می‌شود. بدون تیک = قواعد خود بیمه‌گر. پرونده‌ای که هیچ‌یک از این مدارک را ندارد (مثلاً حوادث با فهرستی برای فوت) همان قواعد بیمه‌گر را دارد. فهرست مدارک از همین بیمه‌گر نمایش داده می‌شود.</p>
                 <label className="text-sm block max-w-md">کارگزاری
-                  <select className="input mt-1" value={entryBroker} onChange={(e) => { setEntryBroker(e.target.value); setEntryCodes(brokers.find((b) => b.id === e.target.value)?.entryRequiredDocs ?? []); }}>
+                  <select className="input mt-1" value={entryBroker} onChange={(e) => { const b = brokers.find((x) => x.id === e.target.value); setEntryBroker(e.target.value); setEntryCodes(b?.entryRequiredDocs ?? []); setEntryCrash(b?.entryAccidentDocs ?? []); }}>
                     <option value="">انتخاب کنید…</option>
                     {brokers.map((b) => <option key={b.id} value={b.id}>{b.name}{(b.entryRequiredDocs ?? []).length ? ` (${(b.entryRequiredDocs ?? []).length.toLocaleString('fa-IR')} مدرک)` : ''}</option>)}
                   </select>
@@ -345,16 +346,21 @@ export default function ModelView() {
                   <>
                     <div className="grid md:grid-cols-2 gap-x-4 gap-y-1.5">
                       {docs.filter((d) => d.isActive).map((d) => (
-                        <label key={d.code} className="flex items-start gap-2 text-sm cursor-pointer">
-                          <input type="checkbox" className="mt-1" checked={entryCodes.includes(d.code)} onChange={(e) => setEntryCodes(toggled(entryCodes, d.code, e.target.checked))} />
-                          <span>{d.label}</span>
-                        </label>
+                        <div key={d.code} className="flex items-start gap-2 text-sm">
+                          <input type="checkbox" className="mt-1" title="الزامی" checked={entryCodes.includes(d.code)} onChange={(e) => { setEntryCodes(toggled(entryCodes, d.code, e.target.checked)); if (e.target.checked) setEntryCrash(toggled(entryCrash, d.code, false)); }} />
+                          <span className="flex-1">{d.label}
+                            <label className="flex items-center gap-1 text-xs mt-0.5 cursor-pointer" style={{ color: 'var(--muted)' }}>
+                              <input type="checkbox" checked={entryCrash.includes(d.code)} onChange={(e) => { setEntryCrash(toggled(entryCrash, d.code, e.target.checked)); if (e.target.checked) setEntryCodes(toggled(entryCodes, d.code, false)); }} />
+                              فقط در صورت وقوع سانحه تصادف الزامی
+                            </label>
+                          </span>
+                        </div>
                       ))}
                     </div>
                     <div className="flex gap-2 flex-wrap">
-                      <button className="btn btn-primary" disabled={busy || JSON.stringify([...entryCodes].sort()) === JSON.stringify([...(brokers.find((b) => b.id === entryBroker)?.entryRequiredDocs ?? [])].sort())}
-                        onClick={() => run(() => client.put(`/admin/workflow-model/${entryBroker}/entry-docs`, { codes: entryCodes }, 'super'), 'مدارک الزامی پنل ۱ ذخیره شد.')}>ذخیره</button>
-                      <button className="btn btn-ghost btn-sm" disabled={!entryCodes.length} onClick={() => setEntryCodes([])}>برداشتن همه (قواعد بیمه‌گر)</button>
+                      <button className="btn btn-primary" disabled={busy || (JSON.stringify([...entryCodes].sort()) === JSON.stringify([...(brokers.find((b) => b.id === entryBroker)?.entryRequiredDocs ?? [])].sort()) && JSON.stringify([...entryCrash].sort()) === JSON.stringify([...(brokers.find((b) => b.id === entryBroker)?.entryAccidentDocs ?? [])].sort()))}
+                        onClick={() => run(() => client.put(`/admin/workflow-model/${entryBroker}/entry-docs`, { codes: entryCodes, accident: entryCrash }, 'super'), 'مدارک الزامی پنل ۱ ذخیره شد.')}>ذخیره</button>
+                      <button className="btn btn-ghost btn-sm" disabled={!entryCodes.length && !entryCrash.length} onClick={() => { setEntryCodes([]); setEntryCrash([]); }}>برداشتن همه (قواعد بیمه‌گر)</button>
                     </div>
                   </>
                 )}

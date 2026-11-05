@@ -18,7 +18,7 @@ export interface DocReview { stage: string; state: string; canEdit: boolean; cha
 /** «بررسی هوشمند مدارک» verdict on one file (null = not checked). */
 export interface DocAi { status: string; reason: string | null; detected: string | null }
 export interface ClaimDoc { id: string; fileName: string; status: string; statusLabel: string; note: string | null; uploadedAt: string | null; version: number; isLatest: boolean; reviews?: DocReview[]; ai?: DocAi | null }
-export interface ChecklistItem { code: string; label: string; required?: boolean; uploaded: boolean; aiRefused?: boolean; latestStatus: string | null; documents: ClaimDoc[] }
+export interface ChecklistItem { code: string; label: string; required?: boolean; accidentOnly?: boolean; uploaded: boolean; aiRefused?: boolean; latestStatus: string | null; documents: ClaimDoc[] }
 export interface Checklist { claimType: string; complete: boolean; note?: string; items: ChecklistItem[]; otherDocuments?: ClaimDoc[]; entryList?: boolean }
 export interface FieldRow { key: string; label: string; type: string; options: string[]; required: boolean; value: string | null; source: string | null; confirmed: boolean; canEdit: boolean }
 export interface FieldsData { party: string; manual?: boolean; groups: Record<string, FieldRow[]> }
@@ -238,7 +238,10 @@ export function PersonCards({ claim, fv }: { claim: CaseClaim; fv: Record<string
 }
 
 /** Each executive step of the case: its date field and its status field (WORKFLOW_STAGE fields). */
-const WF_STEPS: { label: string; date?: string; status?: string; amount?: boolean }[] = [
+/** A typed stage value that means nothing happened: empty, «ندارد», or a dash (as imported Excel cells say). */
+export const blankVal = (v?: string | null) => !v || /^\s*(ندارد|ندارد\.|-+|—|ـ+)\s*$/.test(v);
+
+export const WF_STEPS: { label: string; date?: string; status?: string; amount?: boolean }[] = [
   // In the order things happen: the death is reported first, then the brokerage reports it to the insurer.
   { label: 'اعلام فوت', date: 'death_notice_date', status: 'death_notice_status' },
   { label: 'اعلام کارگزاری به بیمه‌گر', date: 'broker_to_insurer_date', status: 'broker_to_insurer_status' },
@@ -266,8 +269,8 @@ export function WorkflowStepsTable({ claim, fv }: { claim: CaseClaim; fv: Record
               </div>
               <div className="cs-table-b">
                 {WF_STEPS.map((s) => {
-                  const date = s.date ? fv[s.date] : '';
-                  const raw = s.status ? fv[s.status] : '';
+                  const date = s.date && !blankVal(fv[s.date]) ? fv[s.date] : '';
+                  const raw = s.status && !blankVal(fv[s.status]) ? fv[s.status] : '';
                   const status = raw && s.amount ? (fmtAmount(raw) ?? raw) : raw;
                   const done = !!(date || status);
                   return (

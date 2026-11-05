@@ -1,7 +1,9 @@
 'use client';
 import { claimTypeLabel } from './ui';
 import { ACTION_FA, STATE_FA, TimelineStep } from './WorkflowPanel';
-import { CaseClaim, DEATH_TYPES, STATUS_FA, StatusHistoryButton } from './case-ui';
+import { blankVal, CaseClaim, DEATH_TYPES, fmtAmount, STATUS_FA, StatusHistoryButton, WF_STEPS } from './case-ui';
+
+const faD = (s: string) => s.replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[+d]);
 
 /**
  * «فرایند رسیدگی پرونده» — shared by the بیمه‌گزار panel («روند پرونده») and the inquiry panel
@@ -11,7 +13,7 @@ import { CaseClaim, DEATH_TYPES, STATUS_FA, StatusHistoryButton } from './case-u
 const rial = (v?: string | number | null) => (v == null || v === '' ? '—' : `${Number(v).toLocaleString('fa-IR')} ریال`);
 
 /** The plain-language result box at the top (amounts and where the case stands). */
-export function ResultBox({ c }: { c: CaseClaim & { payableAmount?: string; paidDate?: string | null } }) {
+export function ResultBox({ c }: { c: CaseClaim & { payableAmount?: string; paidDate?: string | null; payableKnown?: boolean } }) {
   const paid = c.status === 'PAID';
   return (
     <div className="cu-summary">
@@ -21,7 +23,7 @@ export function ResultBox({ c }: { c: CaseClaim & { payableAmount?: string; paid
       <dl>
         <dt>مبلغ خسارت برآوردی:</dt><dd>{rial(c.claimedAmount)}</dd>
         <dt>مبلغ خسارت قطعی (تایید شده):</dt><dd>{rial(c.finalizedAmount)}</dd>
-        <dt>قابل پرداخت:</dt><dd><b>{rial(c.finalizedAmount ? c.payableAmount : null)}</b></dd>
+        <dt>قابل پرداخت:</dt><dd><b>{rial(c.finalizedAmount || c.payableKnown ? c.payableAmount : null)}</b></dd>
       </dl>
       {paid && <p>دستور پرداخت مبلغ {rial(c.payableAmount)}{c.paidDate ? ` در تاریخ ${c.paidDate}` : ''} صادر شده است.</p>}
     </div>
@@ -32,6 +34,8 @@ export function ResultBox({ c }: { c: CaseClaim & { payableAmount?: string; paid
 export function ProcessTimeline({ c, fv }: { c: CaseClaim & { steps?: TimelineStep[]; paidDate?: string | null; createdAt?: string | null }; fv: Record<string, string> }) {
   // A hand-completed case («ویرایش») tells only what was typed; otherwise the hierarchy's hand-offs.
   const manual = !!c.story?.manual;
+  // A case brought in from Excel (or completed by hand without a history): the stages typed for it.
+  const typed = manual && !(c.story?.history ?? []).length ? WF_STEPS.filter((s) => (s.date && !blankVal(fv[s.date])) || (s.status && !blankVal(fv[s.status]))) : [];
   const steps = manual ? [] : (c.steps ?? []).filter((s) => s.state !== 'PENDING' || s.order === Math.max(...(c.steps ?? []).map((x) => x.order)));
   return (
     <section className="cu-process">
@@ -52,6 +56,13 @@ export function ProcessTimeline({ c, fv }: { c: CaseClaim & { steps?: TimelineSt
             <div className="cu-node-t">{h.title} :</div>
             <div className="cu-kv"><b>وضعیت :</b><span>{h.detail || '—'}</span></div>
             <div className="cu-kv"><b>تاریخ و ساعت ثبت :</b><span>{h.at}</span></div>
+          </li>
+        ))}
+        {typed.map((s) => (
+          <li key={s.label} className="is-done">
+            <div className="cu-node-t">{s.label} :</div>
+            {s.status && !blankVal(fv[s.status]) && <div className="cu-kv"><b>وضعیت :</b><span>{s.amount ? fmtAmount(fv[s.status]) ?? fv[s.status] : fv[s.status]}</span></div>}
+            {s.date && !blankVal(fv[s.date]) && <div className="cu-kv"><b>تاریخ :</b><span>{faD(fv[s.date])}</span></div>}
           </li>
         ))}
         {steps.map((s) => {

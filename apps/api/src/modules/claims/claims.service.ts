@@ -97,6 +97,9 @@ interface FileClaimInput {
   /** «ذینفع قانونی» / «وراث قانونی», and the people named on the deceased's form (name + شبا). */
   beneficiaryType?: string;
   heirs?: HeirInput[];
+  /** سرمایه فوت / سرمایه حادثه (rials), when the filer knows them — kept as the case's fields. */
+  deathCapital?: string;
+  accidentCapital?: string;
 }
 
 /** The caller's seat in the claim chain (see myDesk). */
@@ -501,12 +504,18 @@ export class ClaimsService {
       },
       include: { steps: true },
     });
+    // سرمایه فوت / سرمایه حادثه typed on the form: the case's own fields (as an import fills them).
+    const capitals = ([['death_capital', input.deathCapital], ['accident_capital', input.accidentCapital]] as const)
+      .map(([key, v]) => [key, String(v ?? '').replace(/[^\d]/g, '')] as const).filter(([, v]) => v && Number(v) > 0);
+    if (capitals.length) {
+      await db.claimFieldValue.createMany({ data: capitals.map(([key, value]) => ({ claimId: claim.id, key, value, source: 'MANUAL' as any, confirmedAt: new Date() })), skipDuplicates: true });
+    }
 
     await this.audit.record({ action: AuditAction.CLAIM_SUBMIT, tenantId: insurerTenantId, targetType: 'Claim', targetId: claim.id, metadata: { channel: input.channel, moaref: moarefRole, ...(input.onBehalf ? { onBehalf: true, companyId } : {}) } });
     if (byPolicyHolder) {
       await this.notifyPolicyHolder(claim.policyHolderId, 'ثبت پرونده خسارت', `پرونده ${claim.claimNumber} ثبت شد؛ مدارک را بارگذاری و پرونده را ارسال کنید.`);
     } else {
-      await this.notifyOrg(firstStage === 'BROKER' ? moarefTenantId : insurerTenantId, 'پرونده خسارت جدید', `پرونده ${claim.claimNumber} برای بررسی به میز کار شما رسید.`);
+      await this.notifyOrg(firstStage === 'BROKER' ? moarefTenantId : insurerTenantId, 'پرونده خسارت جدید', `پرونده ${claim.claimNumber} برای بررسی به میز کار شما رسید.`, `/org/claims/${claim.id}`);
       await this.notifyPolicyHolder(claim.policyHolderId, 'ثبت پرونده خسارت', `پرونده ${claim.claimNumber} ثبت شد و در حال بررسی است.`);
     }
     // NOT_CHECKED (service down) is filled in by the coverage sweep as soon as the service answers.
@@ -1083,7 +1092,10 @@ export class ClaimsService {
         targetId: claimId,
         metadata: { claimNumber: claim.claimNumber, soft: true, retentionDays: CLAIM_RETENTION_DAYS },
       });
-      await this.notifyAdminsActivity('حذف پرونده', `${await this.actorLabel()} پروندهٔ ${claim.claimNumber} را حذف کرد (تا ${CLAIM_RETENTION_DAYS} روز قابل بازیابی).`, '/org/claims/trash');
+      // Everyone in the organizations on the case (not only admins): its earlier notices leave the inbox too.
+      for (const t of new Set([claim.brokerTenantId, claim.insurerTenantId].filter((x): x is string => !!x))) {
+        await this.notifyOrg(t, 'حذف پرونده', `پروندهٔ ${claim.claimNumber} توسط ${await this.actorLabel()} حذف شد (تا ${CLAIM_RETENTION_DAYS} روز قابل بازیابی).`, '/org/claims');
+      }
     }
     return { deleted: true, retentionDays: CLAIM_RETENTION_DAYS };
   }
@@ -1107,7 +1119,9 @@ export class ClaimsService {
         targetId: claimId,
         metadata: { claimNumber: claim.claimNumber, restored: true },
       });
-      await this.notifyAdminsActivity('بازیابی پرونده', `${await this.actorLabel()} پروندهٔ ${claim.claimNumber} را از سطل بازیافت بازیابی کرد.`, `/org/claims/${claimId}`);
+      for (const t of new Set([claim.brokerTenantId, claim.insurerTenantId].filter((x): x is string => !!x))) {
+        await this.notifyOrg(t, 'بازیابی پرونده', `پروندهٔ ${claim.claimNumber} توسط ${await this.actorLabel()} از سطل بازیافت بازیابی شد.`, `/org/claims/${claimId}`);
+      }
     }
     return { restored: true };
   }
@@ -1298,13 +1312,19 @@ export class ClaimsService {
    * documents are required and the rest are optional. null = the insurer's rules (anyone else, no list, or a
    * checklist the list says nothing about, e.g. an accident case for a death-only list).
    */
-  private async entryRequired(claim: { brokerTenantId: string | null }, codes: string[]): Promise<Set<string> | null> {
+  private async entryRequired(claim: { brokerTenantId: string | null }, codes: string[]): Promise<{ required: Set<string>; accident: Set<string> } | null> {
     const ctx = getContext();
     const panel1 = ctx?.actorType === 'CUSTOMER' || (ctx?.actorType === 'ORG_USER' && ctx.panelMode === 'ENTRY');
     if (!panel1 || !ctx?.tenantId || ctx.tenantId !== claim.brokerTenantId) return null;
-    const t = await this.db().tenant.findUnique({ where: { id: ctx.tenantId }, select: { entryRequiredDocs: true } });
-    const list = new Set(t?.entryRequiredDocs ?? []);
-    return codes.some((c) => list.has(c)) ? list : null;
+    const t = await this.db().tenant.findUnique({ where: { id: ctx.tenantId }, select: { entryRequiredDocs: true, entryAccidentDocs: true } });
+    const required = new Set(t?.entryRequiredDocs ?? []);
+    const accident = new Set((t?.entryAccidentDocs ?? []).filter((c) => !required.has(c)));
+    return codes.some((c) => required.has(c) || accident.has(c)) ? { required, accident } : null;
+  }
+
+  /** A traffic accident: an accident نوع پرونده, or a «علت خسارت» that names a crash. */
+  private isCrash(claim: { claimType: string | null; causeOfDeath?: string | null }): boolean {
+    return /ACCIDENT/.test(claim.claimType ?? '') || /تصادف|سانحه|رانندگی|واژگونی|برخورد/.test(claim.causeOfDeath ?? '');
   }
 
   /** Trim names, normalise each شبا and refuse an invalid one (named, so the filer knows which row). */
@@ -1524,7 +1544,8 @@ export class ClaimsService {
         code: r.code,
         label: r.label,
         appliesToTypes: r.appliesToTypes,
-        required: entryList ? entryList.has(r.code) : r.requiredTypes.includes(claim.claimType),
+        required: entryList ? entryList.required.has(r.code) || (entryList.accident.has(r.code) && this.isCrash(claim)) : r.requiredTypes.includes(claim.claimType),
+        accidentOnly: !!entryList?.accident.has(r.code), // «در صورت وقوع سانحه تصادف» (not greyed)
         uploaded: !!latest && latest.aiStatus !== 'MISMATCH', // a refused newest file leaves the slot to fix
         aiRefused: latest?.aiStatus === 'MISMATCH',
         latestStatus: latest?.verificationStatus ?? null,
