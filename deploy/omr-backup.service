@@ -1,0 +1,14 @@
+# One backup run (deploy/backup.sh). Started every night by omr-backup.timer.
+# Install: sudo cp deploy/omr-backup.service deploy/omr-backup.timer /etc/systemd/system/
+#          sudo systemctl daemon-reload && sudo systemctl enable --now omr-backup.timer
+# Run now: sudo systemctl start omr-backup.service      Log: journalctl -u omr-backup -n 30
+[Unit]
+Description=OMR Damuon backup (database + documents)
+After=docker.service
+Wants=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /opt/omr/deploy/backup.sh
+Nice=10
+IOSchedulingClass=idle

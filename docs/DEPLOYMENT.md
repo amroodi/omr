@@ -396,3 +396,43 @@ everything (as §1–§7), restores all of it, and runs `deploy.sh`. The secrets
 5. **DNS**: change the domain's A record to the new IP. Set up again any cron jobs the import printed
    (backups). `sudo certbot renew --dry-run` once DNS points here.
 6. **Old server**: keep it stopped for a few days, then wipe it — it holds personal data and the secrets.
+
+---
+
+## 16. Nightly backups (database + documents)
+
+[`deploy/backup.sh`](../deploy/backup.sh), run every night at 02:30 Tehran time by `omr-backup.timer`:
+the whole database (checked readable with `pg_restore --list`) and a snapshot of the documents into
+`/var/backups/omr` (root only). Unchanged documents are hard links to the night before, so two weeks of
+snapshots take little more room than one copy. The newest 14 of each are kept (`BACKUP_KEEP_DAYS`).
+
+```bash
+sudo apt-get install -y rsync
+sudo cp /opt/omr/deploy/omr-backup.service /opt/omr/deploy/omr-backup.timer /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now omr-backup.timer
+sudo systemctl start omr-backup.service && journalctl -u omr-backup -n 20 --no-pager   # first run now
+systemctl list-timers omr-backup.timer                                                  # next run
+```
+
+**Off the server** (a backup on the same disk is lost with the disk): another server / NAS reachable by
+SSH, with a key that logs in without a password:
+
+```bash
+sudo ssh-keygen -t ed25519 -N '' -f /root/.ssh/omr_backup
+sudo cat /root/.ssh/omr_backup.pub        # add this line to ~/.ssh/authorized_keys of the backup user there
+```
+
+then in `/etc/omr/api.env`: `BACKUP_REMOTE="backup@<host>:/srv/omr-backups"`, `BACKUP_REMOTE_PORT="<port>"`
+(and `BACKUP_SSH_KEY` if not `/root/.ssh/omr_backup`). The next run copies everything there.
+
+**Not in the backup:** `/etc/omr/api.env` — keep it offline (password manager / USB). The data is encrypted
+with its keys: without it a restore is unreadable, and stored next to the backups it protects nothing.
+
+**Restore** (e.g. on a new server after `move-import.sh`-style setup, or to go back a day):
+
+```bash
+sudo systemctl stop omr-api omr-web
+docker exec -i omr-postgres pg_restore -U omr -d omr_damuon --clean --if-exists < /var/backups/omr/db/omr_<date>.dump
+sudo rsync -a --delete /var/backups/omr/storage/<date>/ /var/lib/omr/storage/ && sudo chown -R omr:omr /var/lib/omr/storage
+sudo systemctl start omr-api omr-web
+```

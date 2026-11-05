@@ -1,0 +1,11 @@
+# Every night at 02:30 Tehran time (23:00 UTC); a run missed while the server was off happens at boot.
+[Unit]
+Description=Nightly OMR Damuon backup
+
+[Timer]
+OnCalendar=*-*-* 23:00:00 UTC
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target
