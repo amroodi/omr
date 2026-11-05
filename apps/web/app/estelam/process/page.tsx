@@ -10,7 +10,7 @@ function asClaim(r: any) {
     noticeDeadline: null, lateNotice: false,
     claimedAmount: r.claimedAmount ?? '', finalizedAmount: r.finalizedAmount ?? null, payableAmount: r.payableAmount ?? undefined, payableKnown: !!r.payableKnown,
     currentStageLabel: r.currentStageLabel, flowDirection: r.flowDirection, flowPurpose: r.flowPurpose,
-    imported: !!r.imported, story: r.story, steps: r.steps ?? [],
+    imported: !!r.imported, story: r.story, steps: r.steps ?? [], lossNotice: r.lossNotice ?? null,
   };
 }
 

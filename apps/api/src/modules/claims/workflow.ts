@@ -92,6 +92,7 @@ export interface CompanyGroup { id: string; label: string; companyIds: string[];
 export type EntryWay = 'BROKER' | 'BRANCH' | 'ASK';
 export const ENTRY_WAYS: EntryWay[] = ['BROKER', 'BRANCH', 'ASK'];
 export interface WorkflowModel extends CaseRules {
+  lossNoticeAsksNumber: boolean; // «اعلام خسارت»: شعبه types its number and date (false: one «ثبت اعلام خسارت» click)
   stages: Record<Stage, { label: string; reviewDocs: boolean }>; // reviewDocs: must this desk ✓ every document before sending on?
   byType: Record<string, Partial<CaseRules>>; // نوع پرونده → what differs from the rules above
   panels: { COMPANY: PanelRights; REPRESENTATIVE: PanelRights };
@@ -125,6 +126,7 @@ export const DEFAULT_WORKFLOW_MODEL: WorkflowModel = {
   councilEnabled: true,
   requireLossNotice: true,
   requireOriginals: true,
+  lossNoticeAsksNumber: true,
   stages: {
     POLICYHOLDER: { label: STAGE_FA.POLICYHOLDER, reviewDocs: false },
     BROKER: { label: STAGE_FA.BROKER, reviewDocs: true },
@@ -238,6 +240,7 @@ export function modelFrom(stored: unknown): WorkflowModel {
     councilEnabled: flag(raw.councilEnabled, d.councilEnabled),
     requireLossNotice: flag(raw.requireLossNotice, d.requireLossNotice),
     requireOriginals: flag(raw.requireOriginals, d.requireOriginals),
+    lossNoticeAsksNumber: flag(raw.lossNoticeAsksNumber, d.lossNoticeAsksNumber),
     stages,
     byType,
     panels: { COMPANY: rights(raw.panels?.COMPANY, d.panels.COMPANY), REPRESENTATIVE: rights(raw.panels?.REPRESENTATIVE, d.panels.REPRESENTATIVE) },
@@ -337,6 +340,7 @@ export interface ActionContext {
     flowPurpose: Purpose | null;
     returnTargetStage: Stage | null;
     lossNoticeNumber: string | null;
+    lossNoticeDate?: Date | null; // set when اعلام خسارت was recorded (with or without a number)
     finalizedAmount: { toString(): string } | null;
     claimedAmount: { toString(): string };
     handlingBranchId: string | null;
@@ -448,7 +452,7 @@ export function actionsFor(ctx: ActionContext): WorkflowAction[] {
   const waitingOriginals = ph.open?.requesterStage === s ? 'در انتظار دریافت اصل مدارک' : undefined;
   if (s === 'BROKER' || s === 'BRANCH') {
     let disabled = notApproved;
-    if (!disabled && s === 'BRANCH' && rules.requireLossNotice && !claim.lossNoticeNumber) disabled = 'ابتدا اعلام خسارت را ثبت کنید';
+    if (!disabled && s === 'BRANCH' && rules.requireLossNotice && !claim.lossNoticeNumber && !claim.lossNoticeDate) disabled = 'ابتدا اعلام خسارت را ثبت کنید';
     if (!disabled && s === 'BRANCH' && !ph.at && (rules.requireOriginals || waitingOriginals)) disabled = waitingOriginals ?? `ابتدا اصل مدارک را از ${fa[phBase]} دریافت کنید`;
     if (!disabled && s === 'BROKER' && !ctx.branches.length) disabled = 'بیمه‌گر هیچ شعبه‌ای تعریف نکرده است';
     out.push({

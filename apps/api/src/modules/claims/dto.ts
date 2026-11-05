@@ -297,9 +297,11 @@ export class ActionDto {
 }
 
 export class LossNoticeDto {
+  // Optional where the insurer's شعبه records اعلام خسارت with one click (Model View).
+  @IsOptional()
   @IsString()
-  @Length(1, 60)
-  number!: string;
+  @Length(0, 60)
+  number?: string;
 
   @IsOptional()
   @IsISO8601()

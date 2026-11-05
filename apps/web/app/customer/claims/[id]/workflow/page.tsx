@@ -8,11 +8,11 @@ import { WorkflowPanel } from '../../../../components/WorkflowPanel';
 import { ProcessTimeline, ResultBox } from '../../../../components/ProcessTimeline';
 import { CUSTOMER_NAV } from '../../../nav';
 import { caseTitle } from '../../../../../lib/caseTitle';
-import { CaseHero, PersonCards, phaseText, useCase, WorkflowStepsTable } from '../../../../components/case-ui';
+import { CaseHero, PersonCards, phaseText, useCase } from '../../../../components/case-ui';
 
 /**
- * بیمه‌گزار — «روند پرونده»: the same steps table as the org «مراحل و وضعیت گردش کار» page (dates and
- * statuses of each executive step), then where the case is in the chain and every hand-off so far.
+ * بیمه‌گزار — «روند پرونده»: the case header and people, then «فرایند رسیدگی پرونده» (every step and
+ * hand-off so far) and where the case is in the chain.
  */
 export default function CustomerCaseWorkflow() {
   const { id } = useParams<{ id: string }>();
@@ -28,7 +28,7 @@ export default function CustomerCaseWorkflow() {
           <div className="cs-sheet">
             <CaseHero title="پیگیری آخرین وضعیت پرونده خسارت" claim={claim} notes={fv.case_notes || phaseText(claim)} steps back={`/customer/claims/${id}`} exitHref="/customer/claims" />
             <PersonCards claim={claim} fv={fv} />
-            <WorkflowStepsTable claim={claim} fv={fv} />
+            {/* no «مراحل اجرایی» table here: «فرایند رسیدگی پرونده» below shows the same steps */}
           </div>
           <div className="pcard p-6 space-y-5">
             <ResultBox c={claim as any} />

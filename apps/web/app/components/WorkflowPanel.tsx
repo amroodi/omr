@@ -19,7 +19,8 @@ export interface Workflow {
   direction: 'UP' | 'DOWN' | null; purpose: 'REVIEW' | 'DEFICIENCY' | 'PAYMENT' | null;
   returnTargetStage: string | null; returnTargetLabel: string | null;
   myStage: string | null; holdsDesk: boolean;
-  lossNotice: { number: string; date: string | null } | null; canRecordLossNotice: boolean;
+  lossNotice: { number: string | null; date: string | null; at?: string | null } | null; canRecordLossNotice: boolean;
+  lossNoticeAsksNumber?: boolean; // false: شعبه records اعلام خسارت with one click (no number / date)
   actions: WorkflowAction[];
   physical?: PhysicalView;
 }
@@ -73,6 +74,7 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact }: 
   const [sure, setSure] = useState(false); // «آیا مطمئن هستید؟» step of a confirm-first action
   const base = realm === 'customer' ? '/customer/claims' : '/claims';
   const cur = w.chain.findIndex((c) => c.stage === w.currentStage);
+  const asksNumber = w.lossNoticeAsksNumber !== false;
 
   const start = (a: WorkflowAction & { physical?: boolean }) => {
     setErr(''); setNote(''); setDefs(''); setTracking(''); setSure(false); setLetter({ number: '', date: '', subject: '' }); setLetterFile(null);
@@ -113,7 +115,10 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact }: 
 
   const saveLossNotice = async () => {
     setErr(''); setBusy(true);
-    try { await client.put(`/claims/${claimId}/loss-notice`, { number: ln.number, date: ln.date ? jalaliToIso(ln.date) : undefined }, 'org'); onDone(); }
+    try {
+      await client.put(`/claims/${claimId}/loss-notice`, asksNumber ? { number: ln.number, date: ln.date ? jalaliToIso(ln.date) : undefined } : {}, 'org');
+      onDone();
+    }
     catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   };
 
@@ -149,8 +154,13 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact }: 
       {realm === 'org' && (w.lossNotice || w.canRecordLossNotice) && (
         <div className="rounded-lg p-2.5 text-sm" style={{ background: 'var(--surface-2)' }}>
           <div className="font-semibold mb-1">اعلام خسارت به بیمه‌گر (سامانهٔ بیمه‌گر)</div>
-          {w.lossNotice && <div className="text-xs mb-1">شماره: <b>{w.lossNotice.number}</b>{w.lossNotice.date ? ` — تاریخ: ${w.lossNotice.date}` : ''}</div>}
-          {w.canRecordLossNotice && (
+          {w.lossNotice && (w.lossNotice.number
+            ? <div className="text-xs mb-1">شماره: <b>{w.lossNotice.number}</b>{w.lossNotice.date ? ` — تاریخ: ${w.lossNotice.date}` : ''}</div>
+            : <div className="text-xs mb-1" style={{ color: 'var(--success)' }}>✓ اعلام خسارت ثبت شد{w.lossNotice.at ? ` — ${w.lossNotice.at}` : ''}</div>)}
+          {w.canRecordLossNotice && !asksNumber && (
+            <button onClick={saveLossNotice} disabled={busy} className="btn btn-primary btn-sm">ثبت اعلام خسارت</button>
+          )}
+          {w.canRecordLossNotice && asksNumber && (
             <div className="flex flex-wrap items-center gap-2">
               <input className="input" style={{ maxWidth: 200 }} placeholder="شمارهٔ اعلام خسارت" value={ln.number} onChange={(e) => setLn({ ...ln, number: e.target.value })} />
               <div style={{ maxWidth: 170 }}><JalaliDatePicker value={ln.date} onChange={(v) => setLn({ ...ln, date: v })} placeholder="تاریخ" /></div>
@@ -299,6 +309,7 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact }: 
 }
 
 export const ACTION_FA: Record<string, string> = {
+  LOSS_NOTICE: 'ثبت اعلام خسارت به بیمه‌گر',
   SUBMIT: 'ارسال', FORWARD: 'تایید و ارسال', REFER_COUNCIL: 'ارجاع به شورای فنی', PAY_ORDER: 'دستور پرداخت',
   RETURN: 'عودت برای رفع نقص', RETURN_DIRECT: 'برگشت از سرپرستی به بیمه‌گزار', DOWN_FORWARD: 'ارسال به سطح پایین‌تر',
   DOWN_DIRECT: 'ارسال مستقیم به بیمه‌گزار (اختیار مدیریت)', MARK_PAID: 'ثبت پرداخت', REJECT_FINAL: 'رد نهایی',
@@ -314,6 +325,17 @@ export interface TimelineStep {
   state: string; action?: string | null; note?: string | null; decidedAt?: string | null; decidedByName?: string | null;
   holderName?: string | null; branchName?: string | null;
   letters?: { id: string; number: string | null; subject: string | null; date: string | null; hasFile: boolean; fileName: string | null }[];
+}
+
+/** The case's «ثبت اعلام خسارت» (from the API), placed among its hand-offs. */
+export interface LossNoticeEntry { stageLabel: string; at: string; number: string | null; afterOrder: number }
+/** The hand-offs with «ثبت اعلام خسارت» as one more (done) row, right after the step decided before it. */
+export function withLossNotice(steps: TimelineStep[] | undefined, ln?: LossNoticeEntry | null): TimelineStep[] {
+  const list = steps ?? [];
+  if (!ln) return list;
+  const row: TimelineStep = { order: ln.afterOrder + 0.5, stageLabel: ln.stageLabel, state: 'DONE', action: 'LOSS_NOTICE', decidedAt: ln.at, note: ln.number ? `شماره ${ln.number}` : null };
+  const i = list.findIndex((s) => s.order > ln.afterOrder);
+  return i < 0 ? [...list, row] : [...list.slice(0, i), row, ...list.slice(i)];
 }
 
 /** Every hand-off of the claim, oldest first: desk, what was done, by whom, note and letters. */

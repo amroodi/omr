@@ -22,7 +22,7 @@ import { RequestOtpDto, VerifyOtpDto } from './dto';
 import { caseTypeOf, chainOf, InsuredRelation, RELATION_FA, Stage } from '../claims/workflow';
 
 import { ModelStore } from '../model-view/model-store.service';
-import { ageAt } from '../claims/claims.service';
+import { ageAt, lossNoticeEntry } from '../claims/claims.service';
 import { fromJalali, toAsciiDigits } from '../../common/jalali/jalali.util';
 
 /** A typed Jalali date («1343/04/01») as a Date, or undefined. */
@@ -473,6 +473,7 @@ export class InquiryService {
       // A paid or rejected case is closed: it sits in «بایگانی».
       currentStageLabel: c.status === 'PAID' || c.status === 'REJECTED' ? 'بایگانی' : manual ? story.caseStage : c.currentStage ? this.store.labels(c.insurerTenantId)[c.currentStage as Stage] : null,
       physicalAtLabel: this.store.labels(c.insurerTenantId)[(c.physicalAt as Stage | null) ?? 'POLICYHOLDER'], // where the original documents are
+      lossNotice: manual ? null : lossNoticeEntry(c, this.store.labels(c.insurerTenantId).BRANCH),
       steps: (manual ? [] : c.steps ?? []).map((s: any) => ({
         order: s.order, partyType: s.partyType, stage: s.stage ?? null, stageLabel: s.stage ? this.store.labels(c.insurerTenantId)[s.stage as Stage] : null,
         direction: s.direction, purpose: s.purpose ?? null, state: s.state, action: s.action ?? null, decidedAt: s.decidedAt ? toJalali(s.decidedAt) : null,
