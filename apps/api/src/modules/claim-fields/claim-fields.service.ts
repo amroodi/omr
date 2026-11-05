@@ -201,7 +201,7 @@ export class ClaimFieldsService {
    *  - otherwise the hierarchy: filing, then every desk's hand-off with its Tehran date and time.
    * Completed imported (historical) cases don't list a filing date — it's only the date they were brought in.
    */
-  async statusStory(claim: { id: string; insurerTenantId: string; createdAt: Date; imported?: boolean; status?: string }) {
+  async statusStory(claim: { id: string; insurerTenantId: string; createdAt: Date; imported?: boolean; status?: string; lossNoticeDate?: Date | null; lossNoticeNumber?: string | null }) {
     const manual = await this.isManual(claim.id);
     if (manual) {
       const [rows, stage] = await Promise.all([
@@ -211,13 +211,21 @@ export class ClaimFieldsService {
       return { manual, caseStage: stage?.value || null, history: rows.map((r) => ({ at: r.at, title: r.label, detail: r.value })) };
     }
     const steps = await this.db().claimStep.findMany({ where: { claimId: claim.id, decidedAt: { not: null } }, orderBy: { order: 'asc' } });
+    const moves = steps.map((s) => ({
+      t: s.decidedAt!.getTime(),
+      at: toJalali(s.decidedAt!, true, true),
+      title: `${s.stage ? this.store.labels(claim.insurerTenantId)[s.stage as Stage] : 'مرحله'}: ${STEP_ACTION_FA[s.action ?? ''] ?? STEP_STATE_FA[s.state] ?? s.state}`,
+      detail: s.note ?? null,
+    }));
+    // «ثبت اعلام خسارت» by شعبه, in its place among the hand-offs.
+    if (claim.lossNoticeDate) moves.push({
+      t: claim.lossNoticeDate.getTime(), at: toJalali(claim.lossNoticeDate, true, true),
+      title: `${this.store.labels(claim.insurerTenantId).BRANCH}: ثبت اعلام خسارت به بیمه‌گر`, detail: claim.lossNoticeNumber ? `شماره ${claim.lossNoticeNumber}` : null,
+    });
+    moves.sort((a, b) => a.t - b.t);
     const history = [
       ...(claim.imported && (claim.status === 'PAID' || claim.status === 'REJECTED') ? [] : [{ at: toJalali(claim.createdAt, true, true), title: 'ثبت پرونده', detail: null as string | null }]),
-      ...steps.map((s) => ({
-        at: toJalali(s.decidedAt!, true, true),
-        title: `${s.stage ? this.store.labels(claim.insurerTenantId)[s.stage as Stage] : 'مرحله'}: ${STEP_ACTION_FA[s.action ?? ''] ?? STEP_STATE_FA[s.state] ?? s.state}`,
-        detail: s.note ?? null,
-      })),
+      ...moves.map((m) => ({ at: m.at, title: m.title, detail: m.detail })),
     ];
     return { manual, caseStage: null, history };
   }

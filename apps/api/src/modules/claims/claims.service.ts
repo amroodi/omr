@@ -670,6 +670,7 @@ export class ClaimsService {
     const desk = await this.myDesk();
     const s = claim.currentStage as Stage | null;
     const holds = this.holdsDesk(claim, desk);
+    const asksNumber = (await this.modelOf(claim.insurerTenantId)).lossNoticeAsksNumber;
     return {
       chain: chainOf(claim, await this.modelOf(claim.insurerTenantId)).map((st) => ({ stage: st, label: this.store.labels(claim.insurerTenantId)[st] })),
       currentStage: s,
@@ -680,8 +681,10 @@ export class ClaimsService {
       returnTargetLabel: claim.returnTargetStage ? this.store.labels(claim.insurerTenantId)[claim.returnTargetStage as Stage] : null,
       myStage: desk.stage,
       holdsDesk: holds,
-      lossNotice: claim.lossNoticeNumber ? { number: claim.lossNoticeNumber, date: claim.lossNoticeDate ? toJalali(claim.lossNoticeDate, false) : null } : null,
-      canRecordLossNotice: s === 'BRANCH' && claim.flowDirection === 'UP' && holds,
+      lossNotice: claim.lossNoticeNumber || claim.lossNoticeDate ? { number: claim.lossNoticeNumber ?? null, date: claim.lossNoticeDate ? toJalali(claim.lossNoticeDate, false) : null, at: claim.lossNoticeDate ? toJalali(claim.lossNoticeDate) : null } : null,
+      // Recorded once without a number: nothing left to edit. With a number: it can be corrected.
+      canRecordLossNotice: s === 'BRANCH' && claim.flowDirection === 'UP' && holds && (asksNumber || !claim.lossNoticeDate),
+      lossNoticeAsksNumber: asksNumber,
       actions: await this.availableActions(claim, desk),
       physical: await this.physicalView(claim, desk),
     };
@@ -885,7 +888,7 @@ export class ClaimsService {
   }
 
   /** شعبه records اعلام خسارت (the loss registered in the insurer's own system) before forwarding. */
-  async setLossNotice(claimId: string, number: string, date?: string) {
+  async setLossNotice(claimId: string, number?: string, date?: string) {
     const db = this.db();
     const claim = await db.claim.findUnique({ where: { id: claimId } });
     if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
@@ -896,8 +899,11 @@ export class ClaimsService {
       throw new ForbiddenException('ثبت اعلام خسارت فقط توسط شعبهٔ رسیدگی‌کننده ممکن است');
     }
     const n = String(number ?? '').trim();
-    if (!n) throw new BadRequestException('شمارهٔ اعلام خسارت الزامی است');
-    await db.claim.update({ where: { id: claimId }, data: { lossNoticeNumber: n, lossNoticeDate: date ? new Date(date) : new Date(), lossNoticeById: this.actor() } });
+    // This insurer's شعبه just presses «ثبت اعلام خسارت» (no number / date): the time of the click is kept.
+    const asksNumber = (await this.modelOf(claim.insurerTenantId)).lossNoticeAsksNumber;
+    if (asksNumber && !n) throw new BadRequestException('شمارهٔ اعلام خسارت الزامی است');
+    if (!asksNumber && claim.lossNoticeDate) return this.get(claimId); // already recorded
+    await db.claim.update({ where: { id: claimId }, data: { lossNoticeNumber: n || null, lossNoticeDate: asksNumber && date ? new Date(date) : new Date(), lossNoticeById: this.actor() } });
     await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { lossNoticeNumber: n } });
     return this.get(claimId);
   }
@@ -914,10 +920,17 @@ export class ClaimsService {
   }
 
   /** The desks the caller sits at on this claim, for physical-document actions (an org user acting for بیمه‌گزار counts too). */
-  private physicalSeats(claim: any, desk: Desk): Stage[] {
+  private physicalSeats(claim: any, desk: Desk, state?: PhysicalState["open"]): Stage[] {
     const seats: Stage[] = [];
     // Panel 1 sits only at the بیمه‌گزار's desk; the organization's own desk is panel 2's.
     if (desk.stage && desk.stage !== 'POLICYHOLDER' && getContext()?.panelMode !== 'ENTRY' && this.sitsAt(claim, desk.stage, desk)) seats.push(desk.stage);
+    // The insurer's admin may act at any of its own desks (sitsAt): also for the originals — e.g. confirm
+    // at شعبه that the originals it asked for arrived, so «ارسال به مدیریت ستاد» opens up.
+    if (desk.insurerAdmin && getContext()?.panelMode !== 'ENTRY' && desk.tenantId === claim.insurerTenantId) {
+      for (const st of [claim.currentStage, state?.requesterStage, state?.holderStage] as (Stage | null | undefined)[]) {
+        if (st && INSURER_DESKS.includes(st) && !seats.includes(st)) seats.push(st);
+      }
+    }
     if (this.sitsAt(claim, 'POLICYHOLDER', desk)) seats.push('POLICYHOLDER');
     return seats;
   }
@@ -925,7 +938,7 @@ export class ClaimsService {
   private async physicalView(claim: any, desk: Desk) {
     const db = this.db();
     const state = await this.physicalState(claim);
-    const seats = this.physicalSeats(claim, desk);
+    const seats = this.physicalSeats(claim, desk, state.open);
     const actions = seats.flatMap((st) => physicalActionsFor(st, state, this.store.labels(claim.insurerTenantId)).map((a) => ({ ...a, seat: st })));
     const [events, letters] = await Promise.all([
       db.claimPhysicalEvent.findMany({ where: { claimId: claim.id }, orderBy: { createdAt: 'asc' } }),
@@ -965,7 +978,7 @@ export class ClaimsService {
     assertNotPaid(claim); // archived once paid
     const desk = await this.myDesk();
     const state = await this.physicalState(claim);
-    const seat = this.physicalSeats(claim, desk).find((st) => physicalActionsFor(st, state, this.store.labels(claim.insurerTenantId)).some((a) => a.key === input.action));
+    const seat = this.physicalSeats(claim, desk, state.open).find((st) => physicalActionsFor(st, state, this.store.labels(claim.insurerTenantId)).some((a) => a.key === input.action));
     if (!seat) throw new ForbiddenException('این اقدام برای شما در دسترس نیست');
     await this.assertLetterFree(claimId, input.letterId);
     const note = input.note?.trim() || null;
@@ -1234,8 +1247,8 @@ export class ClaimsService {
    * Has panel 2 started on the case? Its first document decision, hand-off (any desk past the بیمه‌گزار's
    * acting on it), «ویرایش» save or اعلام خسارت number. From then on panel 1 can't change the filing data.
    */
-  private async panel2Started(claim: { id: string; lossNoticeNumber: string | null }): Promise<boolean> {
-    if (claim.lossNoticeNumber) return true;
+  private async panel2Started(claim: { id: string; lossNoticeNumber: string | null; lossNoticeDate?: Date | null }): Promise<boolean> {
+    if (claim.lossNoticeNumber || claim.lossNoticeDate) return true;
     const db = this.db();
     const [step, review, log] = await Promise.all([
       db.claimStep.findFirst({ where: { claimId: claim.id, NOT: { stage: 'POLICYHOLDER' }, state: { not: 'PENDING' } }, select: { id: true } }),
@@ -2390,6 +2403,7 @@ export class ClaimsService {
     return {
       ...base,
       paidDate: paid ? toJalali(paid.decidedAt, false) : null, // تاریخ پرداخت
+      lossNotice: lossNoticeEntry(c, this.store.labels(c.insurerTenantId).BRANCH),
       steps: (c.steps ?? []).map((s: any) => ({
         order: s.order, partyType: s.partyType, stage: s.stage ?? null, stageLabel: s.stage ? this.store.labels(c.insurerTenantId)[s.stage as Stage] : null,
         direction: s.direction, purpose: s.purpose ?? null, state: s.state, action: s.action ?? null,
@@ -2401,6 +2415,22 @@ export class ClaimsService {
       deficiencies: (c.deficiencies ?? []).map((d: any) => ({ items: safeParse(d.items), raisedByStepId: d.raisedByStepId, createdAt: d.createdAt ? toJalali(d.createdAt) : null, resolvedAt: d.resolvedAt ? toJalali(d.resolvedAt) : null })),
     };
   }
+}
+
+/**
+ * «ثبت اعلام خسارت» for the case timelines (every panel): when شعبه recorded it, and after which hand-off
+ * (`afterOrder`: the last step decided before it; 0 = before all of them) so it shows in its place.
+ */
+export function lossNoticeEntry(c: { lossNoticeDate?: Date | null; lossNoticeNumber?: string | null; steps?: { order: number; decidedAt: Date | null }[] }, branchLabel: string) {
+  if (!c.lossNoticeDate) return null;
+  const at = c.lossNoticeDate.getTime();
+  const before = (c.steps ?? []).filter((s) => s.decidedAt && s.decidedAt.getTime() <= at);
+  return {
+    stageLabel: branchLabel,
+    at: toJalali(c.lossNoticeDate),
+    number: c.lossNoticeNumber ?? null,
+    afterOrder: before.length ? Math.max(...before.map((s) => s.order)) : 0,
+  };
 }
 
 /** Whole years between birth and the date of death (or today when the event date is unknown). */

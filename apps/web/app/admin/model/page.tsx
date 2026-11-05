@@ -15,7 +15,7 @@ interface CaseType { code: string; label: string; causeGroup: 'DEATH' | 'ACCIDEN
 type Line = string; // a code of Super Admin's نوع بیمه‌نامه catalog
 interface CompanyGroup { id: string; label: string; companyIds: string[]; lines: Record<Line, string[]>; dependents: boolean }
 interface Model {
-  councilEnabled: boolean; requireLossNotice: boolean; requireOriginals: boolean;
+  councilEnabled: boolean; requireLossNotice: boolean; requireOriginals: boolean; lossNoticeAsksNumber?: boolean;
   stages: Record<Stage, { label: string; reviewDocs: boolean }>;
   byType: Record<string, Partial<Record<RuleKey, boolean>>>;
   panels: { COMPANY: Rights; REPRESENTATIVE: Rights };
@@ -173,6 +173,7 @@ export default function ModelView() {
               </Card>
               <Card title="قوانین بیمه‌گر">
                 <Toggle on={m.requireLossNotice} onChange={(v) => setM({ ...m, requireLossNotice: v })} hint="خاموش: شعبه بدون ثبت اعلام خسارت هم می‌تواند پرونده را ارسال کند.">ثبت اعلام خسارت الزامی است</Toggle>
+                <Toggle on={m.lossNoticeAsksNumber !== false} onChange={(v) => setM({ ...m, lossNoticeAsksNumber: v })} hint="خاموش: شعبه فقط دکمهٔ «ثبت اعلام خسارت» را می‌زند؛ زمان ثبت در گردش کار پرونده نشان داده می‌شود.">شعبه شماره و تاریخ اعلام خسارت را وارد می‌کند</Toggle>
                 <Toggle on={m.requireOriginals} onChange={(v) => setM({ ...m, requireOriginals: v })} hint="خاموش: درخواست اصل مدارک همچنان ممکن است، اما شرط ارسال نیست.">دریافت اصل مدارک پیش از ارسال الزامی است</Toggle>
                 <Toggle on={m.councilEnabled} onChange={(v) => setM({ ...m, councilEnabled: v })} hint="خاموش: ستاد خودش دستور پرداخت می‌دهد و سقف اختیار ستاد اعمال نمی‌شود.">شورای فنی فعال است</Toggle>
                 {!m.councilEnabled && cur.casesAtCouncil > 0 && <div className="text-xs rounded-lg p-2" style={{ background: 'var(--warning-soft)' }}>{cur.casesAtCouncil.toLocaleString('fa-IR')} پرونده اکنون نزد شورای فنی است و تا پایان همان‌جا می‌ماند.</div>}

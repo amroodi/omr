@@ -1,6 +1,6 @@
 'use client';
 import { claimTypeLabel } from './ui';
-import { ACTION_FA, STATE_FA, TimelineStep } from './WorkflowPanel';
+import { ACTION_FA, LossNoticeEntry, STATE_FA, TimelineStep, withLossNotice } from './WorkflowPanel';
 import { blankVal, CaseClaim, CaseNo, DEATH_TYPES, fmtAmount, STATUS_FA, StatusHistoryButton, WF_STEPS } from './case-ui';
 
 const faD = (s: string) => s.replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[+d]);
@@ -31,12 +31,12 @@ export function ResultBox({ c }: { c: CaseClaim & { payableAmount?: string; paid
 }
 
 /** «فرایند رسیدگی پرونده»: a vertical timeline — filing, then every hand-off, then payment. */
-export function ProcessTimeline({ c, fv, splitNumber = false }: { c: CaseClaim & { steps?: TimelineStep[]; paidDate?: string | null; createdAt?: string | null }; fv: Record<string, string>; splitNumber?: boolean }) {
+export function ProcessTimeline({ c, fv, splitNumber = false }: { c: CaseClaim & { steps?: TimelineStep[]; lossNotice?: LossNoticeEntry | null; paidDate?: string | null; createdAt?: string | null }; fv: Record<string, string>; splitNumber?: boolean }) {
   // A hand-completed case («ویرایش») tells only what was typed; otherwise the hierarchy's hand-offs.
   const manual = !!c.story?.manual;
   // A case brought in from Excel (or completed by hand without a history): the stages typed for it.
   const typed = manual && !(c.story?.history ?? []).length ? WF_STEPS.filter((s) => (s.date && !blankVal(fv[s.date])) || (s.status && !blankVal(fv[s.status]))) : [];
-  const steps = manual ? [] : (c.steps ?? []).filter((s) => s.state !== 'PENDING' || s.order === Math.max(...(c.steps ?? []).map((x) => x.order)));
+  const steps = manual ? [] : withLossNotice((c.steps ?? []).filter((s) => s.state !== 'PENDING' || s.order === Math.max(...(c.steps ?? []).map((x) => x.order))), c.lossNotice);
   return (
     <section className="cu-process">
       <h3>فرایند رسیدگی پرونده</h3>

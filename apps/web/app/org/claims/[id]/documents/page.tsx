@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import { client, hasPerm } from '../../../../../lib/client';
 import { Shell, Icon } from '../../../../components/Shell';
 import { ErrorBox, FancyLoader } from '../../../../components/ui';
-import { ACTION_FA, STATE_FA } from '../../../../components/WorkflowPanel';
+import { ACTION_FA, LossNoticeEntry, STATE_FA, withLossNotice } from '../../../../components/WorkflowPanel';
 import { ORG_NAV } from '../../../nav';
 import { caseTitle } from '../../../../../lib/caseTitle';
 import { downloadPdf } from '../../../../../lib/pdf';
@@ -166,13 +166,13 @@ export default function CaseDocumentsPage() {
                 <span>تاریخ</span>
               </div>
               <div className="cs-table-b">
-                {(claim.steps ?? []).map((s) => {
+                {withLossNotice(claim.steps, (claim as { lossNotice?: LossNoticeEntry | null }).lossNotice).map((s) => {
                   const pending = s.state === 'PENDING';
                   const back = s.action === 'RETURN' || s.action === 'RETURN_DIRECT' || s.state === 'REJECTED' || s.state === 'RETURNED_INCOMPLETE';
                   const text = pending ? 'در دست بررسی' : ACTION_FA[s.action || ''] || STATE_FA[s.state] || s.state;
                   return (
                     <div key={s.order} className="cs-tr cs-grid-route">
-                      <span className="cs-td-main">{faN(s.order)}. {s.stageLabel || s.holderName || '—'}{s.branchName ? ` — ${s.branchName}` : ''}</span>
+                      <span className="cs-td-main">{Number.isInteger(s.order) ? `${faN(s.order)}. ` : '• '}{s.stageLabel || s.holderName || '—'}{s.branchName ? ` — ${s.branchName}` : ''}</span>
                       <span className="cs-td-status">
                         <span className="min-w-0">{text}{s.decidedByName ? <span className="cs-sub"> — {s.decidedByName}</span> : null}{s.note ? <span className="cs-sub"> «{s.note}»</span> : null}</span>
                         <Mark state={pending ? 'wait' : back ? 'no' : 'ok'} title={text} />
