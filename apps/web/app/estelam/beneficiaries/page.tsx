@@ -9,7 +9,7 @@ export default function EstelamBeneficiaries() {
         const b = r.beneficiaries || {};
         return (
           <>
-            <SubHead title={PANELS[1].label} icon={PANELS[1].icon} />
+            <SubHead title={PANELS[2].label} icon={PANELS[2].icon} />
             {b.type || b.names || b.ibanMasked ? (
               <div className="est-cols est-cols-1">
                 <InfoCol title="ذینفعان پرونده">

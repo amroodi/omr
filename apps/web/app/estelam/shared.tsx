@@ -48,14 +48,17 @@ export function phaseText(r: any): string {
   return r.currentStageLabel ? `پرونده در ${r.currentStageLabel} در حال بررسی است` : 'پرونده در حال بررسی است';
 }
 
-/** The five actions under the info columns — each one is its own page. */
+/** The five actions under the info columns — each one is its own page (the panel has no side menu). */
 export const PANELS = [
-  { href: '/estelam/track', label: 'پیگیری آخرین وضعیت', icon: 'M11 19a8 8 0 100-16 8 8 0 000 16zM21 21l-4.3-4.3' },
+  { href: '/estelam/process', label: 'وضعیت پرونده', icon: 'M11 19a8 8 0 100-16 8 8 0 000 16zM21 21l-4.3-4.3' },
+  { href: '/estelam/documents', label: 'آخرین وضعیت مدارک', icon: 'M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9l-7-7zM13 2v7h7M9 15l2 2 4-4' },
   { href: '/estelam/beneficiaries', label: 'ذینفع‌ها', icon: 'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75' },
   { href: '/estelam/online', label: 'پاسخگوی آنلاین', icon: 'M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z' },
   { href: '/estelam/faq', label: 'سوالات متداول', icon: 'M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01M12 22a10 10 0 100-20 10 10 0 000 20z' },
-  { href: '/estelam/contact', label: 'تماس و ارتباط', icon: 'M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.13.96.36 1.9.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0122 16.92z' },
 ] as const;
+
+/** «تماس و ارتباط» — in the top bar (not among the buttons). */
+export const CONTACT = { href: '/estelam/contact', label: 'تماس و ارتباط', icon: 'M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.13.96.36 1.9.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0122 16.92z' };
 
 /**
  * The inquiry result: shown at once from sessionStorage, then re-read from the server while the
@@ -106,13 +109,13 @@ const EXIT_ICON = 'M15 3H5a2 2 0 00-2 2v14a2 2 0 002 2h10M17 16l4-4-4-4M21 12H9'
 /** The inquiry panel's side menu: every page of the looked-up case. */
 export const SIDE_MENU = [
   { href: '/estelam', label: 'مشخصات پرونده', icon: 'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM14 2v6h6' },
-  { href: '/estelam/track', label: 'وضعیت پرونده', icon: PANELS[0].icon },
-  { href: '/estelam/process', label: 'فرایند رسیدگی پرونده', icon: 'M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11' },
-  { href: '/estelam/documents', label: 'مدارک', icon: 'M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9l-7-7zM13 2v7h7M9 15l2 2 4-4' },
-  { href: '/estelam/online', label: 'گفتگو', icon: PANELS[2].icon },
-  { href: '/estelam/beneficiaries', label: PANELS[1].label, icon: PANELS[1].icon },
-  { href: '/estelam/faq', label: PANELS[3].label, icon: PANELS[3].icon },
-  { href: '/estelam/contact', label: PANELS[4].label, icon: PANELS[4].icon },
+  { href: '/estelam/process', label: 'وضعیت پرونده', icon: PANELS[0].icon },
+  { href: '/estelam/process', label: 'وضعیت پرونده', icon: PANELS[0].icon },
+  { href: '/estelam/documents', label: 'آخرین وضعیت مدارک', icon: PANELS[1].icon },
+  { href: '/estelam/online', label: 'گفتگو', icon: PANELS[3].icon },
+  { href: '/estelam/beneficiaries', label: PANELS[2].label, icon: PANELS[2].icon },
+  { href: '/estelam/faq', label: PANELS[4].label, icon: PANELS[4].icon },
+  { href: CONTACT.href, label: CONTACT.label, icon: CONTACT.icon },
 ] as const;
 
 /** Side menu of the inquiry panel (right side; a scrolling strip on phones). */
@@ -165,12 +168,12 @@ export function EstelamFrame({ children }: { children: (r: any, token: string | 
         <nav className="est-links">
           <Link href="/"><Icon path="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1V9.5z" /> صفحه اصلی</Link>
           {r && <Link href="/estelam"><Icon path="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM14 2v6h6" /> مشخصات پرونده</Link>}
+          {r && <Link href={CONTACT.href}><Icon path={CONTACT.icon} /> {CONTACT.label}</Link>}
           <button type="button" onClick={exit}><Icon path={EXIT_ICON} /> خروج</button>
         </nav>
       </header>
 
-      <div className={r ? 'est-body' : undefined}>
-      {ready && r && <EstelamSide r={r} />}
+      <div>
       <main className="est-main">
         {!ready ? (
           <div className="flex justify-center p-16"><Spinner /></div>

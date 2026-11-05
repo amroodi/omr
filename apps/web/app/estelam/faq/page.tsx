@@ -8,7 +8,7 @@ export default function EstelamFaq() {
     <EstelamFrame>
       {() => (
         <>
-          <SubHead title={PANELS[3].label} icon={PANELS[3].icon} />
+          <SubHead title={PANELS[4].label} icon={PANELS[4].icon} />
           <div className="est-card p-5"><Faq /></div>
         </>
       )}
