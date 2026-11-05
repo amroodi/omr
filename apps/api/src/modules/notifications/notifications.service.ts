@@ -117,13 +117,25 @@ export class NotificationsService {
   }
 
   async list() {
-    const rows = await this.prisma.unscoped().notification.findMany({ where: this.where(), orderBy: { createdAt: 'desc' }, take: 50 });
-    return rows.map((r) => ({ id: r.id, title: r.title, body: r.body, link: r.link, readAt: r.readAt, createdAt: toJalali(r.createdAt) }));
+    const rows = await this.live(await this.prisma.unscoped().notification.findMany({ where: this.where(), orderBy: { createdAt: 'desc' }, take: 80 }));
+    return rows.slice(0, 50).map((r) => ({ id: r.id, title: r.title, body: r.body, link: r.link, readAt: r.readAt, createdAt: toJalali(r.createdAt) }));
   }
 
   async unreadCount() {
-    const count = await this.prisma.unscoped().notification.count({ where: { ...this.where(), readAt: null } });
-    return { count };
+    const rows = await this.live(await this.prisma.unscoped().notification.findMany({ where: { ...this.where(), readAt: null }, select: { id: true, link: true }, orderBy: { createdAt: 'desc' }, take: 500 }));
+    return { count: rows.length };
+  }
+
+  /**
+   * Without the notices about a case that has since been deleted (or purged): the inbox and its badge
+   * follow the cases, so nobody is sent to a case that is no longer there.
+   */
+  private async live<T extends { link: string | null }>(rows: T[]): Promise<T[]> {
+    const idOf = (l: string | null) => l?.match(/\/claims\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i)?.[1] ?? null;
+    const ids = [...new Set(rows.map((r) => idOf(r.link)).filter((x): x is string => !!x))];
+    if (!ids.length) return rows;
+    const alive = new Set((await this.prisma.unscoped().claim.findMany({ where: { id: { in: ids }, deletedAt: null }, select: { id: true } })).map((c) => c.id));
+    return rows.filter((r) => { const id = idOf(r.link); return !id || alive.has(id); });
   }
 
   async markRead(id: string) {

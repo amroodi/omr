@@ -17,6 +17,20 @@ const usable = (el: HTMLElement) =>
   && el.getAttribute('aria-hidden') !== 'true' && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
 const DIALOG = '[role=dialog], .pmodal';
 
+/** Move the cursor to the next (dir 1) / previous (-1) field after `from` — also used by the date fields. */
+export function moveField(from: HTMLElement | null, dir: 1 | -1 = 1): boolean {
+  if (!from) return false;
+  const box = from.closest(DIALOG) ?? document.body;
+  const list = Array.from(box.querySelectorAll<HTMLElement>(FIELDS))
+    .filter((el) => (el === from || usable(el)) && (box !== document.body || !el.closest(DIALOG)));
+  const i = list.indexOf(from);
+  const to = i < 0 ? undefined : list[i + dir];
+  if (!to) return false;
+  to.focus();
+  if (to instanceof HTMLInputElement && /^(text|search|tel|email|url|number|)$/.test(to.type)) { try { to.select(); } catch { /* not selectable */ } }
+  return true;
+}
+
 export function FieldKeys() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

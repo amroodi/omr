@@ -78,6 +78,9 @@ export class HeirsDto {
 }
 
 export class FileClaimDto {
+  // سرمایه فوت / سرمایه حادثه (rials), optional — not every filer knows them
+  @IsOptional() @IsString() @Matches(/^\d{0,18}$/) deathCapital?: string;
+  @IsOptional() @IsString() @Matches(/^\d{0,18}$/) accidentCapital?: string;
   // «علت خسارت» (ticked items and/or typed text); Model View may make it required
   @IsOptional()
   @IsString()
@@ -170,6 +173,9 @@ export class FileClaimDto {
 
 /** کارگزاری files a case as a بیمه‌گزار company (claim:file-on-behalf). The insurer comes from its contract. */
 export class FileOnBehalfDto {
+  // سرمایه فوت / سرمایه حادثه (rials), optional — not every filer knows them
+  @IsOptional() @IsString() @Matches(/^\d{0,18}$/) deathCapital?: string;
+  @IsOptional() @IsString() @Matches(/^\d{0,18}$/) accidentCapital?: string;
   // نوع بیمه‌نامه chosen on the panel-1 login
   @IsOptional()
   @IsString()

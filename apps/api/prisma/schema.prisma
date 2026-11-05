@@ -63,6 +63,9 @@ model Tenant {
   // کارگزاری: the documents its panel 1 must upload before «ثبت نهایی» (RequiredDocument codes); the rest of
   // the insurer's list is optional there. Empty = the insurer's own required/optional rules. Set in Super Admin.
   entryRequiredDocs String[] @default([])
+  // …and those required there only for an accident (a traffic crash): shown, not greyed, required when the
+  // case is an accident case or its علت names a crash.
+  entryAccidentDocs String[] @default([])
   workflowModel Json? // Model View: how this insurer's chain works (see claims/workflow.ts); set only in Super Admin
   coverageConfig Json? // فن‌آوران coverage inquiry of this insurer; off until Super Admin fills it in
   // Reminders: may operators of this org get an SMS for a reminder (on top of the in-panel one)?

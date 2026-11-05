@@ -106,7 +106,7 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
   const [brokerFor, setBrokerFor] = useState<{ id: string; name: string } | null | undefined>(undefined);
   const [isBroker, setIsBroker] = useState(false);
   // The typed / picked fields survive a page refresh (lib/draft); the company comes back from ?company=.
-  const [f, setF, clearF] = useDraft('claim', { claimType: 'DEATH_ILLNESS', eventDate: '', birthDate: '', deceasedFullName: '', deceasedNationalCode: '', relation: '', mainName: '', mainCode: '', causeOfDeath: '', description: '', startStage: '' });
+  const [f, setF, clearF] = useDraft('claim', { claimType: 'DEATH_ILLNESS', eventDate: '', birthDate: '', deceasedFullName: '', deceasedNationalCode: '', relation: '', mainName: '', mainCode: '', causeOfDeath: '', description: '', startStage: '', deathCapital: '', accidentCapital: '' });
   // «اعلام خسارت»: is filing allowed from this login, and to which desks?
   const [notice, setNotice] = useState<{ enabled: boolean; targets: string[]; default: string; labels: Record<string, string> } | null>(null);
   useEffect(() => { client.get<any>(org ? '/claims/notice-options' : '/customer/notice-options', realm).then(setNotice).catch(() => setNotice(null)); }, []);
@@ -261,6 +261,8 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
       if (cause) payload.causeOfDeath = cause;
       if (f.startStage || (notice?.enabled && notice.targets.length > 1)) payload.startStage = f.startStage || startDefault;
       if (f.description.trim()) payload.description = f.description.trim();
+      if (!agent && f.deathCapital) payload.deathCapital = f.deathCapital;
+      if (!agent && f.accidentCapital) payload.accidentCapital = f.accidentCapital;
       if (org) {
         // Panel 1: filed for the picked company, through the brokerage's own endpoint.
         if (!brokerFor) throw new Error('بیمه‌گزار را انتخاب کنید');
@@ -393,6 +395,13 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
           <PField label={isDeath ? 'سن متوفی (هنگام فوت)' : 'سن بیمه‌شده (هنگام حادثه)'} help="از روی تاریخ تولد و تاریخ وقوع محاسبه می‌شود.">
             <input className="input" readOnly value={age != null ? `${age.toLocaleString('fa-IR')} سال` : ''} placeholder="(پس از ورود تاریخ‌ها)" style={{ background: 'var(--surface-2)' }} />
           </PField>
+          {/* Optional: not every operator knows them, but they help the review (and cap مبلغ قابل پرداخت). */}
+          {!agent && ([['deathCapital', 'سرمایه فوت'], ['accidentCapital', 'سرمایه حادثه']] as const).map(([k, l]) => (
+            <PField key={k} label={`${l} (ریال)`} help="اختیاری؛ اگر می‌دانید وارد کنید.">
+              <input className="input" inputMode="numeric" value={f[k] ? Number(f[k]).toLocaleString('fa-IR') : ''} placeholder="اختیاری"
+                onChange={(e) => setF((s) => ({ ...s, [k]: toAscii(e.target.value).replace(/[^\d]/g, '').slice(0, 18) }))} style={{ direction: 'ltr', textAlign: 'right' }} />
+            </PField>
+          ))}
 
           {form?.cause !== 'hidden' && (
           <div className="md:col-span-2 lg:col-span-3"><PField label={`${CAUSE_LABEL}${form?.cause === 'required' ? ' *' : ''}`} help="علت را همان‌طور که می‌دانید بنویسید؛ مثلاً «ایست قلبی»، «تصادف رانندگی» یا «سقوط از ارتفاع».">

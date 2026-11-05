@@ -330,7 +330,7 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
                   const isBeneficiary = it.code === BENEFICIARY_FORM || it.code === INHERITANCE_CERT;
                   if (unchosen && (it.code === INHERITANCE_CERT || it.code === NO_FORM_LETTER)) return null;
                   // The کارگزاری's own panel-1 list: what it doesn't require shows greyed (still uploadable).
-                  const greyed = !!checklist.entryList && !it.required && !it.uploaded;
+                  const greyed = !!checklist.entryList && !it.required && !it.uploaded && !it.accidentOnly;
                   const no = ++n; // number in the list (rows hidden above don't count)
                   const story = docStory(it, !!claim.story?.manual);
                   const st = up[it.code];
@@ -340,7 +340,8 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
                     <div key={it.code} className={`doc-row cu-doc tone-${story.tone}${greyed ? ' is-optional' : ''}`}>
                       <div className="cu-doc-head">
                         <div className="text-sm min-w-0">
-                          <div className="font-bold"><span className="doc-n">{(no).toLocaleString('fa-IR')}</span>{it.label}{it.required && <span style={{ color: 'var(--danger)' }}> *</span>}</div>
+                          <div className="font-bold"><span className="doc-n">{(no).toLocaleString('fa-IR')}</span>{it.label}{(it.required || it.accidentOnly) && <span style={{ color: 'var(--danger)' }}> *</span>}</div>
+                          {it.accidentOnly && <div className="text-xs font-bold" style={{ color: 'var(--danger)' }}>در صورت وقوع سانحه تصادف{it.required ? '' : ' (برای این پرونده الزامی نیست)'}</div>}
                           <div className="cu-story">{story.text}</div>
                         </div>
                         <div className="cu-doc-up">

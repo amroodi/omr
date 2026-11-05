@@ -8,7 +8,7 @@ function asClaim(r: any) {
     id: '', claimNumber: r.claimNumber, policyNumber: r.policyNumber, status: r.status, claimType: r.claimType,
     deceasedName: r.deceasedName, eventDate: r.eventDate, createdAt: r.createdAt, paidDate: r.paidDate,
     noticeDeadline: null, lateNotice: false,
-    claimedAmount: r.claimedAmount ?? '', finalizedAmount: r.finalizedAmount ?? null, payableAmount: r.payableAmount ?? undefined,
+    claimedAmount: r.claimedAmount ?? '', finalizedAmount: r.finalizedAmount ?? null, payableAmount: r.payableAmount ?? undefined, payableKnown: !!r.payableKnown,
     currentStageLabel: r.currentStageLabel, flowDirection: r.flowDirection, flowPurpose: r.flowPurpose,
     imported: !!r.imported, story: r.story, steps: r.steps ?? [],
   };
@@ -27,7 +27,7 @@ export default function EstelamProcess() {
           ) : (
             <div className="est-card p-6 space-y-5">
               <ResultBox c={asClaim(r) as any} />
-              <ProcessTimeline c={asClaim(r) as any} fv={{ cause_of_death: r.causeOfDeath ?? '' }} />
+              <ProcessTimeline c={asClaim(r) as any} fv={{ ...(r.stages ?? {}), cause_of_death: r.causeOfDeath ?? '' }} />
             </div>
           )}
         </>

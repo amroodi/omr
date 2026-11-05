@@ -2234,3 +2234,46 @@ a.cu-card.is-link:hover { transform: translateY(-2px); box-shadow: 0 0 0 2px var
 @media (max-width: 760px) { .cs-grid-docs.no-desks { grid-template-columns: 26px minmax(0, 1fr); } }
 /* Number of each document in the upload lists. */
 .doc-n { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 6px; margin-inline-end: 8px; border-radius: 999px; background: var(--surface-2); color: var(--text); font-size: .75rem; font-weight: 800; vertical-align: middle; }
+
+/* ── Panel 3 (مشاهده سریع و استعلام): one look on every page — white cards, green headings, light alternating
+   rows, as «فرایند رسیدگی پرونده» and the other panels (no dark header cards or navy tables). ── */
+.est { --est-head: #12a089; }
+.est .est-hero { background: var(--est-card); color: var(--text); border: 1px solid var(--est-line); box-shadow: 0 2px 10px rgba(0,0,0,.04); padding: 18px 24px; }
+.est .est-hero-title { color: var(--est-head); font-size: clamp(1.05rem, 1.5vw, 1.25rem); }
+.est .est-hero-ico { width: 36px; height: 36px; border-radius: 10px; background: color-mix(in srgb, var(--est-head) 14%, transparent); color: var(--est-head); }
+.est .est-hero-ico svg { width: 20px; height: 20px; }
+.est .est-hero-sub { font-size: .98rem; margin-top: 6px; }
+.est .est-dates { margin-top: 14px; gap: 12px 48px; }
+.est .est-date-l, .est .est-notes-l { font-size: .85rem; color: var(--muted); font-weight: 700; }
+.est .est-date-v { font-size: .95rem; margin-top: 4px; }
+.est .est-date-v svg { color: var(--est-head); }
+.est .est-pill { background: var(--surface-2); color: var(--text); padding: 6px 14px; font-size: .86rem; }
+.est .est-exit { padding: 8px 16px; border-radius: 10px; font-size: .9rem; box-shadow: none; }
+.est .est-exit-ghost { background: transparent; color: var(--est-head); box-shadow: inset 0 0 0 1.5px var(--est-head); }
+.est .est-exit-ghost:hover { background: color-mix(in srgb, var(--est-head) 10%, transparent); }
+.est .est-cols { grid-template-columns: minmax(0, 1fr); gap: 4px; background: var(--est-card); border: 1px solid var(--est-line); border-radius: 16px; padding: 8px 24px 16px; box-shadow: 0 2px 10px rgba(0,0,0,.04); }
+.est .est-col { background: none; border: 0; box-shadow: none; border-radius: 0; overflow: visible; }
+.est .est-col-h { background: none; color: var(--est-head); justify-content: center; font-size: 1.05rem; padding: 14px 0 10px; border-bottom: 2px solid var(--border-strong); margin-bottom: 6px; }
+.est .est-dot { display: none; }
+.est .est-col-b { padding: 0 0 8px; gap: 0; }
+.est .est-row { border: 0; border-radius: 0; min-height: 0; padding: 9px 12px; display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 10px; font-weight: 400; font-size: .9rem; }
+.est .est-row:nth-child(even) { background: var(--surface-2); }
+.est .est-row-l { font-weight: 800; }
+.est .est-row-v { font-weight: 500; }
+.est .est-btn { background: var(--est-head); border-radius: 10px; }
+.est .est-btn:not(:disabled):hover { background: #0e8a76; }
+.est .cs-table { background: var(--est-card); border: 1px solid var(--est-line); border-radius: 16px; overflow: hidden; }
+.est .cs-table-h { background: var(--surface-2); color: var(--text); }
+.est .cs-table-h > * + * { border-inline-start-color: var(--est-line) !important; }
+.est .cs-tr { background: var(--est-card); color: var(--text); }
+.est .cs-tr:nth-child(even) { background: var(--surface-2); }
+.est .cs-tr.is-done { background: color-mix(in srgb, #16a34a 8%, var(--est-card)); }
+.est .est-step-v { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.est .est-step-d { color: var(--muted); }
+.est .est-step .cs-mark { width: 24px; height: 24px; flex: none; }
+.est .est-live { font-size: .82rem; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+.est .cu-summary .est-pill { font-weight: 700; }
+@media (max-width: 640px) {
+  .est .est-row, .est .est-step { grid-template-columns: 120px minmax(0, 1fr); }
+  .est .est-cols { padding: 6px 12px 12px; }
+}

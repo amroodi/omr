@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { StatusBadge } from '../components/ui';
 import { Icon } from '../components/Shell';
 import { LogoTile } from '../components/LogoTile';
+import { blankVal } from '../components/case-ui';
 import { API_BASE } from '../../lib/api';
 import { DEATH_TYPES, EstelamFrame, InfoCol, InfoRow, PANELS, fmtAmt, phaseText, phaseTone, useExit } from './shared';
 
@@ -33,7 +34,7 @@ function Result({ r }: { r: any }) {
           {(co?.name || r.companyName) && <div className="est-hero-sub">{co?.name || r.companyName}</div>}
           <div className="est-dates">
             {!(r.imported && (r.status === 'PAID' || r.status === 'REJECTED')) && <div><div className="est-date-l">تاریخ ثبت اولیه</div><div className="est-date-v"><Icon path={CAL} /> {r.createdAt || '—'}</div></div>}
-            <div><div className="est-date-l">تاریخ پرداخت</div><div className="est-date-v"><Icon path={CAL} /> {r.paidDate || '—'}</div></div>
+            <div><div className="est-date-l">تاریخ پرداخت</div><div className="est-date-v"><Icon path={CAL} /> {blankVal(r.paidDate) ? '—' : r.paidDate}</div></div>
           </div>
         </div>
         <div className="est-notes">
@@ -46,7 +47,7 @@ function Result({ r }: { r: any }) {
       {/* Three info columns */}
       <div className="est-cols">
         <InfoCol title="اطلاعات بیمه‌شده">
-          <InfoRow label="نام و نام خانوادگی" value={r.deceasedName ? (isDeath ? `مرحوم ${r.deceasedName}` : r.deceasedName) : null} />
+          <InfoRow label="نام و نام خانوادگی" value={r.deceasedName ? (isDeath && !String(r.deceasedName).trim().startsWith('مرحوم') ? `مرحوم ${r.deceasedName}` : r.deceasedName) : null} />
           <InfoRow label="کد ملی" value={(r.nationalCode || r.nationalCodeMasked) ? <bdi className="ltr-val">{r.nationalCode || r.nationalCodeMasked}</bdi> : null} />
           <InfoRow label="تاریخ تولد" value={r.birthDate} />
           <InfoRow label={isDeath ? 'سن هنگام فوت' : 'سن هنگام حادثه'} value={age} />

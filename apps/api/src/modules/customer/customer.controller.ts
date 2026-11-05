@@ -330,6 +330,8 @@ export class CustomerController {
       mainInsuredName: dto.mainInsuredName,
       mainInsuredNationalCode: dto.mainInsuredNationalCode,
       policyNumber: dto.policyNumber, // an insurer's نماینده بیمه types it (no contract to take it from)
+      deathCapital: dto.deathCapital,
+      accidentCapital: dto.accidentCapital,
     });
   }
 

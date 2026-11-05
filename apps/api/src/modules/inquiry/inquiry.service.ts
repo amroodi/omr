@@ -447,6 +447,7 @@ export class InquiryService {
       deathCapital: fv.death_capital ?? null,
       accidentCapital: fv.accident_capital ?? null,
       payableAmount: fv.payable_amount ?? (c.finalizedAmount ?? c.claimedAmount)?.toString() ?? null, // the approved amount once there is one
+      payableKnown: !!(fv.payable_amount || c.finalizedAmount), // typed / finalized — not just the estimate
       claimedAmount: c.claimedAmount != null ? c.claimedAmount.toString() : null, // «فرایند رسیدگی پرونده»
       finalizedAmount: c.finalizedAmount != null ? c.finalizedAmount.toString() : null,
       causeOfDeath: fv.cause_of_death ?? c.causeOfDeath ?? null,
