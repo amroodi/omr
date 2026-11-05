@@ -373,3 +373,26 @@ To restore into the same database, after the spare tables have been emptied:
 ```bash
 gunzip -c /var/backups/omr_spare_YYYY-MM-DD.sql.gz | docker exec -i omr-postgres psql -U omr omr_damuon
 ```
+
+---
+
+## 15. Moving everything to a new server
+
+Two scripts do it: [`deploy/move-export.sh`](../deploy/move-export.sh) on the old server packs the database
+(with its roles), the uploaded documents, `/etc/omr/api.env`, the Nginx site and the TLS certificates into
+`/root/omr-move/`; [`deploy/move-import.sh`](../deploy/move-import.sh) on a fresh Ubuntu server installs
+everything (as §1–§7), restores all of it, and runs `deploy.sh`. The secrets travel unchanged — a new
+`FIELD_ENCRYPTION_KEY` / `BLIND_INDEX_PEPPER` would make the encrypted data unreadable.
+
+1. **Old server** (the site stops here; `systemctl start omr-api omr-web` cancels):
+   `curl -fsSL https://raw.githubusercontent.com/amroodi/omr/main/deploy/move-export.sh -o /root/move-export.sh && sudo bash /root/move-export.sh`
+2. **New server**: copy the files over, then run the import:
+   `rsync -av root@<OLD-IP>:/root/omr-move/ /root/omr-move/`
+   `curl -fsSL https://raw.githubusercontent.com/amroodi/omr/main/deploy/move-import.sh -o /root/move-import.sh && sudo bash /root/move-import.sh`
+3. **Test before DNS**: `curl -s --resolve omr.damuon.com:443:<NEW-IP> https://omr.damuon.com/api/v1/health`,
+   or point the domain at the new IP in your own computer's hosts file and sign in.
+4. **Outside services that allow by IP**: add the new server's IP wherever the old one is allowed — the SMS
+   gateway (Magfa / Kavenegar …), the insurers' فن‌آوران coverage service, AvalAI.
+5. **DNS**: change the domain's A record to the new IP. Set up again any cron jobs the import printed
+   (backups). `sudo certbot renew --dry-run` once DNS points here.
+6. **Old server**: keep it stopped for a few days, then wipe it — it holds personal data and the secrets.
