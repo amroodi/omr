@@ -32,7 +32,7 @@ PUBLIC_TENANT_SLUG="${OVERRIDE_TENANT_SLUG:-${PUBLIC_TENANT_SLUG:-damuon}}"
 echo "==> Prisma: generate client + apply migrations + sync system-role permissions + case numbers + file names"
 # Migrations and maintenance scripts run as the database owner (MIGRATE_DATABASE_URL) when the API itself
 # uses a limited role for row-level security (deploy/rls-role.sh); otherwise both use DATABASE_URL.
-( cd apps/api && export DATABASE_URL="${MIGRATE_DATABASE_URL:-$DATABASE_URL}" && npx prisma generate && npx prisma migrate deploy && npx ts-node prisma/sync-roles.ts && npx ts-node prisma/renumber-claims.ts && npx ts-node prisma/fix-file-names.ts )
+( cd apps/api && export DATABASE_URL="${MIGRATE_DATABASE_URL:-$DATABASE_URL}" && npx prisma generate && npx prisma migrate deploy && npx ts-node prisma/sync-roles.ts && npx ts-node prisma/renumber-claims.ts && npx ts-node prisma/fix-file-names.ts && npx ts-node prisma/fix-imported-dates.ts )
 
 # The TypeScript builds need more than Node's default heap on a small server (the API build ran out at
 # ~490 MB). OMR_BUILD_HEAP_MB in /etc/omr/api.env overrides it; add swap if the server has little RAM.

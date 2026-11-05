@@ -2248,6 +2248,10 @@ a.cu-card.is-link:hover { transform: translateY(-2px); box-shadow: 0 0 0 2px var
 .est .est-date-v { font-size: .95rem; margin-top: 4px; }
 .est .est-date-v svg { color: var(--est-head); }
 .est .est-pill { background: var(--surface-2); color: var(--text); padding: 6px 14px; font-size: .86rem; }
+/* …but «توضیحات پرونده» keeps its colour: green paid / payment order, red rejected or missing documents, yellow in progress */
+.est .est-pill.tone-ok { background: #16a34a; color: #fff; }
+.est .est-pill.tone-wait { background: #facc15; color: #422006; }
+.est .est-pill.tone-bad { background: #ef4444; color: #fff; }
 .est .est-exit { padding: 8px 16px; border-radius: 10px; font-size: .9rem; box-shadow: none; }
 .est .est-exit-ghost { background: transparent; color: var(--est-head); box-shadow: inset 0 0 0 1.5px var(--est-head); }
 .est .est-exit-ghost:hover { background: color-mix(in srgb, var(--est-head) 10%, transparent); }

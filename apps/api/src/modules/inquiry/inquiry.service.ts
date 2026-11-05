@@ -23,6 +23,14 @@ import { caseTypeOf, chainOf, InsuredRelation, RELATION_FA, Stage } from '../cla
 
 import { ModelStore } from '../model-view/model-store.service';
 import { ageAt } from '../claims/claims.service';
+import { fromJalali, toAsciiDigits } from '../../common/jalali/jalali.util';
+
+/** A typed Jalali date («1343/04/01») as a Date, or undefined. */
+function jalaliDate(v?: string | null): Date | undefined {
+  const s = toAsciiDigits(String(v ?? '')).trim();
+  if (!/^\d{3,4}\/\d{1,2}\/\d{1,2}$/.test(s)) return undefined;
+  try { const d = fromJalali(s); return isNaN(d.getTime()) ? undefined : d; } catch { return undefined; }
+}
 import { NotificationsService } from '../notifications/notifications.service';
 import { ClaimFieldsService } from '../claim-fields/claim-fields.service';
 import { PolicyholdersService } from '../policyholders/policyholders.service';
@@ -440,7 +448,8 @@ export class InquiryService {
       nationalCode: nid, // the requester typed it themselves (OTP-verified), so it is shown in full
       nationalCodeMasked: nid,
       birthDate: c.deceasedBirthDate ? toJalali(c.deceasedBirthDate, false) : (fv.birth_date ?? null),
-      deceasedAge: ageAt(c.deceasedBirthDate, c.eventDate),
+      // (an imported case may have its dates only as typed fields)
+      deceasedAge: ageAt(c.deceasedBirthDate ?? jalaliDate(fv.birth_date), c.eventDate ?? jalaliDate(fv.death_date)),
       companyName: fv.company_name ?? c.employerName ?? null,
       policyNumber: fv.policy_number ?? c.policyNumber ?? null,
       policyStartDate: fv.policy_start_date ?? null,
@@ -461,7 +470,8 @@ export class InquiryService {
       paidDate: manual ? (fv.payment_order_date ? toPersianDigits(fv.payment_order_date) : null)
         : (() => { const p = (c.steps ?? []).find((s: any) => s.action === 'MARK_PAID' && s.decidedAt); return p?.decidedAt ? toJalali(p.decidedAt, false) : fv.payment_order_date ?? null; })(),
       // Where the claim is now + every hand-off (desk names only — operator names stay internal).
-      currentStageLabel: manual ? story.caseStage : c.currentStage ? this.store.labels(c.insurerTenantId)[c.currentStage as Stage] : null,
+      // A paid or rejected case is closed: it sits in «بایگانی».
+      currentStageLabel: c.status === 'PAID' || c.status === 'REJECTED' ? 'بایگانی' : manual ? story.caseStage : c.currentStage ? this.store.labels(c.insurerTenantId)[c.currentStage as Stage] : null,
       physicalAtLabel: this.store.labels(c.insurerTenantId)[(c.physicalAt as Stage | null) ?? 'POLICYHOLDER'], // where the original documents are
       steps: (manual ? [] : c.steps ?? []).map((s: any) => ({
         order: s.order, partyType: s.partyType, stage: s.stage ?? null, stageLabel: s.stage ? this.store.labels(c.insurerTenantId)[s.stage as Stage] : null,
