@@ -671,6 +671,7 @@ export class ClaimsService {
     const s = claim.currentStage as Stage | null;
     const holds = this.holdsDesk(claim, desk);
     const asksNumber = (await this.modelOf(claim.insurerTenantId)).lossNoticeAsksNumber;
+    const myOrg = desk.tenantId ? await this.db().tenant.findUnique({ where: { id: desk.tenantId }, select: { chargoonEnabled: true } }) : null;
     return {
       chain: chainOf(claim, await this.modelOf(claim.insurerTenantId)).map((st) => ({ stage: st, label: this.store.labels(claim.insurerTenantId)[st] })),
       currentStage: s,
@@ -685,6 +686,7 @@ export class ClaimsService {
       // Recorded once without a number: nothing left to edit. With a number: it can be corrected.
       canRecordLossNotice: s === 'BRANCH' && claim.flowDirection === 'UP' && holds && (asksNumber || !claim.lossNoticeDate),
       lossNoticeAsksNumber: asksNumber,
+      chargoon: !!myOrg?.chargoonEnabled, // this organization's letters carry «شماره چارگون»
       actions: await this.availableActions(claim, desk),
       physical: await this.physicalView(claim, desk),
     };
@@ -958,7 +960,7 @@ export class ClaimsService {
       events: events.map((e) => ({
         id: e.id, stage: e.stage, stageLabel: this.store.labels(claim.insurerTenantId)[e.stage as Stage], action: e.action, note: e.note, trackingNo: e.trackingNo,
         at: toJalali(e.createdAt), by: e.actorId ? (uMap.get(e.actorId) ?? null) : null,
-        letters: letters.filter((l) => l.physicalEventId === e.id).map((l) => ({ id: l.id, number: l.number, subject: l.subject, date: l.letterDate ? toJalali(l.letterDate, false) : null, hasFile: !!l.storageKey, fileName: l.fileName })),
+        letters: letters.filter((l) => l.physicalEventId === e.id).map((l) => ({ id: l.id, number: l.number, chargoonNo: l.chargoonNo ?? null, subject: l.subject, date: l.letterDate ? toJalali(l.letterDate, false) : null, hasFile: !!l.storageKey, fileName: l.fileName })),
       })),
     };
   }
@@ -1023,13 +1025,13 @@ export class ClaimsService {
   }
 
   // ── Letters (مکاتبات) that accompany a hand-off ──
-  async createLetter(claimId: string, input: { number?: string; date?: string; subject?: string }, file?: Express.Multer.File) {
+  async createLetter(claimId: string, input: { number?: string; date?: string; subject?: string; chargoonNo?: string }, file?: Express.Multer.File) {
     const db = this.db();
     const claim = await db.claim.findUnique({ where: { id: claimId } });
     if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
     this.assertParticipant(claim);
     assertNotPaid(claim); // archived once paid
-    if (!input.number?.trim() && !file?.buffer?.length) throw new BadRequestException('شمارهٔ نامه یا فایل نامه الزامی است');
+    if (!input.number?.trim() && !input.chargoonNo?.trim() && !file?.buffer?.length) throw new BadRequestException('شمارهٔ نامه یا فایل نامه الزامی است');
     let stored: { storageKey: string; fileName: string; mimeType: string; sizeBytes: number } | null = null;
     if (file?.buffer?.length) {
       if (!claimDocOk(file)) throw new BadRequestException(CLAIM_DOC_TYPES_FA);
@@ -1038,7 +1040,7 @@ export class ClaimsService {
     const ctx = getContext();
     const letter = await db.claimLetter.create({
       data: {
-        claimId, number: input.number?.trim() || null, letterDate: input.date ? new Date(input.date) : null, subject: input.subject?.trim() || null,
+        claimId, number: input.number?.trim() || null, chargoonNo: input.chargoonNo?.trim() || null, letterDate: input.date ? new Date(input.date) : null, subject: input.subject?.trim() || null,
         ...(stored ?? {}), createdById: ctx?.actorId ?? null, createdByTenantId: ctx?.tenantId ?? null,
       },
       select: { id: true },
@@ -2409,7 +2411,7 @@ export class ClaimsService {
         direction: s.direction, purpose: s.purpose ?? null, state: s.state, action: s.action ?? null,
         levelId: s.levelId, holderTenantId: s.holderTenantId, note: s.note, decidedAt: s.decidedAt ? toJalali(s.decidedAt) : null,
         letters: (c.letters ?? []).filter((l: any) => l.stepId === s.id).map((l: any) => ({
-          id: l.id, number: l.number, subject: l.subject, date: l.letterDate ? toJalali(l.letterDate, false) : null, hasFile: !!l.storageKey, fileName: l.fileName,
+          id: l.id, number: l.number, chargoonNo: l.chargoonNo ?? null, subject: l.subject, date: l.letterDate ? toJalali(l.letterDate, false) : null, hasFile: !!l.storageKey, fileName: l.fileName,
         })),
       })),
       deficiencies: (c.deficiencies ?? []).map((d: any) => ({ items: safeParse(d.items), raisedByStepId: d.raisedByStepId, createdAt: d.createdAt ? toJalali(d.createdAt) : null, resolvedAt: d.resolvedAt ? toJalali(d.resolvedAt) : null })),

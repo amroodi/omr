@@ -323,6 +323,11 @@ export class LetterDto {
   @IsString()
   @Length(0, 200)
   subject?: string;
+
+  @IsOptional()
+  @IsString()
+  @Length(0, 60)
+  chargoonNo?: string;
 }
 
 const PHYSICAL_KEYS = ['PHYSICAL_SEND', 'PHYSICAL_RELAY', 'PHYSICAL_RECEIVE', 'PHYSICAL_RETURN'] as const;
