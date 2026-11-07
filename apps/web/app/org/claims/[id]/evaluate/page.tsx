@@ -81,7 +81,7 @@ export default function EvaluatePage() {
 
   const run = async (fn: () => Promise<any>) => { setError(''); setMsg(''); setBusy(true); try { await fn(); } catch (e: any) { setError(e.message); } finally { setBusy(false); } };
   const op = (name: string, body: Record<string, string> = {}) => client.post<Sinad>(`/claims/${id}/sinad/${name}`, body, 'org').then(setSinad);
-  const close = () => router.push('/org/sinad');
+  const close = () => router.push('/org/work-desk');
 
   // Latest document of each item, with this desk's ✓/✕.
   const rows = useMemo(() => {
@@ -117,7 +117,7 @@ export default function EvaluatePage() {
     const phys = c.workflow?.actions.find((a) => a.key === 'REQUEST_PHYSICAL');
     if (fwd && !fwd.disabled) {
       await client.post(`/claims/${id}/action`, { action: 'FORWARD' }, 'org');
-      router.push('/org/sinad?tab=evaluate');
+      router.push('/org/work-desk');
       return;
     }
     if (phys && !phys.disabled && !c.workflow?.physical?.open) {
@@ -137,7 +137,7 @@ export default function EvaluatePage() {
     const items = [...(sinad?.fraudCheck === 'FRAUD' ? ['هزینه تقلبی است'] : []), ...picked, ...(returnNote.trim() ? [returnNote.trim()] : [])];
     if (!items.length) throw new Error('حداقل یک علت عودت را انتخاب کنید یا بنویسید');
     await client.post(`/claims/${id}/action`, { action: 'RETURN', deficiencies: items }, 'org');
-    router.push('/org/sinad?tab=evaluate');
+    router.push('/org/work-desk');
   });
 
   const uploadDoc = async (file: File, onProgress: OnProgress) => {
@@ -260,7 +260,7 @@ export default function EvaluatePage() {
                         <button className="ev-btn" disabled={busy} onClick={() => { setDoctorKind('doctor-exam'); setNoteText(''); setModal('doctor'); }}>دعوت به معاینه</button>
                       </div>
                       <div className="ev-actions">
-                        <button className="ev-btn" disabled={busy} onClick={() => run(async () => { await op('later'); router.push('/org/sinad?tab=evaluate'); })}>بعدا بررسی میکنم</button>
+                        <button className="ev-btn" disabled={busy} onClick={() => run(async () => { await op('later'); router.push('/org/work-desk'); })}>بعدا بررسی میکنم</button>
                         <button className="ev-btn is-main" disabled={busy} onClick={approveAndSave}>{busy ? <Spinner size={16} /> : 'تایید و ذخیره'}</button>
                       </div>
                     </>
@@ -405,8 +405,8 @@ export default function EvaluatePage() {
                   onClick={() => {
                     const m = modal; setModal(null);
                     if (m === 'note') run(() => op('note', { note: noteText.trim() }));
-                    else if (m === 'doctor') run(async () => { await op(doctorKind, noteText.trim() ? { note: noteText.trim() } : {}); router.push('/org/sinad?tab=evaluate'); });
-                    else run(async () => { await op('refer', { userId: referTo }); router.push('/org/sinad?tab=evaluate'); });
+                    else if (m === 'doctor') run(async () => { await op(doctorKind, noteText.trim() ? { note: noteText.trim() } : {}); router.push('/org/work-desk'); });
+                    else run(async () => { await op('refer', { userId: referTo }); router.push('/org/work-desk'); });
                   }}>ثبت</button>
               </div>
             )}

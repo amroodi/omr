@@ -15,7 +15,7 @@ import { INSURED_RELATIONS } from '../../components/claim-wording';
 
 interface Tile { key: string; label: string; count: number; actionable: boolean; href?: string }
 interface WorkDesk { userName: string | null; role: string; roleLabel: string; tiles: Tile[]; sinad?: boolean; summary: { pendingActions: number; queues: number } }
-interface QueueRow { id: string; claimNumber: string; policyNumber?: string | null; deceasedNationalCode?: string | null; status: string; claimType: string; deceasedName: string | null; claimedAmount: string; payableAmount?: string; finalizedAmount?: string | null; insurerTenantId?: string; claimTypeLabel?: string | null; lineLabel?: string | null; insuredRelation?: string | null; mainInsuredName?: string | null; mainInsuredNationalCode?: string | null; companyName?: string | null; policyStart?: string | null; policyEnd?: string | null }
+interface QueueRow { id: string; claimNumber: string; policyNumber?: string | null; deceasedNationalCode?: string | null; status: string; claimType: string; deceasedName: string | null; claimedAmount: string; payableAmount?: string; finalizedAmount?: string | null; insurerTenantId?: string; claimTypeLabel?: string | null; lineLabel?: string | null; insuredRelation?: string | null; mainInsuredName?: string | null; mainInsuredNationalCode?: string | null; companyName?: string | null; policyStart?: string | null; policyEnd?: string | null; needsAction?: boolean; evaluatorName?: string | null; doctorNote?: string | null }
 
 const fa = (n: number) => n.toLocaleString('fa-IR');
 const EMPTY = {
@@ -73,9 +73,9 @@ function WorkDesk() {
     client.get<{ code: string; label: string }[]>('/claims/doc-types', 'org').then(setDocTypes).catch(() => {});
     client.get<WorkDesk>('/claims/work-desk', 'org')
       .then((d) => {
-        // «روند سیناد» (Alborz): the insurer's desks work from the kartable; «جستجوی پیشرفته» there opens this page.
-        if (d.sinad && orgMode() !== 'ENTRY' && new URLSearchParams(window.location.search).get('classic') !== '1' && !new URLSearchParams(window.location.search).get('customize')) { router.replace('/org/sinad'); return; }
         setData(d);
+        // «روند سیناد» (Alborz): the same میز کار, with Sinad's stage tiles (the kartable) in place of ours.
+        if (d.sinad && orgMode() !== 'ENTRY') loadSinadTiles(d);
         // Post-login summary tip — once per browser session, only if something awaits action.
         try {
           if (d.summary.pendingActions > 0 && !sessionStorage.getItem('wdTipSeen')) {
@@ -88,6 +88,25 @@ function WorkDesk() {
     client.get<{ id: string; name: string }[]>('/claims/insurers', 'org').then((a) => setInsurers(a)).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // «روند سیناد»: tiles come from the kartable; keys are `sinad:<tab>`.
+  const loadSinadTiles = (base?: WorkDesk) => client.get<{ enabled: boolean; tabs?: { key: string; label: string; count: number }[] }>('/claims/sinad/kartable', 'org')
+    .then((k) => {
+      if (!k.enabled || !k.tabs) return;
+      const tiles: Tile[] = k.tabs.map((t) => ({ key: `sinad:${t.key}`, label: t.label, count: t.count, actionable: true }));
+      setData((cur) => { const d = base ?? cur; return d ? { ...d, tiles } : d; });
+      setActive((a) => (a && a.key.startsWith('sinad:') ? { ...a, count: tiles.find((t) => t.key === a.key)?.count ?? a.count } : a));
+    }).catch(() => {});
+  const sinadTab = active?.key.startsWith('sinad:') ? active.key.slice(6) : null;
+  const [busyOp, setBusyOp] = useState(false);
+  const [opinion, setOpinion] = useState<{ id: string; name: string } | null>(null);
+  const [opinionText, setOpinionText] = useState('');
+  const sinadOp = async (id: string, op: string, body: Record<string, string> = {}) => {
+    if (!active) return;
+    setError(''); setBusyOp(true);
+    try { await client.post(`/claims/${id}/sinad/${op}`, body, 'org'); openQueue(active); loadSinadTiles(); }
+    catch (e: any) { setError(e.message); } finally { setBusyOp(false); }
+  };
 
   const insurerMap = useMemo(() => Object.fromEntries(insurers.map((i) => [i.id, i.name])), [insurers]);
 
@@ -145,10 +164,16 @@ function WorkDesk() {
 
   const openQueue = (t: Tile) => {
     setRevealed((r) => (r.includes(t.key) ? r : [...r, t.key])); // reveal this tile's count
-    if (t.count === 0) { setNotice('موردی برای این صف وجود ندارد.'); return; }
+    // «در انتظار ارزیابی اولیه» opens even when empty: opening it hands this evaluator the next batch.
+    if (t.count === 0 && t.key !== 'sinad:evaluate') { setNotice('موردی برای این صف وجود ندارد.'); return; }
     setActive(t); setRows([]); setQLoading(true);
-    client.get<QueueRow[]>(`/claims/work-desk/queue?key=${encodeURIComponent(t.key)}`, 'org')
-      .then(setRows).catch((e) => setError(e.message)).finally(() => setQLoading(false));
+    const url = t.key.startsWith('sinad:') ? `/claims/sinad/kartable/${t.key.slice(6)}` : `/claims/work-desk/queue?key=${encodeURIComponent(t.key)}`;
+    client.get<QueueRow[]>(url, 'org')
+      .then((r) => {
+        setRows(r);
+        if (t.key === 'sinad:evaluate') { loadSinadTiles(); if (!r.length) setNotice('پرونده‌ای در کارتابل شما نیست و پرونده‌ای هم در انتظار تخصیص نیست.'); }
+      })
+      .catch((e) => setError(e.message)).finally(() => setQLoading(false));
   };
 
   const runSearch = () => {
@@ -321,7 +346,7 @@ function WorkDesk() {
                         <input type="checkbox" aria-label="انتخاب همهٔ ردیف‌های این صفحه" checked={pageRows.length > 0 && pageRows.every((r) => picked.has(r.id))}
                           onChange={(e) => setPicked((cur) => { const n = new Set(cur); pageRows.forEach((r) => (e.target.checked ? n.add(r.id) : n.delete(r.id))); return n; })} />
                       </th>
-                      {['#', 'عملیات', 'نام و نام خانوادگی', 'کد ملی', 'نسبت', 'بیمه‌گزار', 'شماره بیمه‌نامه', 'نوع بیمه‌نامه', 'نوع پرونده', 'آغاز پوشش', 'پایان پوشش', 'مبلغ (ریال)', 'وضعیت'].map((h) => <th key={h}>{h}</th>)}
+                      {['#', 'عملیات', 'نام و نام خانوادگی', 'کد ملی', 'نسبت', 'بیمه‌گزار', 'شماره بیمه‌نامه', 'نوع بیمه‌نامه', 'نوع پرونده', 'آغاز پوشش', 'پایان پوشش', 'مبلغ (ریال)', 'وضعیت', ...(sinadTab ? ['ارزیاب'] : []), ...(sinadTab === 'doctor' || sinadTab === 'exam' ? ['اظهار نظر پزشک معتمد'] : [])].map((h) => <th key={h}>{h}</th>)}
                     </tr></thead>
                     <tbody>
                       {/* Rows don't open on click (too many mis-clicks) — only the «مشاهده» / «ارزیابی» buttons do. */}
@@ -332,7 +357,19 @@ function WorkDesk() {
                           <td>{fa((page - 1) * pageSize + i + 1)}</td>
                           <td>
                             <span className="flex items-center gap-1">
-                              {!entry && <a href={`/org/claims/${r.id}/assess`} target="_blank" rel="noopener" className="sn-act" title="باز شدن در زبانهٔ جدید">ارزیابی</a>}
+                              {sinadTab ? (
+                                <>
+                                  {r.needsAction && ['evaluate', 'later', 'final', 'returned', 'pay'].includes(sinadTab) && (
+                                    <a href={`/org/claims/${r.id}/evaluate`} className="sn-act">{sinadTab === 'final' ? 'ارزیابی نهایی' : sinadTab === 'returned' || sinadTab === 'pay' ? 'اقدام' : 'ارزیابی'}</a>
+                                  )}
+                                  {(sinadTab === 'doctor' || sinadTab === 'exam') && (
+                                    <button className="sn-act" onClick={() => { setOpinionText(''); setOpinion({ id: r.id, name: r.deceasedName || r.claimNumber }); }}>اظهار نظر پزشک معتمد</button>
+                                  )}
+                                  {(sinadTab === 'evaluate' || sinadTab === 'later') && r.evaluatorName && (
+                                    <button className="sn-act is-ghost" disabled={busyOp} onClick={() => sinadOp(r.id, 'release')} title="پرونده به پرونده‌های تخصیص‌نیافتهٔ شعبه برمی‌گردد">خارج کردن از کارتابل</button>
+                                  )}
+                                </>
+                              ) : !entry && <a href={`/org/claims/${r.id}/assess`} target="_blank" rel="noopener" className="sn-act" title="باز شدن در زبانهٔ جدید">ارزیابی</a>}
                               <a href={`/org/claims/${r.id}`} target="_blank" rel="noopener" className="sn-act is-ghost" title="باز شدن در زبانهٔ جدید">مشاهده</a>
                             </span>
                           </td>
@@ -350,6 +387,8 @@ function WorkDesk() {
                             {r.finalizedAmount ? <span className="badge badge-success mr-1" style={{ fontSize: '0.6rem' }}>قطعی</span> : null}
                           </td>
                           <td><StatusBadge status={r.status} /></td>
+                          {sinadTab && <td>{r.evaluatorName || '—'}</td>}
+                          {(sinadTab === 'doctor' || sinadTab === 'exam') && <td>{r.doctorNote || '—'}</td>}
                         </tr>
                       ))}
                     </tbody>
@@ -376,6 +415,25 @@ function WorkDesk() {
             </div>
           )}
         </>
+      )}
+
+      {opinion && (
+        <Overlay onClose={() => setOpinion(null)}>
+          <div className="pmodal" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
+            <div className="pmodal-head">
+              <span className="pmodal-title">اظهار نظر پزشک معتمد — {opinion.name}</span>
+              <button className="pmodal-x" onClick={() => setOpinion(null)} aria-label="بستن">×</button>
+            </div>
+            <div className="pmodal-body space-y-2 text-sm">
+              <textarea className="input" rows={5} maxLength={1000} value={opinionText} onChange={(e) => setOpinionText(e.target.value)} placeholder="نظر پزشک معتمد دربارهٔ پرونده (مثلاً درصد نقص عضو، ارتباط علت با حادثه)" />
+              <div className="text-xs" style={{ color: 'var(--muted)' }}>پس از ثبت، پرونده به «در انتظار ارزیابی اولیه» ارزیاب خود برمی‌گردد.</div>
+            </div>
+            <div className="flex border-t" style={{ borderColor: 'var(--border)' }}>
+              <button onClick={() => setOpinion(null)} className="flex-1 py-3 font-bold" style={{ color: 'var(--muted)', borderInlineEnd: '1px solid var(--border)' }}>انصراف</button>
+              <button disabled={busyOp || !opinionText.trim()} onClick={() => { const o = opinion; setOpinion(null); sinadOp(o.id, 'doctor-opinion', { note: opinionText.trim() }); }} className="flex-1 py-3 font-bold" style={{ color: 'var(--brand)' }}>ثبت اظهار نظر</button>
+            </div>
+          </div>
+        </Overlay>
       )}
 
       {notice && (
