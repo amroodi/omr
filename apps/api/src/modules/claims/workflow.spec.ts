@@ -155,6 +155,17 @@ describe('Model View', () => {
     expect(modelFrom(null).entry.way).toBe('BROKER');
     expect(modelFrom({ entry: { way: 'ASK' } }).entry.way).toBe('ASK');
     expect(modelFrom({ entry: { way: 'HQ' } }).entry.way).toBe('BROKER');
+    expect(modelFrom({ entry: { way: 'CHANNEL' } }).entry.way).toBe('CHANNEL');
+  });
+
+  it('keeps «روند سیناد» off unless switched on, with a sane batch and return reasons', () => {
+    expect(modelFrom(null).sinad.enabled).toBe(false);
+    const m = modelFrom({ sinad: { enabled: true, batchSize: 500 } });
+    expect(m.sinad.enabled).toBe(true);
+    expect(m.sinad.batchSize).toBe(10);
+    expect(m.sinad.returnGroups.length).toBeGreaterThan(0);
+    expect(modelFrom({ sinad: { enabled: true, batchSize: 5, returnGroups: [{ label: ' نقص ', items: ['الف', 'الف', ' ', 3] }, { label: '' }] } }).sinad)
+      .toEqual({ enabled: true, batchSize: 5, returnGroups: [{ label: 'نقص', items: ['الف'] }] });
   });
 
   it('keeps today\'s behaviour when nothing is stored', () => {

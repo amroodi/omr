@@ -114,6 +114,20 @@ interface Desk {
 
 const INSURER_DESKS: Stage[] = ['BRANCH', 'HQ', 'COUNCIL'];
 
+/** «روند سیناد» kartable events, as the evaluation window's history shows them. */
+const DESK_EVENT_FA: Record<string, string> = {
+  ALLOCATE: 'تخصیص به ارزیاب',
+  RELEASE: 'خارج کردن از کارتابل',
+  REFER: 'ارجاع به ارزیاب دیگر',
+  LATER: 'بعدا بررسی میکنم',
+  DOCTOR_REFER: 'ارجاع به پزشک معتمد',
+  DOCTOR_EXAM: 'دعوت به معاینه',
+  DOCTOR_OPINION: 'اظهار نظر پزشک معتمد',
+  FRAUD_CLEAN: 'بررسی کردم، تقلب نیست',
+  FRAUD_FLAG: 'تقلب است، عودت شود',
+  NOTE: 'یادداشت ارزیاب',
+};
+
 export interface ActInput {
   action: ActionKey;
   note?: string;
@@ -540,7 +554,7 @@ export class ClaimsService {
     // An insurer's own staff: Super Admin's Model View «ورود داده بیمه‌گر» decides where the case starts.
     if (ctx?.actorType === 'ORG_USER' && ctx.tenantId && ['BRANCH', 'HQ', 'COUNCIL'].includes(source)) {
       const way = (await this.modelOf(ctx.tenantId)).entry.way;
-      const targets: NoticeTarget[] = way === 'BROKER' ? ['BROKER'] : way === 'BRANCH' ? ['BRANCH'] : ['BROKER', 'BRANCH'];
+      const targets: NoticeTarget[] = way === 'BROKER' ? ['BROKER'] : way === 'BRANCH' ? ['BRANCH'] : way === 'CHANNEL' ? (brokerTenantId ? ['BROKER'] : ['BRANCH']) : ['BROKER', 'BRANCH'];
       return { enabled: true, targets, default: targets[0], source, labels: TARGET_FA, entryWay: way };
     }
     const brokerId = brokerTenantId ?? (ctx?.actorType === 'CUSTOMER' || source === 'BROKER' ? ctx?.tenantId : null);
@@ -601,7 +615,7 @@ export class ClaimsService {
     if (desk.stage !== s) return false;
     if (s === 'BROKER') return desk.tenantId === claim.brokerTenantId;
     if (desk.tenantId !== claim.insurerTenantId) return false;
-    if (s === 'BRANCH') return !claim.handlingBranchId || desk.branchId === claim.handlingBranchId;
+    if (s === 'BRANCH') return (!claim.handlingBranchId || desk.branchId === claim.handlingBranchId) && !this.allocatedElsewhere(claim, desk);
     return true;
   }
 
@@ -2187,6 +2201,7 @@ export class ClaimsService {
       role: desk.stage,
       roleLabel: desk.insurerAdmin ? 'مدیر بیمه‌گر (همهٔ مراحل)' : desk.stage ? this.store.labels(desk.tenantId)[desk.stage] : '—',
       tiles,
+      sinad: !!(ctx?.tenantId && this.store.get(ctx.tenantId).sinad.enabled), // «روند سیناد»: the panel opens the kartable instead
       summary: { pendingActions, queues: tiles.filter((t) => t.mine > 0).length },
     };
   }
@@ -2201,6 +2216,270 @@ export class ClaimsService {
     else throw new BadRequestException('صف نامعتبر است');
     const [claims, desk] = await Promise.all([this.prisma.replica().claim.findMany({ where, orderBy: { updatedAt: 'desc' }, take: 200 }), this.myDesk()]);
     return this.withPolicy(claims.map((c) => ({ ...(this.present(c) as object), needsAction: this.holdsDesk(c, desk) })));
+  }
+
+  // ─────────────────────────── «روند سیناد» (Model View `sinad`, Alborz) ───────────────────────────
+  // شعبه works from a Sinad-style kartable: cases climbing to شعبه are allocated to one evaluator in batches,
+  // nobody else at the branch sees them, and a new batch comes only when the last one is done. Everything
+  // else — which actions exist, who sends a case where — is the chain's own logic (actionsFor).
+
+  /** At a «روند سیناد» شعبه a case allocated to one evaluator is out of the others' hands (admins excepted). */
+  private allocatedElsewhere(claim: any, desk: Desk): boolean {
+    if (desk.insurerAdmin || claim.currentStage !== 'BRANCH' || claim.flowDirection !== 'UP' || !claim.evaluatorId) return false;
+    if (!this.store.get(claim.insurerTenantId).sinad.enabled) return false;
+    return claim.evaluatorId !== getContext()?.actorId;
+  }
+
+  /** The caller's insurer when it runs «روند سیناد» (else null: the usual میز کار applies). */
+  private async sinadDesk() {
+    const ctx = getContext();
+    if (ctx?.actorType !== 'ORG_USER' || !ctx.tenantId || !ctx.actorId) return null;
+    const model = await this.modelOf(ctx.tenantId).catch(() => null);
+    if (!model?.sinad.enabled) return null;
+    const desk = await this.myDesk();
+    if (!desk.stage || desk.stage === 'BROKER') return null;
+    return { desk, model, me: ctx.actorId, tenantId: ctx.tenantId };
+  }
+
+  private sinadTabs(desk: Desk, me: string) {
+    const admin = !!desk.insurerAdmin;
+    const branchUp: Prisma.ClaimWhereInput = { currentStage: 'BRANCH', flowDirection: 'UP' };
+    const mine: Prisma.ClaimWhereInput = admin ? {} : { evaluatorId: me };
+    const open: Prisma.ClaimWhereInput = { status: { notIn: [ClaimStatus.PAID, ClaimStatus.REJECTED] } };
+    type T = { key: string; label: string; where: Prisma.ClaimWhereInput; seats: Stage[] };
+    const tabs: T[] = [
+      { key: 'receive', label: 'در انتظار دریافت مدارک', where: { AND: [open, { currentStage: 'BRANCH', physicalAt: null }, mine] }, seats: ['BRANCH'] },
+      { key: 'evaluate', label: 'در انتظار ارزیابی اولیه', where: { ...branchUp, doctorState: null, evaluatorLater: false, ...mine }, seats: ['BRANCH'] },
+      { key: 'later', label: 'در انتظار بررسی‌های من', where: { ...branchUp, doctorState: null, evaluatorLater: true, ...mine }, seats: ['BRANCH'] },
+      { key: 'doctor', label: 'در انتظار اظهار نظر پزشک معتمد', where: { currentStage: 'BRANCH', doctorState: 'REFER' }, seats: ['BRANCH'] },
+      { key: 'exam', label: 'دعوت به معاینه', where: { currentStage: 'BRANCH', doctorState: 'EXAM' }, seats: ['BRANCH'] },
+      { key: 'final', label: 'در انتظار ارزیابی نهایی', where: { currentStage: { in: ['HQ', 'COUNCIL'] }, flowDirection: 'UP' }, seats: ['BRANCH', 'HQ', 'COUNCIL'] },
+      { key: 'returned', label: 'عودت‌شده — در انتظار ارسال', where: { flowDirection: 'DOWN', flowPurpose: 'DEFICIENCY', currentStage: { in: ['BRANCH', 'HQ', 'COUNCIL'] } }, seats: ['BRANCH', 'HQ', 'COUNCIL'] },
+      { key: 'pay', label: 'در انتظار پرداخت خسارت (واریز وجه)', where: { flowPurpose: 'PAYMENT', status: ClaimStatus.APPROVED }, seats: ['BRANCH', 'HQ', 'COUNCIL'] },
+      { key: 'paid', label: 'پرداخت شده', where: { status: ClaimStatus.PAID }, seats: ['BRANCH', 'HQ', 'COUNCIL'] },
+      { key: 'rejected', label: 'رد شده', where: { status: ClaimStatus.REJECTED }, seats: ['BRANCH', 'HQ', 'COUNCIL'] },
+      { key: 'all', label: 'همه پرونده‌ها', where: {}, seats: ['BRANCH', 'HQ', 'COUNCIL'] },
+    ];
+    return admin ? tabs : tabs.filter((t) => desk.stage && t.seats.includes(desk.stage));
+  }
+
+  /** The insurer's cases this caller follows: a شعبه user their branch's (or not yet assigned to a branch). */
+  private sinadScope(desk: Desk, tenantId: string): Prisma.ClaimWhereInput {
+    const w: Prisma.ClaimWhereInput = { insurerTenantId: tenantId, deletedAt: null, imported: false };
+    if (desk.stage === 'BRANCH' && !desk.insurerAdmin && desk.branchId) w.OR = [{ handlingBranchId: desk.branchId }, { handlingBranchId: null }];
+    return w;
+  }
+
+  /** «کارتابل»: the stage tabs with counts (null when the caller's insurer doesn't run «روند سیناد»). */
+  async sinadKartable() {
+    const s = await this.sinadDesk();
+    if (!s) return { enabled: false as const };
+    const db = this.prisma.replica();
+    const scope = this.sinadScope(s.desk, s.tenantId);
+    const tabs = await Promise.all(this.sinadTabs(s.desk, s.me).map(async (t) => ({ key: t.key, label: t.label, count: await db.claim.count({ where: { AND: [scope, t.where] } }) })));
+    const pool = s.desk.stage === 'BRANCH' ? await db.claim.count({ where: { AND: [scope, { currentStage: 'BRANCH', flowDirection: 'UP', evaluatorId: null, doctorState: null }] } }) : 0;
+    return {
+      enabled: true as const,
+      stage: s.desk.stage,
+      stageLabel: s.desk.insurerAdmin ? 'مدیر بیمه‌گر (همهٔ مراحل)' : this.store.labels(s.tenantId)[s.desk.stage!],
+      admin: !!s.desk.insurerAdmin,
+      batchSize: s.model.sinad.batchSize,
+      pool, // cases at شعبه not yet allocated to anyone
+      tabs,
+    };
+  }
+
+  /**
+   * Allocation, as in Sinad: an evaluator with nothing left in «در انتظار ارزیابی اولیه» gets the next batch
+   * of unallocated cases (oldest first). Each case is taken with a conditional update, so two evaluators
+   * opening the tab at once never get the same case.
+   */
+  private async allocateBatch(s: NonNullable<Awaited<ReturnType<ClaimsService['sinadDesk']>>>) {
+    if (s.desk.stage !== 'BRANCH' || s.desk.insurerAdmin) return 0;
+    const db = this.prisma.unscoped();
+    const scope = this.sinadScope(s.desk, s.tenantId);
+    const held = await db.claim.count({ where: { AND: [scope, { currentStage: 'BRANCH', flowDirection: 'UP', evaluatorId: s.me, doctorState: null, evaluatorLater: false }] } });
+    if (held > 0) return 0;
+    const candidates = await db.claim.findMany({
+      where: { AND: [scope, { currentStage: 'BRANCH', flowDirection: 'UP', evaluatorId: null, doctorState: null }] },
+      orderBy: { updatedAt: 'asc' }, take: s.model.sinad.batchSize, select: { id: true },
+    });
+    let got = 0;
+    for (const c of candidates) {
+      const r = await db.claim.updateMany({ where: { id: c.id, evaluatorId: null }, data: { evaluatorId: s.me, evaluatorAt: new Date(), evaluatorLater: false } });
+      if (r.count) { got++; await db.claimDeskEvent.create({ data: { claimId: c.id, kind: 'ALLOCATE', actorId: s.me } }); }
+    }
+    return got;
+  }
+
+  /** One kartable tab's rows («در انتظار ارزیابی اولیه» first hands out a new batch when the last is done). */
+  async sinadTab(key: string) {
+    const s = await this.sinadDesk();
+    if (!s) throw new ForbiddenException('کارتابل سیناد برای سازمان شما فعال نیست');
+    const tab = this.sinadTabs(s.desk, s.me).find((t) => t.key === key);
+    if (!tab) throw new BadRequestException('برگهٔ نامعتبر');
+    if (key === 'evaluate') await this.allocateBatch(s);
+    const claims = await this.prisma.unscoped().claim.findMany({
+      where: { AND: [this.sinadScope(s.desk, s.tenantId), tab.where] }, orderBy: { updatedAt: key === 'evaluate' ? 'asc' : 'desc' }, take: 300,
+    });
+    const ids = claims.map((c) => c.id);
+    const [users, branchSteps, branches] = await Promise.all([
+      this.prisma.unscoped().orgUser.findMany({ where: { id: { in: [...new Set(claims.map((c) => c.evaluatorId).filter((x): x is string => !!x))] } }, select: { id: true, displayName: true, username: true } }),
+      // «تایید اولیه»: شعبه's last hand-off up (amount, who, when, its note) — the «ارزیابی نهایی» columns
+      key === 'final' || key === 'all' ? this.prisma.unscoped().claimStep.findMany({ where: { claimId: { in: ids }, stage: 'BRANCH', action: 'FORWARD', decidedAt: { not: null } }, orderBy: { order: 'desc' }, select: { claimId: true, decidedAt: true, decidedById: true, note: true } }) : Promise.resolve([]),
+      this.prisma.unscoped().branch.findMany({ where: { tenantId: s.tenantId }, select: { id: true, name: true, code: true } }),
+    ]);
+    const deciders = branchSteps.length ? await this.prisma.unscoped().orgUser.findMany({ where: { id: { in: [...new Set(branchSteps.map((x) => x.decidedById).filter((x): x is string => !!x))] } }, select: { id: true, displayName: true, username: true } }) : [];
+    const nameOf = new Map([...users, ...deciders].map((u) => [u.id, u.displayName || u.username]));
+    const firstUp = new Map<string, (typeof branchSteps)[number]>();
+    for (const st of branchSteps) if (!firstUp.has(st.claimId)) firstUp.set(st.claimId, st);
+    const branchName = new Map(branches.map((b) => [b.id, `${b.code} - ${b.name}`]));
+    const rows = claims.map((c) => {
+      const up = firstUp.get(c.id);
+      return {
+        ...(this.present(c) as object),
+        policyholderCompanyId: c.policyholderCompanyId,
+        needsAction: this.holdsDesk(c, s.desk),
+        evaluatorName: c.evaluatorId ? nameOf.get(c.evaluatorId) ?? '—' : null,
+        evaluatorAt: c.evaluatorAt ? toJalali(c.evaluatorAt) : null,
+        doctorNote: c.doctorNote,
+        fraudCheck: c.fraudCheck,
+        physicalAt: c.physicalAt,
+        branchName: c.handlingBranchId ? branchName.get(c.handlingBranchId) ?? null : null,
+        firstApproval: up ? { amount: c.finalizedAmount?.toString() ?? null, by: (up.decidedById && nameOf.get(up.decidedById)) || null, at: up.decidedAt ? toJalali(up.decidedAt) : null, note: up.note } : null,
+      };
+    });
+    return this.withPolicy(rows);
+  }
+
+  /** What the evaluation window shows beyond the case itself: allocation, risk, پزشک معتمد, history, family cases. */
+  async sinadCase(claimId: string) {
+    const claim = await this.db().claim.findUnique({ where: { id: claimId } });
+    if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
+    this.assertParticipant(claim);
+    const model = await this.modelOf(claim.insurerTenantId);
+    const unscoped = this.prisma.unscoped();
+    const hashes = [claim.deceasedNationalCodeHash, claim.mainInsuredNationalCodeHash].filter((x): x is string => !!x);
+    const [events, related] = await Promise.all([
+      unscoped.claimDeskEvent.findMany({ where: { claimId }, orderBy: { createdAt: 'desc' }, take: 100 }),
+      // «خسارت اعضای خانواده»: every other case of this insured or of their main insured's family
+      unscoped.claim.findMany({
+        where: { id: { not: claimId }, insurerTenantId: claim.insurerTenantId, deletedAt: null, OR: [{ deceasedNationalCodeHash: { in: hashes } }, { mainInsuredNationalCodeHash: { in: hashes } }] },
+        orderBy: { createdAt: 'desc' }, take: 20,
+      }),
+    ]);
+    const actorIds = [...new Set([...events.map((e) => e.actorId), claim.evaluatorId].filter((x): x is string => !!x))];
+    const users = await unscoped.orgUser.findMany({ where: { id: { in: actorIds } }, select: { id: true, displayName: true, username: true } });
+    const nameOf = new Map(users.map((u) => [u.id, u.displayName || u.username]));
+    // Risk: simple signals for life / accident cases (Sinad's health score has no meaning here).
+    const reasons: string[] = [];
+    if (claim.lateNotice) reasons.push('اعلام خسارت پس از مهلت مقرر');
+    if (related.length) reasons.push(`${related.length.toLocaleString('fa-IR')} پروندهٔ دیگر برای این بیمه‌شده یا خانوادهٔ او`);
+    if (claim.policyholderCompanyId && claim.policyNumber && claim.eventDate) {
+      const k = await unscoped.policyholderContract.findFirst({ where: { companyId: claim.policyholderCompanyId, policyNumber: claim.policyNumber }, select: { startDate: true } });
+      if (k?.startDate && claim.eventDate.getTime() - k.startDate.getTime() < 90 * 86_400_000 && claim.eventDate >= k.startDate) reasons.push('وقوع حادثه در کمتر از سه ماه از آغاز بیمه‌نامه');
+    }
+    const level = reasons.length >= 2 ? 'HIGH' : reasons.length === 1 ? 'MEDIUM' : 'LOW';
+    const desk = await this.myDesk();
+    return {
+      enabled: model.sinad.enabled,
+      evaluator: claim.evaluatorId ? { id: claim.evaluatorId, name: nameOf.get(claim.evaluatorId) ?? '—', at: claim.evaluatorAt ? toJalali(claim.evaluatorAt) : null, me: claim.evaluatorId === getContext()?.actorId } : null,
+      later: claim.evaluatorLater,
+      doctor: { state: claim.doctorState, note: claim.doctorNote },
+      fraudCheck: claim.fraudCheck,
+      risk: { level, reasons },
+      canEvaluate: this.holdsDesk(claim, desk) && claim.currentStage === 'BRANCH' && claim.flowDirection === 'UP' && getContext()?.panelMode !== 'ENTRY',
+      admin: !!desk.insurerAdmin,
+      returnGroups: model.sinad.returnGroups,
+      history: events.map((e) => ({ kind: e.kind, label: DESK_EVENT_FA[e.kind] ?? e.kind, note: e.note, by: (e.actorId && nameOf.get(e.actorId)) || '—', at: toJalali(e.createdAt) })),
+      related: related.map((r) => ({
+        id: r.id, claimNumber: r.claimNumber, claimTypeLabel: caseTypeOf(model, r.claimType)?.label ?? r.claimType, status: r.status,
+        name: r.deceasedFullName ? this.crypto.decrypt(r.deceasedFullName) : null, relation: r.insuredRelation ? RELATION_FA[r.insuredRelation as InsuredRelation] ?? null : 'اصلی',
+        line: r.line ? kindLabel(r.line) : null, amount: (r.finalizedAmount ?? r.claimedAmount).toString(), createdAt: toJalali(r.createdAt, false),
+      })),
+    };
+  }
+
+  /** Branch colleagues a case can be referred to («ارجاع»). */
+  async sinadEvaluators() {
+    const s = await this.sinadDesk();
+    if (!s) return [];
+    const users = await this.prisma.unscoped().orgUser.findMany({
+      where: { tenantId: s.tenantId, isActive: true, ...(s.desk.branchId && !s.desk.insurerAdmin ? { branchId: s.desk.branchId } : { branchId: { not: null } }) },
+      orderBy: { displayName: 'asc' }, select: { id: true, displayName: true, username: true, branchId: true, desk: true },
+    });
+    return users.filter((u) => u.id !== s.me && (u.desk == null || u.desk === 'BRANCH')).map((u) => ({ id: u.id, name: u.displayName || u.username }));
+  }
+
+  /**
+   * Kartable operations on one case. They never move it along the chain (that is `act`): they decide who at
+   * شعبه holds it and record the evaluator's own steps.
+   */
+  async sinadOp(claimId: string, op: string, input: { note?: string; userId?: string }) {
+    const s = await this.sinadDesk();
+    if (!s) throw new ForbiddenException('کارتابل سیناد برای سازمان شما فعال نیست');
+    const db = this.prisma.unscoped();
+    const claim = await this.db().claim.findUnique({ where: { id: claimId } });
+    if (!claim || claim.deletedAt || claim.insurerTenantId !== s.tenantId) throw new NotFoundException('پرونده یافت نشد');
+    assertNotPaid(claim);
+    const note = input.note?.trim().slice(0, 1000) || null;
+    const atBranch = claim.currentStage === 'BRANCH';
+    const holds = this.holdsDesk(claim, s.desk);
+    const event = (kind: string, n: string | null = note) => db.claimDeskEvent.create({ data: { claimId, kind, note: n, actorId: s.me } });
+    const need = (ok: boolean, msg: string) => { if (!ok) throw new BadRequestException(msg); };
+    switch (op) {
+      case 'take': // pick an unallocated case (or, for an admin, any) into my kartable
+        need(atBranch && holds, 'پرونده در شعبهٔ شما نیست');
+        need(!claim.evaluatorId || s.desk.insurerAdmin === true, 'این پرونده به ارزیاب دیگری تخصیص یافته است');
+        await db.claim.update({ where: { id: claimId }, data: { evaluatorId: s.me, evaluatorAt: new Date(), evaluatorLater: false } });
+        await event('ALLOCATE');
+        break;
+      case 'release': // «خارج کردن از کارتابل»: back to the branch's pool (an admin: take it back from anyone)
+        need(claim.evaluatorId === s.me || s.desk.insurerAdmin === true, 'این پرونده در کارتابل شما نیست');
+        await db.claim.update({ where: { id: claimId }, data: { evaluatorId: null, evaluatorAt: null, evaluatorLater: false } });
+        await event('RELEASE');
+        break;
+      case 'refer': { // «ارجاع» to another evaluator of the branch
+        need(atBranch && holds, 'پرونده در اختیار شما نیست');
+        const to = input.userId ? await db.orgUser.findFirst({ where: { id: input.userId, tenantId: s.tenantId, isActive: true }, select: { id: true, displayName: true, username: true, branchId: true } }) : null;
+        need(!!to && (!claim.handlingBranchId || to.branchId === claim.handlingBranchId), 'ارزیاب را از همین شعبه انتخاب کنید');
+        await db.claim.update({ where: { id: claimId }, data: { evaluatorId: to!.id, evaluatorAt: new Date(), evaluatorLater: false } });
+        await event('REFER', [`به ${to!.displayName || to!.username}`, note].filter(Boolean).join(' — '));
+        break;
+      }
+      case 'later': // «بعدا بررسی میکنم»
+      case 'resume':
+        need(atBranch && holds, 'پرونده در اختیار شما نیست');
+        await db.claim.update({ where: { id: claimId }, data: { evaluatorLater: op === 'later', evaluatorId: claim.evaluatorId ?? s.me, evaluatorAt: claim.evaluatorAt ?? new Date() } });
+        if (op === 'later') await event('LATER');
+        break;
+      case 'doctor-refer': // «ارجاع به پزشک معتمد»
+      case 'doctor-exam': // «دعوت به معاینه»
+        need(atBranch && claim.flowDirection === 'UP' && holds, 'پرونده در اختیار شما نیست');
+        await db.claim.update({ where: { id: claimId }, data: { doctorState: op === 'doctor-refer' ? 'REFER' : 'EXAM', evaluatorId: claim.evaluatorId ?? s.me, evaluatorAt: claim.evaluatorAt ?? new Date() } });
+        await event(op === 'doctor-refer' ? 'DOCTOR_REFER' : 'DOCTOR_EXAM');
+        break;
+      case 'doctor-opinion': // «اظهار نظر پزشک معتمد»: back to the evaluator's «در انتظار ارزیابی اولیه»
+        need(atBranch && !!claim.doctorState, 'پرونده نزد پزشک معتمد نیست');
+        need(s.desk.stage === 'BRANCH' || s.desk.insurerAdmin === true, 'اظهار نظر پزشک معتمد در شعبه ثبت می‌شود');
+        need(!!note, 'متن اظهار نظر را بنویسید');
+        await db.claim.update({ where: { id: claimId }, data: { doctorState: null, doctorNote: note, evaluatorLater: false } });
+        await event('DOCTOR_OPINION');
+        break;
+      case 'fraud-clean': // «بررسی کردم، تقلب نیست»
+      case 'fraud-flag': // «تقلب است، عودت شود»
+        need(atBranch && holds, 'پرونده در اختیار شما نیست');
+        await db.claim.update({ where: { id: claimId }, data: { fraudCheck: op === 'fraud-clean' ? 'CLEAN' : 'FRAUD' } });
+        await event(op === 'fraud-clean' ? 'FRAUD_CLEAN' : 'FRAUD_FLAG');
+        break;
+      case 'note': // «یادداشت ارزیاب»
+        need(!!note, 'متن یادداشت را بنویسید');
+        await event('NOTE');
+        break;
+      default:
+        throw new BadRequestException('عملیات نامعتبر');
+    }
+    return this.sinadCase(claimId);
   }
 
   /**

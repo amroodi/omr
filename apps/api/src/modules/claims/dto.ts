@@ -296,6 +296,18 @@ export class ActionDto {
   branchId?: string;
 }
 
+/** «روند سیناد» kartable operation on one case (see ClaimsService.sinadOp). */
+export class SinadOpDto {
+  @IsOptional()
+  @IsString()
+  @Length(0, 1000)
+  note?: string;
+
+  @IsOptional()
+  @IsUUID()
+  userId?: string;
+}
+
 export class LossNoticeDto {
   // Optional where the insurer's شعبه records اعلام خسارت with one click (Model View).
   @IsOptional()

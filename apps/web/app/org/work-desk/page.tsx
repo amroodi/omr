@@ -14,7 +14,7 @@ import { caseTitle } from '../../../lib/caseTitle';
 import { INSURED_RELATIONS } from '../../components/claim-wording';
 
 interface Tile { key: string; label: string; count: number; actionable: boolean; href?: string }
-interface WorkDesk { userName: string | null; role: string; roleLabel: string; tiles: Tile[]; summary: { pendingActions: number; queues: number } }
+interface WorkDesk { userName: string | null; role: string; roleLabel: string; tiles: Tile[]; sinad?: boolean; summary: { pendingActions: number; queues: number } }
 interface QueueRow { id: string; claimNumber: string; policyNumber?: string | null; deceasedNationalCode?: string | null; status: string; claimType: string; deceasedName: string | null; claimedAmount: string; payableAmount?: string; finalizedAmount?: string | null; insurerTenantId?: string; claimTypeLabel?: string | null; lineLabel?: string | null; insuredRelation?: string | null; mainInsuredName?: string | null; mainInsuredNationalCode?: string | null; companyName?: string | null; policyStart?: string | null; policyEnd?: string | null }
 
 const fa = (n: number) => n.toLocaleString('fa-IR');
@@ -73,6 +73,8 @@ function WorkDesk() {
     client.get<{ code: string; label: string }[]>('/claims/doc-types', 'org').then(setDocTypes).catch(() => {});
     client.get<WorkDesk>('/claims/work-desk', 'org')
       .then((d) => {
+        // «روند سیناد» (Alborz): the insurer's desks work from the kartable; «جستجوی پیشرفته» there opens this page.
+        if (d.sinad && orgMode() !== 'ENTRY' && new URLSearchParams(window.location.search).get('classic') !== '1' && !new URLSearchParams(window.location.search).get('customize')) { router.replace('/org/sinad'); return; }
         setData(d);
         // Post-login summary tip — once per browser session, only if something awaits action.
         try {

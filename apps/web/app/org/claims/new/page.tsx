@@ -17,7 +17,7 @@ type FieldMode = 'hidden' | 'optional' | 'required';
 /** The filing form of an insurer's panel 1, as Model View sets it: «علت خسارت» and تاریخ تولد, and each نوع پرونده's cause list. */
 interface EntryForm { cause: FieldMode; birthDate: FieldMode; causeLists: { DEATH: string[]; ACCIDENT: string[] }; causeNotes?: Record<string, string>; caseTypes: { code: string; causeGroup: 'DEATH' | 'ACCIDENT' }[] }
 interface InsurerEntry {
-  way: 'BROKER' | 'BRANCH' | 'ASK'; form?: EntryForm;
+  way: 'BROKER' | 'BRANCH' | 'ASK' | 'CHANNEL'; form?: EntryForm;
   brokers: { id: string; name: string; code?: string | null; companies: { id: string; name: string }[] }[]; // code: «کد کارگزار» at this insurer
   branches: { id: string; name: string; code: string }[];
   myBranchId?: string | null; // the operator's own شعبه: it handles what they file
@@ -211,7 +211,7 @@ export default function NewClaim() {
 
   // Insurer: where this case starts — fixed by Model View, or the operator's choice («هر بار انتخاب شود»).
   const insBroker = ins?.brokers.find((b) => b.id === f.brokerTenantId) ?? null;
-  const insStart = ins ? (ins.way === 'ASK' ? (f.startStage || (insBroker ? 'BROKER' : 'BRANCH')) : ins.way) : null;
+  const insStart = ins ? (ins.way === 'ASK' ? (f.startStage || (insBroker ? 'BROKER' : 'BRANCH')) : ins.way === 'CHANNEL' ? (insBroker ? 'BROKER' : 'BRANCH') : ins.way) : null;
 
   const submitInsurer = async () => {
     setError('');

@@ -20,7 +20,8 @@ interface Model {
   byType: Record<string, Partial<Record<RuleKey, boolean>>>;
   panels: { COMPANY: Rights; REPRESENTATIVE: Rights };
   insured: { enabled: boolean; docCodes: string[]; linkDays: number };
-  entry: { way: 'BROKER' | 'BRANCH' | 'ASK' };
+  entry: { way: 'BROKER' | 'BRANCH' | 'ASK' | 'CHANNEL' };
+  sinad?: { enabled: boolean; batchSize: number; returnGroups: { label: string; items: string[] }[] };
   form: { eventLabel: string; birthDate: Mode; cause: Mode; causeLists: { DEATH: string[]; ACCIDENT: string[] }; causeNotes?: Record<string, string>; lines: Record<Line, LineForm>; caseTypes: CaseType[]; groups: CompanyGroup[]; dependents: boolean; docsNote: string };
 }
 interface Doc { code: string; label: string; isActive: boolean; appliesToTypes: string[]; requiredTypes: string[]; kinds?: string[] }
@@ -178,6 +179,36 @@ export default function ModelView() {
                 <Toggle on={m.councilEnabled} onChange={(v) => setM({ ...m, councilEnabled: v })} hint="خاموش: ستاد خودش دستور پرداخت می‌دهد و سقف اختیار ستاد اعمال نمی‌شود.">شورای فنی فعال است</Toggle>
                 {!m.councilEnabled && cur.casesAtCouncil > 0 && <div className="text-xs rounded-lg p-2" style={{ background: 'var(--warning-soft)' }}>{cur.casesAtCouncil.toLocaleString('fa-IR')} پرونده اکنون نزد شورای فنی است و تا پایان همان‌جا می‌ماند.</div>}
               </Card>
+              {(() => {
+                const sd = m.sinad ?? { enabled: false, batchSize: 10, returnGroups: [] };
+                const setSd = (p: Partial<typeof sd>) => setM({ ...m, sinad: { ...sd, ...p } });
+                const setGroup = (i: number, p: Partial<{ label: string; items: string[] }>) => setSd({ returnGroups: sd.returnGroups.map((g, j) => (j === i ? { ...g, ...p } : g)) });
+                return (
+                  <Card title="روند سیناد (کارتابل ارزیابی شعبه)">
+                    <Toggle on={sd.enabled} onChange={(v) => setSd({ enabled: v })} hint="روشن: شعبه با کارتابل و پنجرهٔ ارزیابی شبیه سیناد کار می‌کند؛ پرونده‌ها دسته‌ای به هر ارزیاب تخصیص می‌یابند و دیگران آن‌ها را نمی‌بینند. قواعد گردش کار تغییر نمی‌کند.">کارتابل سیناد فعال است</Toggle>
+                    {sd.enabled && (
+                      <div className="space-y-3 mt-2">
+                        <label className="flex items-center gap-2 text-sm">
+                          <span>تعداد پرونده در هر تخصیص</span>
+                          <input className="input" style={{ width: 90 }} inputMode="numeric" value={sd.batchSize} onChange={(e) => setSd({ batchSize: Math.max(1, Math.min(100, Number(e.target.value.replace(/[^\d]/g, '')) || 1)) })} />
+                        </label>
+                        <div className="text-sm font-bold">گروه‌های علت عودت (برگهٔ «عودت» پنجرهٔ ارزیابی)</div>
+                        {sd.returnGroups.map((g, i) => (
+                          <div key={i} className="rounded-lg p-2 space-y-1.5" style={{ border: '1px solid var(--border)' }}>
+                            <div className="flex gap-2">
+                              <input className="input" value={g.label} maxLength={80} onChange={(e) => setGroup(i, { label: e.target.value })} aria-label="نام گروه" />
+                              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSd({ returnGroups: sd.returnGroups.filter((_, j) => j !== i) })}>حذف گروه</button>
+                            </div>
+                            <textarea className="input" rows={Math.max(2, g.items.length)} value={g.items.join('\n')} onChange={(e) => setGroup(i, { items: e.target.value.split('\n') })}
+                              onBlur={() => setGroup(i, { items: g.items.map((x) => x.trim()).filter(Boolean) })} placeholder="هر علت در یک سطر" aria-label={`علت‌های ${g.label}`} />
+                          </div>
+                        ))}
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSd({ returnGroups: [...sd.returnGroups, { label: 'گروه جدید', items: [] }] })}>+ افزودن گروه</button>
+                      </div>
+                    )}
+                  </Card>
+                );
+              })()}
               {saveBar}
             </>
           )}
@@ -381,6 +412,7 @@ export default function ModelView() {
                   ['BROKER', 'میز کارگزاری', 'پرونده نخست به ارزیابی اولیهٔ همان کارگزاری می‌رود؛ انگار کارگزاری خودش ثبت کرده است. باید کارگزاری انتخاب شود.'],
                   ['BRANCH', 'مستقیم به شعبهٔ بیمه‌گر', 'ارزیابی کارگزاری انجام نمی‌شود؛ پرونده به شعبه‌ای که انتخاب می‌شود می‌رود.'],
                   ['ASK', 'هر بار انتخاب شود', 'در فرم ثبت پرونده، کاربر بیمه‌گر یکی از دو راه بالا را انتخاب می‌کند.'],
+                  ['CHANNEL', 'بر اساس کارگزاری پرونده', 'پرونده‌ای که کارگزاری دارد نخست به میز همان کارگزاری می‌رود؛ پروندهٔ فروش مستقیم بیمه‌گر مستقیم به شعبه.'],
                 ] as const).map(([k, l, h]) => (
                   <label key={k} className="flex items-start gap-2 text-sm cursor-pointer">
                     <input type="radio" name="entry-way" className="mt-1" checked={m.entry.way === k} onChange={() => setM({ ...m, entry: { way: k } })} />
