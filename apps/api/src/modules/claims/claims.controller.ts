@@ -22,7 +22,7 @@ import { CoverageService } from '../model-view/coverage.service';
 import { CoverageCheckDto, StaffCoverageCheckDto } from '../customer/dto';
 import { ClaimsService } from './claims.service';
 import { asLine } from './workflow';
-import { ActionDto, DecisionDto, FileClaimDto, FileOnBehalfDto, FilingEditDto, HeirsDto, LetterDto, LossNoticeDto, PhysicalDto, RectifyDto } from './dto';
+import { SinadOpDto, ActionDto, DecisionDto, FileClaimDto, FileOnBehalfDto, FilingEditDto, HeirsDto, LetterDto, LossNoticeDto, PhysicalDto, RectifyDto } from './dto';
 
 const docLimits = { fileSize: 15 * 1024 * 1024 };
 
@@ -185,6 +185,40 @@ export class ClaimsController {
   @Get('insurers')
   insurers() {
     return this.claims.listInsurers();
+  }
+
+  /** «روند سیناد» kartable: stage tabs with counts ({enabled:false} when the insurer doesn't run it). */
+  @Permissions(PERMISSIONS.CLAIM_READ)
+  @Get('sinad/kartable')
+  sinadKartable() {
+    return this.claims.sinadKartable();
+  }
+
+  /** One kartable tab's cases («در انتظار ارزیابی اولیه» hands out the next batch when the last is done). */
+  @Permissions(PERMISSIONS.CLAIM_READ)
+  @Get('sinad/kartable/:tab')
+  sinadTab(@Param('tab') tab: string) {
+    return this.claims.sinadTab(tab);
+  }
+
+  /** Branch colleagues to refer a case to («ارجاع»). */
+  @Permissions(PERMISSIONS.CLAIM_PROCESS)
+  @Get('sinad/evaluators')
+  sinadEvaluators() {
+    return this.claims.sinadEvaluators();
+  }
+
+  @Permissions(PERMISSIONS.CLAIM_READ)
+  @Get(':id/sinad')
+  sinadCase(@Param('id', ParseUUIDPipe) id: string) {
+    return this.claims.sinadCase(id);
+  }
+
+  /** Kartable operations: take, release, refer, later, resume, doctor-refer, doctor-exam, doctor-opinion, fraud-clean, fraud-flag, note. */
+  @Permissions(PERMISSIONS.CLAIM_PROCESS)
+  @Post(':id/sinad/:op')
+  sinadOp(@Param('id', ParseUUIDPipe) id: string, @Param('op') op: string, @Body() dto: SinadOpDto) {
+    return this.claims.sinadOp(id, op, dto);
   }
 
   @Permissions(PERMISSIONS.CLAIM_READ)

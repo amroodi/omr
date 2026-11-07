@@ -89,9 +89,25 @@ export interface CompanyGroup { id: string; label: string; companyIds: string[];
  * Where a case the insurer's own staff enter from panel 1 starts: on the کارگزاری's desk (its initial
  * assessment first, as if the brokerage had filed it), straight at the insurer's شعبه, or chosen each time.
  */
-export type EntryWay = 'BROKER' | 'BRANCH' | 'ASK';
-export const ENTRY_WAYS: EntryWay[] = ['BROKER', 'BRANCH', 'ASK'];
+// CHANNEL: by the case itself — one with a کارگزاری goes to its desk, the insurer's own (direct) sale to شعبه.
+export type EntryWay = 'BROKER' | 'BRANCH' | 'ASK' | 'CHANNEL';
+export const ENTRY_WAYS: EntryWay[] = ['BROKER', 'BRANCH', 'ASK', 'CHANNEL'];
+/**
+ * «روند سیناد»: شعبه works from a Sinad-style kartable — cases are allocated to one evaluator in batches,
+ * evaluated in a full-screen window (risk check, ارزیابی / عودت tabs, پزشک معتمد). Only the screens and
+ * the allocation change; the chain's rules stay those of the model.
+ */
+export interface ReturnGroup { label: string; items: string[] }
+export interface SinadSettings { enabled: boolean; batchSize: number; returnGroups: ReturnGroup[] }
+export const DEFAULT_RETURN_GROUPS: ReturnGroup[] = [
+  { label: 'نقص مدارک', items: ['گواهی فوت ارائه نشده است', 'گواهی انحصار وراثت ارائه نشده است', 'تصویر شناسنامه و کارت ملی بیمه‌شده ارائه نشده است', 'گزارش پزشکی قانونی ارائه نشده است', 'تصویر مدارک خوانا نیست'] },
+  { label: 'نواقص موردی', items: ['مدارک مهر برابر اصل ندارد', 'تاریخ‌های مدارک با هم مطابقت ندارد', 'نام بیمه‌شده با بیمه‌نامه مطابقت ندارد', 'شماره حساب (شبا) ذینفع ارائه نشده است'] },
+  { label: 'غیر قابل پرداخت', items: ['حادثه خارج از مدت اعتبار بیمه‌نامه رخ داده است', 'علت خسارت از استثنائات بیمه‌نامه است', 'بیمه‌شده در فهرست بیمه‌شدگان نیست'] },
+  { label: 'دعوت به معاینه', items: ['نیاز به معاینهٔ بیمه‌شده توسط پزشک معتمد', 'تعیین درصد نقص عضو توسط پزشک معتمد'] },
+  { label: 'هزینه‌های نامرتبط', items: ['هزینهٔ پزشکی با حادثه مرتبط نیست', 'هزینه مربوط به بیمه‌شدهٔ دیگری است'] },
+];
 export interface WorkflowModel extends CaseRules {
+  sinad: SinadSettings;
   lossNoticeAsksNumber: boolean; // «اعلام خسارت»: شعبه types its number and date (false: one «ثبت اعلام خسارت» click)
   stages: Record<Stage, { label: string; reviewDocs: boolean }>; // reviewDocs: must this desk ✓ every document before sending on?
   byType: Record<string, Partial<CaseRules>>; // نوع پرونده → what differs from the rules above
@@ -127,6 +143,7 @@ export const DEFAULT_WORKFLOW_MODEL: WorkflowModel = {
   requireLossNotice: true,
   requireOriginals: true,
   lossNoticeAsksNumber: true,
+  sinad: { enabled: false, batchSize: 10, returnGroups: DEFAULT_RETURN_GROUPS },
   stages: {
     POLICYHOLDER: { label: STAGE_FA.POLICYHOLDER, reviewDocs: false },
     BROKER: { label: STAGE_FA.BROKER, reviewDocs: true },
@@ -236,7 +253,12 @@ export function modelFrom(stored: unknown): WorkflowModel {
     reviewDocs: st === 'POLICYHOLDER' ? false : flag(raw.stages?.[st]?.reviewDocs, d.stages[st].reviewDocs),
   }])) as WorkflowModel['stages'];
   const days = Number(raw.insured?.linkDays);
+  const batch = Number(raw.sinad?.batchSize);
+  const groups: ReturnGroup[] = Array.isArray(raw.sinad?.returnGroups)
+    ? raw.sinad.returnGroups.filter((g: any) => typeof g?.label === 'string' && g.label.trim()).slice(0, 20).map((g: any) => ({ label: g.label.trim().slice(0, 80), items: list(g.items, 60) }))
+    : d.sinad.returnGroups;
   return {
+    sinad: { enabled: flag(raw.sinad?.enabled, false), batchSize: batch >= 1 && batch <= 100 ? Math.round(batch) : d.sinad.batchSize, returnGroups: groups },
     councilEnabled: flag(raw.councilEnabled, d.councilEnabled),
     requireLossNotice: flag(raw.requireLossNotice, d.requireLossNotice),
     requireOriginals: flag(raw.requireOriginals, d.requireOriginals),

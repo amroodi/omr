@@ -937,6 +937,14 @@ model Claim {
   // Where the original (physical) documents are. null = still with the بیمه‌گزار (not collected yet).
   physicalAt WorkflowStage?
 
+  // ── «روند سیناد» (Model View `sinad.enabled`, Alborz) ── the شعبه evaluator's kartable.
+  evaluatorId    String? // OrgUser the case is allocated to at شعبه (nobody else at the branch sees it)
+  evaluatorAt    DateTime?
+  evaluatorLater Boolean   @default(false) // «بعدا بررسی میکنم» → «در انتظار بررسی‌های من»
+  doctorState    String? // REFER = در انتظار اظهار نظر پزشک معتمد, EXAM = دعوت به معاینه
+  doctorNote     String? // the last «اظهار نظر پزشک معتمد»
+  fraudCheck     String? // CLEAN = «بررسی کردم، تقلب نیست», FRAUD = «تقلب است، عودت شود»
+
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
   deletedAt DateTime? // soft-delete: hidden everywhere, restorable within the retention window, then purged for good
@@ -949,7 +957,9 @@ model Claim {
   physicalRequests ClaimPhysicalRequest[]
   heirs        ClaimHeir[]
   insuredAccess ClaimInsuredAccess[]
+  deskEvents   ClaimDeskEvent[]
 
+  @@index([evaluatorId])
   @@index([insurerTenantId, status])
   @@index([brokerTenantId])
   @@index([deceasedNationalCodeHash])
@@ -960,6 +970,20 @@ model Claim {
   @@index([insurerTenantId, currentStage])
   @@index([brokerTenantId, currentStage])
   @@index([policyHolderId])
+}
+
+// What happened on the شعبه evaluator's kartable («روند سیناد»): allocation, «بعدا بررسی میکنم»,
+// پزشک معتمد, the fraud check, evaluator notes. Shown as the evaluation window's history.
+model ClaimDeskEvent {
+  id        String   @id @default(uuid())
+  claimId   String
+  claim     Claim    @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  kind      String // ALLOCATE | RELEASE | REFER | LATER | DOCTOR_REFER | DOCTOR_EXAM | DOCTOR_OPINION | FRAUD_CLEAN | FRAUD_FLAG | NOTE
+  note      String?
+  actorId   String?
+  createdAt DateTime @default(now())
+
+  @@index([claimId, createdAt])
 }
 
 // ذینفع قانونی / وراث قانونی named on the deceased's beneficiary (inheritance) form — the form itself is
