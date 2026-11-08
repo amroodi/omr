@@ -201,6 +201,13 @@ export class ClaimsController {
     return this.claims.sinadTab(tab);
   }
 
+  /** «اینجا» on «در انتظار ارزیابی اولیه»: give back my whole batch and get a new one. */
+  @Permissions(PERMISSIONS.CLAIM_PROCESS)
+  @Post('sinad/release-batch')
+  sinadReleaseBatch() {
+    return this.claims.sinadReleaseBatch();
+  }
+
   /** Branch colleagues to refer a case to («ارجاع»). */
   @Permissions(PERMISSIONS.CLAIM_PROCESS)
   @Get('sinad/evaluators')

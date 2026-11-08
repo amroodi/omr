@@ -128,7 +128,7 @@ export function Shell({
     // Panel 1 doesn't assess; panel 2 doesn't create cases. (An address may sit in both menus.)
     const items = nav.filter((n) => n.href === pathname);
     const wrongPanel = items.length > 0 && items.every((n) => n.modes && !n.modes.includes(mode));
-    if (wrongPanel || (mode === 'ENTRY' && /^\/org\/(claims\/[^/]+\/assess|work-desk)/.test(pathname))) router.replace(orgHome);
+    if (wrongPanel || (mode === 'ENTRY' && /^\/org\/(claims\/[^/]+\/(assess|evaluate)|work-desk)/.test(pathname))) router.replace(orgHome);
   }, [nav, pathname, panel, realm, router, mode, mounted, assist, orgHome]);
   useEffect(() => {
     if (!assist) return;

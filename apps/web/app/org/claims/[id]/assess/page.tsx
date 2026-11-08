@@ -63,6 +63,11 @@ export default function AssessClaim() {
     } catch (e: any) { setError(e.message); }
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [id]);
+  // «روند سیناد» (Alborz): every «ارزیابی» opens the Sinad-style window instead.
+  useEffect(() => {
+    client.get<{ enabled: boolean }>(`/claims/${id}/sinad`, 'org').then((s) => { if (s.enabled) router.replace(`/org/claims/${id}/evaluate`); }).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
   useEffect(() => { setFinalAmt(claim?.finalizedAmount ? String(claim.finalizedAmount) : ''); }, [claim?.finalizedAmount]);
 
   const act = async (fn: () => Promise<any>) => { setError(''); setBusy(true); try { await fn(); await load(); } catch (e: any) { setError(e.message); } finally { setBusy(false); } };
