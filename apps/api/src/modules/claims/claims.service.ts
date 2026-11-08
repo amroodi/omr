@@ -1,5 +1,6 @@
 import { assertNotPaid } from './archived';
 import JSZip from 'jszip';
+import { randomUUID } from 'crypto';
 import { uploadName } from '../../common/validation/upload-name';
 import { NoticeRule, NoticeSource, NoticeTarget, SOURCE_FA, TARGET_FA, TARGETS_OF, combine, rulesFor } from './claim-notice';
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
@@ -126,6 +127,8 @@ const DESK_EVENT_FA: Record<string, string> = {
   FRAUD_CLEAN: 'بررسی کردم، تقلب نیست',
   FRAUD_FLAG: 'تقلب است، عودت شود',
   NOTE: 'یادداشت ارزیاب',
+  ASSIGN: 'تخصیص توسط مدیر',
+  UNASSIGN: 'برگشت به پرونده‌های تخصیص‌نیافته توسط مدیر',
 };
 
 export interface ActInput {
@@ -133,6 +136,8 @@ export interface ActInput {
   note?: string;
   letterId?: string; // a ClaimLetter created beforehand via POST /claims/:id/letters
   deficiencies?: string[]; // RETURN: free-text deficiency lines (rejected documents are added automatically)
+  deficiencyDocs?: string[]; // RETURN: required-document codes asked for again
+  deficiencyNotes?: string[]; // RETURN: reasons that ask for no upload
   branchId?: string; // FORWARD from کارگزاری: the insurer branch that will handle the claim
 }
 
@@ -641,12 +646,31 @@ export class ClaimsService {
     const s = claim.currentStage as Stage | null;
     const reviewing = !!s && s !== 'POLICYHOLDER';
     const stateAt = (d: (typeof latest)[number]) => d.reviews.find((r) => r.stage === s)?.state ?? 'PENDING';
+    const missing = (await this.deficiencySlots(claim.id)).filter((x) => x.open && !x.uploaded).map((x) => x.label);
     return {
+      deficiencyMissing: missing,
       count: latest.length,
       allApproved: reviewing && latest.length > 0 && latest.every((d) => stateAt(d) === 'APPROVED'),
       rejectedLabels: reviewing ? latest.filter((d) => stateAt(d) === 'REJECTED').map(label) : [],
       rejectedAnywhere: latest.filter((d) => d.reviews.some((r) => r.state === 'REJECTED')).map(label),
     };
+  }
+
+  /**
+   * The documents the case's returns asked for: one slot per required document asked again or per
+   * operator's own line («نقص دیگر», code `DEF-…`). An open return's slot counts as done only with an
+   * upload made after the return.
+   */
+  private async deficiencySlots(claimId: string) {
+    const db = this.db();
+    const defs = await db.claimDeficiency.findMany({ where: { claimId, slots: { not: null } }, orderBy: { createdAt: 'asc' } });
+    if (!defs.length) return [];
+    const codes = defs.flatMap((d) => (safeParse(d.slots ?? "[]") as { code: string }[]).map((x) => x.code));
+    const docs = await db.document.findMany({ where: { claimId, docCode: { in: codes } }, select: { docCode: true, createdAt: true } });
+    return defs.flatMap((d) => (safeParse(d.slots ?? "[]") as { code: string; label: string }[]).map((x) => ({
+      code: x.code, label: x.label, custom: x.code.startsWith('DEF-'), open: !d.resolvedAt, raisedAt: d.createdAt,
+      uploaded: docs.some((f) => f.docCode === x.code && (d.resolvedAt ? true : f.createdAt > d.createdAt)),
+    })));
   }
 
   /** What this customer-side login may do at the بیمه‌گزار desk (null for anyone else). */
@@ -698,7 +722,7 @@ export class ClaimsService {
       holdsDesk: holds,
       lossNotice: claim.lossNoticeNumber || claim.lossNoticeDate ? { number: claim.lossNoticeNumber ?? null, date: claim.lossNoticeDate ? toJalali(claim.lossNoticeDate, false) : null, at: claim.lossNoticeDate ? toJalali(claim.lossNoticeDate) : null } : null,
       // Recorded once without a number: nothing left to edit. With a number: it can be corrected.
-      canRecordLossNotice: s === 'BRANCH' && claim.flowDirection === 'UP' && holds && (asksNumber || !claim.lossNoticeDate),
+      canRecordLossNotice: false, // «اعلام خسارت» is a document the بیمه‌گزار uploads for now (no شعبه button)
       lossNoticeAsksNumber: asksNumber,
       chargoon: !!myOrg?.chargoonEnabled, // this organization's letters carry «شماره چارگون»
       actions: await this.availableActions(claim, desk),
@@ -776,10 +800,21 @@ export class ClaimsService {
       case 'RETURN':
       case 'RETURN_DIRECT': {
         const docs = await this.deskDocFacts(claim);
-        const items = [...docs.rejectedLabels.map((l) => `مدرک ردشده: ${l}`), ...(input.deficiencies ?? []).map((x) => x.trim()).filter(Boolean)];
-        if (!items.length) throw new BadRequestException('حداقل یک مدرک را رد کنید یا یک مورد نقص بنویسید');
+        // Documents asked for again (from the case's list) and the operator's own lines each become an
+        // upload slot: whoever fixes the case uploads there, and it can't move on until they have.
+        const reqDocs = input.deficiencyDocs?.length
+          ? await db.requiredDocument.findMany({ where: { tenantId: claim.insurerTenantId, code: { in: input.deficiencyDocs } }, select: { code: true, label: true } })
+          : [];
+        const custom = (input.deficiencies ?? []).map((x) => x.trim().slice(0, 300)).filter(Boolean);
+        const slots = [
+          ...reqDocs.map((r) => ({ code: r.code, label: r.label })),
+          ...custom.map((label) => ({ code: `DEF-${randomUUID().slice(0, 8)}`, label })),
+        ];
+        const notes = (input.deficiencyNotes ?? []).map((x) => x.trim().slice(0, 300)).filter(Boolean);
+        const items = [...docs.rejectedLabels.map((l) => `مدرک ردشده: ${l}`), ...reqDocs.map((r) => `مدرک: ${r.label}`), ...custom, ...notes];
+        if (!items.length) throw new BadRequestException('حداقل یک مدرک را انتخاب یا رد کنید، یا یک مورد نقص بنویسید');
         const to: Stage = a.key === 'RETURN_DIRECT' ? directTarget(claim, s) : dn!;
-        await db.claimDeficiency.create({ data: { claimId, raisedByTenantId: getContext()?.tenantId ?? null, raisedByStepId: step.id, items: JSON.stringify(items) } });
+        await db.claimDeficiency.create({ data: { claimId, raisedByTenantId: getContext()?.tenantId ?? null, raisedByStepId: step.id, items: JSON.stringify(items), slots: slots.length ? JSON.stringify(slots) : null } });
         await this.move(claim, step, { ...base, closeState: 'RETURNED_INCOMPLETE', to, direction: 'DOWN', purpose: 'DEFICIENCY', status: ClaimStatus.RETURNED_INCOMPLETE, extra: { returnTargetStage: higher(claim.returnTargetStage as Stage | null, s) } });
         await this.audit.record({ action: AuditAction.CLAIM_RETURN_INCOMPLETE, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { by: s, to, items } });
         await this.notifyHolder(claim, to, 'عودت پرونده برای رفع نقص', `پروندهٔ ${claim.claimNumber} از سوی ${this.store.labels(claim.insurerTenantId)[s]} برای رفع نقص عودت شد: ${items.join('، ')}`);
@@ -794,6 +829,13 @@ export class ClaimsService {
         await this.notifyHolder(claim, to, purpose === 'PAYMENT' ? 'دستور پرداخت' : 'عودت پرونده برای رفع نقص', purpose === 'PAYMENT'
           ? `دستور پرداخت پروندهٔ ${claim.claimNumber} برای اقدام به شما ارسال شد.`
           : `پروندهٔ ${claim.claimNumber} برای رفع نقص از ${this.store.labels(claim.insurerTenantId)[s]} به شما ارسال شد.`);
+        break;
+      }
+      case 'FIX_HERE': {
+        // The desk fixed the return itself: the نقص is closed and the case is under its review again.
+        await db.claimDeficiency.updateMany({ where: { claimId, resolvedAt: null }, data: { resolvedAt: new Date() } });
+        await this.move(claim, step, { ...base, closeState: 'FORWARDED', to: s, direction: 'UP', purpose: 'REVIEW', status: ClaimStatus.UNDER_REVIEW });
+        await this.audit.record({ action: AuditAction.CLAIM_RECTIFY, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { at: s } });
         break;
       }
       case 'MARK_PAID': {
@@ -1581,8 +1623,26 @@ export class ClaimsService {
         documents: present(group),
       };
     });
-    items.sort((x, y) => Number(y.required) - Number(x.required)); // what blocks sending comes first
-    const reqCodes = new Set(reqs.map((r) => r.code));
+    // نقص مدارک: a required document asked for again is due again; an operator's own line is a slot of its own.
+    const defSlots = await this.deficiencySlots(claimId);
+    for (const it of items as any[]) {
+      const slot = defSlots.find((x) => x.code === it.code && x.open);
+      if (slot) Object.assign(it, { required: true, uploaded: slot.uploaded, deficiency: { open: true, raisedAt: toJalali(slot.raisedAt) } });
+    }
+    const seenDef = new Set<string>();
+    for (const x of defSlots.filter((y) => y.custom)) {
+      if (seenDef.has(x.code)) continue;
+      seenDef.add(x.code);
+      const group = byCode.get(x.code) ?? [];
+      (items as any[]).push({
+        code: x.code, label: x.label, appliesToTypes: [], required: x.open, accidentOnly: false,
+        uploaded: x.uploaded, aiRefused: false, latestStatus: group[0]?.verificationStatus ?? null, documents: present(group),
+        deficiency: { open: x.open, raisedAt: toJalali(x.raisedAt), custom: true },
+      });
+    }
+    // what is asked in an open نقص first, then what blocks sending
+    items.sort((x: any, y: any) => Number(!!y.deficiency?.open) - Number(!!x.deficiency?.open) || Number(y.required) - Number(x.required));
+    const reqCodes = new Set([...reqs.map((r) => r.code), ...seenDef]);
     return {
       claimType: claim.claimType,
       archived: claim.status === 'PAID', // a paid case takes no more uploads or reviews
@@ -1729,6 +1789,11 @@ export class ClaimsService {
     this.assertParticipant(claim);
     assertNotPaid(claim); // archived once paid
     if (this.panelRights(await this.modelOf(claim.insurerTenantId))?.upload === false) throw new ForbiddenException('بارگذاری مدارک از این پنل غیرفعال است');
+    const ctx = getContext();
+    if (ctx?.actorType === 'ORG_USER' && !(ctx.permissions ?? []).includes(PERMISSIONS.CLAIM_FILE)) {
+      // An assessor without claim:file uploads only while the case is on their own desk.
+      if (!(ctx.permissions ?? []).includes(PERMISSIONS.CLAIM_PROCESS) || !this.holdsDesk(claim, await this.myDesk())) throw new ForbiddenException('بارگذاری مدرک فقط وقتی پرونده نزد شماست ممکن است');
+    }
     return this.storeDocument(claim, file, docCode, getContext()?.actorId ?? null, () => this.uploaderPhone(claim));
   }
 
@@ -2277,13 +2342,17 @@ export class ClaimsService {
     const db = this.prisma.replica();
     const scope = this.sinadScope(s.desk, s.tenantId);
     const tabs = await Promise.all(this.sinadTabs(s.desk, s.me).map(async (t) => ({ key: t.key, label: t.label, count: await db.claim.count({ where: { AND: [scope, t.where] } }) })));
-    const pool = s.desk.stage === 'BRANCH' ? await db.claim.count({ where: { AND: [scope, { currentStage: 'BRANCH', flowDirection: 'UP', evaluatorId: null, doctorState: null }] } }) : 0;
+    const [pool, me] = await Promise.all([
+      s.desk.stage === 'BRANCH' ? db.claim.count({ where: { AND: [scope, { currentStage: 'BRANCH', flowDirection: 'UP', evaluatorId: null, doctorState: null }] } }) : 0,
+      db.orgUser.findUnique({ where: { id: s.me }, select: { evalBatch: true, evalPaused: true } }),
+    ]);
     return {
       enabled: true as const,
       stage: s.desk.stage,
       stageLabel: s.desk.insurerAdmin ? 'مدیر بیمه‌گر (همهٔ مراحل)' : this.store.labels(s.tenantId)[s.desk.stage!],
       admin: !!s.desk.insurerAdmin,
-      batchSize: s.model.sinad.batchSize,
+      batchSize: me?.evalBatch ?? s.model.sinad.batchSize,
+      paused: !!me?.evalPaused, // the admin paused this evaluator's allocation
       pool, // cases at شعبه not yet allocated to anyone
       tabs,
     };
@@ -2298,11 +2367,14 @@ export class ClaimsService {
     if (s.desk.stage !== 'BRANCH' || s.desk.insurerAdmin) return 0;
     const db = this.prisma.unscoped();
     const scope = this.sinadScope(s.desk, s.tenantId);
+    // The admin's settings for this evaluator («تخصیص پرونده‌ها»): paused, own batch size, case types.
+    const mine = await db.orgUser.findUnique({ where: { id: s.me }, select: { evalBatch: true, evalPaused: true, evalTypes: true } });
+    if (mine?.evalPaused) return 0;
     const held = await db.claim.count({ where: { AND: [scope, { currentStage: 'BRANCH', flowDirection: 'UP', evaluatorId: s.me, doctorState: null, evaluatorLater: false }] } });
     if (held > 0) return 0;
     const candidates = await db.claim.findMany({
-      where: { AND: [scope, { currentStage: 'BRANCH', flowDirection: 'UP', evaluatorId: null, doctorState: null }] },
-      orderBy: { updatedAt: 'asc' }, take: s.model.sinad.batchSize, select: { id: true },
+      where: { AND: [scope, { currentStage: 'BRANCH', flowDirection: 'UP', evaluatorId: null, doctorState: null }, mine?.evalTypes.length ? { claimType: { in: mine.evalTypes } } : {}] },
+      orderBy: { updatedAt: 'asc' }, take: mine?.evalBatch ?? s.model.sinad.batchSize, select: { id: true },
     });
     let got = 0;
     for (const c of candidates) {
@@ -2410,6 +2482,105 @@ export class ClaimsService {
     await db.claim.updateMany({ where: { id: { in: mine.map((c) => c.id) }, evaluatorId: s.me }, data: { evaluatorId: null, evaluatorAt: null } });
     await db.claimDeskEvent.createMany({ data: mine.map((c) => ({ claimId: c.id, kind: 'RELEASE', actorId: s.me })) });
     return { released: mine.length };
+  }
+
+  // ── «تخصیص پرونده‌ها»: the insurer admin's allocation screen ──
+
+  private async sinadAdmin() {
+    const s = await this.sinadDesk();
+    if (!s) throw new ForbiddenException('کارتابل سیناد برای سازمان شما فعال نیست');
+    if (!s.desk.insurerAdmin) throw new ForbiddenException('تخصیص پرونده‌ها با مدیر بیمه‌گر است');
+    return s;
+  }
+
+  /** شعبه evaluators of this insurer (seated at a branch, allowed to process cases). */
+  private async branchEvaluators(tenantId: string) {
+    const users = await this.prisma.unscoped().orgUser.findMany({
+      where: { tenantId, removedAt: null, branchId: { not: null }, OR: [{ desk: null }, { desk: 'BRANCH' }] },
+      orderBy: { displayName: 'asc' },
+      select: { id: true, displayName: true, username: true, branchId: true, isActive: true, lastLoginAt: true, evalBatch: true, evalPaused: true, evalTypes: true, role: { select: { name: true, permissions: true } } },
+    });
+    return users.filter((u) => u.role.permissions.includes(PERMISSIONS.CLAIM_PROCESS) || u.role.permissions.includes('*'));
+  }
+
+  /** Evaluators with their load and settings, the branches, and every case at شعبه (pool and allocated). */
+  async sinadAllocation() {
+    const s = await this.sinadAdmin();
+    const db = this.prisma.unscoped();
+    const [users, branches, claims] = await Promise.all([
+      this.branchEvaluators(s.tenantId),
+      db.branch.findMany({ where: { tenantId: s.tenantId }, orderBy: { code: 'asc' }, select: { id: true, name: true, code: true } }),
+      db.claim.findMany({ where: { insurerTenantId: s.tenantId, deletedAt: null, imported: false, currentStage: 'BRANCH', flowDirection: 'UP' }, orderBy: { updatedAt: 'asc' }, take: 2000 }),
+    ]);
+    const branchName = new Map(branches.map((b) => [b.id, `${b.code} - ${b.name}`]));
+    const userName = new Map(users.map((u) => [u.id, u.displayName || u.username]));
+    // Someone outside the list (moved desk, removed) may still hold cases: name them too.
+    const strays = [...new Set(claims.map((c) => c.evaluatorId).filter((x): x is string => !!x && !userName.has(x)))];
+    if (strays.length) (await db.orgUser.findMany({ where: { id: { in: strays } }, select: { id: true, displayName: true, username: true } })).forEach((u) => userName.set(u.id, u.displayName || u.username));
+    const state = (c: (typeof claims)[number]) => (c.doctorState ? 'doctor' : !c.evaluatorId ? 'pool' : c.evaluatorLater ? 'later' : 'evaluate');
+    const load = new Map<string, { evaluate: number; later: number; doctor: number }>();
+    for (const c of claims) {
+      if (!c.evaluatorId) continue;
+      const l = load.get(c.evaluatorId) ?? { evaluate: 0, later: 0, doctor: 0 };
+      const st = state(c);
+      if (st === 'evaluate' || st === 'later' || st === 'doctor') l[st]++;
+      load.set(c.evaluatorId, l);
+    }
+    return {
+      batchSize: s.model.sinad.batchSize,
+      caseTypes: s.model.form.caseTypes.map((t) => ({ code: t.code, label: t.label })),
+      branches: branches.map((b) => ({ id: b.id, name: `${b.code} - ${b.name}` })),
+      evaluators: users.map((u) => ({
+        id: u.id, name: u.displayName || u.username, username: u.username, role: u.role.name, branchId: u.branchId, branchName: u.branchId ? branchName.get(u.branchId) ?? null : null,
+        active: u.isActive, lastLoginAt: u.lastLoginAt ? toJalali(u.lastLoginAt) : null,
+        batchSize: u.evalBatch, paused: u.evalPaused, claimTypes: u.evalTypes,
+        load: load.get(u.id) ?? { evaluate: 0, later: 0, doctor: 0 },
+      })),
+      cases: claims.map((c) => {
+        const p = this.present(c) as any;
+        return {
+          id: c.id, claimNumber: c.claimNumber, policyNumber: p.policyNumber, name: p.deceasedName, nationalCode: p.deceasedNationalCode,
+          claimType: c.claimType, claimTypeLabel: p.claimTypeLabel, amount: p.payableAmount,
+          branchId: c.handlingBranchId, branchName: c.handlingBranchId ? branchName.get(c.handlingBranchId) ?? null : null,
+          evaluatorId: c.evaluatorId, evaluatorName: c.evaluatorId ? userName.get(c.evaluatorId) ?? '—' : null,
+          evaluatorAt: c.evaluatorAt ? toJalali(c.evaluatorAt) : null, state: state(c), since: toJalali(c.updatedAt, false),
+        };
+      }),
+    };
+  }
+
+  /** Hand cases to one evaluator (of the case's branch), or back to the pool when `userId` is null. */
+  async sinadAssign(claimIds: string[], userId: string | null) {
+    const s = await this.sinadAdmin();
+    const db = this.prisma.unscoped();
+    const to = userId ? (await this.branchEvaluators(s.tenantId)).find((u) => u.id === userId && u.isActive) : null;
+    if (userId && !to) throw new BadRequestException('ارزیاب یافت نشد یا غیرفعال است');
+    const claims = await db.claim.findMany({
+      where: { id: { in: claimIds }, insurerTenantId: s.tenantId, deletedAt: null, currentStage: 'BRANCH', flowDirection: 'UP', status: { notIn: [ClaimStatus.PAID, ClaimStatus.REJECTED] } },
+      select: { id: true, handlingBranchId: true, evaluatorId: true },
+    });
+    let done = 0, otherBranch = 0;
+    for (const c of claims) {
+      if (to && c.handlingBranchId && c.handlingBranchId !== to.branchId) { otherBranch++; continue; }
+      if ((to?.id ?? null) === c.evaluatorId) continue;
+      await db.claim.update({ where: { id: c.id }, data: to ? { evaluatorId: to.id, evaluatorAt: new Date(), evaluatorLater: false } : { evaluatorId: null, evaluatorAt: null, evaluatorLater: false } });
+      await db.claimDeskEvent.create({ data: { claimId: c.id, kind: to ? 'ASSIGN' : 'UNASSIGN', note: to ? `به ${to.displayName || to.username}` : null, actorId: s.me } });
+      done++;
+    }
+    return { done, otherBranch, notAtBranch: claimIds.length - claims.length };
+  }
+
+  /** One evaluator's allocation settings: own batch size (null → Model View's), paused, case types. */
+  async sinadEvaluatorSettings(userId: string, input: { batchSize?: number | null; paused: boolean; claimTypes: string[] }) {
+    const s = await this.sinadAdmin();
+    const u = (await this.branchEvaluators(s.tenantId)).find((x) => x.id === userId);
+    if (!u) throw new NotFoundException('ارزیاب یافت نشد');
+    const known = new Set(s.model.form.caseTypes.map((t) => t.code));
+    await this.prisma.unscoped().orgUser.update({
+      where: { id: userId },
+      data: { evalBatch: input.batchSize ?? null, evalPaused: input.paused, evalTypes: [...new Set(input.claimTypes.filter((c) => known.has(c)))] },
+    });
+    return { ok: true };
   }
 
   /** Branch colleagues a case can be referred to («ارجاع»). */
@@ -2705,7 +2876,7 @@ export class ClaimsService {
           id: l.id, number: l.number, chargoonNo: l.chargoonNo ?? null, subject: l.subject, date: l.letterDate ? toJalali(l.letterDate, false) : null, hasFile: !!l.storageKey, fileName: l.fileName,
         })),
       })),
-      deficiencies: (c.deficiencies ?? []).map((d: any) => ({ items: safeParse(d.items), raisedByStepId: d.raisedByStepId, createdAt: d.createdAt ? toJalali(d.createdAt) : null, resolvedAt: d.resolvedAt ? toJalali(d.resolvedAt) : null })),
+      deficiencies: (c.deficiencies ?? []).map((d: any) => ({ items: safeParse(d.items), slots: d.slots ? safeParse(d.slots) : [], raisedByStepId: d.raisedByStepId, raisedByLabel: (() => { const st = (c.steps ?? []).find((x: any) => x.id === d.raisedByStepId); return st?.stage ? this.store.labels(c.insurerTenantId)[st.stage as Stage] ?? null : null; })(), createdAt: d.createdAt ? toJalali(d.createdAt) : null, resolvedAt: d.resolvedAt ? toJalali(d.resolvedAt) : null })),
     };
   }
 }

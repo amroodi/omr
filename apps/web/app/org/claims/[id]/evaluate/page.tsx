@@ -110,7 +110,6 @@ export default function EvaluatePage() {
       const r = branchReview(d);
       if (r?.canEdit && r.state !== 'APPROVED') await client.post(`/claims/${id}/documents/${d.id}/review`, { stage: 'BRANCH', state: 'APPROVED' }, 'org');
     }
-    if (w?.canRecordLossNotice && w.lossNoticeAsksNumber === false && !w.lossNotice) await client.put(`/claims/${id}/loss-notice`, {}, 'org');
     if (sinad.later) await op('resume');
     const c = await client.get<Claim>(`/claims/${id}`, 'org');
     const fwd = c.workflow?.actions.find((a) => a.key === 'FORWARD');
@@ -136,7 +135,7 @@ export default function EvaluatePage() {
     if (!ret) throw new Error('عودت در این مرحله ممکن نیست');
     const items = [...(sinad?.fraudCheck === 'FRAUD' ? ['هزینه تقلبی است'] : []), ...picked, ...(returnNote.trim() ? [returnNote.trim()] : [])];
     if (!items.length) throw new Error('حداقل یک علت عودت را انتخاب کنید یا بنویسید');
-    await client.post(`/claims/${id}/action`, { action: 'RETURN', deficiencies: items }, 'org');
+    await client.post(`/claims/${id}/action`, { action: 'RETURN', deficiencyNotes: items }, 'org');
     router.push('/org/work-desk');
   });
 

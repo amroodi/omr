@@ -18,7 +18,7 @@ export interface DocReview { stage: string; state: string; canEdit: boolean; cha
 /** «بررسی هوشمند مدارک» verdict on one file (null = not checked). */
 export interface DocAi { status: string; reason: string | null; detected: string | null }
 export interface ClaimDoc { id: string; fileName: string; status: string; statusLabel: string; note: string | null; uploadedAt: string | null; version: number; isLatest: boolean; reviews?: DocReview[]; ai?: DocAi | null }
-export interface ChecklistItem { code: string; label: string; required?: boolean; accidentOnly?: boolean; uploaded: boolean; aiRefused?: boolean; latestStatus: string | null; documents: ClaimDoc[] }
+export interface ChecklistItem { code: string; label: string; required?: boolean; accidentOnly?: boolean; uploaded: boolean; aiRefused?: boolean; latestStatus: string | null; documents: ClaimDoc[]; deficiency?: { open: boolean; raisedAt: string; custom?: boolean } }
 export interface Checklist { claimType: string; complete: boolean; note?: string; items: ChecklistItem[]; otherDocuments?: ClaimDoc[]; entryList?: boolean }
 export interface FieldRow { key: string; label: string; type: string; options: string[]; required: boolean; value: string | null; source: string | null; confirmed: boolean; canEdit: boolean }
 export interface FieldsData { party: string; manual?: boolean; groups: Record<string, FieldRow[]> }
@@ -34,7 +34,7 @@ export interface CaseClaim {
   insurer?: { name: string } | null; broker?: { name: string } | null; handlingBranchName?: string | null; lineLabel?: string | null; // نوع بیمه‌نامه
   description?: string | null;
   steps?: TimelineStep[];
-  deficiencies?: { items: string[]; resolvedAt: string | null }[];
+  deficiencies?: { items: string[]; slots?: { code: string; label: string }[]; raisedByLabel?: string | null; createdAt?: string | null; resolvedAt: string | null }[];
   workflow?: Workflow;
   /** Brought in from Excel («ورود دسته‌ای»): its filing date is only the import date, so it isn't shown. */
   imported?: boolean;

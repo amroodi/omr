@@ -17,6 +17,7 @@ import { DocUploadTile, OnProgress, UploadButton } from './upload';
 import { BENEFICIARY_FORM, BeneficiaryChoice, INHERITANCE_CERT, NO_FORM_LETTER } from './heirs';
 import { JalaliDatePicker } from './JalaliDatePicker';
 import { Flash } from './Toaster';
+import { DeficiencyBox } from './DeficiencyBox';
 
 const DESK_FA: Record<string, string> = { BROKER: 'کارگزاری', BRANCH: 'شعبه', HQ: 'مدیریت ستاد', COUNCIL: 'شورای فنی' };
 const OK = 'M20 6L9 17l-5-5';
@@ -301,15 +302,8 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
               </section>
             )}
 
-            {claim.status === 'RETURNED_INCOMPLETE' && (
-              <section className="pcard cu-spec" style={{ borderColor: 'var(--danger)' }}>
-                <h2 className="cu-spec-h" style={{ color: 'var(--danger)' }}><span>نقص مدارک — نیازمند اقدام شما</span></h2>
-                {(claim.deficiencies || []).filter((d) => !d.resolvedAt).map((d, i) => (
-                  <ul key={i} className="mr-4 list-disc text-sm" style={{ color: 'var(--danger)' }}>{(d.items || []).map((x, j) => <li key={j}>{x}</li>)}</ul>
-                ))}
-                <p className="text-sm mt-2" style={{ color: 'var(--muted)' }}>مدارک خواسته‌شده را جایگزین و سپس «ثبت نهایی» را بزنید.</p>
-              </section>
-            )}
+            {/* نقص مدارک: what was asked (with its upload slots) and where the case is — «نیازمند اقدام شما» only when it waits here */}
+            <DeficiencyBox claimId={id} claim={claim} checklist={checklist} realm={realm} canUpload={claim.workflow?.currentStage === 'POLICYHOLDER'} onChanged={reload} actions={false} />
 
             {/* The originals were asked for: the move stays right here, not only in «روند پرونده». */}
             {physicalMoves && claim.workflow && (

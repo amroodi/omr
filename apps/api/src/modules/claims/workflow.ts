@@ -31,6 +31,7 @@ export type ActionKey =
   | 'RETURN_DIRECT' // admin: return straight to بیمه‌گزار
   | 'DOWN_FORWARD' // hand a return / payment order on to the desk below
   | 'DOWN_DIRECT' // admin: hand a return straight to بیمه‌گزار
+  | 'FIX_HERE' // a desk a return reached fixes it itself and reviews the case again (no further down)
   | 'MARK_PAID' // شعبه records the payout to the beneficiary
   | 'REJECT_FINAL' // substantive rejection (not covered etc.)
   | 'REQUEST_PHYSICAL'; // ask for the original documents (side track — the claim stays put)
@@ -350,6 +351,7 @@ export interface DeskDocFacts {
   allApproved: boolean; // every latest document approved at this desk
   rejectedLabels: string[]; // latest documents rejected at this desk
   rejectedAnywhere: string[]; // latest documents rejected at any desk (must be replaced before SUBMIT)
+  deficiencyMissing?: string[]; // documents an open نقص asks for that have not been uploaded since
 }
 
 export interface ActionContext {
@@ -449,7 +451,9 @@ export function actionsFor(ctx: ActionContext): WorkflowAction[] {
       ? 'ابتدا مدارک را بارگذاری کنید'
       : docs.rejectedAnywhere.length
         ? `مدارک ردشده را جایگزین کنید: ${docs.rejectedAnywhere.join('، ')}`
-        : undefined;
+        : docs.deficiencyMissing?.length
+          ? `مدارک خواسته‌شده را بارگذاری کنید: ${docs.deficiencyMissing.join('، ')}`
+          : undefined;
     if (up) out.push({ key: 'SUBMIT', label: `ارسال به ${fa[up]}`, tone: 'primary', disabled });
     return out;
   }
@@ -460,7 +464,13 @@ export function actionsFor(ctx: ActionContext): WorkflowAction[] {
       else if (dn) out.push({ key: 'DOWN_FORWARD', label: `ارسال به ${fa[dn]} برای پرداخت`, tone: 'primary' });
       return out;
     }
-    if (dn) out.push({ key: 'DOWN_FORWARD', label: `ارسال به ${fa[dn]}`, tone: 'primary' });
+    // The desk a return reached may fix it itself (upload / replace what was asked, set the amount…) and
+    // review the case again, or hand it on down to whoever can fix it.
+    const fix = docs.rejectedAnywhere.length
+      ? `ابتدا مدارک ردشده را جایگزین کنید: ${docs.rejectedAnywhere.join('، ')}`
+      : docs.deficiencyMissing?.length ? `ابتدا مدارک خواسته‌شده را بارگذاری کنید: ${docs.deficiencyMissing.join('، ')}` : undefined;
+    out.push({ key: 'FIX_HERE', label: `رفع نقص در ${fa[s]} و ادامهٔ بررسی`, tone: 'primary', disabled: fix });
+    if (dn) out.push({ key: 'DOWN_FORWARD', label: `ارسال به ${fa[dn]} برای رفع نقص`, tone: 'warning' });
     const bottom = directTarget(claim, s);
     if (ctx.isAdmin && dn && dn !== 'POLICYHOLDER' && dn !== bottom) {
       out.push({ key: 'DOWN_DIRECT', label: `ارسال مستقیم به ${fa[bottom]} (اختیار مدیریت)`, tone: 'ghost', adminOnly: true });
@@ -474,7 +484,8 @@ export function actionsFor(ctx: ActionContext): WorkflowAction[] {
   const waitingOriginals = ph.open?.requesterStage === s ? 'در انتظار دریافت اصل مدارک' : undefined;
   if (s === 'BROKER' || s === 'BRANCH') {
     let disabled = notApproved;
-    if (!disabled && s === 'BRANCH' && rules.requireLossNotice && !claim.lossNoticeNumber && !claim.lossNoticeDate) disabled = 'ابتدا اعلام خسارت را ثبت کنید';
+    // «اعلام خسارت» is a document the بیمه‌گزار uploads for now (no شعبه button): it no longer blocks.
+    if (!disabled && s === 'BRANCH' && claim.finalizedAmount == null) disabled = 'ابتدا مبلغ خسارت قطعی را ثبت کنید';
     if (!disabled && s === 'BRANCH' && !ph.at && (rules.requireOriginals || waitingOriginals)) disabled = waitingOriginals ?? `ابتدا اصل مدارک را از ${fa[phBase]} دریافت کنید`;
     if (!disabled && s === 'BROKER' && !ctx.branches.length) disabled = 'بیمه‌گر هیچ شعبه‌ای تعریف نکرده است';
     out.push({

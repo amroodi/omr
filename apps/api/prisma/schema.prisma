@@ -327,6 +327,12 @@ model OrgUser {
   // Which desk of the claim chain this operator sits at. Derived when null: broker org → BROKER,
   // insurer user with a branch → BRANCH, central insurer user → HQ. Set COUNCIL for شورای فنی members.
   desk         WorkflowStage?
+  // «روند سیناد» تخصیص (set by the insurer's admin on «تخصیص پرونده‌ها»): this evaluator's batch size
+  // (null → the Model View's), paused (gets no new batch, e.g. on leave), and the نوع پرونده codes they
+  // are handed (empty → every type).
+  evalBatch    Int?
+  evalPaused   Boolean  @default(false)
+  evalTypes    String[] @default([])
   username     String
   displayName  String
   phone        String? // ENCRYPTED — mobile for reminder SMS
@@ -1146,6 +1152,9 @@ model ClaimDeficiency {
   raisedByTenantId String?
   raisedByStepId  String?
   items           String // JSON array of deficiency descriptions
+  // JSON [{code, label}]: what must be uploaded again before the case moves on — a required document
+  // (its own code) or an operator's own line («نقص دیگر», code `DEF-…`, an upload slot of its own).
+  slots           String?
   resolvedAt      DateTime?
   createdAt       DateTime  @default(now())
 

@@ -12,6 +12,7 @@ import { downloadPdf } from '../../../../../lib/pdf';
 import { AI_QUEUED_FA, aiVerdict, CaseHero, ClaimDoc, ICONS, NotesPill, PersonCards, phaseText, useCase } from '../../../../components/case-ui';
 import { OnProgress, UploadButton } from '../../../../components/upload';
 import { Flash } from '../../../../components/Toaster';
+import { DeficiencyBox } from '../../../../components/DeficiencyBox';
 
 const DESK_FA: Record<string, string> = { BROKER: 'کارگزاری', BRANCH: 'شعبه', HQ: 'ستاد', COUNCIL: 'شورای فنی' };
 const OK = 'M20 6L9 17l-5-5';
@@ -34,8 +35,9 @@ export default function CaseDocumentsPage() {
   const [saving, setSaving] = useState(false);
   const [canFile, setCanFile] = useState(false);
   const [canReview, setCanReview] = useState(false);
+  const [canProcess, setCanProcess] = useState(false);
   const [aiNote, setAiNote] = useState(false); // an upload went to the AI check queue
-  useEffect(() => { setCanFile(hasPerm('org', 'claim:file')); setCanReview(hasPerm('org', 'doc:verify')); }, []);
+  useEffect(() => { setCanFile(hasPerm('org', 'claim:file')); setCanReview(hasPerm('org', 'doc:verify')); setCanProcess(hasPerm('org', 'claim:process')); }, []);
 
   // Desk columns: the review desks that appear on this case's documents (کارگزاری, شعبه, ستاد, شورای فنی).
   const manual = !!claim?.story?.manual; // completed by hand in «ویرایش» — its typed data has priority
@@ -85,6 +87,7 @@ export default function CaseDocumentsPage() {
       <Flash text={aiNote ? AI_QUEUED_FA : null} ok />
       {!claim || !checklist ? <div className="card p-12 flex justify-center"><FancyLoader label="در حال بارگذاری مدارک" /></div> : (
         <>
+          <div className="mb-3 no-print"><DeficiencyBox claimId={id} claim={claim} checklist={checklist} realm="org" canUpload={claim.status !== 'PAID' && (canFile || (canProcess && !!claim.workflow?.holdsDesk))} onChanged={reload} /></div>
           <div ref={sheet} className="cs-sheet">
             <CaseHero title="پیگیری آخرین وضعیت پرونده خسارت" claim={claim} notes={fv.case_notes || phaseText(claim)} back={`/org/claims/${id}`} />
             <PersonCards claim={claim} fv={fv} />
