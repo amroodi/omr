@@ -51,9 +51,10 @@ describe('actionsFor', () => {
     expect(keys(ctx())).not.toContain('REJECT_FINAL');
   });
 
-  it('شعبه needs اعلام خسارت before forwarding to ستاد', () => {
-    expect(get(ctx({ currentStage: 'BRANCH' }), 'FORWARD')?.disabled).toBe('ابتدا اعلام خسارت را ثبت کنید');
-    expect(get(ctx({ currentStage: 'BRANCH', lossNoticeNumber: '123' }), 'FORWARD')?.label).toBe('ارسال به مدیریت ستاد');
+  it('شعبه needs the مبلغ خسارت قطعی (not اعلام خسارت) before forwarding to ستاد', () => {
+    expect(get(ctx({ currentStage: 'BRANCH' }), 'FORWARD')?.disabled).toBe('ابتدا مبلغ خسارت قطعی را ثبت کنید');
+    expect(get(ctx({ currentStage: 'BRANCH', finalizedAmount: '900' }), 'FORWARD')?.disabled).toBeUndefined();
+    expect(get(ctx({ currentStage: 'BRANCH', finalizedAmount: '900' }), 'FORWARD')?.label).toBe('ارسال به مدیریت ستاد');
   });
 
   it('ستاد can pay or refer; above its ceiling payment is blocked', () => {
@@ -80,11 +81,16 @@ describe('actionsFor', () => {
 
   it('a return travels desk by desk, with a direct skip for admins only', () => {
     const down = { currentStage: 'HQ' as const, flowDirection: 'DOWN' as const, flowPurpose: 'DEFICIENCY' as const };
-    expect(get(ctx(down), 'DOWN_FORWARD')?.label).toBe('ارسال به شعبه');
+    expect(get(ctx(down), 'DOWN_FORWARD')?.label).toBe('ارسال به شعبه برای رفع نقص');
     expect(keys(ctx(down))).not.toContain('DOWN_DIRECT');
     expect(keys(ctx(down, { isAdmin: true }))).toContain('DOWN_DIRECT');
     // the desk just above بیمه‌گزار has nothing to skip
-    expect(keys(ctx({ ...down, currentStage: 'BROKER' }, { isAdmin: true }))).toEqual(['DOWN_FORWARD']);
+    expect(keys(ctx({ ...down, currentStage: 'BROKER' }, { isAdmin: true }))).toEqual(['FIX_HERE', 'DOWN_FORWARD']);
+    // any desk a return reaches may fix it itself — once what was asked is uploaded
+    expect(get(ctx({ ...down, currentStage: 'BRANCH' }), 'FIX_HERE')?.disabled).toBeUndefined();
+    const missing = { docs: { count: 2, allApproved: true, rejectedLabels: [], rejectedAnywhere: [], deficiencyMissing: ['فیش حقوقی'] } };
+    expect(get(ctx({ ...down, currentStage: 'BRANCH' }, missing), 'FIX_HERE')?.disabled).toContain('فیش حقوقی');
+    expect(get(ctx({ currentStage: 'POLICYHOLDER', flowDirection: 'DOWN', flowPurpose: 'DEFICIENCY' }, missing), 'SUBMIT')?.disabled).toContain('فیش حقوقی');
     expect(get(ctx({ currentStage: 'BRANCH' }), 'RETURN')?.label).toBe('برگشت از شعبه');
   });
 
@@ -108,7 +114,7 @@ describe('actionsFor', () => {
 describe('physical documents', () => {
   const none = { at: null, open: null };
   it('شعبه asks بیمه‌گزار only after approving the scans, and cannot forward until the originals arrive', () => {
-    const at = { currentStage: 'BRANCH' as const, lossNoticeNumber: '1' };
+    const at = { currentStage: 'BRANCH' as const, lossNoticeNumber: '1', finalizedAmount: '1' };
     expect(get(ctx(at, { physical: none }), 'REQUEST_PHYSICAL')?.label).toBe('درخواست اصل مدارک از بیمه‌گزار');
     expect(get(ctx(at, { physical: none, docs: { count: 1, allApproved: false, rejectedLabels: [], rejectedAnywhere: [] } }), 'REQUEST_PHYSICAL')?.disabled).toBeTruthy();
     expect(get(ctx(at, { physical: none }), 'FORWARD')?.disabled).toContain('اصل مدارک');
@@ -134,7 +140,7 @@ describe('physical documents', () => {
   });
 
   it('on a broker case شعبه asks the کارگزاری, which sends them on', () => {
-    const at = { currentStage: 'BRANCH' as const, lossNoticeNumber: '1' };
+    const at = { currentStage: 'BRANCH' as const, lossNoticeNumber: '1', finalizedAmount: '1' };
     const viaBroker = { at: null, base: 'BROKER' as const, open: null };
     expect(get(ctx(at, { physical: viaBroker }), 'REQUEST_PHYSICAL')?.label).toBe('درخواست اصل مدارک از کارگزاری');
     expect(get(ctx(at, { physical: viaBroker }), 'FORWARD')?.disabled).toBe('ابتدا اصل مدارک را از کارگزاری دریافت کنید');
@@ -187,7 +193,7 @@ describe('Model View', () => {
   });
 
   it('شعبه can forward without loss notice or originals when not required', () => {
-    const base = { currentStage: 'BRANCH', flowDirection: 'UP', lossNoticeNumber: null } as any;
+    const base = { currentStage: 'BRANCH', flowDirection: 'UP', lossNoticeNumber: null, finalizedAmount: '1' } as any;
     const forward = (model: WorkflowModel) => actionsFor(ctx(base, { ...docsOk, physical: { at: null, open: null }, model })).find((a) => a.key === 'FORWARD');
     expect(forward(DEFAULT_WORKFLOW_MODEL)?.disabled).toBeTruthy();
     expect(forward(off({ requireLossNotice: false, requireOriginals: false }))?.disabled).toBeUndefined();
@@ -208,7 +214,7 @@ describe('Model View: stages, types and forms', () => {
   });
   it('a desk that needn\'t review documents can forward without approvals', () => {
     const m = modelFrom({ requireLossNotice: false, requireOriginals: false, stages: { BRANCH: { reviewDocs: false } } });
-    const a = actionsFor(ctx({ currentStage: 'BRANCH', flowDirection: 'UP' } as any, { docs: { count: 1, allApproved: false, rejectedLabels: [], rejectedAnywhere: [] }, physical: { at: null, open: null }, model: m }));
+    const a = actionsFor(ctx({ currentStage: 'BRANCH', flowDirection: 'UP', finalizedAmount: '1' } as any, { docs: { count: 1, allApproved: false, rejectedLabels: [], rejectedAnywhere: [] }, physical: { at: null, open: null }, model: m }));
     expect(a.find((x) => x.key === 'FORWARD')?.disabled).toBeUndefined();
   });
   it('a نوع پرونده overrides the insurer\'s rule', () => {

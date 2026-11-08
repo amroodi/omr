@@ -90,9 +90,11 @@ function WorkDesk() {
   }, []);
 
   // «روند سیناد»: tiles come from the kartable; keys are `sinad:<tab>`.
-  const loadSinadTiles = (base?: WorkDesk) => client.get<{ enabled: boolean; tabs?: { key: string; label: string; count: number }[] }>('/claims/sinad/kartable', 'org')
+  const [sinadPaused, setSinadPaused] = useState(false);
+  const loadSinadTiles = (base?: WorkDesk) => client.get<{ enabled: boolean; paused?: boolean; tabs?: { key: string; label: string; count: number }[] }>('/claims/sinad/kartable', 'org')
     .then((k) => {
       if (!k.enabled || !k.tabs) return;
+      setSinadPaused(!!k.paused);
       const tiles: Tile[] = k.tabs.map((t) => ({ key: `sinad:${t.key}`, label: t.label, count: t.count, actionable: true }));
       setData((cur) => { const d = base ?? cur; return d ? { ...d, tiles } : d; });
       setActive((a) => (a && a.key.startsWith('sinad:') ? { ...a, count: tiles.find((t) => t.key === a.key)?.count ?? a.count } : a));
@@ -178,7 +180,7 @@ function WorkDesk() {
     client.get<QueueRow[]>(url, 'org')
       .then((r) => {
         setRows(r);
-        if (t.key === 'sinad:evaluate') { loadSinadTiles(); if (!r.length) setNotice('پرونده‌ای در کارتابل شما نیست و پرونده‌ای هم در انتظار تخصیص نیست.'); }
+        if (t.key === 'sinad:evaluate') { loadSinadTiles(); if (!r.length) setNotice(sinadPaused ? 'تخصیص پرونده به شما توسط مدیر متوقف شده است.' : 'پرونده‌ای در کارتابل شما نیست و پرونده‌ای هم در انتظار تخصیص نیست.'); }
       })
       .catch((e) => setError(e.message)).finally(() => setQLoading(false));
   };
@@ -214,6 +216,9 @@ function WorkDesk() {
       action={
         <span className="flex items-center gap-2">
           {data?.roleLabel && <span className="badge badge-neutral whitespace-nowrap">نقش: {data.roleLabel}</span>}
+          {data?.sinad && hasPerm('org', 'claim:override') && (
+            <Link href="/org/allocation" className="btn btn-ghost btn-sm" title="تخصیص پرونده‌های شعبه به ارزیابان">تخصیص پرونده‌ها</Link>
+          )}
           {canFile && (
             <Link href="/org/claims/new" className="btn btn-solid btn-sm" title="ثبت پرونده خسارت جدید">
               <Icon path="M12 5v14M5 12h14" />

@@ -18,6 +18,8 @@ import {
   IsNumber,
   Min,
   Max,
+  IsBoolean,
+  IsInt,
 } from 'class-validator';
 import { ToAsciiDigits } from '../../common/validation/to-ascii.decorator';
 import { KIND_CODE } from '../../common/kinds';
@@ -271,7 +273,7 @@ export class DecisionDto {
   deficiencies?: string[];
 }
 
-const ACTION_KEYS = ['SUBMIT', 'FORWARD', 'REFER_COUNCIL', 'PAY_ORDER', 'RETURN', 'RETURN_DIRECT', 'DOWN_FORWARD', 'DOWN_DIRECT', 'MARK_PAID', 'REJECT_FINAL', 'REQUEST_PHYSICAL'] as const;
+const ACTION_KEYS = ['SUBMIT', 'FORWARD', 'REFER_COUNCIL', 'PAY_ORDER', 'RETURN', 'RETURN_DIRECT', 'DOWN_FORWARD', 'DOWN_DIRECT', 'FIX_HERE', 'MARK_PAID', 'REJECT_FINAL', 'REQUEST_PHYSICAL'] as const;
 
 export class ActionDto {
   @IsIn(ACTION_KEYS as unknown as string[])
@@ -291,6 +293,20 @@ export class ActionDto {
   @IsString({ each: true })
   deficiencies?: string[];
 
+  /** RETURN: reasons that ask for no upload (Sinad's «عودت» reasons, explanations). */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsString({ each: true })
+  deficiencyNotes?: string[];
+
+  /** RETURN: required-document codes asked for again (each must be uploaded anew). */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  @IsString({ each: true })
+  deficiencyDocs?: string[];
+
   @IsOptional()
   @IsUUID()
   branchId?: string;
@@ -306,6 +322,36 @@ export class SinadOpDto {
   @IsOptional()
   @IsUUID()
   userId?: string;
+}
+
+/** «تخصیص پرونده‌ها»: hand cases to one evaluator, or (no userId) back to the branch's pool. */
+export class SinadAssignDto {
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayMaxSize(300)
+  @IsUUID('all', { each: true })
+  claimIds!: string[];
+
+  @IsOptional()
+  @IsUUID()
+  userId?: string | null;
+}
+
+/** One evaluator's allocation settings. */
+export class EvaluatorSettingsDto {
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  batchSize?: number | null;
+
+  @IsBoolean()
+  paused!: boolean;
+
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsString({ each: true })
+  claimTypes!: string[];
 }
 
 export class LossNoticeDto {

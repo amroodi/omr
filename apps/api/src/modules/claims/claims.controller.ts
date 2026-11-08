@@ -22,7 +22,7 @@ import { CoverageService } from '../model-view/coverage.service';
 import { CoverageCheckDto, StaffCoverageCheckDto } from '../customer/dto';
 import { ClaimsService } from './claims.service';
 import { asLine } from './workflow';
-import { SinadOpDto, ActionDto, DecisionDto, FileClaimDto, FileOnBehalfDto, FilingEditDto, HeirsDto, LetterDto, LossNoticeDto, PhysicalDto, RectifyDto } from './dto';
+import { SinadOpDto, SinadAssignDto, EvaluatorSettingsDto, ActionDto, DecisionDto, FileClaimDto, FileOnBehalfDto, FilingEditDto, HeirsDto, LetterDto, LossNoticeDto, PhysicalDto, RectifyDto } from './dto';
 
 const docLimits = { fileSize: 15 * 1024 * 1024 };
 
@@ -215,6 +215,27 @@ export class ClaimsController {
     return this.claims.sinadEvaluators();
   }
 
+  /** «تخصیص پرونده‌ها» (insurer admin): evaluators with their load and settings, and every case at شعبه. */
+  @Permissions(PERMISSIONS.CLAIM_OVERRIDE)
+  @Get('sinad/allocation')
+  sinadAllocation() {
+    return this.claims.sinadAllocation();
+  }
+
+  /** Hand cases to an evaluator, or back to the pool (no userId). */
+  @Permissions(PERMISSIONS.CLAIM_OVERRIDE)
+  @Post('sinad/assign')
+  sinadAssign(@Body() dto: SinadAssignDto) {
+    return this.claims.sinadAssign(dto.claimIds, dto.userId ?? null);
+  }
+
+  /** One evaluator's batch size, paused flag and case types. */
+  @Permissions(PERMISSIONS.CLAIM_OVERRIDE)
+  @Put('sinad/evaluators/:userId')
+  sinadEvaluatorSettings(@Param('userId', ParseUUIDPipe) userId: string, @Body() dto: EvaluatorSettingsDto) {
+    return this.claims.sinadEvaluatorSettings(userId, dto);
+  }
+
   @Permissions(PERMISSIONS.CLAIM_READ)
   @Get(':id/sinad')
   sinadCase(@Param('id', ParseUUIDPipe) id: string) {
@@ -325,8 +346,10 @@ export class ClaimsController {
   }
 
   /** Upload a document to the claim, tagged with the required-document code it satisfies. */
-  @EntryAllowed() // panel 1 files them; panel 2 may replace one while assessing
-  @Permissions(PERMISSIONS.CLAIM_FILE)
+  // panel 1 files them (claim:file); panel 2 uploads while it holds the case (claim:process — e.g. what a
+  // return asked for, fixed at its own desk); the service checks which applies.
+  @EntryAllowed()
+  @Permissions(PERMISSIONS.CLAIM_READ)
   @Post(':id/documents')
   @UseInterceptors(FileInterceptor('file', { limits: docLimits }))
   uploadDocument(@Param('id') id: string, @Query('docCode') docCode: string, @UploadedFile() file: Express.Multer.File) {

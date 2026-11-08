@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toGregorian } from 'jalaali-js';
 import { client } from '../../lib/client';
 import { JalaliDatePicker } from './JalaliDatePicker';
@@ -59,13 +59,25 @@ function phase(w: Workflow): string {
  * record, and the actions the server offers this user. Every action can carry a note and — for
  * organizations — a letter (number/date/subject + optional scan).
  */
-export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact }: {
+export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact, actionsOnly }: {
   claimId: string; workflow: Workflow; realm: 'org' | 'customer'; onDone: () => void; compact?: boolean;
+  /** Just the action buttons (the «نقص مدارک» box shows the rest itself). */
+  actionsOnly?: boolean;
 }) {
   const [open, setOpen] = useState<(WorkflowAction & { physical?: boolean }) | null>(null);
   const [tracking, setTracking] = useState('');
   const [note, setNote] = useState('');
-  const [defs, setDefs] = useState('');
+  const [defs, setDefs] = useState(''); // «نقص دیگر»: each line becomes an upload slot of its own
+  const [defNotes, setDefNotes] = useState(''); // reasons that ask for no upload
+  const [defDocs, setDefDocs] = useState<string[]>([]); // documents of the case's list asked for again
+  const [docList, setDocList] = useState<{ code: string; label: string; uploaded: boolean }[] | null>(null);
+  // The return dialog lists the case's documents to pick from.
+  useEffect(() => {
+    if (!open?.needsDeficiencies || docList || realm !== 'org') return;
+    client.get<{ items: { code: string; label: string; uploaded: boolean; deficiency?: { custom?: boolean } }[] }>(`/claims/${claimId}/checklist`, 'org')
+      .then((c) => setDocList(c.items.filter((i) => !i.deficiency?.custom).map((i) => ({ code: i.code, label: i.label, uploaded: i.uploaded }))))
+      .catch(() => setDocList([]));
+  }, [open, docList, claimId, realm]);
   const [branchId, setBranchId] = useState('');
   const [letter, setLetter] = useState({ number: '', date: '', subject: '', chargoonNo: '' });
   const [letterFile, setLetterFile] = useState<File | null>(null);
@@ -78,7 +90,7 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact }: 
   const asksNumber = w.lossNoticeAsksNumber !== false;
 
   const start = (a: WorkflowAction & { physical?: boolean }) => {
-    setErr(''); setNote(''); setDefs(''); setTracking(''); setSure(false); setLetter({ number: '', date: '', subject: '', chargoonNo: '' }); setLetterFile(null);
+    setErr(''); setNote(''); setDefs(''); setDefNotes(''); setDefDocs([]); setTracking(''); setSure(false); setLetter({ number: '', date: '', subject: '', chargoonNo: '' }); setLetterFile(null);
     setBranchId(a.selectedBranchId || (a.branchOptions?.length === 1 ? a.branchOptions[0].id : ''));
     setOpen(a);
   };
@@ -104,10 +116,13 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact }: 
           letterId = (await client.postForm<{ id: string }>(`/claims/${claimId}/letters`, fd, 'org')).id;
         }
         const deficiencies = defs.split('\n').map((s) => s.trim()).filter(Boolean);
+        const deficiencyNotes = defNotes.split('\n').map((s) => s.trim()).filter(Boolean);
         if (open.physical) await client.post(`/claims/${claimId}/physical`, { action: open.key, note: note || undefined, trackingNo: tracking || undefined, letterId }, 'org');
         else await client.post(`/claims/${claimId}/action`, {
           action: open.key, note: note || undefined, letterId,
           deficiencies: deficiencies.length ? deficiencies : undefined,
+          deficiencyNotes: deficiencyNotes.length ? deficiencyNotes : undefined,
+          deficiencyDocs: defDocs.length ? defDocs : undefined,
           branchId: branchId || undefined,
         }, 'org');
       }
@@ -126,6 +141,7 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact }: 
 
   return (
     <div className="space-y-3">
+      {!actionsOnly && <>
       {/* Chain */}
       <div className="flex items-center gap-1 flex-wrap text-xs">
         {w.chain.map((c, i) => {
@@ -152,26 +168,7 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact }: 
         </div>
       )}
 
-      {/* اعلام خسارت (شعبه) */}
-      {realm === 'org' && (w.lossNotice || w.canRecordLossNotice) && (
-        <div className="rounded-lg p-2.5 text-sm" style={{ background: 'var(--surface-2)' }}>
-          <div className="font-semibold mb-1">اعلام خسارت به بیمه‌گر (سامانهٔ بیمه‌گر)</div>
-          {w.lossNotice && (w.lossNotice.number
-            ? <div className="text-xs mb-1">شماره: <b>{w.lossNotice.number}</b>{w.lossNotice.date ? ` — تاریخ: ${w.lossNotice.date}` : ''}</div>
-            : <div className="text-xs mb-1" style={{ color: 'var(--success)' }}>✓ اعلام خسارت ثبت شد{w.lossNotice.at ? ` — ${w.lossNotice.at}` : ''}</div>)}
-          {w.canRecordLossNotice && !asksNumber && (
-            <button onClick={saveLossNotice} disabled={busy} className="btn btn-primary btn-sm">ثبت اعلام خسارت</button>
-          )}
-          {w.canRecordLossNotice && asksNumber && (
-            <div className="flex flex-wrap items-center gap-2">
-              <input className="input" style={{ maxWidth: 200 }} placeholder="شمارهٔ اعلام خسارت" value={ln.number} onChange={(e) => setLn({ ...ln, number: e.target.value })} />
-              <div style={{ maxWidth: 170 }}><JalaliDatePicker value={ln.date} onChange={(v) => setLn({ ...ln, date: v })} placeholder="تاریخ" /></div>
-              <button onClick={saveLossNotice} disabled={busy || !ln.number.trim()} className="btn btn-primary btn-sm">{w.lossNotice ? 'ویرایش' : 'ثبت اعلام خسارت'}</button>
-            </div>
-          )}
-        </div>
-      )}
-
+      {/* «اعلام خسارت» has no button for now: it is a document the بیمه‌گزار uploads. */}
       {/* Original documents (side track) */}
       {w.physical && (w.physical.collected || w.physical.open || w.physical.actions.length > 0 || w.physical.events.length > 0) && (
         <div className="rounded-lg p-2.5 text-sm space-y-1.5" style={{ background: 'var(--surface-2)' }}>
@@ -215,6 +212,7 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact }: 
           )}
         </div>
       )}
+      </>}
 
       {/* Actions */}
       {w.actions.length > 0 ? (
@@ -231,7 +229,7 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact }: 
             <div key={a.key} className="text-xs" style={{ color: 'var(--muted)' }}>• {a.label}: {a.disabled}</div>
           ))}
         </div>
-      ) : w.currentStage ? (
+      ) : w.currentStage && !actionsOnly ? (
         <div className="text-xs" style={{ color: 'var(--muted)' }}>پرونده در حال حاضر نزد «{w.currentStageLabel}» است؛ اقدامی برای شما در این مرحله نیست.</div>
       ) : null}
       <Flash text={err && !open ? err : null} ok={false} />
@@ -255,9 +253,31 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact }: 
                 </div>
               )}
               {open.needsDeficiencies && (
-                <div>
-                  <label className="label">موارد نقص (هر مورد در یک خط) — مدارک ردشده خودکار افزوده می‌شوند</label>
-                  <textarea className="input" rows={3} value={defs} onChange={(e) => setDefs(e.target.value)} />
+                <div className="space-y-2">
+                  <div className="text-xs rounded-lg p-2" style={{ background: 'var(--brand-soft)' }}>مدارکی که در این مرحله ✕ (رد) زده‌اید خودکار جزو نقص می‌آیند. برای هر مدرکی که در زیر انتخاب یا نوشته شود، گیرنده یک جای بارگذاری می‌بیند و تا بارگذاری نکند پرونده جلو نمی‌رود.</div>
+                  {realm === 'org' && (
+                    <div>
+                      <label className="label">مدارکی که باید دوباره یا تازه بارگذاری شوند</label>
+                      <div className="rounded-lg p-2 space-y-1 overflow-y-auto" style={{ maxHeight: 190, border: '1px solid var(--border)' }}>
+                        {docList === null ? <div className="text-xs" style={{ color: 'var(--muted)' }}>در حال دریافت فهرست مدارک…</div>
+                          : docList.length === 0 ? <div className="text-xs" style={{ color: 'var(--muted)' }}>مدرکی در فهرست این پرونده نیست.</div>
+                          : docList.map((d) => (
+                            <label key={d.code} className="flex items-start gap-2 text-xs cursor-pointer">
+                              <input type="checkbox" className="mt-0.5" checked={defDocs.includes(d.code)} onChange={(e) => setDefDocs((cur) => (e.target.checked ? [...cur, d.code] : cur.filter((x) => x !== d.code)))} />
+                              <span>{d.label}{!d.uploaded && <span style={{ color: 'var(--muted)' }}> (بارگذاری نشده)</span>}</span>
+                            </label>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+                  <div>
+                    <label className="label">مدرک دیگری که در فهرست نیست (هر مدرک در یک خط)</label>
+                    <textarea className="input" rows={2} value={defs} onChange={(e) => setDefs(e.target.value)} placeholder="مثلاً: گواهی پزشک قانونی" />
+                  </div>
+                  <div>
+                    <label className="label">توضیح نقص بدون نیاز به بارگذاری (هر مورد در یک خط)</label>
+                    <textarea className="input" rows={2} value={defNotes} onChange={(e) => setDefNotes(e.target.value)} placeholder="مثلاً: مبلغ برآوردی با مدارک هم‌خوانی ندارد" />
+                  </div>
                 </div>
               )}
               {open.physical && (open.key === 'PHYSICAL_SEND' || open.key === 'PHYSICAL_RETURN') && (
@@ -314,7 +334,7 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact }: 
 export const ACTION_FA: Record<string, string> = {
   LOSS_NOTICE: 'ثبت اعلام خسارت',
   SUBMIT: 'ارسال', FORWARD: 'تایید و ارسال', REFER_COUNCIL: 'ارجاع به شورای فنی', PAY_ORDER: 'دستور پرداخت',
-  RETURN: 'عودت برای رفع نقص', RETURN_DIRECT: 'برگشت از سرپرستی به بیمه‌گزار', DOWN_FORWARD: 'ارسال به سطح پایین‌تر',
+  RETURN: 'عودت برای رفع نقص', RETURN_DIRECT: 'برگشت از سرپرستی به بیمه‌گزار', DOWN_FORWARD: 'ارسال به سطح پایین‌تر', FIX_HERE: 'رفع نقص و ادامهٔ بررسی',
   DOWN_DIRECT: 'ارسال مستقیم به بیمه‌گزار (اختیار مدیریت)', MARK_PAID: 'ثبت پرداخت', REJECT_FINAL: 'رد نهایی',
 };
 /** Older steps (before workflow v2) carry only a state, no action. */
