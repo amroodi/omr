@@ -2400,6 +2400,18 @@ export class ClaimsService {
     };
   }
 
+  /** Sinad's «اینجا»: give back this evaluator's whole batch, so the next opening of the tab hands out a new one. */
+  async sinadReleaseBatch() {
+    const s = await this.sinadDesk();
+    if (!s) throw new ForbiddenException('کارتابل سیناد برای سازمان شما فعال نیست');
+    const db = this.prisma.unscoped();
+    const mine = await db.claim.findMany({ where: { insurerTenantId: s.tenantId, evaluatorId: s.me, currentStage: 'BRANCH', flowDirection: 'UP', doctorState: null, evaluatorLater: false }, select: { id: true } });
+    if (!mine.length) return { released: 0 };
+    await db.claim.updateMany({ where: { id: { in: mine.map((c) => c.id) }, evaluatorId: s.me }, data: { evaluatorId: null, evaluatorAt: null } });
+    await db.claimDeskEvent.createMany({ data: mine.map((c) => ({ claimId: c.id, kind: 'RELEASE', actorId: s.me })) });
+    return { released: mine.length };
+  }
+
   /** Branch colleagues a case can be referred to («ارجاع»). */
   async sinadEvaluators() {
     const s = await this.sinadDesk();

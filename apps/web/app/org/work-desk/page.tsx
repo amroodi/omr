@@ -108,6 +108,13 @@ function WorkDesk() {
     catch (e: any) { setError(e.message); } finally { setBusyOp(false); }
   };
 
+  const releaseBatch = async () => {
+    if (!active) return;
+    setError(''); setBusyOp(true);
+    try { await client.post('/claims/sinad/release-batch', {}, 'org'); openQueue(active); }
+    catch (e: any) { setError(e.message); } finally { setBusyOp(false); }
+  };
+
   const insurerMap = useMemo(() => Object.fromEntries(insurers.map((i) => [i.id, i.name])), [insurers]);
 
   // Row selection + «خروجی اکسل» of the open list (the selected rows, or all of them when none is picked).
@@ -334,6 +341,12 @@ function WorkDesk() {
                   <button onClick={() => setActive(null)} className="btn btn-ghost btn-sm">بستن</button>
                 </span>
               </div>
+              {sinadTab === 'evaluate' && !qLoading && rows.some((r) => r.evaluatorName) && (
+                <div className="sn-alloc">
+                  پرونده‌های موجود در لیست زیر به شما تخصیص داده شده است و برای هیچ ارزیاب دیگری قابل مشاهده نیست؛ تا زمانی که بررسی این لیست به پایان نرسد، پروندهٔ جدید دیگری به شما تخصیص داده نخواهد شد.
+                  <br />در صورتی که تمایل دارید پرونده‌های زیر از کارتابل شما خارج شود و پرونده‌های جدید دیگری دریافت کنید <button className="sn-alloc-link" disabled={busyOp} onClick={releaseBatch}>اینجا</button> را کلیک کنید.
+                </div>
+              )}
               {qLoading ? (
                 <div className="p-12 flex justify-center"><FancyLoader label="در حال دریافت صف…" /></div>
               ) : rows.length === 0 ? (
@@ -351,7 +364,7 @@ function WorkDesk() {
                     <tbody>
                       {/* Rows don't open on click (too many mis-clicks) — only the «مشاهده» / «ارزیابی» buttons do. */}
                       {pageRows.map((r, i) => (
-                        <tr key={r.id} className={picked.has(r.id) ? 'is-picked' : undefined}>
+                        <tr key={r.id} className={picked.has(r.id) ? 'is-picked' : sinadTab === 'evaluate' && r.evaluatorName ? 'is-alloc' : undefined}>
                           <td><input type="checkbox" aria-label={`انتخاب ردیف ${fa((page - 1) * pageSize + i + 1)}`} checked={picked.has(r.id)}
                             onChange={() => setPicked((cur) => { const n = new Set(cur); if (n.has(r.id)) n.delete(r.id); else n.add(r.id); return n; })} /></td>
                           <td>{fa((page - 1) * pageSize + i + 1)}</td>
@@ -360,7 +373,7 @@ function WorkDesk() {
                               {sinadTab ? (
                                 <>
                                   {r.needsAction && ['evaluate', 'later', 'final', 'returned', 'pay'].includes(sinadTab) && (
-                                    <a href={`/org/claims/${r.id}/evaluate`} className="sn-act">{sinadTab === 'final' ? 'ارزیابی نهایی' : sinadTab === 'returned' || sinadTab === 'pay' ? 'اقدام' : 'ارزیابی'}</a>
+                                    <a href={`/org/claims/${r.id}/evaluate`} className="sn-act is-green">{sinadTab === 'final' ? 'ارزیابی نهایی' : sinadTab === 'returned' || sinadTab === 'pay' ? 'اقدام' : 'ارزیابی'}</a>
                                   )}
                                   {(sinadTab === 'doctor' || sinadTab === 'exam') && (
                                     <button className="sn-act" onClick={() => { setOpinionText(''); setOpinion({ id: r.id, name: r.deceasedName || r.claimNumber }); }}>اظهار نظر پزشک معتمد</button>

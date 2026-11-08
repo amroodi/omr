@@ -2400,3 +2400,9 @@ a.cu-card.is-link:hover { transform: translateY(-2px); box-shadow: 0 0 0 2px var
   .ev-form { width: auto; min-width: 0; overflow: visible; }
   .ev-docs { min-height: 60vh; }
 }
+
+/* «روند سیناد» on میز کار: Sinad's allocation notice, allocated rows and green «ارزیابی» */
+.sn-alloc { padding: 10px 14px; font-size: 12px; line-height: 2; text-align: center; color: var(--text); border-bottom: 1px solid var(--border); }
+.sn-alloc-link { font-weight: 800; color: var(--text); text-decoration: underline; padding: 0 2px; }
+.sn-table tr.is-alloc td { background: #b9dcf5 !important; color: #10243a; }
+.sn-act.is-green { background: #19b38a; border-color: #149b77; color: #fff; }
