@@ -10,8 +10,9 @@ import { Coverage, CoverageNote, coverageText } from './CoverageNote';
 import { Shell } from './Shell';
 import { CUSTOMER_NAV, POLICY_KEY, PolicyRow } from '../customer/nav';
 import { ORG_NAV } from '../org/nav';
-import { CAUSE_LABEL, EVENT_DATE_LABEL, INSURED_RELATIONS, insuredNameLabel } from './claim-wording';
+import { eventDateLabel, CAUSE_LABEL, EVENT_DATE_LABEL, INSURED_RELATIONS, insuredNameLabel } from './claim-wording';
 import { useDraft } from '../../lib/draft';
+import { SearchPick } from './SearchPick';
 
 const toAscii = (s: string) => s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
 // Death claims ask for the date of death; accident disability / medical claims for the accident date.
@@ -111,6 +112,15 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
   const [notice, setNotice] = useState<{ enabled: boolean; targets: string[]; default: string; labels: Record<string, string> } | null>(null);
   useEffect(() => { client.get<any>(org ? '/claims/notice-options' : '/customer/notice-options', realm).then(setNotice).catch(() => setNotice(null)); }, []);
   const [causes, setCauses, clearCauses] = useDraft<string[]>('causes', []);
+  // A brokerage's panel 1 without a بیمه‌نامه to read the form from: each نوع پرونده's «علت» list and label
+  // from its insurers (the same lists the insurer's own panel 1 shows).
+  const [orgTypes, setOrgTypes] = useState<Record<string, { label: string; causes: string[]; causeLabel: string; death?: boolean; causeGroup?: string }>>({});
+  useEffect(() => {
+    if (!org) return;
+    client.get<{ code: string; label: string; causes?: string[]; causeLabel?: string; death?: boolean; causeGroup?: string }[]>(`/claims/case-types${lineQuery()}`, 'org')
+      .then((l) => setOrgTypes(Object.fromEntries(l.map((t) => [t.code, { label: t.label, causes: t.causes ?? [], causeLabel: t.causeLabel ?? CAUSE_LABEL, death: t.death, causeGroup: t.causeGroup }])))).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // فن‌آوران coverage inquiry on the insured's کد ملی (the form's first field); null while Super Admin has it
   // off for this insurer, 'checking' while it asks. `blocked` = this person can't be filed (as Super Admin set).
   const [coverage, setCoverage] = useState<Coverage | 'checking' | null>(null);
@@ -174,19 +184,26 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
   const policy = policies?.find((p) => p.id === policyId) ?? null;
   // Model View: the wording and fields this insurer set for this بیمه‌نامه.
   const form = policy?.form;
-  const eventLabel = form?.eventLabel ?? EVENT_DATE_LABEL;
+  const eventLabel = (() => {
+    const t = form?.caseTypes.find((x) => x.code === f.claimType) ?? orgTypes[f.claimType];
+    return t ? eventDateLabel(t) : form?.eventLabel ?? EVENT_DATE_LABEL; // «تاریخ فوت» / «تاریخ حادثه»
+  })();
   const caseType = form?.caseTypes.find((t) => t.code === f.claimType);
   // The نوع پرونده's own «علت» list, else its group's; «علت فوت» in عمر, «علت خسارت» elsewhere (Model View).
-  const causeOptions = caseType?.causes?.length ? caseType.causes : form?.causeLists[caseType?.causeGroup ?? 'ACCIDENT'] ?? [];
-  const causeLabel = form?.causeLabel || CAUSE_LABEL;
+  const causeOptions = caseType?.causes?.length ? caseType.causes : form ? form.causeLists[caseType?.causeGroup ?? 'ACCIDENT'] ?? [] : orgTypes[f.claimType]?.causes ?? [];
+  const causeLabel = form?.causeLabel || orgTypes[f.claimType]?.causeLabel || CAUSE_LABEL;
   // Ticks from the other list (the نوع پرونده changed) don't count.
-  const cause = [...causes.filter((c) => causeOptions.includes(c)), f.causeOfDeath.trim()].filter(Boolean).join('، ');
+  // One cause from the list (a searchable drawer); typing only where the نوع پرونده has no list.
+  const picked = causes.filter((c) => causeOptions.includes(c)).slice(0, 1);
+  const cause = [...picked, causeOptions.length ? '' : f.causeOfDeath.trim()].filter(Boolean).join('، ');
   // Model View: «نوع بیمه‌شده» for this company? A همسر / فرزند also names the main insured.
   const askRelation = !!form?.dependents;
   // Any نوع بیمه‌شده but اصلی is a dependent (فرعی): the form also asks for the main insured.
   const dependent = askRelation && !!f.relation && f.relation !== 'MAIN';
   const relationName = INSURED_RELATIONS[f.relation] ?? '';
-  const types = policy?.claimTypes ?? Object.keys(CLAIM_TYPE_LABELS);
+  // Without a بیمه‌نامه (a brokerage's panel 1): the نوع پرونده of the chosen نوع بیمه‌نامه at its insurers.
+  const types = policy?.claimTypes ?? (Object.keys(orgTypes).length ? Object.keys(orgTypes) : Object.keys(CLAIM_TYPE_LABELS));
+  useEffect(() => { if (!policy && types.length && !types.includes(f.claimType)) setF((cur) => ({ ...cur, claimType: types[0] })); /* eslint-disable-next-line */ }, [policy, orgTypes]);
   /** Select a بیمه‌نامه; keep the claim type only if that policy's line covers it. */
   const choosePolicy = (p: PolicyRow) => {
     setPolicyId(p.id);
@@ -380,7 +397,7 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
 
           <PField label="نوع پرونده *" help="نوع خسارت را مشخص کنید؛ فقط خسارت‌هایی که بیمه‌نامهٔ انتخاب‌شده پوشش می‌دهد فهرست شده‌اند.">
             <select className="input" value={f.claimType} onChange={(e) => setF({ ...f, claimType: e.target.value })}>
-              {types.map((v) => <option key={v} value={v}>{form?.caseTypes.find((t) => t.code === v)?.label ?? CLAIM_TYPE_LABELS[v] ?? v}</option>)}
+              {types.map((v) => <option key={v} value={v}>{form?.caseTypes.find((t) => t.code === v)?.label ?? orgTypes[v]?.label ?? CLAIM_TYPE_LABELS[v] ?? v}</option>)}
             </select>
           </PField>
 
@@ -406,17 +423,13 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
           ))}
 
           {form?.cause !== 'hidden' && (
-          <div className="md:col-span-2 lg:col-span-3"><PField label={`${causeLabel}${form?.cause === 'required' ? ' *' : ''}`} help="علت را همان‌طور که می‌دانید بنویسید؛ مثلاً «ایست قلبی»، «تصادف رانندگی» یا «سقوط از ارتفاع».">
-            {causeOptions.length > 0 && (
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1 mb-2">
-                {causeOptions.map((c) => (
-                  <label key={c} className="flex items-start gap-1.5 text-sm cursor-pointer">
-                    <input type="checkbox" className="mt-1" checked={causes.includes(c)} onChange={(e) => setCauses(e.target.checked ? [...causes, c] : causes.filter((x) => x !== c))} /> {c}
-                  </label>
-                ))}
-              </div>
+          <div className="md:col-span-2 lg:col-span-3"><PField label={`${causeLabel}${form?.cause === 'required' ? ' *' : ''}`} help={causeOptions.length ? 'بخشی از علت را تایپ کنید یا از فهرست انتخاب کنید.' : 'علت را همان‌طور که می‌دانید بنویسید؛ مثلاً «ایست قلبی»، «تصادف رانندگی» یا «سقوط از ارتفاع».'}>
+            {causeOptions.length > 0 ? (
+              <SearchPick label={causeLabel} options={causeOptions.map((c) => ({ id: c, name: c }))} value={picked[0] ?? ''} onPick={(c) => setCauses(c ? [c] : [])}
+                placeholder={`${causeLabel} را تایپ یا از فهرست انتخاب کنید…`} none="— انتخاب نشده —" />
+            ) : (
+              <input className="input" value={f.causeOfDeath} onChange={(e) => setF({ ...f, causeOfDeath: e.target.value })} maxLength={300} placeholder="شرح علت" />
             )}
-            <input className="input" value={f.causeOfDeath} onChange={(e) => setF({ ...f, causeOfDeath: e.target.value })} maxLength={300} placeholder={causeOptions.length > 0 ? 'علت دیگر (تایپ کنید)…' : 'شرح علت'} />
           </PField></div>
           )}
         </div>

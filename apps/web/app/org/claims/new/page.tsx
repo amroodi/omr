@@ -9,7 +9,8 @@ import { CLAIM_TYPE_LABELS, ErrorBox } from '../../../components/ui';
 import { JalaliDatePicker } from '../../../components/JalaliDatePicker';
 import { Coverage, CoverageNote, coverageText } from '../../../components/CoverageNote';
 import { ORG_NAV } from '../../nav';
-import { CAUSE_LABEL, EVENT_DATE_LABEL, insuredNameLabel } from '../../../components/claim-wording';
+import { SearchPick } from '../../../components/SearchPick';
+import { eventDateLabel, CAUSE_LABEL, EVENT_DATE_LABEL, insuredNameLabel } from '../../../components/claim-wording';
 import { useDraft } from '../../../../lib/draft';
 
 /** An insurer's panel 1: its partner کارگزاری‌ها (with their بیمه‌گزاران), شعبه‌ها, and Super Admin's entry way. */
@@ -61,49 +62,6 @@ function PField({ label, help, children }: { label: string; help?: string; child
 const norm = (t: string) => t.replace(/ي/g, 'ی').replace(/ك/g, 'ک').replace(/\u200c/g, ' ').trim();
 
 /**
- * A searchable list (an insurer's panel 1: «علت خسارت», «بیمه‌گزار (شرکت)»): type part of a name to find
- * it; ↑/↓ and Enter pick, Esc closes. `none` adds an empty choice at the top (e.g. «بدون شرکت بیمه‌گزار»).
- */
-function SearchPick({ options, value, onPick, placeholder, none, label, badge }: {
-  options: { id: string; name: string }[]; value: string; onPick: (id: string) => void; placeholder: string;
-  none?: string; label: string; badge?: (id: string) => string | null;
-}) {
-  const [q, setQ] = useState('');
-  const [open, setOpen] = useState(false);
-  const [hi, setHi] = useState(0);
-  const picked = options.find((o) => o.id === value) ?? null;
-  // While typing only the matches show, so Enter takes the first one.
-  const list = [...(none && !q.trim() ? [{ id: '', name: none }] : []), ...options.filter((o) => !q.trim() || norm(o.name).includes(norm(q)))];
-  const choose = (id: string) => { onPick(id); setQ(''); setOpen(false); };
-  return (
-    <div style={{ position: 'relative' }}>
-      <input className="input" role="combobox" aria-expanded={open} aria-label={label} title={picked?.name}
-        value={open ? q : picked?.name ?? ''} placeholder={open && picked ? picked.name : placeholder}
-        onFocus={() => { setOpen(true); setQ(''); setHi(0); }} onClick={() => setOpen(true)} onBlur={() => { setOpen(false); setQ(''); }}
-        onChange={(e) => { setQ(e.target.value); setHi(0); setOpen(true); }}
-        onKeyDown={(e) => {
-          if (e.key === 'ArrowDown') { e.preventDefault(); setOpen(true); setHi((h) => Math.min(h + 1, list.length - 1)); }
-          else if (e.key === 'ArrowUp') { e.preventDefault(); setHi((h) => Math.max(h - 1, 0)); }
-          else if (e.key === 'Enter') { e.preventDefault(); if (open && list[hi]) choose(list[hi].id); else setOpen(true); }
-          else if (e.key === 'Escape') setOpen(false);
-        }} />
-      <span className="spick-caret" aria-hidden="true">▾</span>
-      {open && (
-        <ul className="co-pick" role="listbox">
-          {list.length === 0 ? <li className="is-empty">موردی با این نام نیست</li> : list.map((o, k) => (
-            <li key={o.id || '__none'} role="option" aria-selected={o.id === value} className={`cause-opt${k === hi ? ' is-hi' : ''}${o.id === value ? ' is-on' : ''}${o.id ? '' : ' is-none'}`}
-              onMouseDown={(e) => { e.preventDefault(); choose(o.id); }} onMouseEnter={() => setHi(k)}>
-              <span className="flex-1">{o.name}</span>
-              {o.id && badge?.(o.id) && <span className="cause-has-note">{badge(o.id)}</span>}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-/**
  * «ثبت پرونده خسارت» on panel 1 — laid out like the بیمه‌گزار panel's filing form, for staff. Picking the
  * بیمه‌گزار company routes the case by its insurer contract and shows it in that company's panel; for a
  * case without a company the insurer and sales channel are chosen by hand. An insurer's staff (panel 1)
@@ -129,7 +87,7 @@ export default function NewClaim() {
   const [busy, setBusy] = useState(false);
   const [caseTypes, setCaseTypes] = useState<Record<string, string>>(CLAIM_TYPE_LABELS);
   // Each نوع پرونده's «علت» list and what this kind calls it («علت فوت» in عمر, «علت خسارت» elsewhere).
-  const [typeCauses, setTypeCauses] = useState<Record<string, { causes: string[]; causeLabel: string }>>({});
+  const [typeCauses, setTypeCauses] = useState<Record<string, { causes: string[]; causeLabel: string; death?: boolean; causeGroup?: string }>>({});
   // فن‌آوران coverage check on the insured's کد ملی (null: off for this insurer, or the insurer isn't known yet).
   const [coverage, setCoverage] = useState<Coverage | 'checking' | null>(null);
   const asked = useRef(0);
@@ -144,7 +102,7 @@ export default function NewClaim() {
     // Panel 1: only the chosen نوع بیمه‌نامه's نوع پرونده (none yet = filing closed for that kind).
     client.get<{ code: string; label: string }[]>(`/claims/case-types${lineQuery()}`, 'org').then((l) => {
       setCaseTypes(Object.fromEntries(l.map((t) => [t.code, t.label])));
-      setTypeCauses(Object.fromEntries(l.map((t: any) => [t.code, { causes: t.causes ?? [], causeLabel: t.causeLabel ?? CAUSE_LABEL }])));
+      setTypeCauses(Object.fromEntries(l.map((t: any) => [t.code, { causes: t.causes ?? [], causeLabel: t.causeLabel ?? CAUSE_LABEL, death: t.death, causeGroup: t.causeGroup }])));
       if (l.length) setF((s) => (l.some((t) => t.code === s.claimType) ? s : { ...s, claimType: l[0].code }));
     }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -153,16 +111,16 @@ export default function NewClaim() {
   const co = companies.find((c) => c.id === f.companyId) ?? null;
   const manual = f.companyId === NO_COMPANY || companies.length === 0;
   const isDeath = DEATH_TYPES.has(f.claimType);
-  const eventLabel = EVENT_DATE_LABEL;
+  const eventLabel = typeCauses[f.claimType] ? eventDateLabel(typeCauses[f.claimType]) : EVENT_DATE_LABEL; // «تاریخ فوت» / «تاریخ حادثه»
   const age = ageBetween(f.birthDate ? jalaliToIso(f.birthDate) : null, f.eventDate ? jalaliToIso(f.eventDate) : null);
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF((s) => ({ ...s, [k]: e.target.value }));
   // «علت خسارت»: the insurer's ticks for this نوع پرونده (its own panel 1), plus typed text; Model View may require it.
   const form = ins?.form;
   const causeOptions = typeCauses[f.claimType]?.causes ?? form?.causeLists[form.caseTypes.find((t) => t.code === f.claimType)?.causeGroup ?? 'ACCIDENT'] ?? [];
   const causeLabel = typeCauses[f.claimType]?.causeLabel ?? CAUSE_LABEL;
-  const picked = causes.filter((c) => causeOptions.includes(c)).slice(0, ins ? 1 : undefined); // an insurer's panel 1: one cause
-  // An insurer's panel 1 picks from its list (the typed «علت دیگر» only where the list is empty).
-  const typedCause = ins && causeOptions.length > 0 ? '' : f.causeOfDeath.trim();
+  const picked = causes.filter((c) => causeOptions.includes(c)).slice(0, 1); // panel 1: one cause
+  // Panel 1 picks from the list (typing only where the نوع پرونده has no list).
+  const typedCause = causeOptions.length > 0 ? '' : f.causeOfDeath.trim();
   const cause = [...picked, typedCause].filter(Boolean).join('، ');
   const causeNotes = form?.causeNotes ?? {};
   // «شرح»: must be written when no علت is picked (an insurer's panel 1).
@@ -415,7 +373,7 @@ export default function NewClaim() {
           {form?.birthDate !== 'hidden' && <PField label={`تاریخ تولد بیمه‌شده (شمسی)${form?.birthDate === 'required' ? ' *' : ''}`} help="سن بیمه‌شده به‌طور خودکار محاسبه می‌شود.">
             <JalaliDatePicker value={f.birthDate} onChange={(v) => setF((s) => ({ ...s, birthDate: v }))} placeholder="۱۳۴۵/۰۵/۱۲" />
           </PField>}
-          <PField label={`${ins ? 'تاریخ حادثه' : `${eventLabel} (شمسی)`}${co ? ' *' : ''}`}>
+          <PField label={`${ins ? eventLabel : `${eventLabel} (شمسی)`}${co ? ' *' : ''}`}>
             <JalaliDatePicker value={f.eventDate} onChange={(v) => setF((s) => ({ ...s, eventDate: v }))} placeholder="۱۴۰۵/۰۷/۰۱" />
           </PField>
           <PField label={isDeath ? 'سن متوفی (هنگام فوت)' : 'سن بیمه‌شده (هنگام حادثه)'}>
@@ -438,21 +396,12 @@ export default function NewClaim() {
           )}
 
           {form?.cause !== 'hidden' && (
-            <div className="md:col-span-2 lg:col-span-3"><PField label={`${causeLabel}${form?.cause === 'required' ? ' *' : ''}`} help={ins && causeOptions.length ? 'یک علت را تایپ کنید یا از فهرست انتخاب کنید؛ متن آمادهٔ آن به «شرح» افزوده می‌شود و می‌توانید آن را ویرایش کنید.' : 'علت را همان‌طور که می‌دانید بنویسید؛ مثلاً «ایست قلبی»، «تصادف رانندگی» یا «سقوط از ارتفاع».'}>
-              {ins && causeOptions.length > 0 && (
+            <div className="md:col-span-2 lg:col-span-3"><PField label={`${causeLabel}${form?.cause === 'required' ? ' *' : ''}`} help={causeOptions.length ? (ins ? 'یک علت را تایپ کنید یا از فهرست انتخاب کنید؛ متن آمادهٔ آن به «شرح» افزوده می‌شود و می‌توانید آن را ویرایش کنید.' : 'بخشی از علت را تایپ کنید یا از فهرست انتخاب کنید.') : 'علت را همان‌طور که می‌دانید بنویسید؛ مثلاً «ایست قلبی»، «تصادف رانندگی» یا «سقوط از ارتفاع».'}>
+              {causeOptions.length > 0 && (
                 <SearchPick label={causeLabel} options={causeOptions.map((c) => ({ id: c, name: c }))} value={picked[0] ?? ''} onPick={pickCause}
                   placeholder={`${causeLabel} را تایپ یا از فهرست انتخاب کنید…`} none="— انتخاب نشده —" badge={(c) => (causeNotes[c] ? 'متن آماده' : null)} />
               )}
-              {!ins && causeOptions.length > 0 && (
-                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1 mb-2">
-                  {causeOptions.map((c) => (
-                    <label key={c} className="flex items-start gap-1.5 text-sm cursor-pointer">
-                      <input type="checkbox" className="mt-1" checked={causes.includes(c)} onChange={(e) => setCauses(e.target.checked ? [...causes, c] : causes.filter((x) => x !== c))} /> {c}
-                    </label>
-                  ))}
-                </div>
-              )}
-              {!(ins && causeOptions.length > 0) && <input className="input" value={f.causeOfDeath} onChange={set('causeOfDeath')} maxLength={300} placeholder={causeOptions.length > 0 ? 'علت دیگر (تایپ کنید)…' : 'شرح علت'} />}
+              {causeOptions.length === 0 && <input className="input" value={f.causeOfDeath} onChange={set('causeOfDeath')} maxLength={300} placeholder="شرح علت" />}
             </PField></div>
           )}
         </div>

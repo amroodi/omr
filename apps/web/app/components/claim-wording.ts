@@ -8,6 +8,11 @@ export const insuredNameLabel = (line?: string | null) =>
 export const INSURED_RELATIONS: Record<string, string> = { MAIN: 'اصلی', SPOUSE: 'همسر', CHILD: 'فرزند', FATHER: 'پدر', MOTHER: 'مادر', OTHER: 'سایر' };
 
 export const EVENT_DATE_LABEL = 'تاریخ وقوع';
+/**
+ * The date field of panel 1 for a نوع پرونده: «تاریخ فوت» for any death (a type marked «پروندهٔ فوت»:
+ * فوت به هر علت, فوت بر اثر حادثه…), «تاریخ حادثه» for every other type (از کار افتادگی ناشی از بیماری too).
+ */
+export const eventDateLabel = (t?: { death?: boolean } | null) => (t?.death ? 'تاریخ فوت' : 'تاریخ حادثه');
 
 export const CAUSE_LABEL = 'علت خسارت';
 
