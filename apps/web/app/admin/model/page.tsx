@@ -10,8 +10,8 @@ type Stage = 'POLICYHOLDER' | 'BROKER' | 'BRANCH' | 'HQ' | 'COUNCIL';
 type Mode = 'required' | 'optional' | 'hidden';
 type RuleKey = 'councilEnabled' | 'requireLossNotice' | 'requireOriginals';
 interface Rights { upload: boolean; submit: boolean }
-interface LineForm { insuredLabel: string; claimTypes: string[] }
-interface CaseType { code: string; label: string; causeGroup: 'DEATH' | 'ACCIDENT'; death: boolean }
+interface LineForm { insuredLabel: string; claimTypes: string[]; causeLabel?: string }
+interface CaseType { code: string; label: string; causeGroup: 'DEATH' | 'ACCIDENT'; death: boolean; causes?: string[] }
 type Line = string; // a code of Super Admin's نوع بیمه‌نامه catalog
 interface CompanyGroup { id: string; label: string; companyIds: string[]; lines: Record<Line, string[]>; dependents: boolean }
 interface Model {
@@ -248,11 +248,20 @@ export default function ModelView() {
                 <p className="text-xs" style={{ color: 'var(--muted)' }}>نام هر نوع در همهٔ پنل‌های این بیمه‌گر نشان داده می‌شود. انواع استاندارد حذف نمی‌شوند؛ برای پنهان‌کردن، آن‌ها را از فهرست بیمه‌نامه بردارید.</p>
                 <div className="space-y-2">
                   {m.form.caseTypes.map((t) => (
-                    <div key={t.code} className="grid sm:grid-cols-[1fr_12rem_auto_auto] gap-2 items-center">
+                    <div key={t.code} className="space-y-1">
+                    <div className="grid sm:grid-cols-[1fr_12rem_auto_auto] gap-2 items-center">
                       <input className="input" aria-label="نام نوع پرونده" value={t.label} maxLength={120} onChange={(e) => setType(t.code, { label: e.target.value })} />
-                      <select className="input" aria-label="فهرست علت خسارت" value={t.causeGroup} onChange={(e) => setType(t.code, { causeGroup: e.target.value as CaseType['causeGroup'] })}><option value="DEATH">فهرست علت: فوت</option><option value="ACCIDENT">فهرست علت: حادثه</option></select>
+                      <select className="input" aria-label="فهرست علت عمومی" title="وقتی این نوع فهرست علت خودش را ندارد" value={t.causeGroup} onChange={(e) => setType(t.code, { causeGroup: e.target.value as CaseType['causeGroup'] })}><option value="DEATH">بدون فهرست خود: فوت</option><option value="ACCIDENT">بدون فهرست خود: حادثه</option></select>
                       <Toggle on={t.death} onChange={(v) => setType(t.code, { death: v })}>پروندهٔ فوت</Toggle>
                       {data.defaults.form.caseTypes.some((x) => x.code === t.code) ? <span /> : <button className="btn btn-ghost btn-sm" onClick={() => setForm({ caseTypes: m.form.caseTypes.filter((x) => x.code !== t.code), lines: Object.fromEntries(Object.entries(m.form.lines).map(([l, f]) => [l, { ...f, claimTypes: f.claimTypes.filter((x) => x !== t.code) }])) as Record<Line, LineForm> })}>حذف</button>}
+                    </div>
+                    {/* This type's own «علت» list (empty: the general list chosen above) */}
+                    <details className="text-sm rounded-lg px-2 py-1" style={{ background: 'var(--surface-2)' }}>
+                      <summary className="cursor-pointer">فهرست علت «{t.label}» — {(t.causes ?? []).length ? `${(t.causes ?? []).length.toLocaleString('fa-IR')} مورد` : 'ندارد (فهرست عمومی)'}</summary>
+                      <div className="mt-2">
+                        <CauseEditor title={`علت‌های ${t.label}`} list={t.causes ?? []} notes={m.form.causeNotes ?? {}} onChange={(list, causeNotes) => { setType(t.code, { causes: list }); setForm({ causeNotes }); }} />
+                      </div>
+                    </details>
                     </div>
                   ))}
                 </div>
@@ -260,9 +269,14 @@ export default function ModelView() {
               </Card>
               {kinds.map((k) => k.code).map((l) => (
                 <Card key={l} title={`بیمه‌نامهٔ ${kindTitle(kinds.find((k) => k.code === l)!)}`}>
-                  <label className="text-sm block">عنوان نام بیمه‌شده
-                    <input className="input mt-1" value={lineOf(l).insuredLabel} maxLength={80} onChange={(e) => setLine(l, { insuredLabel: e.target.value })} />
-                  </label>
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <label className="text-sm block">عنوان نام بیمه‌شده
+                      <input className="input mt-1" value={lineOf(l).insuredLabel} maxLength={80} onChange={(e) => setLine(l, { insuredLabel: e.target.value })} />
+                    </label>
+                    <label className="text-sm block">عنوان «علت» در پنل ۱
+                      <input className="input mt-1" value={lineOf(l).causeLabel ?? 'علت خسارت'} maxLength={40} onChange={(e) => setLine(l, { causeLabel: e.target.value })} placeholder="علت خسارت" />
+                    </label>
+                  </div>
                   <div className="text-sm font-bold">نوع پرونده‌های مجاز برای سایر بیمه‌گزاران</div>
                   {lineOf(l).claimTypes.length === 0 && <div className="text-xs" style={{ color: 'var(--danger)' }}>هنوز نوع پرونده‌ای انتخاب نشده؛ ثبت پرونده در این نوع بیمه‌نامه بسته است.</div>}
                   <div className="flex flex-wrap gap-4">
@@ -312,7 +326,7 @@ export default function ModelView() {
                   ))}
                 </div>
                 <div className="grid md:grid-cols-2 gap-3">
-                  {([['DEATH', 'گزینه‌های علت خسارت — فوت و ازکارافتادگی ناشی از بیماری'], ['ACCIDENT', 'گزینه‌های علت خسارت — حادثه']] as const).map(([g, l]) => (
+                  {([['DEATH', 'فهرست علت عمومی — فوت (برای نوع پرونده‌ای که فهرست خودش را ندارد)'], ['ACCIDENT', 'فهرست علت عمومی — حادثه (برای نوع پرونده‌ای که فهرست خودش را ندارد)']] as const).map(([g, l]) => (
                     <CauseEditor key={g} title={l} list={m.form.causeLists[g]} notes={m.form.causeNotes ?? {}}
                       onChange={(list, causeNotes) => setForm({ causeLists: { ...m.form.causeLists, [g]: list }, causeNotes })} />
                   ))}

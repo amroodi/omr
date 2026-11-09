@@ -176,7 +176,9 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
   const form = policy?.form;
   const eventLabel = form?.eventLabel ?? EVENT_DATE_LABEL;
   const caseType = form?.caseTypes.find((t) => t.code === f.claimType);
-  const causeOptions = form?.causeLists[caseType?.causeGroup ?? 'ACCIDENT'] ?? [];
+  // The نوع پرونده's own «علت» list, else its group's; «علت فوت» in عمر, «علت خسارت» elsewhere (Model View).
+  const causeOptions = caseType?.causes?.length ? caseType.causes : form?.causeLists[caseType?.causeGroup ?? 'ACCIDENT'] ?? [];
+  const causeLabel = form?.causeLabel || CAUSE_LABEL;
   // Ticks from the other list (the نوع پرونده changed) don't count.
   const cause = [...causes.filter((c) => causeOptions.includes(c)), f.causeOfDeath.trim()].filter(Boolean).join('، ');
   // Model View: «نوع بیمه‌شده» for this company? A همسر / فرزند also names the main insured.
@@ -237,7 +239,7 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
     if (f.birthDate && !birthIso) return setError('تاریخ تولد نامعتبر است (نمونه: ۱۳۴۵/۰۵/۱۲)');
     if (birthIso && iso && new Date(birthIso) > new Date(iso)) return setError(`تاریخ تولد بعد از ${eventLabel} است`);
     if (form?.birthDate === 'required' && !birthIso) return setError('تاریخ تولد بیمه‌شده را وارد کنید');
-    if (form?.cause === 'required' && !cause) return setError(`${CAUSE_LABEL} را مشخص کنید`);
+    if (form?.cause === 'required' && !cause) return setError(`${causeLabel} را مشخص کنید`);
     if (askRelation && !f.relation) return setError('نوع بیمه‌شده را انتخاب کنید');
     if (coverage === 'checking') return setError('استعلام کد ملی از سامانهٔ بیمه‌گر هنوز تمام نشده است');
     if (coverage?.blocked) return setError(coverageText(coverage));
@@ -404,7 +406,7 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
           ))}
 
           {form?.cause !== 'hidden' && (
-          <div className="md:col-span-2 lg:col-span-3"><PField label={`${CAUSE_LABEL}${form?.cause === 'required' ? ' *' : ''}`} help="علت را همان‌طور که می‌دانید بنویسید؛ مثلاً «ایست قلبی»، «تصادف رانندگی» یا «سقوط از ارتفاع».">
+          <div className="md:col-span-2 lg:col-span-3"><PField label={`${causeLabel}${form?.cause === 'required' ? ' *' : ''}`} help="علت را همان‌طور که می‌دانید بنویسید؛ مثلاً «ایست قلبی»، «تصادف رانندگی» یا «سقوط از ارتفاع».">
             {causeOptions.length > 0 && (
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1 mb-2">
                 {causeOptions.map((c) => (

@@ -31,7 +31,7 @@ export function policyRows(contracts: ContractRow[], insurerNames: Map<string, s
       startIso: k.startDate?.toISOString() ?? null, endIso: k.endDate?.toISOString() ?? null,
       inForce: inForce(k), claimTypes: k.line ? typesFor(m, k.line, chain) : null,
       form: {
-        insuredLabel: lineForm(m, k.line ?? 'ACCIDENT').insuredLabel, eventLabel: m.form.eventLabel, birthDate: m.form.birthDate, cause: m.form.cause,
+        insuredLabel: lineForm(m, k.line ?? 'ACCIDENT').insuredLabel, causeLabel: lineForm(m, k.line ?? 'ACCIDENT').causeLabel, eventLabel: m.form.eventLabel, birthDate: m.form.birthDate, cause: m.form.cause,
         causeLists: m.form.causeLists, caseTypes: m.form.caseTypes, dependents: dependentsFor(m, chain),
       },
     };

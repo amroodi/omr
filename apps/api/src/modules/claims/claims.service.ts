@@ -28,7 +28,7 @@ import { beneficiaryHiddenDocs } from '../required-docs/defaults';
 import { toAsciiDigits } from '../../common/jalali/jalali.util';
 import { ModelStore } from '../model-view/model-store.service';
 import { CoverageService } from '../model-view/coverage.service';
-import { above, actionsFor, rulesOf, WorkflowModel, Line, lineForm, InsuredRelation, RELATION_FA, DEPENDENT_RELATIONS, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, physicalActionsFor, PhysicalActionKey, physicalBelow, PhysicalState, directTarget, Purpose, ReviewDesk, Stage, STAGE_FA, WorkflowAction, caseTypeOf, dependentsFor, EntryWay, typesFor } from './workflow';
+import { above, actionsFor, causesOf, rulesOf, WorkflowModel, Line, lineForm, InsuredRelation, RELATION_FA, DEPENDENT_RELATIONS, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, physicalActionsFor, PhysicalActionKey, physicalBelow, PhysicalState, directTarget, Purpose, ReviewDesk, Stage, STAGE_FA, WorkflowAction, caseTypeOf, dependentsFor, EntryWay, typesFor } from './workflow';
 import { allKinds, docKindWhere, isKind, kindLabel, kindsOf } from '../../common/kinds';
 
 const CLAIM_DOC_MIME = new Set([
@@ -247,7 +247,8 @@ export class ClaimsService {
       // The filing form's own fields, as set in Model View (the server checks them again).
       form: {
         cause: model.form.cause, birthDate: model.form.birthDate, causeLists: model.form.causeLists, causeNotes: model.form.causeNotes,
-        caseTypes: model.form.caseTypes.map((t) => ({ code: t.code, causeGroup: t.causeGroup })),
+        caseTypes: model.form.caseTypes.map((t) => ({ code: t.code, causeGroup: t.causeGroup, causes: causesOf(model, t.code) })),
+        causeLabels: Object.fromEntries(Object.keys(model.form.lines).map((l) => [l, lineForm(model, l).causeLabel])),
       },
       brokers: brokers.map((b) => ({ ...b, code: partners.find((p) => p.brokerTenantId === b.id)?.brokerCode ?? null, companies: companies.filter((c) => c.tenantId === b.id).map(({ id, name }) => ({ id, name })) })),
       branches,
@@ -2771,10 +2772,15 @@ export class ClaimsService {
     const tenant = await db.tenant.findUnique({ where: { id: tenantId }, select: { kind: true } });
     const insurerIds = tenant?.kind === 'INSURER' ? [tenantId]
       : (await db.brokerInsurerPartnership.findMany({ where: { brokerTenantId: tenantId, isActive: true }, select: { insurerTenantId: true } })).map((p) => p.insurerTenantId);
-    const out = new Map<string, { code: string; label: string; causeGroup: string; death: boolean }>();
+    // Each type also carries its «علت» list and what panel 1 calls it in this kind («علت فوت» / «علت خسارت»).
+    const out = new Map<string, { code: string; label: string; causeGroup: string; death: boolean; causes: string[]; causeLabel: string }>();
     for (const id of insurerIds) {
       const m = await this.modelOf(id);
-      for (const t of m.form.caseTypes) if (!out.has(t.code) && (!line || lineForm(m, line).claimTypes.includes(t.code))) out.set(t.code, t);
+      for (const t of m.form.caseTypes) {
+        if (out.has(t.code) || (line && !lineForm(m, line).claimTypes.includes(t.code))) continue;
+        const kind = line ?? Object.keys(m.form.lines).find((l) => lineForm(m, l).claimTypes.includes(t.code));
+        out.set(t.code, { ...t, causes: causesOf(m, t.code), causeLabel: kind ? lineForm(m, kind).causeLabel : 'علت خسارت' });
+      }
     }
     return [...out.values()];
   }

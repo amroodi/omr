@@ -128,6 +128,8 @@ export default function NewClaim() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [caseTypes, setCaseTypes] = useState<Record<string, string>>(CLAIM_TYPE_LABELS);
+  // Each نوع پرونده's «علت» list and what this kind calls it («علت فوت» in عمر, «علت خسارت» elsewhere).
+  const [typeCauses, setTypeCauses] = useState<Record<string, { causes: string[]; causeLabel: string }>>({});
   // فن‌آوران coverage check on the insured's کد ملی (null: off for this insurer, or the insurer isn't known yet).
   const [coverage, setCoverage] = useState<Coverage | 'checking' | null>(null);
   const asked = useRef(0);
@@ -142,6 +144,7 @@ export default function NewClaim() {
     // Panel 1: only the chosen نوع بیمه‌نامه's نوع پرونده (none yet = filing closed for that kind).
     client.get<{ code: string; label: string }[]>(`/claims/case-types${lineQuery()}`, 'org').then((l) => {
       setCaseTypes(Object.fromEntries(l.map((t) => [t.code, t.label])));
+      setTypeCauses(Object.fromEntries(l.map((t: any) => [t.code, { causes: t.causes ?? [], causeLabel: t.causeLabel ?? CAUSE_LABEL }])));
       if (l.length) setF((s) => (l.some((t) => t.code === s.claimType) ? s : { ...s, claimType: l[0].code }));
     }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -155,7 +158,8 @@ export default function NewClaim() {
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF((s) => ({ ...s, [k]: e.target.value }));
   // «علت خسارت»: the insurer's ticks for this نوع پرونده (its own panel 1), plus typed text; Model View may require it.
   const form = ins?.form;
-  const causeOptions = form?.causeLists[form.caseTypes.find((t) => t.code === f.claimType)?.causeGroup ?? 'ACCIDENT'] ?? [];
+  const causeOptions = typeCauses[f.claimType]?.causes ?? form?.causeLists[form.caseTypes.find((t) => t.code === f.claimType)?.causeGroup ?? 'ACCIDENT'] ?? [];
+  const causeLabel = typeCauses[f.claimType]?.causeLabel ?? CAUSE_LABEL;
   const picked = causes.filter((c) => causeOptions.includes(c)).slice(0, ins ? 1 : undefined); // an insurer's panel 1: one cause
   // An insurer's panel 1 picks from its list (the typed «علت دیگر» only where the list is empty).
   const typedCause = ins && causeOptions.length > 0 ? '' : f.causeOfDeath.trim();
@@ -163,9 +167,9 @@ export default function NewClaim() {
   const causeNotes = form?.causeNotes ?? {};
   // «شرح»: must be written when no علت is picked (an insurer's panel 1).
   const descRequired = !!ins && picked.length === 0;
-  const formProblem = () => (form?.cause === 'required' && !cause ? `${CAUSE_LABEL} را انتخاب کنید`
+  const formProblem = () => (form?.cause === 'required' && !cause ? `${causeLabel} را انتخاب کنید`
     : form?.birthDate === 'required' && !f.birthDate ? 'تاریخ تولد بیمه‌شده را وارد کنید'
-    : descRequired && !f.description.trim() ? `شرح را بنویسید (${CAUSE_LABEL} انتخاب نشده است)`
+    : descRequired && !f.description.trim() ? `شرح را بنویسید (${causeLabel} انتخاب نشده است)`
     : f.description.length > 2000 ? 'شرح طولانی‌تر از ۲۰۰۰ نویسه است؛ آن را کوتاه کنید' : '');
   /**
    * Pick the one «علت خسارت» ('' = none): the previous cause's ready text («متن») leaves «شرح» (if it is
@@ -434,10 +438,10 @@ export default function NewClaim() {
           )}
 
           {form?.cause !== 'hidden' && (
-            <div className="md:col-span-2 lg:col-span-3"><PField label={`${CAUSE_LABEL}${form?.cause === 'required' ? ' *' : ''}`} help={ins && causeOptions.length ? 'یک علت را تایپ کنید یا از فهرست انتخاب کنید؛ متن آمادهٔ آن به «شرح» افزوده می‌شود و می‌توانید آن را ویرایش کنید.' : 'علت را همان‌طور که می‌دانید بنویسید؛ مثلاً «ایست قلبی»، «تصادف رانندگی» یا «سقوط از ارتفاع».'}>
+            <div className="md:col-span-2 lg:col-span-3"><PField label={`${causeLabel}${form?.cause === 'required' ? ' *' : ''}`} help={ins && causeOptions.length ? 'یک علت را تایپ کنید یا از فهرست انتخاب کنید؛ متن آمادهٔ آن به «شرح» افزوده می‌شود و می‌توانید آن را ویرایش کنید.' : 'علت را همان‌طور که می‌دانید بنویسید؛ مثلاً «ایست قلبی»، «تصادف رانندگی» یا «سقوط از ارتفاع».'}>
               {ins && causeOptions.length > 0 && (
-                <SearchPick label="علت خسارت" options={causeOptions.map((c) => ({ id: c, name: c }))} value={picked[0] ?? ''} onPick={pickCause}
-                  placeholder="علت خسارت را تایپ یا از فهرست انتخاب کنید…" none="— انتخاب نشده —" badge={(c) => (causeNotes[c] ? 'متن آماده' : null)} />
+                <SearchPick label={causeLabel} options={causeOptions.map((c) => ({ id: c, name: c }))} value={picked[0] ?? ''} onPick={pickCause}
+                  placeholder={`${causeLabel} را تایپ یا از فهرست انتخاب کنید…`} none="— انتخاب نشده —" badge={(c) => (causeNotes[c] ? 'متن آماده' : null)} />
               )}
               {!ins && causeOptions.length > 0 && (
                 <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1 mb-2">
@@ -456,7 +460,7 @@ export default function NewClaim() {
         <div className={`mt-2.5${ins ? ' red-stars' : ''}`}>
           <label className="label">{ins ? <>شرح{descRequired && <> <span className="req-star">*</span></>}</> : 'توضیحات (اختیاری)'}</label>
           <textarea className="input" rows={ins ? 4 : 2} value={f.description} onChange={set('description')} maxLength={2000}
-            placeholder={ins ? (descRequired ? `${CAUSE_LABEL} انتخاب نشده است؛ شرح حادثه را بنویسید.` : 'متن آمادهٔ علت انتخاب‌شده اینجا می‌آید؛ می‌توانید آن را ویرایش یا تکمیل کنید.') : 'هر توضیح یا جزئیاتی که لازم می‌دانید بنویسید؛ مثلاً شرح حادثه یا موارد خاص پرونده.'} />
+            placeholder={ins ? (descRequired ? `${causeLabel} انتخاب نشده است؛ شرح حادثه را بنویسید.` : 'متن آمادهٔ علت انتخاب‌شده اینجا می‌آید؛ می‌توانید آن را ویرایش یا تکمیل کنید.') : 'هر توضیح یا جزئیاتی که لازم می‌دانید بنویسید؛ مثلاً شرح حادثه یا موارد خاص پرونده.'} />
         </div>
 
         <div className="flex justify-center mt-3">
