@@ -465,7 +465,7 @@ export class CustomerService {
   private formOf(insurerId: string, line: Line | null, chain: string[]) {
     const m = this.store.get(insurerId);
     return {
-      insuredLabel: lineForm(m, line ?? 'ACCIDENT').insuredLabel, eventLabel: m.form.eventLabel, birthDate: m.form.birthDate, cause: m.form.cause, causeLists: m.form.causeLists, caseTypes: m.form.caseTypes, dependents: dependentsFor(m, chain),
+      insuredLabel: lineForm(m, line ?? 'ACCIDENT').insuredLabel, causeLabel: lineForm(m, line ?? 'ACCIDENT').causeLabel, eventLabel: m.form.eventLabel, birthDate: m.form.birthDate, cause: m.form.cause, causeLists: m.form.causeLists, caseTypes: m.form.caseTypes, dependents: dependentsFor(m, chain),
     };
   }
 

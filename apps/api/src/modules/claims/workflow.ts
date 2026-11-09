@@ -58,7 +58,8 @@ const ORDER: Stage[] = ['POLICYHOLDER', 'BROKER', 'BRANCH', 'HQ', 'COUNCIL'];
 export interface PanelRights { upload: boolean; submit: boolean }
 export interface CaseRules { councilEnabled: boolean; requireLossNotice: boolean; requireOriginals: boolean }
 export type FieldMode = 'required' | 'optional' | 'hidden';
-export interface LineForm { insuredLabel: string; claimTypes: string[] }
+/** causeLabel: what panel 1 calls «علت» in this kind («علت فوت» in عمر, «علت خسارت» elsewhere). */
+export interface LineForm { insuredLabel: string; claimTypes: string[]; causeLabel: string }
 /**
  * نوع بیمه‌شده: the main insured (اصلی) or one of their dependents (فرعی). On a dependent's case the
  * deceased* fields are that person and mainInsured* name the main insured.
@@ -74,7 +75,7 @@ export const RELATION_FA: Record<InsuredRelation, string> = { MAIN: 'اصلی', 
  */
 export type Line = string;
 export { asLine } from '../../common/kinds';
-const EMPTY_LINE: LineForm = { insuredLabel: 'نام بیمه‌شده', claimTypes: [] };
+const EMPTY_LINE: LineForm = { insuredLabel: 'نام بیمه‌شده', claimTypes: [], causeLabel: 'علت خسارت' };
 /** A kind's form settings at an insurer (a kind added after the model was saved has none yet). */
 export function lineForm(model: WorkflowModel, line: Line): LineForm { return model.form.lines[line] ?? EMPTY_LINE; }
 /** Every kind the model should hold settings for: the catalog's, plus any it already has. */
@@ -82,8 +83,11 @@ const perLine = <T>(stored: unknown, f: (l: Line) => T) => {
   const keys = new Set([...allKinds().map((k) => k.code), ...(stored && typeof stored === 'object' ? Object.keys(stored).filter((k) => KIND_CODE.test(k)) : [])]);
   return Object.fromEntries([...keys].map((l) => [l, f(l)])) as Record<Line, T>;
 };
-/** One نوع پرونده. causeGroup: which cause list it shows; death: the case speaks of a متوفی and takes the ذینفع step. */
-export interface CaseType { code: string; label: string; causeGroup: 'DEATH' | 'ACCIDENT'; death: boolean }
+/**
+ * One نوع پرونده. causes: its own «علت» list (empty = the list of its causeGroup); death: the case speaks
+ * of a متوفی and takes the ذینفع step.
+ */
+export interface CaseType { code: string; label: string; causeGroup: 'DEATH' | 'ACCIDENT'; death: boolean; causes: string[] }
 /** بیمه‌گزار companies that file different نوع پرونده than the insurer's usual ones (a ticked company covers its subsidiaries). */
 export interface CompanyGroup { id: string; label: string; companyIds: string[]; lines: Record<Line, string[]>; dependents: boolean }
 /**
@@ -131,14 +135,20 @@ export interface WorkflowModel extends CaseRules {
 const LIFE_TYPES = ['DEATH_ILLNESS', 'DISABILITY_ILLNESS'];
 const ACCIDENT_TYPES = ['DEATH_ACCIDENT', 'DISABILITY_ACCIDENT', 'MEDICAL_ACCIDENT', 'DAILY_GENERAL', 'DAILY_HOSPITAL'];
 export const DEFAULT_CASE_TYPES: CaseType[] = [
-  { code: 'DEATH_ILLNESS', label: 'فوت به هر علت', causeGroup: 'DEATH', death: true },
-  { code: 'DISABILITY_ILLNESS', label: 'از کار افتادگی دائم و کامل ناشی از بیماری', causeGroup: 'DEATH', death: false },
-  { code: 'DEATH_ACCIDENT', label: 'فوت بر اثر حادثه', causeGroup: 'DEATH', death: true },
-  { code: 'DISABILITY_ACCIDENT', label: 'نقص عضو و از کار افتادگی بر اثر حادثه', causeGroup: 'ACCIDENT', death: false },
-  { code: 'MEDICAL_ACCIDENT', label: 'جبران هزینه‌های ناشی از حادثه', causeGroup: 'ACCIDENT', death: false },
-  { code: 'DAILY_GENERAL', label: 'غرامت روزانه عمومی', causeGroup: 'ACCIDENT', death: false },
-  { code: 'DAILY_HOSPITAL', label: 'غرامت روزانه بیمارستانی', causeGroup: 'ACCIDENT', death: false },
+  { code: 'DEATH_ILLNESS', label: 'فوت به هر علت', causeGroup: 'DEATH', death: true, causes: ['بیماری', 'سرطان', 'سکته قلبی بدون برگه ذینفع', 'فوت-عدم تعیین سهم ذینفعها و پرداخت در وجه وراث', 'انفجار', 'سکته قلبی-پرداخت در وجه وکیل یا وراث', 'سکته قلبی-پرداخت در وجه بیمه گذار', 'سکته مغزی-پرداخت در وجه بیمه گذار', 'فوت در اثر حادثه-پرداخت در وجه "وکیل یا وراث"', 'فوت در اثر حادثه-پرداخت در وجه "وراث قانونی"', 'سکته قلبی با برگه ذینفع', 'سکته مغزی با برگه ذینفع', 'فوت در اثر حادثه با برگه ذینفع', 'بیماری کرونا', 'بیماری های تنفسی', 'فوت در اثر حادثه-ذینفع "بیمه گذار"'] },
+  { code: 'DISABILITY_ILLNESS', label: 'از کار افتادگی دائم و کامل ناشی از بیماری', causeGroup: 'DEATH', death: false, causes: ['ازکارافتادگی کلی ناشی از بیماری با رأی کمیسیون پزشکی تأمین اجتماعی و تائید بیمه‌گر', 'ازکارافتادگی کلی ناشی از بیماری با رأی کمیسیون پزشکی بیمه گذار'] },
+  { code: 'DEATH_ACCIDENT', label: 'فوت بر اثر حادثه', causeGroup: 'ACCIDENT', death: true, causes: ['حادثه ناشی از کار', 'حادثه غیر ناشی از کار (تصادف)', 'زلزله (با فرم تعیین ذینفع)', 'زلزله (بدون فرم تعیین ذینفع)', 'جنگ'] },
+  { code: 'DISABILITY_ACCIDENT', label: 'نقص عضو و از کار افتادگی بر اثر حادثه', causeGroup: 'ACCIDENT', death: false, causes: ['حادثه ناشی از کار', 'حادثه غیر ناشی از کار (تصادف)', 'زلزله (با فرم تعیین ذینفع)', 'زلزله (بدون فرم تعیین ذینفع)', 'حادثه (با هزینه پزشکی)', 'حادثه (بدون هزینه پزشکی)', 'جنگ'] },
+  { code: 'MEDICAL_ACCIDENT', label: 'جبران هزینه‌های پزشکی ناشی از حادثه', causeGroup: 'ACCIDENT', death: false, causes: ['حادثه ناشی از کار', 'حادثه غیر ناشی از کار (تصادف)', 'زلزله (با فرم تعیین ذینفع)', 'زلزله (بدون فرم تعیین ذینفع)', 'حادثه (با هزینه پزشکی)', 'حادثه (بدون هزینه پزشکی)', 'جنگ'] },
+  // غرامت روزانه: no list of their own yet (the حادثه list applies)
+  { code: 'DAILY_GENERAL', label: 'غرامت روزانه عمومی', causeGroup: 'ACCIDENT', death: false, causes: [] },
+  { code: 'DAILY_HOSPITAL', label: 'غرامت روزانه بیمارستانی', causeGroup: 'ACCIDENT', death: false, causes: [] },
 ];
+/** The «علت» options of one نوع پرونده: its own list, else its causeGroup's. */
+export function causesOf(model: WorkflowModel, code: string | null | undefined): string[] {
+  const t = model.form.caseTypes.find((x) => x.code === code);
+  return t?.causes.length ? t.causes : model.form.causeLists[t?.causeGroup ?? 'ACCIDENT'];
+}
 export const DEFAULT_WORKFLOW_MODEL: WorkflowModel = {
   councilEnabled: true,
   requireLossNotice: true,
@@ -172,8 +182,6 @@ export const DEFAULT_WORKFLOW_MODEL: WorkflowModel = {
       'سکته مغزی-پرداخت در وجه بیمه گذار',
       'فوت در اثر حادثه-پرداخت در وجه "وکیل یا وراث"',
       'فوت در اثر حادثه-پرداخت در وجه "وراث قانونی"',
-      'ازکارافتادگی کلی ناشی از بیماری با رأی کمیسیون پزشکی تأمین اجتماعی و تائید بیمه‌گر',
-      'ازکارافتادگی کلی ناشی از بیماری با رأی کمیسیون پزشکی بیمه گذار',
       'سکته قلبی با برگه ذینفع',
       'سکته مغزی با برگه ذینفع',
       'فوت در اثر حادثه با برگه ذینفع',
@@ -191,11 +199,11 @@ export const DEFAULT_WORKFLOW_MODEL: WorkflowModel = {
       ],
     },
     lines: {
-      LIFE: { insuredLabel: 'نام بیمه‌شده (متوفی/از کار افتاده)', claimTypes: LIFE_TYPES },
-      ACCIDENT: { insuredLabel: 'نام بیمه‌شده (مصدوم/متوفی)', claimTypes: ACCIDENT_TYPES },
-      LIABILITY: { insuredLabel: 'نام زیان‌دیده', claimTypes: [] },
-      CREDIT_LIFE: { insuredLabel: 'نام بیمه‌شده (متوفی/از کار افتاده)', claimTypes: [] },
-      SAVINGS_LIFE: { insuredLabel: 'نام بیمه‌شده (متوفی/از کار افتاده)', claimTypes: [] },
+      LIFE: { insuredLabel: 'نام بیمه‌شده (متوفی/از کار افتاده)', claimTypes: LIFE_TYPES, causeLabel: 'علت فوت' },
+      ACCIDENT: { insuredLabel: 'نام بیمه‌شده (مصدوم/متوفی)', claimTypes: ACCIDENT_TYPES, causeLabel: 'علت خسارت' },
+      LIABILITY: { insuredLabel: 'نام زیان‌دیده', claimTypes: [], causeLabel: 'علت خسارت' },
+      CREDIT_LIFE: { insuredLabel: 'نام بیمه‌شده (متوفی/از کار افتاده)', claimTypes: [], causeLabel: 'علت خسارت' },
+      SAVINGS_LIFE: { insuredLabel: 'نام بیمه‌شده (متوفی/از کار افتاده)', claimTypes: [], causeLabel: 'علت خسارت' },
     },
     caseTypes: DEFAULT_CASE_TYPES,
     groups: [{ id: 'copper', label: 'شرکت‌های زیرمجموعه صنایع ملی مس ایران', companyIds: [], lines: { LIFE: LIFE_TYPES, ACCIDENT: ['DEATH_ACCIDENT', 'DISABILITY_ACCIDENT'], LIABILITY: [], CREDIT_LIFE: [], SAVINGS_LIFE: [] }, dependents: false }],
@@ -230,6 +238,7 @@ export function modelFrom(stored: unknown): WorkflowModel {
     code: def?.code ?? r.code, label: text(r?.label, def?.label ?? r.code, 120),
     causeGroup: r?.causeGroup === 'DEATH' || r?.causeGroup === 'ACCIDENT' ? r.causeGroup : def?.causeGroup ?? 'ACCIDENT',
     death: flag(r?.death, def?.death ?? false),
+    causes: Array.isArray(r?.causes) ? list(r.causes) : def?.causes ?? [],
   });
   const caseTypes = [
     ...DEFAULT_CASE_TYPES.map((def) => caseType(storedTypes.find((r) => r?.code === def.code), def)),
@@ -240,7 +249,7 @@ export function modelFrom(stored: unknown): WorkflowModel {
     const types = Array.isArray(v) ? [...new Set(v.filter((t): t is string => known.has(t)))] : def;
     return types.length ? types : def;
   };
-  const line = (r: any, def: LineForm): LineForm => ({ insuredLabel: text(r?.insuredLabel, def.insuredLabel), claimTypes: typeList(r?.claimTypes, def.claimTypes) });
+  const line = (r: any, def: LineForm): LineForm => ({ insuredLabel: text(r?.insuredLabel, def.insuredLabel), claimTypes: typeList(r?.claimTypes, def.claimTypes), causeLabel: text(r?.causeLabel, def.causeLabel ?? EMPTY_LINE.causeLabel, 40) });
   const byType: Record<string, Partial<CaseRules>> = {};
   for (const t of known) {
     const r = raw.byType?.[t];

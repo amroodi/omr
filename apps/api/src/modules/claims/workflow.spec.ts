@@ -1,4 +1,4 @@
-import { above, actionsFor, ActionContext, asLine, typesFor, below, chainOf, DEFAULT_WORKFLOW_MODEL, directTarget, higher, modelFrom, physicalActionsFor, rulesOf, stageLabels, WorkflowModel } from './workflow';
+import { above, actionsFor, causesOf, ActionContext, asLine, typesFor, below, chainOf, DEFAULT_WORKFLOW_MODEL, directTarget, higher, modelFrom, physicalActionsFor, rulesOf, stageLabels, WorkflowModel } from './workflow';
 
 const broker = { brokerTenantId: 'b1' };
 const direct = { brokerTenantId: null };
@@ -234,7 +234,19 @@ describe('Model View: cause lists', () => {
   it('starts with both lists', () => {
     expect(DEFAULT_WORKFLOW_MODEL.form.causeLists.DEATH).toContain('سرطان');
     expect(DEFAULT_WORKFLOW_MODEL.form.causeLists.ACCIDENT).toContain('حادثه ناشی از کار');
-    expect(modelFrom({ form: {} }).form.causeLists.DEATH.length).toBe(18);
+    expect(modelFrom({ form: {} }).form.causeLists.DEATH.length).toBe(16);
+  });
+  it('each نوع پرونده has its own «علت» list; an empty one falls back to its group', () => {
+    const m = modelFrom({ form: {} });
+    expect(causesOf(m, 'DISABILITY_ILLNESS')).toHaveLength(2);
+    expect(causesOf(m, 'DEATH_ILLNESS')).not.toContain(causesOf(m, 'DISABILITY_ILLNESS')[0]);
+    expect(causesOf(m, 'DEATH_ACCIDENT')).toContain('جنگ');
+    expect(causesOf(m, 'DAILY_GENERAL')).toEqual(m.form.causeLists.ACCIDENT);
+    const saved = modelFrom({ form: { caseTypes: [{ code: 'MEDICAL_ACCIDENT', causes: ['x'] }], lines: { LIFE: { causeLabel: 'علت' } } } });
+    expect(causesOf(saved, 'MEDICAL_ACCIDENT')).toEqual(['x']);
+    expect(saved.form.lines.LIFE.causeLabel).toBe('علت');
+    expect(m.form.lines.LIFE.causeLabel).toBe('علت فوت');
+    expect(m.form.lines.ACCIDENT.causeLabel).toBe('علت خسارت');
   });
   it('a saved empty list stays empty; an old single list serves both', () => {
     expect(modelFrom({ form: { causeLists: { DEATH: [] } } }).form.causeLists.DEATH).toEqual([]);

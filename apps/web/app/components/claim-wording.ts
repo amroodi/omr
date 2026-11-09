@@ -11,4 +11,4 @@ export const EVENT_DATE_LABEL = 'تاریخ وقوع';
 
 export const CAUSE_LABEL = 'علت خسارت';
 
-export interface CaseType { code: string; label: string; causeGroup: 'DEATH' | 'ACCIDENT'; death: boolean }
+export interface CaseType { code: string; label: string; causeGroup: 'DEATH' | 'ACCIDENT'; death: boolean; causes?: string[] }
