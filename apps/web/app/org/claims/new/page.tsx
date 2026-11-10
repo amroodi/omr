@@ -375,7 +375,7 @@ export default function NewClaim() {
           <PField label={`${insuredNameLabel()} *`}>
             <input className="input" value={f.deceasedFullName} onChange={set('deceasedFullName')} />
           </PField>
-          <PField label="جنسیت بیمه‌شده" help="برای نمایش «آقای» / «خانم» پیش از نام (و «مرحوم» در پروندهٔ فوت).">
+          <PField label="جنسیت بیمه‌شده" help="برای نمایش «آقای» / «خانم» پیش از نام (و «مرحوم» / «مرحومه» در پروندهٔ فوت).">
             <select className="input" value={f.gender ?? ''} onChange={set('gender')}>
               <option value="">— انتخاب کنید —</option>{Object.entries(GENDERS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>

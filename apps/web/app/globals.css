@@ -2615,3 +2615,37 @@ a.cu-card.is-link:hover { transform: translateY(-2px); box-shadow: 0 0 0 2px var
 
 .cu-spec-row.is-solo { grid-template-columns: minmax(0, 1fr) !important; }
 @media (min-width: 901px) { .is-customer .cu-home.is-fill > .cu-spec { gap: clamp(4px, calc(1 * var(--zvh)), 12px); } .is-customer .cu-home.is-fill > .cu-spec .cu-select select { height: clamp(31px, calc(4.4 * var(--zvh)), 44px); font-size: clamp(12px, calc(1.6 * var(--zvh)), 14.5px); border-radius: 22px; } }
+
+/* ── Panel 1's first page, block shapes as measured on Sinad: «مشخصات بیمه نامه» 2323.6×232.35, each of the four
+   cards 565.9×216.61 (20 apart), the launcher tiles row 2283.6×122 and the notice 2283.6×55 (inside the launcher's
+   20px padding). The page is zoomed to the screen (lib/scale), so the shapes are kept as width:height ratios; a block
+   only grows taller when its text needs more room (desktop). ── */
+@media (min-width: 901px) {
+  .is-customer .cu-home.is-fill { min-height: 0; gap: 14px; }
+  .is-customer .cu-home.is-fill > .cu-spec { flex: none; aspect-ratio: 2323.6 / 232.35; padding: 12px 20px; gap: 6px; justify-content: space-between; }
+  .is-customer .cu-home.is-fill > .cu-spec .cu-select select { height: 34px; }
+  .is-customer .cu-home.is-fill > .cu-cards { flex: none; gap: 20px; }
+  .is-customer .cu-home.is-fill .cu-card { aspect-ratio: 565.9 / 216.61; min-height: 0; padding: 16px 20px; }
+  .is-customer .cu-home.is-fill .cu-card-t, .is-customer .cu-home.is-fill .cu-card-t.is-big { font-size: 14px; margin-bottom: 6px; }
+  .is-customer .cu-home.is-fill .cu-card-v { font-size: 17px; margin-bottom: 4px; }
+  .is-customer .cu-home.is-fill .cu-card-s, .is-customer .cu-home.is-fill .cu-card-k { font-size: 13px; }
+  .is-customer .cu-home.is-fill .cu-card-ico svg { width: 44px; height: 44px; }
+  .is-customer .cu-home.is-fill > .cu-launch { flex: none; display: flex; flex-direction: column; gap: 10px; padding: 12px 20px; }
+  .is-customer .cu-home.is-fill .cu-tiles { aspect-ratio: 2283.6 / 122; align-items: stretch; grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+  .is-customer .cu-home.is-fill .pdiamond-wrap { gap: 2px; padding: 4px; }
+  .is-customer .cu-home.is-fill .pdiamond { width: 36px; height: 36px; margin: 6px; }
+  .is-customer .cu-home.is-fill .pdiamond svg { width: 20px; height: 20px; }
+  .is-customer .cu-home.is-fill .pdiamond-title { font-size: 14px; line-height: 1.5; }
+  .is-customer .cu-home.is-fill .pdiamond-sub { font-size: 12px; line-height: 1.5; }
+  .is-customer .cu-home.is-fill .cu-notice { aspect-ratio: 2283.6 / 55; display: flex; align-items: center; justify-content: center; padding: 0 14px; font-size: 13px; line-height: 1.6; }
+}
+
+/* «حذف» on an uploaded file (panel 1 / بیمه‌گزار): a small × on the file's corner, while no desk has decided on it. */
+.sdoc-page-w { position: relative; display: inline-flex; }
+.sdoc-rm {
+  position: absolute; top: -7px; inset-inline-end: -7px; width: 20px; height: 20px; border-radius: 999px; border: 1.5px solid var(--surface);
+  background: var(--danger, #c5283d); color: #fff; font-size: 14px; font-weight: 700; line-height: 1; display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,.25);
+}
+.sdoc-rm:hover { filter: brightness(1.1); }
+.cu-view.is-danger { color: var(--danger, #c5283d); margin-inline-start: 0; }

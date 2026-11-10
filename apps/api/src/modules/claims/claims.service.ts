@@ -1884,6 +1884,43 @@ export class ClaimsService {
   }
 
   /**
+   * «حذف» on an uploaded file: whoever may upload to the case now may take back a file uploaded by mistake,
+   * as long as no desk has decided on it yet. Removing a slot's last main file also removes its «+» pages.
+   */
+  async removeDocument(claimId: string, docId: string) {
+    const db = this.db();
+    const claim = await db.claim.findUnique({ where: { id: claimId } });
+    if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
+    this.assertParticipant(claim);
+    assertNotPaid(claim);
+    if (this.panelRights(await this.modelOf(claim.insurerTenantId))?.upload === false) throw new ForbiddenException('بارگذاری مدارک از این پنل غیرفعال است');
+    const ctx = getContext();
+    if (ctx?.actorType === 'ORG_USER' && !(ctx.permissions ?? []).includes(PERMISSIONS.CLAIM_FILE)) {
+      if (!(ctx.permissions ?? []).includes(PERMISSIONS.CLAIM_PROCESS) || !this.holdsDesk(claim, await this.myDesk())) throw new ForbiddenException('حذف مدرک فقط وقتی پرونده نزد شماست ممکن است');
+    }
+    const u = this.prisma.unscoped();
+    const doc = await u.document.findFirst({ where: { id: docId, claimId }, select: { id: true, docCode: true, extra: true, storageKey: true, verificationStatus: true, reviews: { select: { state: true } } } });
+    if (!doc) throw new NotFoundException('مدرک یافت نشد');
+    if (doc.verificationStatus !== 'PENDING' || doc.reviews.some((r) => r.state !== 'PENDING')) {
+      throw new BadRequestException('این مدرک بررسی شده است و دیگر حذف نمی‌شود؛ در صورت نیاز نسخهٔ جدید بارگذاری کنید.');
+    }
+    // The slot's «+» pages go with its last main file.
+    const others = doc.extra || !doc.docCode ? 1 : await u.document.count({ where: { claimId, docCode: doc.docCode, extra: false, id: { not: doc.id } } });
+    const gone = others ? [doc] : [doc, ...(await u.document.findMany({ where: { claimId, docCode: doc.docCode, extra: true }, select: { id: true, docCode: true, extra: true, storageKey: true, verificationStatus: true, reviews: { select: { state: true } } } }))];
+    const ids = gone.map((d) => d.id);
+    await u.$transaction([
+      u.documentReview.deleteMany({ where: { documentId: { in: ids } } }),
+      u.aiReviewJob.deleteMany({ where: { documentId: { in: ids } } }),
+      u.claimFieldValue.deleteMany({ where: { claimId, sourceDocId: { in: ids }, confirmedAt: null } }), // OCR drafts read from it
+      u.claimFieldValue.updateMany({ where: { claimId, sourceDocId: { in: ids } }, data: { sourceDocId: null } }),
+      u.document.deleteMany({ where: { id: { in: ids } } }),
+    ]);
+    for (const d of gone) { try { await this.storage.remove(d.storageKey); } catch { /* orphan file is harmless */ } }
+    await this.audit.record({ action: AuditAction.DELETE, tenantId: claim.insurerTenantId, targetType: 'ClaimDocument', targetId: doc.id, metadata: { claimId, docCode: doc.docCode, removed: ids.length } });
+    return { removed: ids.length };
+  }
+
+  /**
    * Save a claim document and, when «بررسی هوشمند مدارک» is on for the case, queue the AI check
    * (the uploader carries on; the verdict comes by SMS). Shared by the panels and the SMS re-upload link.
    */

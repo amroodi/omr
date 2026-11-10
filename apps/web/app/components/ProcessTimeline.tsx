@@ -11,6 +11,8 @@ const faD = (s: string) => s.replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[+d]);
  */
 
 const rial = (v?: string | number | null) => (v == null || v === '' ? '—' : `${Number(v).toLocaleString('fa-IR')} ریال`);
+/** مبلغ برآوردی is optional at filing: ۰ means it was not entered. */
+const est = (v?: string | number | null) => (Number(v) > 0 ? rial(v) : 'ثبت نشده');
 
 /** The plain-language result box at the top (amounts and where the case stands). */
 export function ResultBox({ c }: { c: CaseClaim & { payableAmount?: string; paidDate?: string | null; payableKnown?: boolean } }) {
@@ -21,7 +23,7 @@ export function ResultBox({ c }: { c: CaseClaim & { payableAmount?: string; paid
         : c.status === 'REJECTED' ? 'پروندهٔ خسارت شما بررسی و رد شده است؛ دلیل آن در مراحل زیر آمده است.'
         : `پروندهٔ خسارت شما در حال رسیدگی است${c.currentStageLabel ? ` و اکنون نزد «${c.currentStageLabel}» است` : ''}.`}</p>
       <dl>
-        <dt>مبلغ خسارت برآوردی:</dt><dd>{rial(c.claimedAmount)}</dd>
+        <dt>مبلغ خسارت برآوردی:</dt><dd>{est(c.claimedAmount)}</dd>
         <dt>مبلغ خسارت قطعی (تایید شده):</dt><dd>{rial(c.finalizedAmount)}</dd>
         <dt>قابل پرداخت:</dt><dd><b>{rial(c.finalizedAmount || c.payableKnown ? c.payableAmount : null)}</b></dd>
       </dl>
@@ -48,7 +50,7 @@ export function ProcessTimeline({ c, fv, splitNumber = false }: { c: CaseClaim &
           {!(c.imported && (c.status === 'PAID' || c.status === 'REJECTED')) && <div className="cu-kv"><b>تاریخ ثبت پرونده :</b><span>{c.createdAt ?? '—'}</span></div>}
           <div className="cu-kv"><b>{(c.claimTypeDeath ?? DEATH_TYPES.has(c.claimType)) ? 'تاریخ فوت' : 'تاریخ وقوع'} :</b><span>{c.eventDate ?? '—'}</span></div>
           <div className="cu-kv"><b>علت خسارت :</b><span>{fv.cause_of_death || (c as { causeOfDeath?: string | null }).causeOfDeath || fv.death_kind || '—'}</span></div>
-          <div className="cu-kv"><b>مبلغ برآوردی :</b><span>{rial(c.claimedAmount)}</span></div>
+          <div className="cu-kv"><b>مبلغ برآوردی :</b><span>{est(c.claimedAmount)}</span></div>
           <div className="cu-kv cu-kv-btns"><StatusHistoryButton story={c.story} /></div>
         </li>
         {manual && (c.story?.history ?? []).map((h, i) => (
