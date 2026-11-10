@@ -1,4 +1,5 @@
 'use client';
+import { track } from './busy';
 import { panelLogin } from './panel';
 import { getDeviceId, getFingerprint } from './device';
 
@@ -141,17 +142,17 @@ async function handle<T>(res: Response, realm?: Realm): Promise<T> {
 
 export const client = {
   get: <T>(path: string, realm?: Realm) =>
-    fetch(`${BASE}${path}`, { headers: headers(realm, false) }).then((r) => handle<T>(r, realm)),
+    track(path, fetch(`${BASE}${path}`, { headers: headers(realm, false) }).then((r) => handle<T>(r, realm))),
   post: <T>(path: string, body: unknown, realm?: Realm) =>
-    fetch(`${BASE}${path}`, { method: 'POST', headers: headers(realm), body: JSON.stringify(body) }).then((r) => handle<T>(r, realm)),
+    track(path, fetch(`${BASE}${path}`, { method: 'POST', headers: headers(realm), body: JSON.stringify(body) }).then((r) => handle<T>(r, realm)), 'POST'),
   patch: <T>(path: string, body: unknown, realm?: Realm) =>
-    fetch(`${BASE}${path}`, { method: 'PATCH', headers: headers(realm), body: JSON.stringify(body) }).then((r) => handle<T>(r, realm)),
+    track(path, fetch(`${BASE}${path}`, { method: 'PATCH', headers: headers(realm), body: JSON.stringify(body) }).then((r) => handle<T>(r, realm)), 'PATCH'),
   put: <T>(path: string, body: unknown, realm?: Realm) =>
-    fetch(`${BASE}${path}`, { method: 'PUT', headers: headers(realm), body: JSON.stringify(body) }).then((r) => handle<T>(r, realm)),
+    track(path, fetch(`${BASE}${path}`, { method: 'PUT', headers: headers(realm), body: JSON.stringify(body) }).then((r) => handle<T>(r, realm)), 'PUT'),
   del: <T>(path: string, realm?: Realm) =>
-    fetch(`${BASE}${path}`, { method: 'DELETE', headers: headers(realm, false) }).then((r) => handle<T>(r, realm)),
+    track(path, fetch(`${BASE}${path}`, { method: 'DELETE', headers: headers(realm, false) }).then((r) => handle<T>(r, realm)), 'DELETE'),
   postForm: <T>(path: string, form: FormData, realm?: Realm) =>
-    fetch(`${BASE}${path}`, { method: 'POST', headers: headers(realm, false), body: form }).then((r) => handle<T>(r, realm)),
+    track(path, fetch(`${BASE}${path}`, { method: 'POST', headers: headers(realm, false), body: form }).then((r) => handle<T>(r, realm)), 'POST'),
   // For file downloads (returns the URL with tenant header handled via a new tab is not possible;
   // caller fetches the blob).
   download: async (path: string, realm: Realm, filename: string) => {
@@ -228,3 +229,9 @@ export const client = {
   },
   base: BASE,
 };
+
+// Files fetched for download / view count as loads too (the global spinner covers them).
+for (const k of ['download', 'downloadPost', 'view', 'blobUrl'] as const) {
+  const f = client[k] as (...a: any[]) => Promise<any>;
+  (client as any)[k] = (...a: any[]) => track(String(a[0]), f(...a), 'POST');
+}

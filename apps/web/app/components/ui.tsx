@@ -117,22 +117,14 @@ export function ReviewButtons({ state, editable, busy, onSet, label }: {
  * Loading spinner: a soft track, a brand-coloured arc with a fading tail and a bright head, a thinner
  * counter-rotating inner arc and a pulsing core. Follows the organization's theme colour.
  */
-export function Spinner({ size = 46, label }: { size?: number; label?: string }) {
-  return (
-    <span className="spin" style={{ ['--s' as any]: `${size}px` }} role="status" aria-label={label || 'در حال بارگذاری'}>
-      <span className="spin-track" /><span className="spin-arc" /><span className="spin-arc2" /><span className="spin-core" />
-    </span>
-  );
+/** A busy button or row: the waiting itself is the page-wide spinner (GlobalSpinner); here only «…». */
+export function Spinner({ label }: { size?: number; label?: string }) {
+  return <span className="spin-quiet" role="status" aria-label={label || 'در حال بارگذاری'}>…</span>;
 }
 
+/** Where a page waits for its data: an empty space — the page-wide spinner (GlobalSpinner) shows the wait. */
 export function FancyLoader({ label = 'در حال بارگذاری' }: { label?: string }) {
-  const text = label.replace(/[.…]+$/, '');
-  return (
-    <div className="fancy-loader">
-      <Spinner size={72} label={text} />
-      {text && <div className="lbl">{text}<span className="dots"><i>.</i><i>.</i><i>.</i></span></div>}
-    </div>
-  );
+  return <div className="fancy-loader is-quiet" role="status" aria-label={label.replace(/[.…]+$/, '')} />;
 }
 
 /** Centered notice modal (error / info / success), mirroring the reference's خطا / tip dialogs. */

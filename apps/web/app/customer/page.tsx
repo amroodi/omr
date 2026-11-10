@@ -117,7 +117,7 @@ function CompanyDashboard({ mustChangePassword }: { mustChangePassword: boolean 
         </div>
       )}
       {!dash ? <div className="pcard p-10 flex justify-center"><Spinner /></div> : (
-        <div className="cu-home">
+        <div className="cu-home is-fill">
           {/* مشخصات بیمه نامه */}
           <section className="pcard cu-spec">
             <h2 className="cu-spec-h"><span>مشخصات بیمه نامه</span></h2>
