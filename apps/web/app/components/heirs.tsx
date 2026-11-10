@@ -58,7 +58,7 @@ function rowsProblem(rows: HeirRow[]): string | null {
     if (h.fullName.trim().length < 2) return 'نام و نام خانوادگی هر ذینفع را بنویسید.';
     if (!h.relation.trim()) return `نسبت «${h.fullName.trim()}» با بیمه‌شدهٔ اصلی را انتخاب کنید.`;
     if (h.nationalCode.trim() && !nationalCodeOk(h.nationalCode)) return `کد ملی «${h.fullName.trim()}» نامعتبر است (یا خالی بگذارید).`;
-    if (!ibanOk(h.iban)) return `شماره شبای «${h.fullName.trim()}» نامعتبر است (IR و ۲۴ رقم).`;
+    if (h.iban.trim() && !ibanOk(h.iban)) return `شماره شبای «${h.fullName.trim()}» نامعتبر است (IR و ۲۴ رقم، یا خالی بگذارید).`;
     if (!shareOk(h.share)) return `سهم «${h.fullName.trim()}» باید عددی بین ۰ تا ۱۰۰ باشد (یا خالی بگذارید).`;
   }
   if (rows.reduce((t, h) => t + (shareNum(h.share) ?? 0), 0) > 100.001) return 'جمع سهم ذینفعان بیش از ۱۰۰ درصد است.';
@@ -100,7 +100,7 @@ function HeirRows({ rows, onChange, disabled }: { rows: HeirRow[]; onChange: (ro
               {badShare && <div className="text-xs mt-1" style={{ color: 'var(--danger)' }}>۰ تا ۱۰۰</div>}
             </div>
             <div>
-              <input className="input latin-digits" value={h.iban} disabled={disabled} onChange={(e) => set(i, 'iban', e.target.value)} placeholder="شماره شبا: IR000000000000000000000000" maxLength={34}
+              <input className="input latin-digits" value={h.iban} disabled={disabled} onChange={(e) => set(i, 'iban', e.target.value)} placeholder="شماره شبا (اختیاری): IR000000000000000000000000" maxLength={34}
                 style={{ ...ltr, ...(badIban ? { borderColor: 'var(--danger)' } : {}) }} />
               {badIban && <div className="text-xs mt-1" style={{ color: 'var(--danger)' }}>شماره شبا نامعتبر است</div>}
             </div>

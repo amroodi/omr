@@ -1,5 +1,5 @@
 'use client';
-import { INSURED_RELATIONS } from './claim-wording';
+import { Filer, INSURED_RELATIONS, personTitle } from './claim-wording';
 import { ReactNode, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -23,7 +23,7 @@ export interface Checklist { claimType: string; complete: boolean; note?: string
 export interface FieldRow { key: string; label: string; type: string; options: string[]; required: boolean; value: string | null; source: string | null; confirmed: boolean; canEdit: boolean }
 export interface FieldsData { party: string; manual?: boolean; groups: Record<string, FieldRow[]> }
 export interface CaseClaim {
-  coverageStatus?: string | null; insuredLinkEnabled?: boolean; causeOfDeath?: string | null; causeDetail?: string | null; claimTypeLabel?: string | null; claimTypeDeath?: boolean;
+  coverageStatus?: string | null; insuredLinkEnabled?: boolean; causeOfDeath?: string | null; causeDetail?: string | null; insuredGender?: string | null; filedBy?: Filer | null; fixedHere?: boolean; claimTypeLabel?: string | null; claimTypeDeath?: boolean;
   id: string; claimNumber: string; policyNumber?: string | null; status: string; claimType: string; insurerTenantId?: string;
   deceasedName: string | null; deceasedNationalCode?: string | null; insuredRelation?: string | null; mainInsuredName?: string | null; mainInsuredNationalCode?: string | null; deceasedBirthDate?: string | null; deceasedAge?: number | null;
   eventDate: string | null; createdAt?: string | null; paidDate?: string | null; noticeDeadline: string | null; lateNotice: boolean;
@@ -200,7 +200,7 @@ export function CaseSummary({ claim, fv }: { claim: CaseClaim; fv: Record<string
   return (
     <div className="cs-cols">
       <InfoCard title="اطلاعات بیمه‌شده" icon={ICONS.user}>
-        <InfoRow label="نام و نام خانوادگی" value={name ? (isDeath && !name.startsWith('مرحوم') ? `مرحوم ${name}` : name) : null} />
+        <InfoRow label="نام و نام خانوادگی" value={name ? personTitle(name, { death: isDeath, gender: claim.insuredGender }) : null} />
         <InfoRow label="کد ملی" value={(claim.deceasedNationalCode || fv.national_code) ? <bdi className="ltr-val">{faD(claim.deceasedNationalCode || fv.national_code)}</bdi> : null} />
         {claim.insuredRelation && <InfoRow label="نوع بیمه‌شده" value={INSURED_RELATIONS[claim.insuredRelation]} />}
         {claim.mainInsuredName && <InfoRow label="بیمه‌شدهٔ اصلی" value={<>{claim.mainInsuredName} — <bdi className="ltr-val">{faD(claim.mainInsuredNationalCode ?? '')}</bdi></>} />}
@@ -231,7 +231,7 @@ export function PersonCards({ claim, fv }: { claim: CaseClaim; fv: Record<string
   const name = claim.deceasedName || fv.full_name || '—';
   return (
     <div className="cs-people">
-      <div className="cs-person"><span className="cs-person-ico"><Icon path={ICONS.user} /></span><div><div className="cap">نام و نام خانوادگی</div><b>{isDeath && !name.startsWith('مرحوم') && name !== '—' ? `مرحوم ${name}` : name}</b></div></div>
+      <div className="cs-person"><span className="cs-person-ico"><Icon path={ICONS.user} /></span><div><div className="cap">نام و نام خانوادگی</div><b>{name === '—' ? name : personTitle(name, { death: isDeath, gender: claim.insuredGender })}</b></div></div>
       <div className="cs-person"><span className="cs-person-ico"><Icon path={ICONS.doc} /></span><div><div className="cap">نام شرکت / محل فعالیت</div><b>{claim.policyholderCompany?.name || fv.company_name || '—'}</b></div></div>
     </div>
   );

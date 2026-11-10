@@ -445,6 +445,7 @@ export class InquiryService {
       claimTypeDeath: caseTypeOf(this.store.get(c.insurerTenantId), c.claimType)?.death ?? false,
       insurerName: insurer?.name ?? null,
       deceasedName: dec(c.deceasedFullName),
+      insuredGender: c.insuredGender ?? null, // «آقای» / «خانم»
       nationalCode: nid, // the requester typed it themselves (OTP-verified), so it is shown in full
       nationalCodeMasked: nid,
       birthDate: c.deceasedBirthDate ? toJalali(c.deceasedBirthDate, false) : (fv.birth_date ?? null),

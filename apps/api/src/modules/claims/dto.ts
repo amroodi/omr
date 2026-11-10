@@ -38,10 +38,11 @@ export class HeirDto {
   @Length(10, 10)
   nationalCode?: string; // checked in the service; older rows have none
 
+  @IsOptional()
   @ToAsciiDigits()
   @IsString()
-  @Length(24, 34)
-  iban!: string; // checked (IR + 24 digits, mod-97) in the service
+  @Length(0, 34)
+  iban?: string; // optional; when given, checked (IR + 24 digits, mod-97) in the service
 
   @IsOptional()
   @IsString()
@@ -64,6 +65,7 @@ export class FilingEditDto {
   @IsOptional() @IsString() deceasedBirthDate?: string;
   @IsOptional() @IsString() @Length(0, 300) causeOfDeath?: string;
   @IsOptional() @IsString() @Length(0, 120) causeDetail?: string;
+  @IsOptional() @IsIn(['MALE', 'FEMALE', '']) insuredGender?: string;
   @IsOptional() @IsString() @Length(0, 2000) description?: string;
 }
 
@@ -95,6 +97,11 @@ export class FileClaimDto {
   @IsString()
   @Length(0, 120)
   causeDetail?: string;
+
+  // «جنسیت» of the insured: «آقای» / «خانم» before the name
+  @IsOptional()
+  @IsIn(['MALE', 'FEMALE'])
+  insuredGender?: string;
 
   // نوع بیمه‌نامه chosen on the panel-1 login
   @IsOptional()
@@ -223,6 +230,11 @@ export class FileOnBehalfDto {
   @IsString()
   @Length(0, 120)
   causeDetail?: string;
+
+  // «جنسیت» of the insured: «آقای» / «خانم» before the name
+  @IsOptional()
+  @IsIn(['MALE', 'FEMALE'])
+  insuredGender?: string;
 
   @IsOptional()
   @IsUUID()

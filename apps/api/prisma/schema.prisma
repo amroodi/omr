@@ -927,6 +927,10 @@ model Claim {
   employerName    String? // نام شرکت محل فعالیت
   causeOfDeath    String? // علت فوت (free text; more specific than claimType)
   causeDetail     String? // «نوع حادثه» when the cause asks for one (Model View caseType.detail)
+  // Who filed it: an OrgUser (ORG_USER) or a CustomerAccount (POLICYHOLDER | REPRESENTATIVE | AGENT; INSURED later).
+  filedById       String?
+  filedByKind     String?
+  insuredGender   String? // MALE | FEMALE: «آقای» / «خانم» before the name («مرحوم» too for a death)
   legacyData      Json? // full source row (PII columns stripped) for later follow-up
 
   status    ClaimStatus @default(DRAFT)
@@ -1004,7 +1008,7 @@ model ClaimHeir {
   claimId   String
   claim     Claim    @relation(fields: [claimId], references: [id], onDelete: Cascade)
   fullName  String // ENCRYPTED
-  iban      String // ENCRYPTED — شماره شبا (IR + 24 digits, checksum-validated)
+  iban      String? // ENCRYPTED — شماره شبا (IR + 24 digits, checksum-validated); optional
   nationalCode String? // ENCRYPTED — کد ملی (rows from before it was asked for have none)
   relation  String? // نسبت with the main insured (rows from before it was asked for have none)
   sharePercent Decimal? @db.Decimal(5, 2) // سهم (٪) on the form, when it gives one

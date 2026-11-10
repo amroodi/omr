@@ -45,7 +45,7 @@ export const BENEFICIARY_FILE_CODE = 'BENEFICIARY_FILE';
 export const EXCEL_MIME = new Set(['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']);
 
 /** A ذینفع / وارث named on the deceased's beneficiary form. */
-export interface HeirInput { fullName: string; iban: string; nationalCode?: string; relation?: string; sharePercent?: number }
+export interface HeirInput { fullName: string; iban?: string; nationalCode?: string; relation?: string; sharePercent?: number }
 /** شبا as typed («IR06 2960 …», Persian digits, or the 24 digits alone) → «IR» + 24 digits. */
 const normIban = (s: string) => {
   const a = toAsciiDigits(s ?? '').replace(/[\s-]/g, '').toUpperCase();
@@ -89,6 +89,7 @@ interface FileClaimInput {
   deceasedBirthDate?: string; // ISO
   causeOfDeath?: string; // علت خسارت: the ticked causes and/or typed text
   causeDetail?: string; // «نوع حادثه» when the cause asks for one
+  insuredGender?: string; // MALE | FEMALE
   policyHolderId?: string;
   policyholderCompanyId?: string; // بیمه‌گزار company (set automatically when the بیمه‌گزار files)
   onBehalf?: boolean; // کارگزاری files *as* the بیمه‌گزار company (claim:file-on-behalf) — starts at their desk
@@ -269,7 +270,7 @@ export class ClaimsService {
   async onBehalfCompanies() {
     const companies = (await this.policyholders.list()).filter((c) => c.isActive);
     const accounts = companies.length
-      ? await this.prisma.scoped.customerAccount.findMany({ where: { companyId: { in: companies.map((c) => c.id) } }, select: { id: true, companyId: true, fullName: true } })
+      ? await this.prisma.scoped.customerAccount.findMany({ where: { companyId: { in: companies.map((c) => c.id) }, removedAt: null, isActive: true }, select: { id: true, companyId: true, fullName: true } }) // a removed نماینده isn't offered
       : [];
     return companies.map((c) => ({
       id: c.id, name: c.name, hasLogo: c.hasLogo, currentInsurer: c.currentInsurer,
@@ -505,8 +506,11 @@ export class ClaimsService {
         description: input.description ?? null,
         causeOfDeath: input.causeOfDeath?.trim() || null,
         causeDetail,
+        filedById: getContext()?.actorId ?? null,
+        filedByKind: await this.filerKind(),
+        insuredGender: input.insuredGender === 'MALE' || input.insuredGender === 'FEMALE' ? input.insuredGender : null,
         beneficiaryType: input.beneficiaryType || null,
-        ...(heirs.length ? { heirs: { create: heirs.map((h, i) => ({ fullName: this.crypto.encrypt(h.fullName)!, iban: this.crypto.encrypt(h.iban)!, nationalCode: h.nationalCode ? this.crypto.encrypt(h.nationalCode) : null, relation: h.relation ?? null, sharePercent: h.sharePercent ?? null, order: i })) } } : {}),
+        ...(heirs.length ? { heirs: { create: heirs.map((h, i) => ({ fullName: this.crypto.encrypt(h.fullName)!, iban: h.iban ? this.crypto.encrypt(h.iban) : null, nationalCode: h.nationalCode ? this.crypto.encrypt(h.nationalCode) : null, relation: h.relation ?? null, sharePercent: h.sharePercent ?? null, order: i })) } } : {}),
         status: byPolicyHolder ? ClaimStatus.SUBMITTED : ClaimStatus.UNDER_REVIEW,
         currentStage: firstStage,
         flowDirection: 'UP',
@@ -1291,6 +1295,36 @@ export class ClaimsService {
     }
   }
 
+  /** What the person filing now is: an organization's operator, a بیمه‌گزار, its نماینده, or an insurer's نماینده بیمه. */
+  private async filerKind(): Promise<string | null> {
+    const ctx = getContext();
+    if (ctx?.actorType === 'ORG_USER') return 'ORG_USER';
+    if (ctx?.actorType !== 'CUSTOMER' || !ctx.actorId) return null;
+    const a = await this.prisma.unscoped().customerAccount.findUnique({ where: { id: ctx.actorId }, select: { companyId: true, branchId: true } });
+    if (!a?.companyId && a?.branchId) return 'AGENT';
+    return ctx.customerRepresentative ? 'REPRESENTATIVE' : 'POLICYHOLDER';
+  }
+
+  /** «ثبت‌کننده»: who filed the case — the operator and their branch / کارگزاری with its code, or the بیمه‌گزار side. */
+  private async filerOf(c: { filedById: string | null; filedByKind: string | null; insurerTenantId: string }) {
+    if (!c.filedById || !c.filedByKind) return null;
+    const db = this.prisma.unscoped();
+    if (c.filedByKind === 'ORG_USER') {
+      const u = await db.orgUser.findUnique({ where: { id: c.filedById }, select: { displayName: true, username: true, tenant: { select: { id: true, name: true, kind: true } }, branch: { select: { name: true, code: true } } } });
+      if (!u) return null;
+      const broker = u.tenant.kind === 'BROKER';
+      const code = broker ? (await db.brokerInsurerPartnership.findFirst({ where: { brokerTenantId: u.tenant.id, insurerTenantId: c.insurerTenantId }, select: { brokerCode: true } }))?.brokerCode ?? null : null;
+      return { kind: 'ORG_USER', role: broker ? 'کارشناس کارگزاری' : u.branch ? 'کارشناس شعبه' : 'کارشناس بیمه‌گر', name: u.displayName || u.username,
+        org: u.tenant.name, orgCode: code, branch: u.branch?.name ?? null, branchCode: u.branch?.code ?? null };
+    }
+    const a = await db.customerAccount.findUnique({ where: { id: c.filedById }, select: { fullName: true, company: { select: { name: true } }, branchId: true } });
+    if (!a) return null;
+    const br = a.branchId ? await db.branch.findUnique({ where: { id: a.branchId }, select: { name: true, code: true } }) : null;
+    const role = c.filedByKind === 'AGENT' ? 'نماینده بیمه' : c.filedByKind === 'REPRESENTATIVE' ? 'نماینده بیمه‌گزار' : c.filedByKind === 'INSURED' ? 'بیمه‌شده' : 'بیمه‌گزار';
+    return { kind: c.filedByKind, role, name: a.fullName ? this.crypto.decrypt(a.fullName) : null, org: a.company?.name ?? null, orgCode: null,
+      branch: c.filedByKind === 'AGENT' ? br?.name ?? null : null, branchCode: c.filedByKind === 'AGENT' ? br?.code ?? null : null };
+  }
+
   // ─────────────────────────── Reads ───────────────────────────
   async get(claimId: string) {
     const claim = await this.db().claim.findUnique({ where: { id: claimId }, include: { steps: { orderBy: { order: 'asc' } }, deficiencies: true, letters: { orderBy: { createdAt: 'asc' } } } });
@@ -1302,6 +1336,7 @@ export class ClaimsService {
     result.policyholderCompany = await this.policyholders.contact(claim.policyholderCompanyId);
     // «ویرایش» first: a hand-completed case tells its typed story; otherwise the hierarchy's.
     result.story = await this.fields.statusStory(claim);
+    result.filedBy = await this.filerOf(claim); // «ثبت‌کننده»
     result.filingEdit = await this.filingEditState(claim); // panel 1 only (null elsewhere)
     if (result.story.manual) {
       // Hand-completed: the typed «وضعیت پرونده» and payment date, not the hierarchy's position / hand-off.
@@ -1342,7 +1377,7 @@ export class ClaimsService {
   }
 
   /** Panel 1 corrects what it filed (name, کد ملی, dates, cause, description) until panel 2 starts on it. */
-  async editFiling(claimId: string, input: { deceasedFullName?: string; deceasedNationalCode?: string; eventDate?: string; deceasedBirthDate?: string; causeOfDeath?: string; causeDetail?: string; description?: string }) {
+  async editFiling(claimId: string, input: { deceasedFullName?: string; deceasedNationalCode?: string; eventDate?: string; deceasedBirthDate?: string; causeOfDeath?: string; causeDetail?: string; insuredGender?: string; description?: string }) {
     const db = this.db();
     const claim = await db.claim.findUnique({ where: { id: claimId } });
     if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
@@ -1389,6 +1424,7 @@ export class ClaimsService {
       if (cd !== claim.causeDetail) { data.causeDetail = cd; changed.push('causeDetail'); }
     }
     if (input.description !== undefined) { data.description = input.description.trim() || null; changed.push('description'); }
+    if (input.insuredGender !== undefined) { data.insuredGender = input.insuredGender || null; changed.push('gender'); }
     // A new کد ملی or date: the insurer's system (فن‌آوران) is asked again.
     if (claim.coverageStatus && (changed.includes('nationalCode') || changed.includes('eventDate'))) data.coverageStatus = 'NOT_CHECKED';
     if (!changed.length) return this.get(claimId);
@@ -1421,9 +1457,9 @@ export class ClaimsService {
   private cleanHeirs(list?: HeirInput[]): HeirInput[] {
     const rows = (list ?? []).filter((h) => h.fullName?.trim() || h.iban?.trim()).map((h) => {
       const fullName = (h.fullName ?? '').trim();
-      const iban = normIban(h.iban);
+      const iban = normIban(h.iban ?? "");
       if (fullName.length < 2) throw new BadRequestException('نام هر ذینفع / وارث را بنویسید.');
-      if (!isValidIban(iban)) throw new BadRequestException(`شماره شبای «${fullName}» نامعتبر است (IR و ۲۴ رقم).`);
+      if (iban && !isValidIban(iban)) throw new BadRequestException(`شماره شبای «${fullName}» نامعتبر است (IR و ۲۴ رقم یا خالی).`); // optional
       const nationalCode = h.nationalCode?.trim() || undefined;
       if (nationalCode && !isValidNationalCode(nationalCode)) throw new BadRequestException(`کد ملی «${fullName}» نامعتبر است.`);
       const sharePercent = h.sharePercent ?? undefined;
@@ -1477,7 +1513,7 @@ export class ClaimsService {
     const heirs = this.cleanHeirs(input.heirs);
     await db.$transaction([
       db.claimHeir.deleteMany({ where: { claimId } }),
-      ...(heirs.length ? [db.claimHeir.createMany({ data: heirs.map((h, i) => ({ claimId, fullName: this.crypto.encrypt(h.fullName)!, iban: this.crypto.encrypt(h.iban)!, nationalCode: h.nationalCode ? this.crypto.encrypt(h.nationalCode) : null, relation: h.relation ?? null, sharePercent: h.sharePercent ?? null, order: i })) })] : []),
+      ...(heirs.length ? [db.claimHeir.createMany({ data: heirs.map((h, i) => ({ claimId, fullName: this.crypto.encrypt(h.fullName)!, iban: h.iban ? this.crypto.encrypt(h.iban) : null, nationalCode: h.nationalCode ? this.crypto.encrypt(h.nationalCode) : null, relation: h.relation ?? null, sharePercent: h.sharePercent ?? null, order: i })) })] : []),
       db.claim.update({ where: { id: claimId }, data: { beneficiaryType: input.beneficiaryType || null } }),
     ]);
     await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { heirs: heirs.length, beneficiaryType: input.beneficiaryType ?? null } });
@@ -2865,6 +2901,13 @@ export class ClaimsService {
       claimTypeLabel: caseTypeOf(this.store.get(c.insurerTenantId), c.claimType)?.label ?? c.claimType,
       claimTypeDeath: caseTypeOf(this.store.get(c.insurerTenantId), c.claimType)?.death ?? false,
       causeDetail: c.causeDetail ?? null, // «نوع حادثه»
+      insuredGender: c.insuredGender ?? null, // «آقای» / «خانم»
+      // The desk holding the case has just fixed a return here («رفع نقص در …»): its «تایید» comes next, right there.
+      fixedHere: (() => {
+        const st = [...(c.steps ?? [])].sort((a: any, b: any) => a.order - b.order);
+        const cur = st[st.length - 1]; const prev = st[st.length - 2];
+        return !!cur && cur.state === 'PENDING' && prev?.action === 'FIX_HERE' && prev.stage === cur.stage;
+      })(),
       caseDetail: caseTypeOf(this.store.get(c.insurerTenantId), c.claimType)?.detail ?? null, // the choice and the causes that ask it
       channel: c.channel,
       claimedAmount: c.claimedAmount?.toString(), // = estimatedAmount (مبلغ برآوردی); kept for back-compat

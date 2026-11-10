@@ -10,7 +10,7 @@ import { Coverage, CoverageNote, coverageText } from './CoverageNote';
 import { Shell } from './Shell';
 import { CUSTOMER_NAV, POLICY_KEY, PolicyRow } from '../customer/nav';
 import { ORG_NAV } from '../org/nav';
-import { eventDateLabel, CAUSE_LABEL, EVENT_DATE_LABEL, INSURED_RELATIONS, insuredNameLabel, CaseDetail, causeDetailFor } from './claim-wording';
+import { eventDateLabel, CAUSE_LABEL, EVENT_DATE_LABEL, INSURED_RELATIONS, insuredNameLabel, CaseDetail, causeDetailFor, GENDERS } from './claim-wording';
 import { useDraft } from '../../lib/draft';
 import { SearchPick } from './SearchPick';
 
@@ -107,7 +107,7 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
   const [brokerFor, setBrokerFor] = useState<{ id: string; name: string } | null | undefined>(undefined);
   const [isBroker, setIsBroker] = useState(false);
   // The typed / picked fields survive a page refresh (lib/draft); the company comes back from ?company=.
-  const [f, setF, clearF] = useDraft('claim', { claimType: 'DEATH_ILLNESS', eventDate: '', birthDate: '', deceasedFullName: '', deceasedNationalCode: '', relation: '', mainName: '', mainCode: '', causeOfDeath: '', causeDetail: '', description: '', startStage: '', deathCapital: '', accidentCapital: '' });
+  const [f, setF, clearF] = useDraft('claim', { claimType: 'DEATH_ILLNESS', eventDate: '', birthDate: '', deceasedFullName: '', deceasedNationalCode: '', relation: '', mainName: '', mainCode: '', causeOfDeath: '', causeDetail: '', gender: '', description: '', startStage: '', deathCapital: '', accidentCapital: '' });
   // «اعلام خسارت»: is filing allowed from this login, and to which desks?
   const [notice, setNotice] = useState<{ enabled: boolean; targets: string[]; default: string; labels: Record<string, string> } | null>(null);
   useEffect(() => { client.get<any>(org ? '/claims/notice-options' : '/customer/notice-options', realm).then(setNotice).catch(() => setNotice(null)); }, []);
@@ -196,6 +196,8 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
   // One cause from the list (a searchable drawer); typing only where the نوع پرونده has no list.
   const picked = causes.filter((c) => causeOptions.includes(c)).slice(0, 1);
   const cause = [...picked, causeOptions.length ? '' : f.causeOfDeath.trim()].filter(Boolean).join('، ');
+  // «شرح»: must be written when no علت is picked from the list (as on the insurer's panel 1).
+  const descRequired = causeOptions.length > 0 && picked.length === 0;
   // «نوع حادثه»: a second, required choice after some causes (Model View).
   const detail = causeDetailFor((caseType as { detail?: CaseDetail | null } | undefined)?.detail ?? orgTypes[f.claimType]?.detail, picked[0]);
   const causeDetail = detail?.options.includes(f.causeDetail ?? '') ? f.causeDetail : '';
@@ -261,6 +263,7 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
     if (form?.birthDate === 'required' && !birthIso) return setError('تاریخ تولد بیمه‌شده را وارد کنید');
     if (form?.cause === 'required' && !cause) return setError(`${causeLabel} را مشخص کنید`);
     if (detail && !causeDetail) return setError(`${detail.label} را انتخاب کنید`);
+    if (descRequired && !f.description.trim()) return setError(`شرح را بنویسید (${causeLabel} انتخاب نشده است)`);
     if (askRelation && !f.relation) return setError('نوع بیمه‌شده را انتخاب کنید');
     if (coverage === 'checking') return setError('استعلام کد ملی از سامانهٔ بیمه‌گر هنوز تمام نشده است');
     if (coverage?.blocked) return setError(coverageText(coverage));
@@ -283,6 +286,7 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
       if (birthIso) payload.deceasedBirthDate = birthIso;
       if (cause) payload.causeOfDeath = cause;
       if (causeDetail) payload.causeDetail = causeDetail;
+      if (f.gender) payload.insuredGender = f.gender;
       if (f.startStage || (notice?.enabled && notice.targets.length > 1)) payload.startStage = f.startStage || startDefault;
       if (f.description.trim()) payload.description = f.description.trim();
       if (!agent && f.deathCapital) payload.deathCapital = f.deathCapital;
@@ -384,6 +388,13 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
             <input className="input" value={f.deceasedFullName} onChange={(e) => setF({ ...f, deceasedFullName: e.target.value })} />
           </PField>
           )}
+          {(!askRelation || f.relation) && (
+          <PField label="جنسیت بیمه‌شده" help="برای نمایش «آقای» / «خانم» پیش از نام (و «مرحوم» در پروندهٔ فوت).">
+            <select className="input" value={f.gender ?? ''} onChange={(e) => setF({ ...f, gender: e.target.value })}>
+              <option value="">— انتخاب کنید —</option>{Object.entries(GENDERS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </PField>
+          )}
 
           {agent ? (
             <PField label="شماره بیمه‌نامه" help="شماره بیمه‌نامهٔ مشتری نزد این بیمه‌گر.">
@@ -454,9 +465,11 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
           </div>
         )}
 
-        <div className="mt-2.5">
-          <label className="label">توضیحات (اختیاری)</label>
-          <textarea className="input" rows={2} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} placeholder="هر توضیح یا جزئیاتی که لازم می‌دانید بنویسید؛ مثلاً شرح حادثه، شماره تماس، یا موارد خاص پرونده." />
+        {/* «شرح», as on the insurer's panel 1: required when no «علت» is picked from the list */}
+        <div className="mt-2.5 red-stars">
+          <label className="label">شرح{descRequired && <> <span className="req-star">*</span></>}</label>
+          <textarea className="input" rows={4} maxLength={2000} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })}
+            placeholder={descRequired ? `${causeLabel} انتخاب نشده است؛ شرح حادثه را بنویسید.` : 'شرح حادثه و هر جزئیاتی که لازم می‌دانید بنویسید؛ مثلاً محل و چگونگی وقوع، یا موارد خاص پرونده.'} />
         </div>
 
         <div className="flex justify-center mt-3">

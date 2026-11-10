@@ -1,4 +1,5 @@
 'use client';
+import { DeathNoticeDate } from '../../../../components/DeathNoticeDate';
 import { useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
@@ -7,10 +8,14 @@ import { ErrorBox, FancyLoader } from '../../../../components/ui';
 import { ORG_NAV } from '../../../nav';
 import { caseTitle } from '../../../../../lib/caseTitle';
 import { downloadPdf } from '../../../../../lib/pdf';
-import { CaseHero, ICONS, PersonCards, phaseText, StatusHistoryButton, useCase, WorkflowStepsTable } from '../../../../components/case-ui';
+import { CaseHero, ICONS, PersonCards, phaseText, StatusHistoryButton, useCase } from '../../../../components/case-ui';
+import { ProcessTimeline, ResultBox } from '../../../../components/ProcessTimeline';
 
 
-/** «مراحل و وضعیت گردش کار» (Group 874): every executive step with its date and status, as a table. */
+/**
+ * «مراحل و وضعیت گردش کار» (panel 2) and «روند پرونده» (an organization's panel 1): the case header, then the
+ * same «وضعیت پرونده» timeline panel 3 shows — filing, every hand-off, the originals, payment.
+ */
 export default function CaseWorkflowPage() {
   const { id } = useParams<{ id: string }>();
   const { claim, fv, error, setError } = useCase(id);
@@ -32,7 +37,11 @@ export default function CaseWorkflowPage() {
           <div ref={sheet} className="cs-sheet">
             <CaseHero title="پیگیری آخرین وضعیت پرونده خسارت" claim={claim} notes={fv.case_notes || phaseText(claim)} back={`/org/claims/${id}`} />
             <PersonCards claim={claim} fv={fv} />
-            <WorkflowStepsTable claim={claim} fv={fv} />
+          </div>
+          <div className="pcard p-6 space-y-5 mt-4">
+            <DeathNoticeDate claimId={id} />
+            <ResultBox c={claim as any} />
+            <ProcessTimeline c={claim as any} fv={fv} />
           </div>
           <div className="cs-actions no-print">
             <button type="button" className="cs-act" onClick={pdf} disabled={saving}><Icon path={ICONS.pdf} /> {saving ? 'در حال ساخت PDF…' : 'دانلود PDF'}</button>

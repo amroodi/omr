@@ -1,4 +1,5 @@
 'use client';
+import { DeathNoticeDate } from '../../../components/DeathNoticeDate';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
@@ -9,7 +10,7 @@ import { ORG_NAV } from '../../nav';
 import { WorkflowPanel, WorkflowTimeline } from '../../../components/WorkflowPanel';
 import { caseTitle } from '../../../../lib/caseTitle';
 import { ArchivedNotice, CaseSummary, ClaimDoc, DEATH_TYPES, STATUS_FA, useCase } from '../../../components/case-ui';
-import { INSURED_RELATIONS } from '../../../components/claim-wording';
+import { filerText, INSURED_RELATIONS, personTitle } from '../../../components/claim-wording';
 import { CaseEditForm } from './case-edit';
 import { HeirsCard } from '../../../components/heirs';
 import { PolicyholderCase } from '../../../components/PolicyholderCase';
@@ -56,7 +57,7 @@ function ClaimDetail() {
 
   const name = claim ? (claim.deceasedName || fv.full_name || '—') : '';
   const isDeath = !!claim && (claim.claimTypeDeath ?? DEATH_TYPES.has(claim.claimType));
-  const editTitle = claim && isDeath && !name.startsWith('مرحوم') ? `مرحوم ${name}` : name;
+  const editTitle = claim && name !== '—' ? personTitle(name, { death: isDeath, gender: claim.insuredGender }) : name;
   const w = claim?.workflow;
   const closed = claim?.status === 'PAID' || claim?.status === 'REJECTED';
   const docRows = [
@@ -95,7 +96,7 @@ function ClaimDetail() {
           <div className="ev-strip cv-strip">
             <div><span>بیمه‌گزار:</span><b>{claim.policyholderCompany?.name || fv.company_name || '—'}</b></div>
             <div><span>بیمه‌نامه:</span><b className="ltr">{claim.policyNumber || fv.policy_number || '—'}</b>{claim.lineLabel && <span>({claim.lineLabel})</span>}</div>
-            <div><span>بیمه‌شده:</span><b>{isDeath && name !== '—' && !name.startsWith('مرحوم') ? `مرحوم ${name}` : name}</b></div>
+            <div><span>بیمه‌شده:</span><b>{editTitle}</b></div>
             <div><span>کد ملی:</span><b className="ltr">{claim.deceasedNationalCode || fv.national_code || '—'}</b></div>
             <div><span>نسبت:</span><b>{claim.insuredRelation ? INSURED_RELATIONS[claim.insuredRelation] ?? claim.insuredRelation : 'اصلی'}{claim.mainInsuredName && claim.insuredRelation && claim.insuredRelation !== 'MAIN' ? ` (${claim.mainInsuredName})` : ''}</b></div>
             <div><span>نوع پرونده:</span><b>{claim.claimTypeLabel || claim.claimType}</b></div>
@@ -105,6 +106,7 @@ function ClaimDetail() {
             <div><span>مبلغ قطعی:</span><b style={{ color: claim.finalizedAmount ? '#0f7a55' : '#c0172f' }}>{claim.finalizedAmount ? rial(claim.finalizedAmount) : 'ثبت نشده'}</b></div>
             {claim.handlingBranchName && <div><span>شعبه:</span><b>{claim.handlingBranchName}</b></div>}
             {claim.broker?.name && <div><span>کارگزاری:</span><b>{claim.broker.name}</b></div>}
+            {claim.filedBy && <div><span>ثبت‌کننده:</span><b>{filerText(claim.filedBy)}</b></div>}
             {claim.lateNotice && lateWarn && <div className="ev-strip-red">اعلام خسارت خارج از مهلت مقرر انجام شده است (مهلت: {claim.noticeDeadline})</div>}
           </div>
 
@@ -134,6 +136,7 @@ function ClaimDetail() {
               )}
 
               {/* ── نقص مدارک: what was asked, upload slots, and the fix / send-down buttons ── */}
+              <DeathNoticeDate claimId={id} />
               <DeficiencyBox claimId={id} claim={claim} checklist={checklist} realm="org" canUpload={!closed && (perms.file || (perms.process && !!w?.holdsDesk))} onChanged={reload} />
 
               {/* ── What this user can do now ── */}

@@ -156,6 +156,11 @@ export class CustomerFileClaimDto {
   @Length(0, 120)
   causeDetail?: string;
 
+  // «جنسیت» of the insured: «آقای» / «خانم» before the name
+  @IsOptional()
+  @IsIn(['MALE', 'FEMALE'])
+  insuredGender?: string;
+
   // «ذینفع / وراث قانونی» named on the deceased's form (the form itself is uploaded right after filing).
   @IsOptional()
   @IsIn(BENEFICIARY_KINDS as unknown as string[])

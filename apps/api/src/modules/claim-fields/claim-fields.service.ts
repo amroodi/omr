@@ -16,6 +16,12 @@ const STEP_ACTION_FA: Record<string, string> = {
   SUBMIT: 'ارسال پرونده', FORWARD: 'تایید و ارسال به مرحلهٔ بعد', REFER_COUNCIL: 'ارجاع به شورای فنی', PAY_ORDER: 'دستور پرداخت',
   RETURN: 'عودت برای رفع نقص', RETURN_DIRECT: 'برگشت از سرپرستی به بیمه‌گزار', DOWN_FORWARD: 'ارسال به مرحلهٔ پایین‌تر',
   DOWN_DIRECT: 'ارسال مستقیم به بیمه‌گزار', MARK_PAID: 'پرداخت خسارت', REJECT_FINAL: 'رد نهایی پرونده',
+  FIX_HERE: 'رفع نقص و بررسی دوباره',
+};
+/** «اصل مدارک (فیزیکی)» moves, as the status history tells them. */
+const PHYSICAL_FA: Record<string, string> = {
+  REQUEST: 'درخواست اصل مدارک (فیزیکی)', RELAY: 'ارسال درخواست اصل مدارک به مرحلهٔ پایین‌تر', SEND: 'ارسال اصل مدارک',
+  RECEIVE: 'دریافت اصل مدارک', RETURN: 'بازگرداندن اصل مدارک',
 };
 const STEP_STATE_FA: Record<string, string> = {
   FORWARDED: 'تایید و ارسال', ESCALATED: 'ارجاع به سطح بالاتر', APPROVED: 'تایید شد', RETURNED_INCOMPLETE: 'عودت برای رفع نقص', REJECTED: 'رد شد', ACKED: 'دریافت و ارسال',
@@ -101,6 +107,22 @@ export class ClaimFieldsService {
     return !!claim.imported || this.isManual(claim.id);
   }
 
+  /**
+   * «تاریخ / وضعیت اعلام فوت» (the death-notice letter, usually the first document): typed on panel 2 only.
+   * A case that came through a کارگزاری: only that کارگزاری's panel 2. A case the insurer filed itself:
+   * the insurer operator who may process cases and holds this one on their desk.
+   */
+  noticeEditable(claim: { brokerTenantId: string | null; currentStage?: string | null; handlingBranchId?: string | null; status?: string }): boolean {
+    const ctx = getContext();
+    if (ctx?.actorType === 'SUPER_ADMIN') return true;
+    if (ctx?.actorType !== 'ORG_USER' || ctx.panelMode === 'ENTRY' || claim.status === 'PAID') return false;
+    if (claim.brokerTenantId) return ctx.tenantId === claim.brokerTenantId;
+    if (!(ctx.permissions ?? []).includes('claim:process')) return false;
+    const s = claim.currentStage;
+    if (s === 'BRANCH') return !!ctx.branchId && ctx.branchId === claim.handlingBranchId;
+    return (s === 'HQ' || s === 'COUNCIL') && !ctx.branchId;
+  }
+
   private party(claim: any): ClaimPartyType {
     const p = this.callerParty(claim);
     if (!p) throw new ForbiddenException('دسترسی به این پرونده ندارید');
@@ -148,7 +170,8 @@ export class ClaimFieldsService {
         source: fb ? fbSource : v?.source ?? null,
         confidence: v?.confidence ?? null,
         confirmed: !!v?.confirmedAt,
-        canEdit: getContext()?.panelMode !== 'ENTRY' && claim.status !== 'PAID' && (handKept || !MANUAL_FLOW_KEYS.has(d.key)) && (manual || d.editableBy.includes(party)), // archived once paid; the hierarchy fills its own stages
+        canEdit: TYPED_ONLY_KEYS.has(d.key) ? this.noticeEditable(claim)
+          : getContext()?.panelMode !== 'ENTRY' && claim.status !== 'PAID' && (handKept || !MANUAL_FLOW_KEYS.has(d.key)) && (manual || d.editableBy.includes(party)), // archived once paid; the hierarchy fills its own stages
       });
     }
     return { claimId, party, manual, groups, archived: claim.status === 'PAID' };
@@ -210,13 +233,22 @@ export class ClaimFieldsService {
       ]);
       return { manual, caseStage: stage?.value || null, history: rows.map((r) => ({ at: r.at, title: r.label, detail: r.value })) };
     }
-    const steps = await this.db().claimStep.findMany({ where: { claimId: claim.id, decidedAt: { not: null } }, orderBy: { order: 'asc' } });
+    const [steps, physical] = await Promise.all([
+      this.db().claimStep.findMany({ where: { claimId: claim.id, decidedAt: { not: null } }, orderBy: { order: 'asc' } }),
+      this.db().claimPhysicalEvent.findMany({ where: { claimId: claim.id }, orderBy: { createdAt: 'asc' } }),
+    ]);
     const moves = steps.map((s) => ({
       t: s.decidedAt!.getTime(),
       at: toJalali(s.decidedAt!, true, true),
       title: `${s.stage ? this.store.labels(claim.insurerTenantId)[s.stage as Stage] : 'مرحله'}: ${STEP_ACTION_FA[s.action ?? ''] ?? STEP_STATE_FA[s.state] ?? s.state}`,
       detail: s.note ?? null,
     }));
+    // «اصل مدارک (فیزیکی)»: each request, relay, send and receipt in its place.
+    for (const e of physical) moves.push({
+      t: e.createdAt.getTime(), at: toJalali(e.createdAt, true, true),
+      title: `${this.store.labels(claim.insurerTenantId)[e.stage as Stage] ?? 'مرحله'}: ${PHYSICAL_FA[e.action] ?? e.action}`,
+      detail: [e.note, e.trackingNo ? `کد رهگیری ${e.trackingNo}` : null].filter(Boolean).join(' — ') || null,
+    });
     // «ثبت اعلام خسارت» by شعبه, in its place among the hand-offs.
     if (claim.lossNoticeDate) moves.push({
       t: claim.lossNoticeDate.getTime(), at: toJalali(claim.lossNoticeDate, true, true),
@@ -254,7 +286,11 @@ export class ClaimFieldsService {
     const brokerFwd = first((s) => s.stage === 'BROKER' && s.action === 'FORWARD');
     const branchFwd = first((s) => s.stage === 'BRANCH' && s.action === 'FORWARD');
     const returned = last((s) => s.action === 'RETURN' || s.action === 'RETURN_DIRECT');
-    const resubmit = returned ? steps.find((s) => s.decidedAt! > returned.decidedAt! && s.stage === 'POLICYHOLDER' && s.action === 'SUBMIT') ?? null : null;
+    // Fixed: sent up again by the بیمه‌گزار, or fixed at the desk the return reached («رفع نقص در …»).
+    const resubmit = returned ? steps.find((s) => s.decidedAt! > returned.decidedAt! && ((s.stage === 'POLICYHOLDER' && s.action === 'SUBMIT') || s.action === 'FIX_HERE')) ?? null : null;
+    // Complete / sent to ستاد: شعبه's latest approval — unless a later return reopened the case.
+    const branchLast = last((s) => s.stage === 'BRANCH' && s.action === 'FORWARD');
+    const branchDone = branchLast && !(returned && returned.decidedAt! > branchLast.decidedAt!) ? branchLast : null;
     // شورای فنی: referred by ستاد; its own decision (payment order / rejection) when it made one.
     const referred = first((s) => s.action === 'REFER_COUNCIL');
     const council = first((s) => s.stage === 'COUNCIL' && (s.action === 'PAY_ORDER' || s.action === 'REJECT_FINAL'));
@@ -284,11 +320,11 @@ export class ClaimFieldsService {
       missing_docs_request_date: at(returned),
       missing_docs_request_status: returned ? (resubmit ? 'رفع شد' : 'کسری اعلام شد') : null,
       // Complete once شعبه has approved every document and sent the case on.
-      case_complete_date: at(branchFwd),
-      case_complete: branchFwd ? 'تکمیل' : null,
-      case_complete_status: branchFwd ? 'پرونده تکمیل شده و کسری ندارد' : null,
-      send_to_hq_date: at(branchFwd),
-      send_to_hq_status: branchFwd ? 'ارسال شد' : null,
+      case_complete_date: at(branchDone),
+      case_complete: branchDone ? 'تکمیل' : null,
+      case_complete_status: branchDone ? 'پرونده تکمیل شده و کسری ندارد' : branchFwd ? 'پس از تکمیل، برای رفع نقص عودت شده است' : null,
+      send_to_hq_date: at(branchLast ?? branchFwd),
+      send_to_hq_status: branchLast ? 'ارسال شد' : null,
       council_approve_date: at(council) ?? (referred && (claim.status === 'PAID' || payOrder) ? at(payOrder) : at(referred)),
       council_approve_status: council ? (council.action === 'PAY_ORDER' ? 'پرونده تایید شد' : 'رد شد')
         : referred ? (payOrder ? 'پرونده تایید شد' : rejected ? 'رد شد' : 'در حال بررسی') : null,
@@ -323,7 +359,9 @@ export class ClaimFieldsService {
     await this.ensureCatalog(claim.insurerTenantId);
     const def = await this.db().claimFieldDef.findFirst({ where: { tenantId: claim.insurerTenantId, key } });
     if (!def) throw new NotFoundException('فیلد تعریف نشده است');
-    if (!def.editableBy.includes(party) && !(await this.manualMode(claim))) throw new ForbiddenException('اجازه ویرایش این فیلد را ندارید');
+    if (TYPED_ONLY_KEYS.has(key)) {
+      if (!this.noticeEditable(claim)) throw new ForbiddenException(claim.brokerTenantId ? 'تاریخ اعلام فوت را فقط کارگزاری در پنل ۲ ثبت می‌کند' : 'تاریخ اعلام فوت را کارشناسی ثبت می‌کند که پرونده در میز کار اوست');
+    } else if (!def.editableBy.includes(party) && !(await this.manualMode(claim))) throw new ForbiddenException('اجازه ویرایش این فیلد را ندارید');
     if (MANUAL_FLOW_KEYS.has(key) && !(await this.handKept(claim))) throw new ForbiddenException('این فیلد از گردش کار سلسله‌مراتب پر می‌شود');
 
     const maxAmount = key === 'payable_amount' ? await this.sumInsuredCeiling(claimId) : undefined;
