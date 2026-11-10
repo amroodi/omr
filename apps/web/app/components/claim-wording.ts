@@ -39,7 +39,9 @@ export function personTitle(name: string | null | undefined, opts: { death?: boo
   const titled = /^(آقای|خانم)\s/.test(core);
   if (!titled && opts.gender === 'MALE') core = `آقای ${core}`;
   if (!titled && opts.gender === 'FEMALE') core = `خانم ${core}`;
-  return opts.death || /^مرحوم/.test(n) ? `مرحوم ${core}` : core;
+  // «مرحومه» for a woman, «مرحوم» for a man (or when the gender is unknown).
+  const female = opts.gender === 'FEMALE' || /^خانم\s/.test(core) || /^مرحومه\s/.test(n);
+  return opts.death || /^مرحوم/.test(n) ? `${female ? 'مرحومه' : 'مرحوم'} ${core}` : core;
 }
 
 /** A second, required choice some causes ask for (Model View), e.g. «نوع حادثه» after «فوت در اثر حادثه…». */

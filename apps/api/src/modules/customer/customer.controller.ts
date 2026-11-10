@@ -334,6 +334,7 @@ export class CustomerController {
       policyNumber: dto.policyNumber, // an insurer's نماینده بیمه types it (no contract to take it from)
       deathCapital: dto.deathCapital,
       accidentCapital: dto.accidentCapital,
+      claimedAmount: dto.claimedAmount || undefined,
     });
   }
 
@@ -413,6 +414,13 @@ export class CustomerController {
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 15 * 1024 * 1024 } }))
   uploadClaimDoc(@Param('id') id: string, @Query('docCode') docCode: string, @Query('extra') extra: string | undefined, @UploadedFile() file: Express.Multer.File) {
     return this.claims.uploadDocument(id, file, docCode, extra === '1' || extra === 'true');
+  }
+
+  @Realms('CUSTOMER')
+  @UseGuards(JwtAuthGuard)
+  @Delete('claims/:id/documents/:docId')
+  removeClaimDoc(@Param('id') id: string, @Param('docId') docId: string) {
+    return this.claims.removeDocument(id, docId);
   }
 
   /** بیمه‌گزار sends the original documents to شعبه when asked. */

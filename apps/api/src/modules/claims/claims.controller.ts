@@ -363,6 +363,14 @@ export class ClaimsController {
     return this.claims.uploadDocument(id, file, docCode, extra === '1' || extra === 'true');
   }
 
+  /** «حذف»: take back a file uploaded by mistake (not yet decided on by any desk). */
+  @EntryAllowed()
+  @Permissions(PERMISSIONS.CLAIM_READ)
+  @Delete(':id/documents/:docId')
+  removeDocument(@Param('id') id: string, @Param('docId') docId: string) {
+    return this.claims.removeDocument(id, docId);
+  }
+
   /** «پذیرش دستی»: a کارشناس accepts a file the AI refused. */
   @Permissions(PERMISSIONS.DOC_VERIFY)
   @Post(':id/documents/:docId/ai-accept')

@@ -102,7 +102,7 @@ function ClaimDetail() {
             <div><span>نوع پرونده:</span><b>{claim.claimTypeLabel || claim.claimType}</b></div>
             <div><span>{isDeath ? 'تاریخ فوت' : 'تاریخ حادثه'}:</span><b>{claim.eventDate || '—'}</b></div>
             {!claim.imported && claim.createdAt && <div><span>تاریخ ثبت:</span><b>{claim.createdAt.split(' ')[0]}</b></div>}
-            <div><span>مبلغ برآوردی:</span><b>{rial(claim.estimatedAmount ?? claim.claimedAmount)}</b></div>
+            <div><span>مبلغ برآوردی:</span><b>{Number(claim.estimatedAmount ?? claim.claimedAmount) > 0 ? rial(claim.estimatedAmount ?? claim.claimedAmount) : 'ثبت نشده'}</b></div>
             <div><span>مبلغ قطعی:</span><b style={{ color: claim.finalizedAmount ? '#0f7a55' : '#c0172f' }}>{claim.finalizedAmount ? rial(claim.finalizedAmount) : 'ثبت نشده'}</b></div>
             {claim.handlingBranchName && <div><span>شعبه:</span><b>{claim.handlingBranchName}</b></div>}
             {claim.broker?.name && <div><span>کارگزاری:</span><b>{claim.broker.name}</b></div>}

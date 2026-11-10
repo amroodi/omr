@@ -199,6 +199,13 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
   };
   const [heirsMissing, setHeirsMissing] = useState(false);
   const viewDoc = (docId: string) => client.view(`${api}/documents/${docId}/file`, realm).catch((e) => setError(e.message));
+  /** «حذف»: a file uploaded by mistake, while no desk has decided on it (the server checks again). */
+  const removable = (p: ClaimDoc) => claim?.status !== 'PAID' && p.status === 'PENDING' && !(p.reviews ?? []).some((r) => r.state !== 'PENDING');
+  const removeDoc = async (p: ClaimDoc, what: string) => {
+    if (!window.confirm(`«${what}» (${p.fileName}) حذف شود؟`)) return;
+    setError('');
+    try { await client.del(`${api}/documents/${p.id}`, realm); await reload(); } catch (e: any) { setError(e.message); }
+  };
 
   const atMyDesk = claim?.workflow?.currentStage === 'POLICYHOLDER';
   const submitAction = claim?.workflow?.actions.find((a) => a.key === 'SUBMIT');
@@ -357,10 +364,13 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
                           {pages.map((p, i) => {
                             const bad = (p.reviews ?? []).some((r) => r.state === 'REJECTED') || p.ai?.status === 'MISMATCH';
                             return (
-                              <button key={p.id} type="button" className={`sdoc-page${bad ? ' is-bad' : ''}`} onClick={() => viewDoc(p.id)} title={`${p.fileName}${p.uploadedAt ? ` — ${p.uploadedAt}` : ''}`}>
-                                <svg viewBox="0 0 24 24" aria-hidden><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6" /></svg>
-                                <span>{pages.length > 1 ? `صفحهٔ ${(i + 1).toLocaleString('fa-IR')}` : 'مشاهده'}</span>
-                              </button>
+                              <span key={p.id} className="sdoc-page-w">
+                                <button type="button" className={`sdoc-page${bad ? ' is-bad' : ''}`} onClick={() => viewDoc(p.id)} title={`${p.fileName}${p.uploadedAt ? ` — ${p.uploadedAt}` : ''}`}>
+                                  <svg viewBox="0 0 24 24" aria-hidden><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6" /></svg>
+                                  <span>{pages.length > 1 ? `صفحهٔ ${(i + 1).toLocaleString('fa-IR')}` : 'مشاهده'}</span>
+                                </button>
+                                {removable(p) && <button type="button" className="sdoc-rm" onClick={() => removeDoc(p, pages.length > 1 ? `${it.label} — صفحهٔ ${(i + 1).toLocaleString('fa-IR')}` : it.label)} title="حذف این فایل" aria-label="حذف این فایل">×</button>}
+                              </span>
                             );
                           })}
                           {claim.status !== 'PAID' && !(unchosen && isBeneficiary) && (
@@ -395,7 +405,8 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
                           {older.map((o) => (
                             <div key={o.id} className="flex items-center justify-between gap-2 py-1">
                               <span className="text-xs" style={{ color: 'var(--muted)' }}>نسخهٔ {o.version.toLocaleString('fa-IR')} — {o.uploadedAt} — {o.statusLabel}</span>
-                              <button type="button" className="cu-view" onClick={() => viewDoc(o.id)}>مشاهده</button>
+                              <span className="flex gap-1.5"><button type="button" className="cu-view" onClick={() => viewDoc(o.id)}>مشاهده</button>
+                                {removable(o) && <button type="button" className="cu-view is-danger" onClick={() => removeDoc(o, `${it.label} — نسخهٔ ${o.version.toLocaleString('fa-IR')}`)}>حذف</button>}</span>
                             </div>
                           ))}
                         </details>
@@ -428,7 +439,8 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
                       {(checklist?.otherDocuments ?? []).map((d) => (
                         <li key={d.id} className="flex items-center justify-between gap-2 text-sm">
                           <span className="truncate"><bdi>{d.fileName}</bdi>{d.uploadedAt ? <span style={{ color: 'var(--muted)' }}> — {d.uploadedAt}</span> : null}</span>
-                          <button type="button" className="cu-view" onClick={() => viewDoc(d.id)}>مشاهده</button>
+                          <span className="flex gap-1.5"><button type="button" className="cu-view" onClick={() => viewDoc(d.id)}>مشاهده</button>
+                            {removable(d) && <button type="button" className="cu-view is-danger" onClick={() => removeDoc(d, 'سایر مدارک')}>حذف</button>}</span>
                         </li>
                       ))}
                     </ul>

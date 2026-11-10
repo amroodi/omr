@@ -77,6 +77,8 @@ export class CustomerChangePasswordDto {
 
 /** A بیمه‌گزار files their own claim; channel/معرف/policyHolder are derived from their session. */
 export class CustomerFileClaimDto {
+  // مبلغ برآورد خسارت (rials), optional — the filer's estimate (مبلغ برآوردی)
+  @IsOptional() @IsString() @Matches(/^\d{0,18}$/) claimedAmount?: string;
   // سرمایه فوت / سرمایه حادثه (rials), optional — not every filer knows them
   @IsOptional() @IsString() @Matches(/^\d{0,18}$/) deathCapital?: string;
   @IsOptional() @IsString() @Matches(/^\d{0,18}$/) accidentCapital?: string;
