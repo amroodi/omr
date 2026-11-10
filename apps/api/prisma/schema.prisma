@@ -607,6 +607,8 @@ model Document {
   aiReason       String? // short Persian explanation shown to the uploader and staff
   aiCheckedAt    DateTime?
   aiRequestId    String? // AvalAI request id (cost lookup)
+  // «+» on a slot: one more page of the same document (or a paper that goes with it), not a new version.
+  extra Boolean @default(false)
 
   createdAt DateTime @default(now())
 
@@ -837,6 +839,8 @@ model RequiredDocument {
   label          String // Persian label
   appliesToTypes String[] // نوع پرونده codes (Model View) that list this document
   requiredTypes  String[] @default([]) // of those, where it must be uploaded before sending; the rest are «برحسب نیاز»
+  causes          String[] @default([]) // listed only for these «علت» (empty = every cause)
+  requiredDetails String[] @default([]) // required only for these «نوع حادثه» (empty = as requiredTypes says)
   kinds          String[] @default([]) // نوع بیمه‌نامه it belongs to; empty = every kind
   order          Int         @default(0)
   isActive       Boolean     @default(true)
@@ -922,6 +926,7 @@ model Claim {
   beneficiaryType String? // نوع ذینفع (ذینفع قانونی / وراث قانونی)
   employerName    String? // نام شرکت محل فعالیت
   causeOfDeath    String? // علت فوت (free text; more specific than claimType)
+  causeDetail     String? // «نوع حادثه» when the cause asks for one (Model View caseType.detail)
   legacyData      Json? // full source row (PII columns stripped) for later follow-up
 
   status    ClaimStatus @default(DRAFT)

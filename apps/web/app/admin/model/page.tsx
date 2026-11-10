@@ -11,7 +11,8 @@ type Mode = 'required' | 'optional' | 'hidden';
 type RuleKey = 'councilEnabled' | 'requireLossNotice' | 'requireOriginals';
 interface Rights { upload: boolean; submit: boolean }
 interface LineForm { insuredLabel: string; claimTypes: string[]; causeLabel?: string }
-interface CaseType { code: string; label: string; causeGroup: 'DEATH' | 'ACCIDENT'; death: boolean; causes?: string[] }
+interface CaseDetail { label: string; options: string[]; causes: string[] }
+interface CaseType { code: string; label: string; causeGroup: 'DEATH' | 'ACCIDENT'; death: boolean; causes?: string[]; detail?: CaseDetail | null }
 type Line = string; // a code of Super Admin's نوع بیمه‌نامه catalog
 interface CompanyGroup { id: string; label: string; companyIds: string[]; lines: Record<Line, string[]>; dependents: boolean }
 interface Model {
@@ -24,7 +25,7 @@ interface Model {
   sinad?: { enabled: boolean; batchSize: number; returnGroups: { label: string; items: string[] }[] };
   form: { eventLabel: string; birthDate: Mode; cause: Mode; causeLists: { DEATH: string[]; ACCIDENT: string[] }; causeNotes?: Record<string, string>; lines: Record<Line, LineForm>; caseTypes: CaseType[]; groups: CompanyGroup[]; dependents: boolean; docsNote: string };
 }
-interface Doc { code: string; label: string; isActive: boolean; appliesToTypes: string[]; requiredTypes: string[]; kinds?: string[] }
+interface Doc { code: string; label: string; isActive: boolean; appliesToTypes: string[]; requiredTypes: string[]; kinds?: string[]; causes?: string[]; requiredDetails?: string[] }
 interface Coverage { enabled: boolean; url: string; hasSecret: boolean; notChecked: number }
 interface Insurer { id: string; name: string; customized: boolean; casesAtCouncil: number; model: Model; docs: Doc[]; companies: { id: string; name: string; parentId: string | null }[]; coverage: Coverage }
 interface NoticeRule { enabled: boolean; targets: string[]; default: string }
@@ -262,6 +263,24 @@ export default function ModelView() {
                         <CauseEditor title={`علت‌های ${t.label}`} list={t.causes ?? []} notes={m.form.causeNotes ?? {}} onChange={(list, causeNotes) => { setType(t.code, { causes: list }); setForm({ causeNotes }); }} />
                       </div>
                     </details>
+                    {/* A second, required choice after some causes (e.g. «نوع حادثه») */}
+                    <details className="text-sm rounded-lg px-2 py-1" style={{ background: 'var(--surface-2)' }}>
+                      <summary className="cursor-pointer">انتخاب دوم پس از علت — {t.detail?.options.length ? `«${t.detail.label}»، ${t.detail.options.length.toLocaleString('fa-IR')} گزینه` : 'ندارد'}</summary>
+                      <div className="mt-2 grid gap-2">
+                        <label className="text-xs block">عنوان (مثلاً «نوع حادثه»)
+                          <input className="input mt-1" value={t.detail?.label ?? ''} maxLength={60} placeholder="نوع حادثه" onChange={(e) => setType(t.code, { detail: { label: e.target.value, options: t.detail?.options ?? [], causes: t.detail?.causes ?? [] } })} />
+                        </label>
+                        <label className="text-xs block">گزینه‌ها (هر خط یک گزینه؛ خالی = این انتخاب نیست)
+                          <textarea className="input mt-1" rows={4} value={(t.detail?.options ?? []).join('\n')} onChange={(e) => { const options = e.target.value.split('\n').map((x) => x.trimStart()); setType(t.code, { detail: options.some((x) => x.trim()) ? { label: t.detail?.label || 'نوع حادثه', options, causes: t.detail?.causes ?? [] } : null }); }} />
+                        </label>
+                        {!!t.detail?.options.length && (
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                            <span style={{ color: 'var(--muted)' }}>پس از این علت‌ها{(t.detail.causes ?? []).length ? '' : ' (همه)'}:</span>
+                            {(t.causes?.length ? t.causes : m.form.causeLists[t.causeGroup]).map((c) => <Toggle key={c} on={t.detail!.causes.includes(c)} onChange={(v) => setType(t.code, { detail: { ...t.detail!, causes: toggled(t.detail!.causes, c, v) } })}>{c}</Toggle>)}
+                          </div>
+                        )}
+                      </div>
+                    </details>
                     </div>
                   ))}
                 </div>
@@ -371,6 +390,7 @@ export default function ModelView() {
                         <span style={{ color: 'var(--muted)' }}>نوع بیمه‌نامه{(d.kinds ?? []).length ? '' : ' (همه)'}:</span>
                         {kinds.map((k) => <Toggle key={k.code} on={(d.kinds ?? []).includes(k.code)} onChange={(v) => setDocs(docs.map((x) => (x.code === d.code ? { ...x, kinds: toggled(x.kinds ?? [], k.code, v) } : x)))}>{kindTitle(k)}</Toggle>)}
                       </div>
+                      {d.appliesToTypes.includes(docType) && <DocConditions doc={d} type={m.form.caseTypes.find((t) => t.code === docType)} general={m.form.causeLists} onChange={(p) => setDocs(docs.map((x) => (x.code === d.code ? { ...x, ...p } : x)))} />}
                     </div>
                   ))}
                 </div>
@@ -512,6 +532,32 @@ export default function ModelView() {
  * when the operator picks it (they can still edit it there). Notes are kept by cause text, so renaming a
  * cause carries its note along.
  */
+/** Per document: listed only after some «علت», and required only for some «نوع حادثه». */
+function DocConditions({ doc, type, general, onChange }: { doc: Doc; type?: CaseType; general: Record<'DEATH' | 'ACCIDENT', string[]>; onChange: (p: Partial<Doc>) => void }) {
+  const causes = type ? (type.causes?.length ? type.causes : general[type.causeGroup]) : [];
+  const own = doc.causes ?? [];
+  const dets = doc.requiredDetails ?? [];
+  const flip = (list: string[], v: string, on: boolean) => (on ? [...list, v] : list.filter((x) => x !== v));
+  if (!causes.length && !type?.detail?.options.length) return null;
+  return (
+    <details className="md:col-span-3 text-xs rounded-lg px-2 py-1" style={{ background: 'var(--surface-2)' }}>
+      <summary className="cursor-pointer">شرط علت{own.length ? ` — فقط ${own.length.toLocaleString('fa-IR')} علت` : ' — همهٔ علت‌ها'}{dets.length ? ` · الزامی فقط برای: ${dets.join('، ')}` : ''}</summary>
+      {causes.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+          <span style={{ color: 'var(--muted)' }}>فقط برای این علت‌ها (بدون تیک = همه):</span>
+          {causes.map((c) => <Toggle key={c} on={own.includes(c)} onChange={(v) => onChange({ causes: flip(own, c, v) })}>{c}</Toggle>)}
+        </div>
+      )}
+      {!!type?.detail?.options.length && (
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+          <span style={{ color: 'var(--muted)' }}>الزامی فقط برای این {type.detail.label} (بدون تیک = طبق وضعیت بالا):</span>
+          {type.detail.options.map((o) => <Toggle key={o} on={dets.includes(o)} onChange={(v) => onChange({ requiredDetails: flip(dets, o, v) })}>{o}</Toggle>)}
+        </div>
+      )}
+    </details>
+  );
+}
+
 function CauseEditor({ title, list, notes, onChange }: { title: string; list: string[]; notes: Record<string, string>; onChange: (list: string[], notes: Record<string, string>) => void }) {
   const [q, setQ] = useState('');
   const others = (i: number, v: string) => list.some((x, j) => j !== i && x === v);

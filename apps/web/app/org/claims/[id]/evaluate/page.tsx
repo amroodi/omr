@@ -16,12 +16,12 @@ import { INSURED_RELATIONS } from '../../../../components/claim-wording';
  */
 interface DocReview { stage: string; state: string; canEdit: boolean }
 interface ClaimDoc { id: string; fileName: string; isLatest: boolean; reviews?: DocReview[] }
-interface Checklist { complete: boolean; items: { code: string; label: string; documents: ClaimDoc[] }[]; otherDocuments?: ClaimDoc[] }
+interface Checklist { complete: boolean; items: { code: string; label: string; documents: ClaimDoc[]; extras?: ClaimDoc[] }[]; otherDocuments?: ClaimDoc[] }
 interface DocMeta { id: string; fileName: string }
 interface Claim {
   id: string; claimNumber: string; status: string; claimType: string; claimTypeLabel?: string; lineLabel?: string | null; deceasedName: string | null; deceasedNationalCode?: string | null;
   insuredRelation?: string | null; mainInsuredName?: string | null; estimatedAmount?: string; finalizedAmount?: string | null; eventDate: string | null; deceasedAge?: number | null;
-  createdAt?: string | null; causeOfDeath?: string | null; description?: string | null; policyNumber?: string | null; coverageStatus?: string | null; lateNotice?: boolean;
+  createdAt?: string | null; causeOfDeath?: string | null; causeDetail?: string | null; description?: string | null; policyNumber?: string | null; coverageStatus?: string | null; lateNotice?: boolean;
   policyHolder?: { name: string | null } | null; broker?: { name: string } | null; currentStage?: string | null; flowDirection?: string | null;
   deficiencies?: { items: string[]; createdAt: string | null; resolvedAt: string | null }[];
   workflow?: Workflow;
@@ -86,7 +86,11 @@ export default function EvaluatePage() {
   // Latest document of each item, with this desk's ✓/✕.
   const rows = useMemo(() => {
     const out: { label: string; d: ClaimDoc }[] = [];
-    checklist?.items.forEach((it) => { const d = it.documents.find((x) => x.isLatest) || it.documents[0]; if (d) out.push({ label: it.label, d }); });
+    checklist?.items.forEach((it) => {
+      const d = it.documents.find((x) => x.isLatest) || it.documents[0];
+      if (d) out.push({ label: it.label, d });
+      (it.extras ?? []).forEach((x, i) => out.push({ label: `${it.label} — صفحهٔ ${(i + 2).toLocaleString('fa-IR')}`, d: x })); // pages added with «+»
+    });
     checklist?.otherDocuments?.filter((d) => d.isLatest).forEach((d) => out.push({ label: d.fileName, d }));
     return out;
   }, [checklist]);
@@ -166,7 +170,7 @@ export default function EvaluatePage() {
       </div>
       {/* Grey case strip */}
       <div className="ev-strip">
-        <div><span>بیمه‌گذار</span><b>{claim.policyHolder?.name || claim.broker?.name || '—'}</b></div>
+        <div><span>بیمه‌گزار</span><b>{claim.policyHolder?.name || claim.broker?.name || '—'}</b></div>
         <div><span>شماره بیمه‌نامه</span><b>{claim.policyNumber || '—'}</b></div>
         <div><span>نوع بیمه‌نامه</span><b>{claim.lineLabel || '—'}</b></div>
         <div><span>بیمه‌شده</span><b>{claim.deceasedName || '—'}</b></div>
@@ -214,7 +218,7 @@ export default function EvaluatePage() {
                 <div className="ev-pane">
                   <div className="ev-fields">
                     <div><span>نوع پرونده</span><b>{claim.claimTypeLabel || claim.claimType}</b></div>
-                    <div><span>علت</span><b>{claim.causeOfDeath || '—'}</b></div>
+                    <div><span>علت</span><b>{claim.causeOfDeath || '—'}{claim.causeDetail ? ` — ${claim.causeDetail}` : ''}</b></div>
                     <div><span>تاریخ وقوع</span><b>{claim.eventDate || '—'}</b></div>
                     <div><span>تاریخ ثبت</span><b>{claim.createdAt || '—'}</b></div>
                   </div>

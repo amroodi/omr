@@ -14,7 +14,7 @@ import { DocMedia } from '../../../../components/DocViewer';
 interface DocReview { stage: string; state: string; canEdit: boolean; changedAt?: string | null; changedBy?: string | null; changes?: number }
 interface HistoryEntry { at: string; stageLabel: string | null; state: string | null; by: string; text: string }
 interface ClaimDoc { id: string; fileName: string; status: string; statusLabel: string; note: string | null; version: number; isLatest: boolean; reviews?: DocReview[] }
-interface ChecklistItem { code: string; label: string; uploaded: boolean; documents: ClaimDoc[] }
+interface ChecklistItem { code: string; label: string; uploaded: boolean; documents: ClaimDoc[]; extras?: ClaimDoc[] }
 interface Checklist { complete: boolean; items: ChecklistItem[]; otherDocuments?: ClaimDoc[] }
 interface DocMeta { id: string; docCode: string | null; fileName: string; mimeType: string }
 interface Claim {
@@ -105,7 +105,10 @@ export default function AssessClaim() {
   // + any other uploads.
   const rows = useMemo(() => {
     const out: { label: string; code: string | null; d: ClaimDoc | null }[] = [];
-    checklist?.items.forEach((it) => out.push({ label: it.label, code: it.code, d: it.documents.find((x) => x.isLatest) || it.documents[0] || null }));
+    checklist?.items.forEach((it) => {
+      out.push({ label: it.label, code: it.code, d: it.documents.find((x) => x.isLatest) || it.documents[0] || null });
+      (it.extras ?? []).forEach((x, i) => out.push({ label: `${it.label} — صفحهٔ ${(i + 2).toLocaleString('fa-IR')}`, code: it.code, d: x })); // pages added with «+»
+    });
     checklist?.otherDocuments?.filter((d) => d.isLatest).forEach((d) => out.push({ label: d.fileName, code: null, d }));
     return out;
   }, [checklist]);

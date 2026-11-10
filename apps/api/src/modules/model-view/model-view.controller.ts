@@ -19,6 +19,10 @@ class DocRowDto {
   @IsArray() @IsString({ each: true }) requiredTypes!: string[];
   // نوع بیمه‌نامه it belongs to (empty = every kind)
   @IsOptional() @IsArray() @IsString({ each: true }) kinds?: string[];
+  // listed only for these «علت» (empty = every cause)
+  @IsOptional() @IsArray() @ArrayMaxSize(100) @IsString({ each: true }) causes?: string[];
+  // required only for these «نوع حادثه» (empty = as requiredTypes)
+  @IsOptional() @IsArray() @ArrayMaxSize(40) @IsString({ each: true }) requiredDetails?: string[];
 }
 class EntryDocsDto {
   @IsArray() @ArrayMaxSize(200) @IsString({ each: true }) codes!: string[];
@@ -46,7 +50,7 @@ export class ModelViewController {
     const [atCouncil, notChecked, docs] = await Promise.all([
       db.claim.groupBy({ by: ['insurerTenantId'], where: { currentStage: 'COUNCIL', deletedAt: null }, _count: true }),
       db.claim.groupBy({ by: ['insurerTenantId'], where: { coverageStatus: 'NOT_CHECKED', deletedAt: null }, _count: true }),
-      db.requiredDocument.findMany({ where: { tenantId: { in: insurers.map((i) => i.id) } }, orderBy: { order: 'asc' }, select: { tenantId: true, code: true, label: true, isActive: true, appliesToTypes: true, requiredTypes: true, kinds: true } }),
+      db.requiredDocument.findMany({ where: { tenantId: { in: insurers.map((i) => i.id) } }, orderBy: { order: 'asc' }, select: { tenantId: true, code: true, label: true, isActive: true, appliesToTypes: true, requiredTypes: true, kinds: true, causes: true, requiredDetails: true } }),
     ]);
     // Companies an insurer's Model View can group: those holding a contract with it, wherever the brokerage.
     const contracts = await db.policyholderContract.findMany({ where: { insurerTenantId: { in: insurers.map((i) => i.id) } }, select: { insurerTenantId: true, company: { select: { id: true, name: true, parentId: true } } } });
@@ -104,7 +108,7 @@ export class ModelViewController {
     await this.insurer(insurerId);
     const db = this.prisma.unscoped();
     const known = new Set(allKinds().map((k) => k.code));
-    const rows = dto.docs.map((d, i) => ({ code: d.code, label: d.label.trim(), isActive: d.isActive, appliesToTypes: d.appliesToTypes, requiredTypes: d.requiredTypes.filter((x) => d.appliesToTypes.includes(x)), kinds: [...new Set((d.kinds ?? []).filter((k) => known.has(k)))], order: i + 1 }));
+    const rows = dto.docs.map((d, i) => ({ code: d.code, label: d.label.trim(), isActive: d.isActive, appliesToTypes: d.appliesToTypes, requiredTypes: d.requiredTypes.filter((x) => d.appliesToTypes.includes(x)), kinds: [...new Set((d.kinds ?? []).filter((k) => known.has(k)))], causes: [...new Set((d.causes ?? []).map((x) => x.trim()).filter(Boolean))], requiredDetails: [...new Set((d.requiredDetails ?? []).map((x) => x.trim()).filter(Boolean))], order: i + 1 }));
     const gone = (await db.requiredDocument.findMany({ where: { tenantId: insurerId, code: { notIn: rows.map((r) => r.code) } }, select: { code: true } })).map((r) => r.code);
     const used = gone.length ? new Set((await db.document.findMany({ where: { docCode: { in: gone }, claimId: { in: (await db.claim.findMany({ where: { insurerTenantId: insurerId }, select: { id: true } })).map((c) => c.id) } }, distinct: ['docCode'], select: { docCode: true } })).map((r) => r.docCode)) : new Set<string | null>();
     await db.$transaction([

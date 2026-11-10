@@ -10,6 +10,7 @@ import { JalaliDatePicker } from '../../../components/JalaliDatePicker';
 import { Coverage, CoverageNote, coverageText } from '../../../components/CoverageNote';
 import { ORG_NAV } from '../../nav';
 import { SearchPick } from '../../../components/SearchPick';
+import { CaseDetail, causeDetailFor } from '../../../components/claim-wording';
 import { eventDateLabel, CAUSE_LABEL, EVENT_DATE_LABEL, insuredNameLabel } from '../../../components/claim-wording';
 import { useDraft } from '../../../../lib/draft';
 
@@ -77,7 +78,7 @@ export default function NewClaim() {
   const [f, setF, clearF] = useDraft('claim', {
     companyId: '', policyHolderId: '', insurerTenantId: '', channel: 'BROKER', sellingBranchId: '',
     claimType: 'DEATH_ILLNESS', deceasedFullName: '', deceasedNationalCode: '', birthDate: '', eventDate: '', claimedAmount: '', policyNumber: '', description: '',
-    startStage: '', brokerTenantId: '', branchId: '', causeOfDeath: '',
+    startStage: '', brokerTenantId: '', branchId: '', causeOfDeath: '', causeDetail: '',
   });
   const [causes, setCauses, clearCauses] = useDraft<string[]>('causes', []); // picked items of «علت خسارت»
   const [ins, setIns] = useState<InsurerEntry | null>(null);
@@ -87,7 +88,7 @@ export default function NewClaim() {
   const [busy, setBusy] = useState(false);
   const [caseTypes, setCaseTypes] = useState<Record<string, string>>(CLAIM_TYPE_LABELS);
   // Each نوع پرونده's «علت» list and what this kind calls it («علت فوت» in عمر, «علت خسارت» elsewhere).
-  const [typeCauses, setTypeCauses] = useState<Record<string, { causes: string[]; causeLabel: string; death?: boolean; causeGroup?: string }>>({});
+  const [typeCauses, setTypeCauses] = useState<Record<string, { causes: string[]; causeLabel: string; death?: boolean; causeGroup?: string; detail?: CaseDetail | null }>>({});
   // فن‌آوران coverage check on the insured's کد ملی (null: off for this insurer, or the insurer isn't known yet).
   const [coverage, setCoverage] = useState<Coverage | 'checking' | null>(null);
   const asked = useRef(0);
@@ -102,7 +103,7 @@ export default function NewClaim() {
     // Panel 1: only the chosen نوع بیمه‌نامه's نوع پرونده (none yet = filing closed for that kind).
     client.get<{ code: string; label: string }[]>(`/claims/case-types${lineQuery()}`, 'org').then((l) => {
       setCaseTypes(Object.fromEntries(l.map((t) => [t.code, t.label])));
-      setTypeCauses(Object.fromEntries(l.map((t: any) => [t.code, { causes: t.causes ?? [], causeLabel: t.causeLabel ?? CAUSE_LABEL, death: t.death, causeGroup: t.causeGroup }])));
+      setTypeCauses(Object.fromEntries(l.map((t: any) => [t.code, { causes: t.causes ?? [], causeLabel: t.causeLabel ?? CAUSE_LABEL, death: t.death, causeGroup: t.causeGroup, detail: t.detail ?? null }])));
       if (l.length) setF((s) => (l.some((t) => t.code === s.claimType) ? s : { ...s, claimType: l[0].code }));
     }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -123,9 +124,13 @@ export default function NewClaim() {
   const typedCause = causeOptions.length > 0 ? '' : f.causeOfDeath.trim();
   const cause = [...picked, typedCause].filter(Boolean).join('، ');
   const causeNotes = form?.causeNotes ?? {};
+  // «نوع حادثه»: a second, required choice after some causes (Model View).
+  const detail = causeDetailFor(typeCauses[f.claimType]?.detail, picked[0]);
+  const causeDetail = detail?.options.includes(f.causeDetail ?? '') ? f.causeDetail : '';
   // «شرح»: must be written when no علت is picked (an insurer's panel 1).
   const descRequired = !!ins && picked.length === 0;
   const formProblem = () => (form?.cause === 'required' && !cause ? `${causeLabel} را انتخاب کنید`
+    : detail && !causeDetail ? `${detail.label} را انتخاب کنید`
     : form?.birthDate === 'required' && !f.birthDate ? 'تاریخ تولد بیمه‌شده را وارد کنید'
     : descRequired && !f.description.trim() ? `شرح را بنویسید (${causeLabel} انتخاب نشده است)`
     : f.description.length > 2000 ? 'شرح طولانی‌تر از ۲۰۰۰ نویسه است؛ آن را کوتاه کنید' : '');
@@ -198,6 +203,7 @@ export default function NewClaim() {
       else payload.sellingBranchId = f.sellingBranchId;
       if (insStart === 'BRANCH' && f.branchId && !ins.myBranchId) payload.branchId = f.branchId; // else: the operator's own شعبه
       if (cause) payload.causeOfDeath = cause;
+      if (causeDetail) payload.causeDetail = causeDetail;
       if (iso) payload.eventDate = iso;
       if (birthIso) payload.deceasedBirthDate = birthIso;
       if (f.policyNumber.trim()) payload.policyNumber = toAscii(f.policyNumber).trim();
@@ -220,6 +226,7 @@ export default function NewClaim() {
     const birthIso = f.birthDate ? jalaliToIso(f.birthDate) : null;
     if (f.birthDate && !birthIso) return setError('تاریخ تولد نامعتبر است (نمونه: ۱۳۴۵/۰۵/۱۲)');
     if (co && !iso) return setError(`${eventLabel} را وارد کنید؛ بیمه‌گر بر اساس قرارداد معتبر در این تاریخ تعیین می‌شود`);
+    if (detail && !causeDetail) return setError(`${detail.label} را انتخاب کنید`);
     setBusy(true);
     try {
       const payload: Record<string, string> = {
@@ -238,6 +245,7 @@ export default function NewClaim() {
       if (f.description.trim()) payload.description = f.description.trim();
       if (f.startStage) payload.startStage = f.startStage;
       if (cause) payload.causeOfDeath = cause;
+      if (causeDetail) payload.causeDetail = causeDetail;
       const c = await client.post<{ id: string }>('/claims', payload, 'org');
       clearF(); clearCauses();
       router.push(`/org/claims/${c.id}`);
@@ -402,6 +410,12 @@ export default function NewClaim() {
                   placeholder={`${causeLabel} را تایپ یا از فهرست انتخاب کنید…`} none="— انتخاب نشده —" badge={(c) => (causeNotes[c] ? 'متن آماده' : null)} />
               )}
               {causeOptions.length === 0 && <input className="input" value={f.causeOfDeath} onChange={set('causeOfDeath')} maxLength={300} placeholder="شرح علت" />}
+            </PField></div>
+          )}
+          {detail && (
+            <div className="md:col-span-2 lg:col-span-3"><PField label={`${detail.label} *`} help={`پس از «${picked[0]}» باید ${detail.label} را هم انتخاب کنید؛ مدارک الزامی پرونده بر اساس آن مشخص می‌شود.`}>
+              <SearchPick label={detail.label} options={detail.options.map((o) => ({ id: o, name: o }))} value={causeDetail} onPick={(v) => setF((s) => ({ ...s, causeDetail: v }))}
+                placeholder={`${detail.label} را انتخاب کنید…`} none="— انتخاب نشده —" />
             </PField></div>
           )}
         </div>

@@ -20,6 +20,8 @@ const HEADER_MAP: Record<string, string> = {
   نام: 'fullName',
   'نام بیمه‌گذار': 'fullName',
   'نام بیمه گذار': 'fullName',
+  'نام بیمه‌گزار': 'fullName',
+  'نام بیمه گزار': 'fullName',
   'نام و نام خانوادگی': 'fullName',
   phone: 'phone',
   mobile: 'phone',
@@ -49,7 +51,7 @@ const HEADER_MAP: Record<string, string> = {
 
 // Raw source headers that hold PII — excluded from the stored legacyData blob (they are already
 // persisted encrypted as first-class claim fields).
-const PII_HEADERS = new Set(['کد ملی', 'کدملی', 'نام و نام خانوادگی', 'نام', 'نام بیمه‌گذار', 'نام بیمه گذار']);
+const PII_HEADERS = new Set(['کد ملی', 'کدملی', 'نام و نام خانوادگی', 'نام', 'نام بیمه‌گذار', 'نام بیمه گذار', 'نام بیمه‌گزار', 'نام بیمه گزار']);
 
 // A row counts as a settled historical claim only when its وضعیت پرونده matches a terminal state.
 // Anything else (in-progress, or a plain phone-book file) is imported as an insured person.

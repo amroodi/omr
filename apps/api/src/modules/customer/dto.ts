@@ -150,6 +150,12 @@ export class CustomerFileClaimDto {
   @Length(0, 1500)
   causeOfDeath?: string;
 
+  // «نوع حادثه» when the cause asks for one (Model View caseType.detail)
+  @IsOptional()
+  @IsString()
+  @Length(0, 120)
+  causeDetail?: string;
+
   // «ذینفع / وراث قانونی» named on the deceased's form (the form itself is uploaded right after filing).
   @IsOptional()
   @IsIn(BENEFICIARY_KINDS as unknown as string[])

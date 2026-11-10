@@ -352,8 +352,8 @@ export class ClaimsController {
   @Permissions(PERMISSIONS.CLAIM_READ)
   @Post(':id/documents')
   @UseInterceptors(FileInterceptor('file', { limits: docLimits }))
-  uploadDocument(@Param('id') id: string, @Query('docCode') docCode: string, @UploadedFile() file: Express.Multer.File) {
-    return this.claims.uploadDocument(id, file, docCode);
+  uploadDocument(@Param('id') id: string, @Query('docCode') docCode: string, @Query('extra') extra: string | undefined, @UploadedFile() file: Express.Multer.File) {
+    return this.claims.uploadDocument(id, file, docCode, extra === '1' || extra === 'true');
   }
 
   /** «پذیرش دستی»: a کارشناس accepts a file the AI refused. */

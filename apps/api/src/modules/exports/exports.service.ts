@@ -113,7 +113,7 @@ export class ExportsService {
       'ردیف',
       'شماره پرونده',
       'کد ملی',
-      'نام بیمه‌گذار',
+      'نام بیمه‌گزار',
       'نوع ذینفع',
       'تاریخ فوت',
       'وضعیت پرونده',
@@ -192,7 +192,7 @@ export class ExportsService {
   <h1>${esc(header.name)}</h1>
   <div class="sub">${esc(header.contactHeader)}</div>
   <table><thead><tr>
-    <th>ردیف</th><th>شماره پرونده</th><th>کد ملی</th><th>نام بیمه‌گذار</th>
+    <th>ردیف</th><th>شماره پرونده</th><th>کد ملی</th><th>نام بیمه‌گزار</th>
     <th>وضعیت پرونده</th><th>مبلغ پرداختی</th><th>تاریخ پرداخت</th>
   </tr></thead><tbody>${body}</tbody></table>
 </body></html>`;

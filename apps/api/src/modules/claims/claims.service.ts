@@ -28,7 +28,7 @@ import { beneficiaryHiddenDocs } from '../required-docs/defaults';
 import { toAsciiDigits } from '../../common/jalali/jalali.util';
 import { ModelStore } from '../model-view/model-store.service';
 import { CoverageService } from '../model-view/coverage.service';
-import { above, actionsFor, causesOf, rulesOf, WorkflowModel, Line, lineForm, InsuredRelation, RELATION_FA, DEPENDENT_RELATIONS, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, physicalActionsFor, PhysicalActionKey, physicalBelow, PhysicalState, directTarget, Purpose, ReviewDesk, Stage, STAGE_FA, WorkflowAction, caseTypeOf, dependentsFor, EntryWay, typesFor } from './workflow';
+import { above, actionsFor, causesOf, CaseDetail, detailFor, docApplies, docRequired, normCause, rulesOf, WorkflowModel, Line, lineForm, InsuredRelation, RELATION_FA, DEPENDENT_RELATIONS, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, physicalActionsFor, PhysicalActionKey, physicalBelow, PhysicalState, directTarget, Purpose, ReviewDesk, Stage, STAGE_FA, WorkflowAction, caseTypeOf, dependentsFor, EntryWay, typesFor } from './workflow';
 import { allKinds, docKindWhere, isKind, kindLabel, kindsOf } from '../../common/kinds';
 
 const CLAIM_DOC_MIME = new Set([
@@ -88,6 +88,7 @@ interface FileClaimInput {
   mainInsuredNationalCode?: string;
   deceasedBirthDate?: string; // ISO
   causeOfDeath?: string; // علت خسارت: the ticked causes and/or typed text
+  causeDetail?: string; // «نوع حادثه» when the cause asks for one
   policyHolderId?: string;
   policyholderCompanyId?: string; // بیمه‌گزار company (set automatically when the بیمه‌گزار files)
   onBehalf?: boolean; // کارگزاری files *as* the بیمه‌گزار company (claim:file-on-behalf) — starts at their desk
@@ -247,7 +248,7 @@ export class ClaimsService {
       // The filing form's own fields, as set in Model View (the server checks them again).
       form: {
         cause: model.form.cause, birthDate: model.form.birthDate, causeLists: model.form.causeLists, causeNotes: model.form.causeNotes,
-        caseTypes: model.form.caseTypes.map((t) => ({ code: t.code, causeGroup: t.causeGroup, causes: causesOf(model, t.code) })),
+        caseTypes: model.form.caseTypes.map((t) => ({ code: t.code, causeGroup: t.causeGroup, causes: causesOf(model, t.code), detail: t.detail ?? null })),
         causeLabels: Object.fromEntries(Object.keys(model.form.lines).map((l) => [l, lineForm(model, l).causeLabel])),
       },
       brokers: brokers.map((b) => ({ ...b, code: partners.find((p) => p.brokerTenantId === b.id)?.brokerCode ?? null, companies: companies.filter((c) => c.tenantId === b.id).map(({ id, name }) => ({ id, name })) })),
@@ -386,6 +387,13 @@ export class ClaimsService {
     if (input.claimType && !form.caseTypes.some((t) => t.code === input.claimType)) throw new BadRequestException('نوع پرونده نامعتبر است');
     if (form.birthDate === 'required' && !input.deceasedBirthDate) throw new BadRequestException('تاریخ تولد بیمه‌شده الزامی است');
     if (form.cause === 'required' && !input.causeOfDeath?.trim()) throw new BadRequestException('علت را مشخص کنید');
+    // A cause picked from the list is kept in the list's own wording.
+    const canon = causesOf(await this.modelOf(insurerTenantId), input.claimType).find((o) => normCause(o) === normCause(input.causeOfDeath));
+    if (canon) input.causeOfDeath = canon;
+    // A cause that asks a second choice («نوع حادثه»): one of its options is required.
+    const detail = detailFor(form.caseTypes.find((t) => t.code === input.claimType), input.causeOfDeath);
+    const causeDetail = detail ? detail.options.find((o) => normCause(o) === normCause(input.causeDetail)) ?? null : null;
+    if (detail && !causeDetail) throw new BadRequestException(`${detail.label} را انتخاب کنید`);
 
     // 30-day (configurable) notice deadline: event date + insurer.noticeDays.
     let noticeDeadline: Date | null = null;
@@ -496,6 +504,7 @@ export class ClaimsService {
         claimedAmount: input.claimedAmount ?? '0',
         description: input.description ?? null,
         causeOfDeath: input.causeOfDeath?.trim() || null,
+        causeDetail,
         beneficiaryType: input.beneficiaryType || null,
         ...(heirs.length ? { heirs: { create: heirs.map((h, i) => ({ fullName: this.crypto.encrypt(h.fullName)!, iban: this.crypto.encrypt(h.iban)!, nationalCode: h.nationalCode ? this.crypto.encrypt(h.nationalCode) : null, relation: h.relation ?? null, sharePercent: h.sharePercent ?? null, order: i })) } } : {}),
         status: byPolicyHolder ? ClaimStatus.SUBMITTED : ClaimStatus.UNDER_REVIEW,
@@ -627,9 +636,10 @@ export class ClaimsService {
 
   /** Latest version of each document on the claim (one per required-doc code; each "other" upload on its own). */
   private async latestDocs(claimId: string) {
-    const docs = await this.db().document.findMany({ where: { claimId }, orderBy: { createdAt: 'desc' }, select: { id: true, docCode: true, fileName: true, reviews: { select: { stage: true, state: true } } } });
+    const docs = await this.db().document.findMany({ where: { claimId }, orderBy: { createdAt: 'desc' }, select: { id: true, docCode: true, fileName: true, extra: true, reviews: { select: { stage: true, state: true } } } });
     const seen = new Set<string>();
     return docs.filter((d) => {
+      if (d.extra) return false; // an extra page («+») goes with its document's decision
       if (!d.docCode) return true;
       if (seen.has(d.docCode)) return false;
       seen.add(d.docCode);
@@ -1332,7 +1342,7 @@ export class ClaimsService {
   }
 
   /** Panel 1 corrects what it filed (name, کد ملی, dates, cause, description) until panel 2 starts on it. */
-  async editFiling(claimId: string, input: { deceasedFullName?: string; deceasedNationalCode?: string; eventDate?: string; deceasedBirthDate?: string; causeOfDeath?: string; description?: string }) {
+  async editFiling(claimId: string, input: { deceasedFullName?: string; deceasedNationalCode?: string; eventDate?: string; deceasedBirthDate?: string; causeOfDeath?: string; causeDetail?: string; description?: string }) {
     const db = this.db();
     const claim = await db.claim.findUnique({ where: { id: claimId } });
     if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
@@ -1370,6 +1380,14 @@ export class ClaimsService {
     }
     if (birth && event && birth > event) throw new BadRequestException('تاریخ تولد بعد از تاریخ وقوع است');
     if (input.causeOfDeath !== undefined) { data.causeOfDeath = input.causeOfDeath.trim() || null; changed.push('cause'); }
+    if (input.causeOfDeath !== undefined || input.causeDetail !== undefined) {
+      const cause = input.causeOfDeath !== undefined ? input.causeOfDeath.trim() || null : claim.causeOfDeath;
+      const det = detailFor(caseTypeOf(await this.modelOf(claim.insurerTenantId), claim.claimType), cause);
+      const want = input.causeDetail !== undefined ? input.causeDetail : claim.causeDetail;
+      const cd = det ? det.options.find((o) => normCause(o) === normCause(want)) ?? null : null;
+      if (det && !cd) throw new BadRequestException(`${det.label} را انتخاب کنید`);
+      if (cd !== claim.causeDetail) { data.causeDetail = cd; changed.push('causeDetail'); }
+    }
     if (input.description !== undefined) { data.description = input.description.trim() || null; changed.push('description'); }
     // A new کد ملی or date: the insurer's system (فن‌آوران) is asked again.
     if (claim.coverageStatus && (changed.includes('nationalCode') || changed.includes('eventDate'))) data.coverageStatus = 'NOT_CHECKED';
@@ -1529,27 +1547,32 @@ export class ClaimsService {
     });
   }
 
-  /** Required-document checklist for a claim, filtered by its cause of death. */
+  /** Required-document checklist for a claim: its نوع پرونده, «علت» and «نوع حادثه» decide what is listed and required. */
   async checklist(claimId: string) {
     const db = this.db();
     const claim = await db.claim.findUnique({ where: { id: claimId } });
     if (!claim) throw new NotFoundException('پرونده یافت نشد');
     this.assertParticipant(claim);
 
-    const reqs = await db.requiredDocument.findMany({
-      where: { tenantId: claim.insurerTenantId, isActive: true, appliesToTypes: { has: claim.claimType }, code: { notIn: beneficiaryHiddenDocs(claim.beneficiaryType) }, ...docKindWhere(claim.line) },
+    const allReqs = await db.requiredDocument.findMany({
+      where: { tenantId: claim.insurerTenantId, isActive: true, code: { notIn: beneficiaryHiddenDocs(claim.beneficiaryType) }, ...docKindWhere(claim.line) },
       orderBy: { order: 'asc' },
     });
+    const reqs = allReqs.filter((r) => docApplies(r, claim));
     const docs = await db.document.findMany({
       where: { claimId },
       orderBy: { createdAt: 'desc' },
-      select: { id: true, docCode: true, fileName: true, verificationStatus: true, verificationNote: true, createdAt: true, uploadedBy: true, aiStatus: true, aiReason: true, aiDetectedCode: true },
+      select: { id: true, docCode: true, fileName: true, extra: true, verificationStatus: true, verificationNote: true, createdAt: true, uploadedBy: true, aiStatus: true, aiReason: true, aiDetectedCode: true },
     });
+    // A document no longer listed for this case (its list changed) keeps its slot while it has files.
+    const kept = allReqs.filter((r) => !reqs.includes(r) && docs.some((d) => d.docCode === r.code));
     const byCode = new Map<string, typeof docs>();
+    const extrasBy = new Map<string, typeof docs>(); // «+»: more pages of the slot's document
     for (const d of docs) {
       const k = d.docCode ?? '_other';
-      if (!byCode.has(k)) byCode.set(k, []);
-      byCode.get(k)!.push(d);
+      const into = d.extra && d.docCode ? extrasBy : byCode;
+      if (!into.has(k)) into.set(k, []);
+      into.get(k)!.push(d);
     }
     // Per-document approvals at each desk (کارگزاری/شعبه/ستاد/شورای فنی).
     const docReviews = docs.length
@@ -1580,7 +1603,7 @@ export class ClaimsService {
     const canEditStage = Object.fromEntries(applicableStages.map((st) => [st, this.canReviewStage(claim, st, desk)])) as Record<string, boolean>;
     // Present each docCode's uploads newest-first, with an explicit version number so admins can
     // tell new re-uploads from older ones at a glance. The newest is the "current" version.
-    const labelOf = new Map(reqs.map((r) => [r.code, r.label]));
+    const labelOf = new Map([...reqs, ...kept].map((r) => [r.code, r.label]));
     const present = (group: typeof docs) =>
       group.map((d, i) => ({
         id: d.id,
@@ -1609,19 +1632,20 @@ export class ClaimsService {
         }),
       }));
     const entryList = await this.entryRequired(claim, reqs.map((r) => r.code));
-    const items = reqs.map((r) => {
+    const items = [...reqs, ...kept].map((r) => {
       const group = byCode.get(r.code) ?? [];
       const latest = group[0];
       return {
         code: r.code,
         label: r.label,
         appliesToTypes: r.appliesToTypes,
-        required: entryList ? entryList.required.has(r.code) || (entryList.accident.has(r.code) && this.isCrash(claim)) : r.requiredTypes.includes(claim.claimType),
+        required: kept.includes(r) ? false : entryList ? entryList.required.has(r.code) || (entryList.accident.has(r.code) && this.isCrash(claim)) : docRequired(r, claim),
         accidentOnly: !!entryList?.accident.has(r.code), // «در صورت وقوع سانحه تصادف» (not greyed)
         uploaded: !!latest && latest.aiStatus !== 'MISMATCH', // a refused newest file leaves the slot to fix
         aiRefused: latest?.aiStatus === 'MISMATCH',
         latestStatus: latest?.verificationStatus ?? null,
         documents: present(group),
+        extras: present(extrasBy.get(r.code) ?? []),
       };
     });
     // نقص مدارک: a required document asked for again is due again; an operator's own line is a slot of its own.
@@ -1637,13 +1661,13 @@ export class ClaimsService {
       const group = byCode.get(x.code) ?? [];
       (items as any[]).push({
         code: x.code, label: x.label, appliesToTypes: [], required: x.open, accidentOnly: false,
-        uploaded: x.uploaded, aiRefused: false, latestStatus: group[0]?.verificationStatus ?? null, documents: present(group),
+        uploaded: x.uploaded, aiRefused: false, latestStatus: group[0]?.verificationStatus ?? null, documents: present(group), extras: present(extrasBy.get(x.code) ?? []),
         deficiency: { open: x.open, raisedAt: toJalali(x.raisedAt), custom: true },
       });
     }
-    // what is asked in an open نقص first, then what blocks sending
-    items.sort((x: any, y: any) => Number(!!y.deficiency?.open) - Number(!!x.deficiency?.open) || Number(y.required) - Number(x.required));
-    const reqCodes = new Set([...reqs.map((r) => r.code), ...seenDef]);
+    // what is asked in an open نقص first, then the insurer's own order
+    items.sort((x: any, y: any) => Number(!!y.deficiency?.open) - Number(!!x.deficiency?.open));
+    const reqCodes = new Set([...reqs.map((r) => r.code), ...kept.map((r) => r.code), ...seenDef]);
     return {
       claimType: claim.claimType,
       archived: claim.status === 'PAID', // a paid case takes no more uploads or reviews
@@ -1778,7 +1802,7 @@ export class ClaimsService {
     await db.document.update({ where: { id: docId }, data: { verificationStatus: status } });
   }
   /** Upload a document to a claim, tagged with the required-document code it satisfies. */
-  async uploadDocument(claimId: string, file: Express.Multer.File, docCode: string) {
+  async uploadDocument(claimId: string, file: Express.Multer.File, docCode: string, extra = false) {
     if (!file?.buffer?.length) throw new BadRequestException('فایلی دریافت نشد');
     const excelOk = docCode?.trim() === BENEFICIARY_FILE_CODE && EXCEL_MIME.has(file.mimetype);
     if (!claimDocOk(file) && !excelOk) {
@@ -1795,7 +1819,7 @@ export class ClaimsService {
       // An assessor without claim:file uploads only while the case is on their own desk.
       if (!(ctx.permissions ?? []).includes(PERMISSIONS.CLAIM_PROCESS) || !this.holdsDesk(claim, await this.myDesk())) throw new ForbiddenException('بارگذاری مدرک فقط وقتی پرونده نزد شماست ممکن است');
     }
-    return this.storeDocument(claim, file, docCode, getContext()?.actorId ?? null, () => this.uploaderPhone(claim));
+    return this.storeDocument(claim, file, docCode, getContext()?.actorId ?? null, () => this.uploaderPhone(claim), extra && !!docCode?.trim());
   }
 
   /**
@@ -1804,7 +1828,7 @@ export class ClaimsService {
    */
   async storeDocument(
     claim: { id: string; insurerTenantId: string; brokerTenantId: string | null },
-    file: Express.Multer.File, docCode: string, uploadedBy: string | null, notifyPhone: () => Promise<string | null>,
+    file: Express.Multer.File, docCode: string, uploadedBy: string | null, notifyPhone: () => Promise<string | null>, extra = false,
   ) {
     const claimId = claim.id;
     const db = this.prisma.unscoped(); // callers have already checked access to the case
@@ -1821,12 +1845,14 @@ export class ClaimsService {
         storageKey,
         uploadedBy,
         verificationStatus: 'PENDING',
+        extra,
       },
       select: { id: true, docCode: true, fileName: true },
     });
-    await this.audit.record({ action: AuditAction.UPLOAD, tenantId: claim.insurerTenantId, targetType: 'ClaimDocument', targetId: doc.id, metadata: { claimId, docCode } });
+    await this.audit.record({ action: AuditAction.UPLOAD, tenantId: claim.insurerTenantId, targetType: 'ClaimDocument', targetId: doc.id, metadata: { claimId, docCode, ...(extra ? { extra } : {}) } });
     let aiQueued = false;
-    if (docCode.trim() !== BENEFICIARY_FILE_CODE && (await this.aiSettings.enabledForClaim(claim))) {
+    // An extra page isn't checked on its own (it may be a paper that only goes with the document).
+    if (!extra && docCode.trim() !== BENEFICIARY_FILE_CODE && (await this.aiSettings.enabledForClaim(claim))) {
       await this.aiQueue.enqueue(doc.id, claimId, await notifyPhone().catch(() => null));
       aiQueued = true;
     }
@@ -2065,7 +2091,7 @@ export class ClaimsService {
       branchIds.length ? db.branch.findMany({ where: { id: { in: branchIds } }, select: { id: true, name: true } }) : [],
       ids.length ? db.claimFieldValue.findMany({ where: { claimId: { in: ids } }, select: { claimId: true, key: true, value: true } }) : [],
       ids.length ? db.document.findMany({ where: { claimId: { in: ids } }, select: { claimId: true, docCode: true, verificationStatus: true }, orderBy: { createdAt: 'desc' } }) : [],
-      db.requiredDocument.findMany({ where: { isActive: true, tenantId: { in: insurerIds } }, select: { tenantId: true, code: true, requiredTypes: true } }),
+      db.requiredDocument.findMany({ where: { isActive: true, tenantId: { in: insurerIds } }, select: { tenantId: true, code: true, appliesToTypes: true, requiredTypes: true, causes: true, requiredDetails: true } }),
       db.claimFieldDef.findMany({ where: { tenantId: { in: insurerIds }, isActive: true }, orderBy: { order: 'asc' }, select: { key: true, label: true, type: true } }),
     ]);
     const tName = new Map(tenants.map((t) => [t.id, t.name]));
@@ -2090,7 +2116,7 @@ export class ClaimsService {
       const f = fv.get(c.id) ?? {};
       const cd = docsBy.get(c.id) ?? [];
       const hidden = beneficiaryHiddenDocs(c.beneficiaryType);
-      const required = reqs.filter((r) => r.tenantId === c.insurerTenantId && r.requiredTypes.includes(c.claimType) && !hidden.includes(r.code)).map((r) => r.code);
+      const required = reqs.filter((r) => r.tenantId === c.insurerTenantId && docApplies(r, c) && docRequired(r, c) && !hidden.includes(r.code)).map((r) => r.code);
       const latestByCode = new Map<string, string>();
       for (const d of cd) if (d.docCode && !latestByCode.has(d.docCode)) latestByCode.set(d.docCode, d.verificationStatus);
       const uploaded = required.filter((code) => latestByCode.has(code)).length;
@@ -2773,7 +2799,7 @@ export class ClaimsService {
     const insurerIds = tenant?.kind === 'INSURER' ? [tenantId]
       : (await db.brokerInsurerPartnership.findMany({ where: { brokerTenantId: tenantId, isActive: true }, select: { insurerTenantId: true } })).map((p) => p.insurerTenantId);
     // Each type also carries its «علت» list and what panel 1 calls it in this kind («علت فوت» / «علت خسارت»).
-    const out = new Map<string, { code: string; label: string; causeGroup: string; death: boolean; causes: string[]; causeLabel: string }>();
+    const out = new Map<string, { code: string; label: string; causeGroup: string; death: boolean; causes: string[]; causeLabel: string; detail?: CaseDetail | null }>();
     for (const id of insurerIds) {
       const m = await this.modelOf(id);
       for (const t of m.form.caseTypes) {
@@ -2838,6 +2864,8 @@ export class ClaimsService {
       claimType: c.claimType,
       claimTypeLabel: caseTypeOf(this.store.get(c.insurerTenantId), c.claimType)?.label ?? c.claimType,
       claimTypeDeath: caseTypeOf(this.store.get(c.insurerTenantId), c.claimType)?.death ?? false,
+      causeDetail: c.causeDetail ?? null, // «نوع حادثه»
+      caseDetail: caseTypeOf(this.store.get(c.insurerTenantId), c.claimType)?.detail ?? null, // the choice and the causes that ask it
       channel: c.channel,
       claimedAmount: c.claimedAmount?.toString(), // = estimatedAmount (مبلغ برآوردی); kept for back-compat
       estimatedAmount: c.claimedAmount?.toString(), // مبلغ خسارت برآوردی — set at filing

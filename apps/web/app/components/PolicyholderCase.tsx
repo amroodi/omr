@@ -16,6 +16,7 @@ import { AI_QUEUED_FA, aiVerdict, ChecklistItem, ClaimDoc, dateOnly, STATUS_FA, 
 import { DocUploadTile, OnProgress, UploadButton } from './upload';
 import { BENEFICIARY_FORM, BeneficiaryChoice, INHERITANCE_CERT, NO_FORM_LETTER } from './heirs';
 import { JalaliDatePicker } from './JalaliDatePicker';
+import { causeDetailFor } from './claim-wording';
 import { Flash } from './Toaster';
 import { DeficiencyBox } from './DeficiencyBox';
 
@@ -32,7 +33,7 @@ function jalaliToIso(input: string): string | null {
   return isNaN(d.getTime()) ? null : d.toISOString();
 }
 
-type FilingForm = { name: string; nid: string; birth: string; event: string; cause: string; description: string };
+type FilingForm = { name: string; nid: string; birth: string; event: string; cause: string; detail: string; description: string };
 
 /**
  * «ویرایش مشخصات»: panel 1 corrects what it filed until panel 2 starts on the case (its first review,
@@ -41,7 +42,7 @@ type FilingForm = { name: string; nid: string; birth: string; event: string; cau
 function FilingEditor({ claim, api, realm, onSaved, onCancel }: { claim: any; api: string; realm: 'customer' | 'org'; onSaved: () => void; onCancel: () => void }) {
   const start: FilingForm = {
     name: claim.deceasedName ?? '', nid: /^\d{10}$/.test(asc(claim.deceasedNationalCode)) ? asc(claim.deceasedNationalCode) : '',
-    birth: asc(claim.deceasedBirthDate), event: asc(claim.eventDate), cause: claim.causeOfDeath ?? '', description: claim.description ?? '',
+    birth: asc(claim.deceasedBirthDate), event: asc(claim.eventDate), cause: claim.causeOfDeath ?? '', detail: claim.causeDetail ?? '', description: claim.description ?? '',
   };
   const [f, setF] = useState(start);
   const [error, setError] = useState('');
@@ -54,12 +55,15 @@ function FilingEditor({ claim, api, realm, onSaved, onCancel }: { claim: any; ap
     if (f.event !== start.event) { const iso = jalaliToIso(f.event); if (!iso) return setError('تاریخ وقوع نامعتبر است (نمونه: ۱۴۰۵/۰۷/۰۱)'); body.eventDate = iso; }
     if (f.birth !== start.birth) { const iso = f.birth ? jalaliToIso(f.birth) : ''; if (iso === null) return setError('تاریخ تولد نامعتبر است (نمونه: ۱۳۴۵/۰۵/۱۲)'); body.deceasedBirthDate = iso; }
     if (f.cause.trim() !== start.cause) body.causeOfDeath = f.cause.trim();
+    if (detail && !detail.options.includes(f.detail)) return setError(`${detail.label} را انتخاب کنید`);
+    if ((detail ? f.detail : '') !== start.detail) body.causeDetail = detail ? f.detail : '';
     if (f.description.trim() !== start.description) body.description = f.description.trim();
     if (!Object.keys(body).length) return onCancel();
     setBusy(true);
     try { await client.put(`${api}/filing`, body, realm); onSaved(); } catch (e: any) { setError(e.message); } finally { setBusy(false); }
   };
   const set = (k: keyof FilingForm) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value });
+  const detail = causeDetailFor(claim.caseDetail, f.cause); // «نوع حادثه» after some causes
   return (
     <div className="space-y-3 mt-3">
       <Flash text={error} ok={false} />
@@ -69,6 +73,7 @@ function FilingEditor({ claim, api, realm, onSaved, onCancel }: { claim: any; ap
         <label className="block"><span className="label">تاریخ تولد</span><JalaliDatePicker value={f.birth} onChange={(v) => setF({ ...f, birth: v })} placeholder="۱۳۴۵/۰۵/۱۲" /></label>
         <label className="block"><span className="label">تاریخ وقوع</span><JalaliDatePicker value={f.event} onChange={(v) => setF({ ...f, event: v })} placeholder="۱۴۰۵/۰۷/۰۱" /></label>
         <label className="block md:col-span-2"><span className="label">علت</span><input className="input" value={f.cause} onChange={set('cause')} maxLength={300} /></label>
+        {detail && <label className="block"><span className="label">{detail.label} *</span><select className="input" value={f.detail} onChange={set('detail')}><option value="">— انتخاب کنید —</option>{detail.options.map((o) => <option key={o} value={o}>{o}</option>)}</select></label>}
         <label className="block md:col-span-2 lg:col-span-3"><span className="label">توضیحات</span><textarea className="input" rows={2} value={f.description} onChange={set('description')} maxLength={2000} /></label>
       </div>
       <div className="flex gap-2">
@@ -175,12 +180,12 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
 
   // Called by the document's upload dialog: progress goes both to the dialog/tile ring and to `up`
   // (so «ثبت نهایی» knows an upload is still running); a failure is re-thrown for the dialog to show.
-  const upload = async (code: string, file: File, onProgress: OnProgress) => {
+  const upload = async (code: string, file: File, onProgress: OnProgress, extra = false) => {
     setError('');
     setUp((u) => ({ ...u, [code]: { pct: 0, eta: null } }));
     try {
       const fd = new FormData(); fd.append('file', file);
-      const r = await client.upload<{ aiQueued?: boolean }>(`${api}/documents?docCode=${encodeURIComponent(code)}`, fd, realm,
+      const r = await client.upload<{ aiQueued?: boolean }>(`${api}/documents?docCode=${encodeURIComponent(code)}${extra ? '&extra=1' : ''}`, fd, realm,
         (pct, eta) => { onProgress(pct, eta); setUp((u) => ({ ...u, [code]: { pct, eta } })); });
       if (r?.aiQueued) setAiNote(true);
       setUp((u) => ({ ...u, [code]: { done: true } }));
@@ -278,7 +283,7 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
                 <div><div className="cu-card-t">بیمه‌شده (متوفی)</div><div className="cu-card-v">{claim.deceasedName || '—'}</div>
                   {claim.deceasedNationalCode && <div className="cu-card-s">کد ملی: <bdi className="latin-digits">{claim.deceasedNationalCode}</bdi></div>}
                   <div className="cu-card-s">{claim.claimTypeDeath === false ? 'تاریخ حادثه' : 'تاریخ فوت'}: {claim.eventDate || '—'}</div>
-                  {claim.causeOfDeath && <div className="cu-card-s">علت: {claim.causeOfDeath}</div>}</div>
+                  {claim.causeOfDeath && <div className="cu-card-s">علت: {claim.causeOfDeath}{claim.causeDetail ? ` — ${claim.causeDetail}` : ''}</div>}</div>
                 <span className="cu-card-ico"><BigIcon path={IC.user} size={34} /></span>
               </div>
               <div className="pcard cu-card">
@@ -318,7 +323,9 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
               </h2>
               <p className="text-xs mb-3" style={{ color: 'var(--muted)' }}>مدارک ستاره‌دار (*) الزامی است؛ بقیه را برحسب مورد بارگذاری کنید.{checklist?.note ? ` ${checklist.note}` : ''}</p>
               <Flash text={aiNote ? AI_QUEUED_FA : null} ok />
-              <div className="space-y-2.5">
+              {/* Sinad-style document table: ردیف · عنوان مدرک · وضعیت · تصاویر مدارک (each page a thumbnail; «+» adds pages) */}
+              <div className="sdocs" role="table" aria-label="مدارک مورد نیاز">
+                <div className="sdocs-head" role="row"><span role="columnheader">ردیف</span><span role="columnheader">عنوان مدرک</span><span role="columnheader">وضعیت</span><span role="columnheader">تصاویر مدارک</span></div>
                 {(() => { let n = 0; return checklist?.items.map((it) => {
                   // دارد / ندارد not answered yet: one row asks; the answer decides which document stays.
                   const unchosen = checklist.items.some((x) => x.code === BENEFICIARY_FORM) && checklist.items.some((x) => x.code === INHERITANCE_CERT);
@@ -331,18 +338,31 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
                   const st = up[it.code];
                   const d = it.documents[0] as ClaimDoc | undefined;
                   const older = it.documents.slice(1);
+                  const pages = [...(d ? [d] : []), ...(it.extras ?? [])]; // the current file, then the pages added with «+»
+                  const chip = !d ? (it.required ? 'بارگذاری نشده' : 'برحسب نیاز') : story.tone === 'ok' ? 'تایید شده' : story.tone === 'bad' ? 'رد شده' : 'در انتظار بررسی';
                   return (
-                    <div key={it.code} className={`doc-row cu-doc tone-${story.tone}${greyed ? ' is-optional' : ''}`}>
-                      <div className="cu-doc-head">
-                        <div className="text-sm min-w-0">
-                          <div className="font-bold"><span className="doc-n">{(no).toLocaleString('fa-IR')}</span>{it.label}{(it.required || it.accidentOnly) && <span style={{ color: 'var(--danger)' }}> *</span>}</div>
+                    <div key={it.code} role="row" className={`sdoc tone-${story.tone}${greyed ? ' is-optional' : ''}`}>
+                      <div className="sdoc-main">
+                        <span className="sdoc-n" role="cell">{no.toLocaleString('fa-IR')}</span>
+                        <div className="sdoc-t" role="cell">
+                          <div className="sdoc-label">{it.label}{(it.required || it.accidentOnly) && <span className="sdoc-req"> *</span>}</div>
                           {it.accidentOnly && <div className="text-xs font-bold" style={{ color: 'var(--danger)' }}>در صورت وقوع سانحه تصادف{it.required ? '' : ' (برای این پرونده الزامی نیست)'}</div>}
-                          <div className="cu-story">{story.text}</div>
+                          <div className="sdoc-story">{story.text}</div>
                         </div>
-                        <div className="cu-doc-up">
+                        <span role="cell" className="sdoc-st-w"><span className={`sdoc-st is-${story.tone}`}>{chip}</span></span>
+                        <div className="sdoc-files" role="cell">
+                          {pages.map((p, i) => {
+                            const bad = (p.reviews ?? []).some((r) => r.state === 'REJECTED') || p.ai?.status === 'MISMATCH';
+                            return (
+                              <button key={p.id} type="button" className={`sdoc-page${bad ? ' is-bad' : ''}`} onClick={() => viewDoc(p.id)} title={`${p.fileName}${p.uploadedAt ? ` — ${p.uploadedAt}` : ''}`}>
+                                <svg viewBox="0 0 24 24" aria-hidden><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6" /></svg>
+                                <span>{pages.length > 1 ? `صفحهٔ ${(i + 1).toLocaleString('fa-IR')}` : 'مشاهده'}</span>
+                              </button>
+                            );
+                          })}
                           {claim.status !== 'PAID' && !(unchosen && isBeneficiary) && (
-                            <DocUploadTile label={it.label} required={!!it.required} {...(it.code === INHERITANCE_CERT ? { addText: 'بارگزاری فرم انحصار وراثت' } : {})} uploaded={it.uploaded} rejected={story.tone === 'bad' || !!it.aiRefused}
-                              cameraOnly onUpload={(f, onP) => upload(it.code, f, onP)} />
+                            <DocUploadTile compact label={it.label} required={!!it.required} {...(it.code === INHERITANCE_CERT ? { addText: 'بارگزاری فرم انحصار وراثت' } : {})} uploaded={it.uploaded} rejected={story.tone === 'bad' || !!it.aiRefused}
+                              cameraOnly onUpload={(f, onP) => upload(it.code, f, onP)} onExtra={(f, onP) => upload(it.code, f, onP, true)} />
                           )}
                         </div>
                       </div>
@@ -351,8 +371,8 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
 
                       {/* Precise trail of the current file: when it was uploaded, then each desk's decision */}
                       {d && (
-                        <div className="cu-trail">
-                          <span className="cu-step is-ok"><Icon path={OK} />بارگذاری{d.uploadedAt ? ` — ${d.uploadedAt}` : ''}{d.version > 1 ? ` (نسخهٔ ${d.version.toLocaleString('fa-IR')})` : ''}</span>
+                        <div className="cu-trail sdoc-trail">
+                          <span className="cu-step is-ok"><Icon path={OK} />بارگذاری{d.uploadedAt ? ` — ${d.uploadedAt}` : ''}{d.version > 1 ? ` (نسخهٔ ${d.version.toLocaleString('fa-IR')})` : ''}{(it.extras ?? []).length ? ` + ${(it.extras ?? []).length.toLocaleString('fa-IR')} صفحهٔ دیگر` : ''}</span>
                           {(() => { const v = aiVerdict(d.ai); return v && <span className={`cu-step is-${v.tone}`}><Icon path={v.tone === 'ok' ? OK : v.tone === 'no' ? NO : 'M12 22a10 10 0 100-20 10 10 0 000 20zM12 7v5l3 2'} />{v.text}</span>; })()}
                           {(claim.story?.manual ? [] : d.reviews ?? []).map((r) => (
                             <span key={r.stage} className={`cu-step is-${r.state === 'APPROVED' ? 'ok' : r.state === 'REJECTED' ? 'no' : 'wait'}`} title={r.note ? `دلیل: ${r.note}` : undefined}>
@@ -360,11 +380,10 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
                               {DESK_FA[r.stage] || r.stage}: {r.state === 'APPROVED' ? 'تایید شد' : r.state === 'REJECTED' ? 'رد شد' : 'در دست بررسی'}{r.changedAt && r.state !== 'PENDING' ? ` — ${r.changedAt}` : ''}
                             </span>
                           ))}
-                          <button type="button" className="cu-view" onClick={() => viewDoc(d.id)}><Icon path="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8zM12 15a3 3 0 100-6 3 3 0 000 6z" /> مشاهدهٔ فایل</button>
                           {d.ai?.status === 'MISMATCH' && <div className="cu-reason">{aiVerdict(d.ai)?.why}</div>}
-                          {(d.reviews ?? []).filter((r) => r.state === 'REJECTED' && r.note).map((r) => (
-                            <div key={`n-${r.stage}`} className="cu-reason">دلیل رد ({DESK_FA[r.stage]}): {r.note}</div>
-                          ))}
+                          {[d, ...(it.extras ?? [])].flatMap((p) => (p.reviews ?? []).filter((r) => r.state === 'REJECTED' && r.note).map((r) => (
+                            <div key={`n-${p.id}-${r.stage}`} className="cu-reason">دلیل رد ({DESK_FA[r.stage]}): {r.note}</div>
+                          )))}
                         </div>
                       )}
                       {older.length > 0 && (

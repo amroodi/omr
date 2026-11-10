@@ -2468,3 +2468,71 @@ a.cu-card.is-link:hover { transform: translateY(-2px); box-shadow: 0 0 0 2px var
 .dfx-notes { list-style: disc; margin-inline-start: 22px; font-size: 13px; }
 .dfx-help { font-size: 12px; opacity: .85; }
 .dfx-actions { border-top: 1px dashed #e8a1aa; padding-top: 8px; }
+
+/* ── Panel 1 «مدارک مورد نیاز»: Sinad-style document table (ردیف · عنوان مدرک · وضعیت · تصاویر مدارک) ── */
+.sdocs { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.sdocs-head, .sdoc-main { display: grid; grid-template-columns: 52px minmax(0, 1fr) 128px minmax(300px, 460px); align-items: center; column-gap: 12px; }
+.sdocs-head { background: #eef1f6; color: #3a4357; font-size: 12.5px; font-weight: 800; padding: 9px 12px; border-bottom: 1px solid var(--border); }
+:root.dark .sdocs-head { background: #16213a; color: #c7d0e3; }
+.sdocs-head > span:first-child, .sdoc-n { justify-self: center; }
+.sdoc { padding: 10px 12px; border-bottom: 1px solid var(--border); transition: background .12s ease; }
+.sdoc:last-child { border-bottom: 0; }
+.sdoc:nth-child(odd) { background: color-mix(in srgb, var(--surface-2) 70%, var(--surface)); }
+.sdoc:hover { background: rgba(var(--brand-rgb), .045); }
+.sdoc-n { width: 28px; height: 28px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; background: #e6eaf1; color: #2b3447; font-size: 12.5px; font-weight: 800; }
+:root.dark .sdoc-n { background: #1d2a44; color: #dbe3f3; }
+.sdoc-label { font-size: 13.5px; font-weight: 700; line-height: 1.85; color: var(--text); }
+.sdoc-req { color: var(--danger); }
+.sdoc-story { font-size: 12px; color: var(--muted); margin-top: 1px; }
+.sdoc.tone-bad .sdoc-story { color: var(--danger); font-weight: 700; }
+.sdoc-st-w { display: flex; }
+.sdoc-st { display: inline-flex; align-items: center; justify-content: center; min-width: 104px; padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: 800; background: #eef1f6; color: #5b6478; }
+.sdoc-st.is-ok { background: #e3f6ea; color: #157a3b; }
+.sdoc-st.is-bad { background: #fde8ea; color: #c5283d; }
+.sdoc-st.is-wait { background: #fff3df; color: #b45f06; }
+:root.dark .sdoc-st { background: #1d2a44; color: #b5c0d6; }
+:root.dark .sdoc-st.is-ok { background: #12301f; color: #4ade80; }
+:root.dark .sdoc-st.is-bad { background: #3b1219; color: #f87171; }
+:root.dark .sdoc-st.is-wait { background: #33270f; color: #fbbf24; }
+.sdoc-files { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; }
+.sdoc-page {
+  display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; width: 58px; height: 52px;
+  border: 1px solid var(--border-strong); border-radius: 6px; background: var(--surface); color: #3a4357; font-size: 10.5px; font-weight: 700; cursor: pointer;
+  transition: border-color .12s ease, box-shadow .12s ease;
+}
+.sdoc-page svg { width: 20px; height: 20px; fill: none; stroke: var(--brand); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.sdoc-page:hover { border-color: var(--brand); box-shadow: 0 2px 8px rgba(var(--brand-rgb), .16); }
+.sdoc-page.is-bad { border-color: var(--danger); color: var(--danger); }
+.sdoc-page.is-bad svg { stroke: var(--danger); }
+:root.dark .sdoc-page { color: #c7d0e3; }
+.sdoc-files .dut-help { width: 26px; height: 26px; font-size: .82rem; }
+.sdoc-files .dut-tile { min-height: 52px; padding: 6px 12px; gap: 8px; font-size: 12.5px; font-weight: 700; border-style: dashed; border-color: #b9c2d3; border-radius: 6px; }
+.sdoc-files .dut-tile.is-up { border-style: solid; }
+.sdoc-files .dut-ico { width: 22px; height: 22px; }
+.sdoc-trail { margin-top: 8px; padding-top: 8px; margin-inline-start: 64px; }
+.sdoc .cu-older, .sdoc .cu-err { margin-inline-start: 64px; }
+.sdoc.is-optional { filter: grayscale(1); opacity: .7; }
+.sdoc.is-optional:hover, .sdoc.is-optional:focus-within { opacity: 1; filter: none; }
+@media (max-width: 900px) {
+  .sdocs-head { display: none; }
+  .sdoc-main { grid-template-columns: 36px minmax(0, 1fr); row-gap: 8px; }
+  .sdoc-st-w { grid-column: 2; }
+  .sdoc-files { grid-column: 1 / -1; justify-content: flex-start; }
+  .sdoc-trail, .sdoc .cu-older, .sdoc .cu-err { margin-inline-start: 0; }
+}
+
+/* «+»: one more page of a document (or a paper that goes with it) — next to every upload tile and in its dialog */
+.dut-plus {
+  flex: none; width: 40px; align-self: stretch; min-height: 40px; border-radius: 6px; border: 1.5px dashed var(--brand); color: var(--brand);
+  background: rgba(var(--brand-rgb), .06); display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+  transition: background .12s ease, transform .1s ease;
+}
+.dut-plus svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; }
+.dut-plus:hover:not(:disabled) { background: rgba(var(--brand-rgb), .14); }
+.dut-plus:active:not(:disabled) { transform: translateY(1px); }
+.dut-plus:disabled { opacity: .5; cursor: not-allowed; }
+.dut-plus:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.upd-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; margin-bottom: 12px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--border); }
+.upd-modes button { padding: 8px 10px; border-radius: 6px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.upd-modes button b { font-size: 15px; }
+.upd-modes button.is-on { background: var(--surface); color: var(--brand); box-shadow: 0 1px 4px rgba(0, 0, 0, .08); }
