@@ -2536,3 +2536,29 @@ a.cu-card.is-link:hover { transform: translateY(-2px); box-shadow: 0 0 0 2px var
 .upd-modes button { padding: 8px 10px; border-radius: 6px; font-size: 13px; font-weight: 700; color: var(--muted); }
 .upd-modes button b { font-size: 15px; }
 .upd-modes button.is-on { background: var(--surface); color: var(--brand); box-shadow: 0 1px 4px rgba(0, 0, 0, .08); }
+
+/* «ارزیابی»: ✓/✕ on each document for the desk holding the case, and on the scan itself */
+.ev-doc.is-on { background: rgba(var(--brand-rgb), .08); }
+.ev-doc-why { font-size: 11.5px; color: var(--danger); padding: 2px 10px 6px; }
+.ev-reject { display: grid; gap: 6px; padding: 8px 10px; background: #fff5f5; border: 1px solid #f3c2c8; border-radius: 6px; margin: 4px 0; }
+:root.dark .ev-reject { background: #2a1217; border-color: #5b2430; }
+.ev-docs-rv { display: flex; align-items: center; gap: 10px; padding: 6px 10px; background: #f3f5f9; border-bottom: 1px solid var(--border); font-size: 12.5px; }
+:root.dark .ev-docs-rv { background: #16213a; }
+.ev-docs-rv-t { flex: 1; min-width: 0; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ev-docs-rv-s { font-size: 11.5px; font-weight: 800; padding: 2px 8px; border-radius: 4px; background: #fff3df; color: #b45f06; }
+.ev-docs-rv-s.is-APPROVED { background: #e3f6ea; color: #157a3b; }
+.ev-docs-rv-s.is-REJECTED { background: #fde8ea; color: #c5283d; }
+
+/* «نقص رفع شد»: the desk's «تایید» right where the fix was made */
+.dfx.is-fixed { background: #eefaf2; border-color: #9fd9b4; color: #14532d; }
+:root.dark .dfx.is-fixed { background: #10291b; border-color: #276d44; color: #bbf7d0; }
+
+/* «تاریخ اعلام فوت» on panel 2 */
+.dnd { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); font-size: 13px; margin-bottom: 10px; }
+.dnd-l { color: var(--muted); font-weight: 700; }
+.dnd-pick { min-width: 170px; }
+.dnd-btn { padding: 4px 12px; border-radius: 4px; font-size: 12px; font-weight: 800; background: var(--brand); color: #fff; }
+.dnd-btn.is-ghost { background: transparent; color: var(--brand); box-shadow: inset 0 0 0 1px var(--brand); }
+.dnd-btn:disabled { opacity: .55; }
+.dnd-err { flex-basis: 100%; color: var(--danger); font-size: 12px; }
+.dnd.is-ev { margin: 6px 0; border-style: dashed; }

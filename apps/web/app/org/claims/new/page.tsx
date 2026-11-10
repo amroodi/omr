@@ -10,7 +10,7 @@ import { JalaliDatePicker } from '../../../components/JalaliDatePicker';
 import { Coverage, CoverageNote, coverageText } from '../../../components/CoverageNote';
 import { ORG_NAV } from '../../nav';
 import { SearchPick } from '../../../components/SearchPick';
-import { CaseDetail, causeDetailFor } from '../../../components/claim-wording';
+import { CaseDetail, causeDetailFor, GENDERS } from '../../../components/claim-wording';
 import { eventDateLabel, CAUSE_LABEL, EVENT_DATE_LABEL, insuredNameLabel } from '../../../components/claim-wording';
 import { useDraft } from '../../../../lib/draft';
 
@@ -78,7 +78,7 @@ export default function NewClaim() {
   const [f, setF, clearF] = useDraft('claim', {
     companyId: '', policyHolderId: '', insurerTenantId: '', channel: 'BROKER', sellingBranchId: '',
     claimType: 'DEATH_ILLNESS', deceasedFullName: '', deceasedNationalCode: '', birthDate: '', eventDate: '', claimedAmount: '', policyNumber: '', description: '',
-    startStage: '', brokerTenantId: '', branchId: '', causeOfDeath: '', causeDetail: '',
+    startStage: '', brokerTenantId: '', branchId: '', causeOfDeath: '', causeDetail: '', gender: '',
   });
   const [causes, setCauses, clearCauses] = useDraft<string[]>('causes', []); // picked items of «علت خسارت»
   const [ins, setIns] = useState<InsurerEntry | null>(null);
@@ -204,6 +204,7 @@ export default function NewClaim() {
       if (insStart === 'BRANCH' && f.branchId && !ins.myBranchId) payload.branchId = f.branchId; // else: the operator's own شعبه
       if (cause) payload.causeOfDeath = cause;
       if (causeDetail) payload.causeDetail = causeDetail;
+      if (f.gender) payload.insuredGender = f.gender;
       if (iso) payload.eventDate = iso;
       if (birthIso) payload.deceasedBirthDate = birthIso;
       if (f.policyNumber.trim()) payload.policyNumber = toAscii(f.policyNumber).trim();
@@ -246,6 +247,7 @@ export default function NewClaim() {
       if (f.startStage) payload.startStage = f.startStage;
       if (cause) payload.causeOfDeath = cause;
       if (causeDetail) payload.causeDetail = causeDetail;
+      if (f.gender) payload.insuredGender = f.gender;
       const c = await client.post<{ id: string }>('/claims', payload, 'org');
       clearF(); clearCauses();
       router.push(`/org/claims/${c.id}`);
@@ -372,6 +374,11 @@ export default function NewClaim() {
 
           <PField label={`${insuredNameLabel()} *`}>
             <input className="input" value={f.deceasedFullName} onChange={set('deceasedFullName')} />
+          </PField>
+          <PField label="جنسیت بیمه‌شده" help="برای نمایش «آقای» / «خانم» پیش از نام (و «مرحوم» در پروندهٔ فوت).">
+            <select className="input" value={f.gender ?? ''} onChange={set('gender')}>
+              <option value="">— انتخاب کنید —</option>{Object.entries(GENDERS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
           </PField>
           <PField label="نوع پرونده *" help="نوع خسارت را مشخص کنید.">
             <select className="input" value={f.claimType} onChange={set('claimType')}>

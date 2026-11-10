@@ -1,4 +1,5 @@
 'use client';
+import { DeathNoticeDate } from '../../../../components/DeathNoticeDate';
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { client, getToken } from '../../../../../lib/client';
@@ -7,19 +8,19 @@ import { ErrorBox, FancyLoader, Overlay, ReviewButtons, Spinner, StatusBadge } f
 import { Workflow, WorkflowPanel } from '../../../../components/WorkflowPanel';
 import { DocMedia } from '../../../../components/DocViewer';
 import { OnProgress, UploadButton } from '../../../../components/upload';
-import { INSURED_RELATIONS } from '../../../../components/claim-wording';
+import { Filer, filerText, INSURED_RELATIONS, personTitle } from '../../../../components/claim-wording';
 
 /**
  * «ارزیابی» window of «روند سیناد» (Alborz): full screen like Sinad's — grey case strip on top, the scans
  * on the left, the evaluation on the right (risk box, «ارزیابی» / «عودت» tabs, Sinad's buttons) and the
  * icon bar at the bottom. Every button calls the chain's own actions, so the rules are those of panel 2.
  */
-interface DocReview { stage: string; state: string; canEdit: boolean }
+interface DocReview { stage: string; state: string; canEdit: boolean; note?: string | null }
 interface ClaimDoc { id: string; fileName: string; isLatest: boolean; reviews?: DocReview[] }
 interface Checklist { complete: boolean; items: { code: string; label: string; documents: ClaimDoc[]; extras?: ClaimDoc[] }[]; otherDocuments?: ClaimDoc[] }
 interface DocMeta { id: string; fileName: string }
 interface Claim {
-  id: string; claimNumber: string; status: string; claimType: string; claimTypeLabel?: string; lineLabel?: string | null; deceasedName: string | null; deceasedNationalCode?: string | null;
+  id: string; claimNumber: string; status: string; claimType: string; claimTypeLabel?: string; lineLabel?: string | null; deceasedName: string | null; insuredGender?: string | null; filedBy?: Filer | null; claimTypeDeath?: boolean; deceasedNationalCode?: string | null;
   insuredRelation?: string | null; mainInsuredName?: string | null; estimatedAmount?: string; finalizedAmount?: string | null; eventDate: string | null; deceasedAge?: number | null;
   createdAt?: string | null; causeOfDeath?: string | null; causeDetail?: string | null; description?: string | null; policyNumber?: string | null; coverageStatus?: string | null; lateNotice?: boolean;
   policyHolder?: { name: string | null } | null; broker?: { name: string } | null; currentStage?: string | null; flowDirection?: string | null;
@@ -46,6 +47,8 @@ export default function EvaluatePage() {
   const [sinad, setSinad] = useState<Sinad | null>(null);
   const [checklist, setChecklist] = useState<Checklist | null>(null);
   const [docs, setDocs] = useState<DocMeta[]>([]);
+  const [rejecting, setRejecting] = useState<{ docId: string; stage: string; at: 'list' | 'scan' } | null>(null); // ✕ waits for its reason
+  const [rejectNote, setRejectNote] = useState('');
   const [error, setError] = useState('');
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
@@ -96,9 +99,45 @@ export default function EvaluatePage() {
   }, [checklist]);
   const missing = checklist?.items.filter((it) => !it.documents.length).map((it) => it.label) ?? [];
   const branchReview = (d: ClaimDoc) => d.reviews?.find((r) => r.stage === 'BRANCH');
-  const review = (docId: string, state: 'APPROVED' | 'REJECTED' | 'PENDING') => run(async () => { await client.post(`/claims/${id}/documents/${docId}/review`, { stage: 'BRANCH', state }, 'org'); await load(); });
+  // This desk's ✓/✕ on a document: شعبه in «روند سیناد», otherwise whichever desk the viewer may review now.
+  const deskReview = (d: ClaimDoc) => (sinad?.canEvaluate ? branchReview(d) : d.reviews?.find((r) => r.canEdit) ?? d.reviews?.find((r) => r.stage === claim?.currentStage));
+  const review = (docId: string, state: 'APPROVED' | 'REJECTED' | 'PENDING', stage = 'BRANCH', note?: string) => run(async () => { await client.post(`/claims/${id}/documents/${docId}/review`, { stage, state, ...(note ? { note } : {}) }, 'org'); setRejecting(null); setRejectNote(''); await load(); });
+  /** ✕ asks for a reason first (shown to whoever fixes it); ✓ and «لغو» apply at once. */
+  const setReview = (d: ClaimDoc, st: 'APPROVED' | 'REJECTED' | 'PENDING', at: 'list' | 'scan' = 'list') => {
+    const r = deskReview(d);
+    if (!r) return;
+    if (st === 'REJECTED') { setRejecting({ docId: d.id, stage: r.stage, at }); setRejectNote(''); return; }
+    review(d.id, st, r.stage);
+  };
+  const approveAll = () => run(async () => {
+    for (const { d } of rows) { const r = deskReview(d); if (r?.canEdit && r.state !== 'APPROVED') await client.post(`/claims/${id}/documents/${d.id}/review`, { stage: r.stage, state: 'APPROVED' }, 'org'); }
+    await load();
+  });
+  const rejectBox = (docId: string, at: 'list' | 'scan' = 'list') => rejecting?.docId === docId && rejecting.at === at && (
+    <div className="ev-reject">
+      <textarea className="input" rows={2} maxLength={300} autoFocus value={rejectNote} onChange={(e) => setRejectNote(e.target.value)} placeholder="دلیل رد این مدرک (به کسی که آن را اصلاح می‌کند نشان داده می‌شود)" />
+      <div className="flex gap-2">
+        <button className="ev-btn is-warn" disabled={busy || !rejectNote.trim()} onClick={() => review(docId, 'REJECTED', rejecting.stage, rejectNote.trim())}>ثبت رد مدرک</button>
+        <button className="ev-btn" disabled={busy} onClick={() => setRejecting(null)}>انصراف</button>
+      </div>
+    </div>
+  );
+  const docRows = (stageLabel: string) => rows.map(({ label, d }) => {
+    const r = deskReview(d);
+    return (
+      <div key={d.id}>
+        <div className={`ev-doc${doc?.id === d.id ? ' is-on' : ''}`}>
+          <button className="ev-doc-name" onClick={() => { const i = docs.findIndex((x) => x.id === d.id); if (i >= 0) setDocIdx(i); }} title="نمایش در تصویر">{label}</button>
+          {r && <ReviewButtons state={r.state} editable={r.canEdit && !closedNow} busy={busy} label={stageLabel} onSet={(st) => setReview(d, st)} />}
+        </div>
+        {r?.state === 'REJECTED' && r.note && <div className="ev-doc-why">دلیل رد: {r.note}</div>}
+        {rejectBox(d.id)}
+      </div>
+    );
+  });
 
   const w = claim?.workflow;
+  const closedNow = ['PAID', 'REJECTED'].includes(claim?.status ?? '');
   const action = (key: string) => w?.actions.find((a) => a.key === key);
   const branchEval = !!sinad?.canEvaluate;
   const requested = Number(claim?.estimatedAmount ?? 0);
@@ -173,13 +212,14 @@ export default function EvaluatePage() {
         <div><span>بیمه‌گزار</span><b>{claim.policyHolder?.name || claim.broker?.name || '—'}</b></div>
         <div><span>شماره بیمه‌نامه</span><b>{claim.policyNumber || '—'}</b></div>
         <div><span>نوع بیمه‌نامه</span><b>{claim.lineLabel || '—'}</b></div>
-        <div><span>بیمه‌شده</span><b>{claim.deceasedName || '—'}</b></div>
+        <div><span>بیمه‌شده</span><b>{personTitle(claim.deceasedName, { death: !!claim.claimTypeDeath, gender: claim.insuredGender }) || '—'}</b></div>
         <div><span>سن</span><b>{claim.deceasedAge != null ? claim.deceasedAge.toLocaleString('fa-IR') : '—'}</b></div>
         <div><span>نسبت</span><b>{relation}{claim.mainInsuredName && relation !== 'اصلی' ? ` (${claim.mainInsuredName})` : ''}</b></div>
         <div><span>کد ملی</span><b className="ltr">{claim.deceasedNationalCode || '—'}</b></div>
         <div><span>مبلغ اعلامی</span><b>{rial(claim.estimatedAmount)}</b></div>
         <div><span>تاریخ وقوع</span><b>{claim.eventDate || '—'}</b></div>
         <div><span>نوع پرونده</span><b>{claim.claimTypeLabel || claim.claimType}</b></div>
+        {claim.filedBy && <div><span>ثبت‌کننده</span><b>{filerText(claim.filedBy)}</b></div>}
         {fraudRed && <div className="ev-strip-red">{sinad.fraudCheck === 'FRAUD' ? 'این پرونده توسط ارزیاب «تقلب است» علامت خورده است' : `ریسک زیاد: ${sinad.risk.reasons.join('، ')}`}</div>}
       </div>
 
@@ -227,15 +267,8 @@ export default function EvaluatePage() {
 
                   <div className="ev-item">
                     <div className="ev-item-head"><b>مدارک پرونده</b><span>{checklist?.complete ? 'کامل' : 'ناقص'}</span></div>
-                    {rows.map(({ label, d }) => {
-                      const r = branchReview(d);
-                      return (
-                        <div key={d.id} className="ev-doc">
-                          <button className="ev-doc-name" onClick={() => { const i = docs.findIndex((x) => x.id === d.id); if (i >= 0) setDocIdx(i); }} title="نمایش در تصویر">{label}</button>
-                          {r && <ReviewButtons state={r.state} editable={r.canEdit && !closed} busy={busy} label="شعبه" onSet={(st) => review(d.id, st)} />}
-                        </div>
-                      );
-                    })}
+<DeathNoticeDate claimId={id} className="is-ev" />
+                    {docRows('شعبه')}
                     {missing.length > 0 && (
                       <button className="ev-doc is-missing w-full" onClick={() => setShowMissing((v) => !v)} aria-expanded={showMissing}>
                         <span>{missing.length.toLocaleString('fa-IR')} مدرک بارگذاری نشده است</span><span>{showMissing ? 'بستن ▴' : 'نمایش ▾'}</span>
@@ -316,6 +349,15 @@ export default function EvaluatePage() {
                 <div><span>درخواستی</span><b>{rial(requested)}</b></div>
                 <div><span>تایید اولیه (شعبه)</span><b>{rial(claim.finalizedAmount)}</b></div>
               </div>
+              <div className="ev-item">
+                <div className="ev-item-head"><b>مدارک پرونده</b><span>{checklist?.complete ? 'کامل' : 'ناقص'}</span></div>
+<DeathNoticeDate claimId={id} className="is-ev" />
+                {docRows(w?.currentStageLabel ?? '')}
+                {rows.length === 0 && <div className="ev-doc is-missing"><span>مدرکی بارگذاری نشده است.</span></div>}
+                {!closed && rows.some(({ d }) => { const r = deskReview(d); return r?.canEdit && r.state !== 'APPROVED'; }) && (
+                  <button className="ev-btn w-full mt-2" disabled={busy} onClick={approveAll}>تایید همهٔ مدارک در این مرحله</button>
+                )}
+              </div>
               {w && <WorkflowPanel claimId={id} workflow={w} realm="org" onDone={load} compact />}
               {!w?.holdsDesk && <div className="text-xs" style={{ color: 'var(--muted)' }}>این پرونده اکنون در «{w?.currentStageLabel || '—'}» است و اقدامی برای شما ندارد.</div>}
             </div>
@@ -335,6 +377,19 @@ export default function EvaluatePage() {
             <span style={{ minWidth: 40, textAlign: 'center' }}>{zoom.toLocaleString('fa-IR')}٪</span>
             <button className="zbtn" onClick={() => setZoom((z) => Math.min(250, z + 15))} title="بزرگ‌تر">+</button>
           </div>
+          {doc && (() => {
+            const row = rows.find((x) => x.d.id === doc.id);
+            const r = row ? deskReview(row.d) : undefined;
+            const label = row?.label ?? doc.fileName;
+            return (
+              <div className="ev-docs-rv">
+                <span className="ev-docs-rv-t">{label}</span>
+                {r ? <ReviewButtons state={r.state} editable={r.canEdit && !closed} busy={busy} onSet={(st) => row && setReview(row.d, st, 'scan')} /> : null}
+                {r && <span className={`ev-docs-rv-s is-${r.state}`}>{r.state === 'APPROVED' ? 'تایید شده' : r.state === 'REJECTED' ? 'رد شده' : 'در انتظار بررسی'}</span>}
+              </div>
+            );
+          })()}
+          {doc && rejectBox(doc.id, 'scan')}
           {returns.filter((r) => !r.resolvedAt).length > 0 && (
             <div className="ev-pin">{returns.filter((r) => !r.resolvedAt).flatMap((r) => r.items).join('؛ ')}</div>
           )}

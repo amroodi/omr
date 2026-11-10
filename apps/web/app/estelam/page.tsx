@@ -4,6 +4,7 @@ import { StatusBadge } from '../components/ui';
 import { Icon } from '../components/Shell';
 import { LogoTile } from '../components/LogoTile';
 import { blankVal } from '../components/case-ui';
+import { personTitle } from '../components/claim-wording';
 import { API_BASE } from '../../lib/api';
 import { DEATH_TYPES, EstelamFrame, InfoCol, InfoRow, PANELS, fmtAmt, phaseText, phaseTone, useExit } from './shared';
 
@@ -47,7 +48,7 @@ function Result({ r }: { r: any }) {
       {/* Three info columns */}
       <div className="est-cols">
         <InfoCol title="اطلاعات بیمه‌شده">
-          <InfoRow label="نام و نام خانوادگی" value={r.deceasedName ? (isDeath && !String(r.deceasedName).trim().startsWith('مرحوم') ? `مرحوم ${r.deceasedName}` : r.deceasedName) : null} />
+          <InfoRow label="نام و نام خانوادگی" value={r.deceasedName ? personTitle(String(r.deceasedName), { death: isDeath, gender: r.insuredGender }) : null} />
           <InfoRow label="کد ملی" value={(r.nationalCode || r.nationalCodeMasked) ? <bdi className="ltr-val">{r.nationalCode || r.nationalCodeMasked}</bdi> : null} />
           <InfoRow label="تاریخ تولد" value={r.birthDate} />
           <InfoRow label={isDeath ? 'سن هنگام فوت' : 'سن هنگام حادثه'} value={age} />

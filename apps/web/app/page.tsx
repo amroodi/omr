@@ -7,7 +7,13 @@ import { ErrorBox, Field } from './components/ui';
 import { Icon } from './components/Shell';
 import { Reveal } from './components/reveal';
 import { DotGrid } from './components/DotGrid';
-import { OrgPicker } from './components/OrgPicker';
+import { entryLogin } from '../lib/panel';
+
+/**
+ * The organization this site serves (Damuon). Its home-page buttons open only its own panels; another
+ * organization's panels (e.g. Alborz) are reached by their own address, so each can run on its own server.
+ */
+const HOME_ORG = process.env.NEXT_PUBLIC_TENANT_SLUG || 'damuon';
 
 export default function Landing() {
   return (
@@ -52,11 +58,10 @@ function EntryGroup({ title, children }: { title: string; children: React.ReactN
 }
 
 function AuthHub() {
-  // A: panel 1 (data entry), B: panel 2 (assessment) — each opens the company picker first.
-  const [pick, setPick] = useState<'ENTRY' | 'PROCESS' | null>(null);
+  // A: panel 1 (data entry), B: panel 2 (assessment) — straight to this organization's own login pages.
+  const router = useRouter();
   return (
     <section className="w-full px-4 py-2">
-      <OrgPicker purpose={pick} onClose={() => setPick(null)} />
       <Reveal delay={80}>
         <div className="glass mx-auto overflow-hidden" style={{ borderRadius: 22, boxShadow: 'var(--shadow-lg)', maxWidth: 800 }}>
           <div className="grid md:grid-cols-2" style={{ minHeight: 560 }}>
@@ -77,11 +82,11 @@ function AuthHub() {
               </div>
               <div className="flex flex-col gap-4" style={{ maxWidth: 300, width: '100%', margin: '0 auto' }}>
                 <EntryGroup title="ورود بیمه گزار">
-                  <EntryBtn label="ورود برای بارگزاری مدارک" onClick={() => setPick('ENTRY')} icon={IC_UPLOAD} />
+                  <EntryBtn label="ورود برای بارگزاری مدارک" onClick={() => router.push(entryLogin(HOME_ORG))} icon={IC_UPLOAD} />
                   <EntryBtn label="نرم‌افزار گوشی های هوشمند به‌زودی" icon={IC_PHONE} soon />
                 </EntryGroup>
                 <EntryGroup title="سامانه کنترل و ارزیابی عمر و حادثه">
-                  <EntryBtn label="ورود برای ارزیابی پرونده‌ها" onClick={() => setPick('PROCESS')} icon={IC_EVAL} />
+                  <EntryBtn label="ورود برای ارزیابی پرونده‌ها" onClick={() => router.push(`/org/login?org=${encodeURIComponent(HOME_ORG)}`)} icon={IC_EVAL} />
                   <EntryBtn label="نرم‌افزار گوشی‌های هوشمند به‌زودی" icon={IC_PHONE} soon />
                 </EntryGroup>
               </div>

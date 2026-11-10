@@ -319,6 +319,7 @@ export class CustomerController {
       description: dto.description,
       causeOfDeath: dto.causeOfDeath,
       causeDetail: dto.causeDetail,
+      insuredGender: dto.insuredGender,
       beneficiaryType: dto.beneficiaryType,
       heirs: dto.heirs,
       startStage: dto.startStage,

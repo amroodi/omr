@@ -16,7 +16,7 @@ import { AI_QUEUED_FA, aiVerdict, ChecklistItem, ClaimDoc, dateOnly, STATUS_FA, 
 import { DocUploadTile, OnProgress, UploadButton } from './upload';
 import { BENEFICIARY_FORM, BeneficiaryChoice, INHERITANCE_CERT, NO_FORM_LETTER } from './heirs';
 import { JalaliDatePicker } from './JalaliDatePicker';
-import { causeDetailFor } from './claim-wording';
+import { causeDetailFor, filerText, GENDERS, personTitle } from './claim-wording';
 import { Flash } from './Toaster';
 import { DeficiencyBox } from './DeficiencyBox';
 
@@ -33,7 +33,7 @@ function jalaliToIso(input: string): string | null {
   return isNaN(d.getTime()) ? null : d.toISOString();
 }
 
-type FilingForm = { name: string; nid: string; birth: string; event: string; cause: string; detail: string; description: string };
+type FilingForm = { name: string; nid: string; birth: string; event: string; cause: string; detail: string; gender: string; description: string };
 
 /**
  * «ویرایش مشخصات»: panel 1 corrects what it filed until panel 2 starts on the case (its first review,
@@ -42,7 +42,7 @@ type FilingForm = { name: string; nid: string; birth: string; event: string; cau
 function FilingEditor({ claim, api, realm, onSaved, onCancel }: { claim: any; api: string; realm: 'customer' | 'org'; onSaved: () => void; onCancel: () => void }) {
   const start: FilingForm = {
     name: claim.deceasedName ?? '', nid: /^\d{10}$/.test(asc(claim.deceasedNationalCode)) ? asc(claim.deceasedNationalCode) : '',
-    birth: asc(claim.deceasedBirthDate), event: asc(claim.eventDate), cause: claim.causeOfDeath ?? '', detail: claim.causeDetail ?? '', description: claim.description ?? '',
+    birth: asc(claim.deceasedBirthDate), event: asc(claim.eventDate), cause: claim.causeOfDeath ?? '', detail: claim.causeDetail ?? '', gender: claim.insuredGender ?? '', description: claim.description ?? '',
   };
   const [f, setF] = useState(start);
   const [error, setError] = useState('');
@@ -58,6 +58,7 @@ function FilingEditor({ claim, api, realm, onSaved, onCancel }: { claim: any; ap
     if (detail && !detail.options.includes(f.detail)) return setError(`${detail.label} را انتخاب کنید`);
     if ((detail ? f.detail : '') !== start.detail) body.causeDetail = detail ? f.detail : '';
     if (f.description.trim() !== start.description) body.description = f.description.trim();
+    if (f.gender !== start.gender) body.insuredGender = f.gender;
     if (!Object.keys(body).length) return onCancel();
     setBusy(true);
     try { await client.put(`${api}/filing`, body, realm); onSaved(); } catch (e: any) { setError(e.message); } finally { setBusy(false); }
@@ -70,6 +71,7 @@ function FilingEditor({ claim, api, realm, onSaved, onCancel }: { claim: any; ap
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-2.5">
         <label className="block"><span className="label">کد ملی بیمه‌شده</span><input className="input latin-digits" value={f.nid} onChange={set('nid')} inputMode="numeric" maxLength={10} style={{ direction: 'ltr', textAlign: 'right' }} placeholder={claim.deceasedNationalCode ?? ''} /></label>
         <label className="block"><span className="label">نام بیمه‌شده</span><input className="input" value={f.name} onChange={set('name')} maxLength={120} /></label>
+        <label className="block"><span className="label">جنسیت</span><select className="input" value={f.gender} onChange={set('gender')}><option value="">— نامشخص —</option>{Object.entries(GENDERS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
         <label className="block"><span className="label">تاریخ تولد</span><JalaliDatePicker value={f.birth} onChange={(v) => setF({ ...f, birth: v })} placeholder="۱۳۴۵/۰۵/۱۲" /></label>
         <label className="block"><span className="label">تاریخ وقوع</span><JalaliDatePicker value={f.event} onChange={(v) => setF({ ...f, event: v })} placeholder="۱۴۰۵/۰۷/۰۱" /></label>
         <label className="block md:col-span-2"><span className="label">علت</span><input className="input" value={f.cause} onChange={set('cause')} maxLength={300} /></label>
@@ -260,11 +262,12 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
               <div className="cu-spec-row">
                 <div className="cu-select is-static">
                   <span className="cu-select-ico" style={{ color: 'var(--cu-ink)' }}><BigIcon path={IC.policy} size={20} /></span>
-                  <span>{caseTitle(claim)} | {claimTypeLabel(claim)} | {claim.deceasedName || '—'}</span>
+                  <span>{caseTitle(claim)} | {claimTypeLabel(claim)} | {personTitle(claim.deceasedName, { death: !!claim.claimTypeDeath, gender: claim.insuredGender }) || '—'}</span>
                 </div>
                 <div className="cu-spec-facts">
                   <span><span style={{ color: 'var(--cu-ink)' }}><BigIcon path={IC.cal} size={18} /></span> تاریخ ثبت: {dateOnly(claim.createdAt) || '—'}</span>
                   <span><i className={`cu-dot${open ? ' is-on' : ''}`} /> وضعیت: {STATUS_FA[claim.status] ?? claim.status}</span>
+                  {claim.filedBy && <span title="کسی که پرونده را ثبت کرده است">ثبت‌کننده: <b>{filerText(claim.filedBy)}</b></span>}
                 </div>
               </div>
               {claim.filingEdit?.editable && !editing && <p className="text-xs" style={{ color: 'var(--muted)' }}>تا پیش از آغاز بررسی پرونده می‌توانید مشخصات آن را اصلاح کنید.</p>}
@@ -275,20 +278,20 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
             {/* Four summary cards, as on the home page */}
             <div className="cu-cards">
               <div className="pcard cu-card">
-                <div><div className="cu-card-t">پرونده خسارت</div><div className="cu-card-v latin-digits">{claim.claimNumber}</div>
+                <div><div className="cu-card-t">پرونده خسارت</div><div className="cu-card-v">{claim.claimNumber}</div>
                   <div className="cu-card-s">{claimTypeLabel(claim)}</div></div>
                 <span className="cu-card-ico"><BigIcon path={IC.doc} size={34} /></span>
               </div>
               <div className="pcard cu-card">
-                <div><div className="cu-card-t">بیمه‌شده (متوفی)</div><div className="cu-card-v">{claim.deceasedName || '—'}</div>
-                  {claim.deceasedNationalCode && <div className="cu-card-s">کد ملی: <bdi className="latin-digits">{claim.deceasedNationalCode}</bdi></div>}
+                <div><div className="cu-card-t">بیمه‌شده (متوفی)</div><div className="cu-card-v">{personTitle(claim.deceasedName, { death: !!claim.claimTypeDeath, gender: claim.insuredGender }) || '—'}</div>
+                  {claim.deceasedNationalCode && <div className="cu-card-s">کد ملی: <bdi>{claim.deceasedNationalCode}</bdi></div>}
                   <div className="cu-card-s">{claim.claimTypeDeath === false ? 'تاریخ حادثه' : 'تاریخ فوت'}: {claim.eventDate || '—'}</div>
                   {claim.causeOfDeath && <div className="cu-card-s">علت: {claim.causeOfDeath}{claim.causeDetail ? ` — ${claim.causeDetail}` : ''}</div>}</div>
                 <span className="cu-card-ico"><BigIcon path={IC.user} size={34} /></span>
               </div>
               <div className="pcard cu-card">
                 <div><div className="cu-card-t">بیمه‌گر</div><div className="cu-card-v">{insurerName || '—'}</div>
-                  <div className="cu-card-s">بیمه‌نامه: <span className="latin-digits">{claim.policyNumber || '—'}</span></div></div>
+                  <div className="cu-card-s">بیمه‌نامه: <span>{claim.policyNumber || '—'}</span></div></div>
                 <span className="cu-card-ico"><BigIcon path={IC.policy} size={34} /></span>
               </div>
               <div className="pcard cu-card">
@@ -308,7 +311,7 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
             )}
 
             {/* نقص مدارک: what was asked (with its upload slots) and where the case is — «نیازمند اقدام شما» only when it waits here */}
-            <DeficiencyBox claimId={id} claim={claim} checklist={checklist} realm={realm} canUpload={claim.workflow?.currentStage === 'POLICYHOLDER'} onChanged={reload} actions={false} />
+            <DeficiencyBox claimId={id} claim={claim} checklist={checklist} realm={realm} canUpload={claim.workflow?.currentStage === 'POLICYHOLDER'} onChanged={reload} actions={false} onSubmit={atMyDesk ? finalSubmit : undefined} submitting={sending} />
 
             {/* The originals were asked for: the move stays right here, not only in «روند پرونده». */}
             {physicalMoves && claim.workflow && (

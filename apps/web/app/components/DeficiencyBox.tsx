@@ -10,12 +10,26 @@ import { WorkflowPanel } from './WorkflowPanel';
  * with its own upload slot right here (also an operator's own line, «نقص دیگر») — and, for the desk
  * holding the case, the buttons that move it on: «رفع نقص در …» or «ارسال به … برای رفع نقص».
  */
-export function DeficiencyBox({ claimId, claim, checklist, realm, canUpload, onChanged, actions = true }: {
+export function DeficiencyBox({ claimId, claim, checklist, realm, canUpload, onChanged, actions = true, onSubmit, submitting }: {
   claimId: string; claim: CaseClaim; checklist: Checklist | null; realm: Realm; canUpload: boolean; onChanged: () => void; actions?: boolean;
+  /** Panel 1: «ثبت نهایی» (send the fixed case back up) right here once what was asked is uploaded. */
+  onSubmit?: () => void; submitting?: boolean;
 }) {
   const open = (claim.deficiencies ?? []).filter((d) => !d.resolvedAt);
-  if (!open.length || claim.status === 'PAID' || claim.status === 'REJECTED') return null;
   const w = claim.workflow;
+  if (claim.status === 'PAID' || claim.status === 'REJECTED') return null;
+  // Just fixed at this desk: the box stays, with this desk's «تایید» (send on up) right where the fix was made.
+  if (!open.length) {
+    const up = (w?.actions ?? []).filter((a) => ['FORWARD', 'REFER_COUNCIL', 'PAY_ORDER'].includes(a.key));
+    if (!claim.fixedHere || !w?.holdsDesk || realm !== 'org' || !actions || !up.length) return null;
+    return (
+      <section className="dfx is-fixed">
+        <div className="dfx-head"><span className="dfx-title">نقص رفع شد — تایید پرونده</span><span className="dfx-meta">اکنون نزد <b>{w.currentStageLabel}</b></span></div>
+        <div className="dfx-help">مدارک خواسته‌شده بارگذاری و نقص رفع شد. پس از بررسی مدارک، پرونده را از همین‌جا تایید و به مرحلهٔ بعد ارسال کنید.</div>
+        <div className="dfx-actions"><WorkflowPanel claimId={claimId} workflow={{ ...w, actions: up }} realm="org" onDone={onChanged} actionsOnly /></div>
+      </section>
+    );
+  }
   const mine = !!w?.holdsDesk && w.direction === 'DOWN';
   const atPolicyholder = w?.currentStage === 'POLICYHOLDER';
   const api = realm === 'customer' ? `/customer/claims/${claimId}` : `/claims/${claimId}`;
@@ -83,6 +97,11 @@ export function DeficiencyBox({ claimId, claim, checklist, realm, canUpload, onC
             ? 'مدارک خواسته‌شده را همین‌جا بارگذاری کنید و سپس «ثبت نهایی» / «ارسال» را بزنید.'
             : `پرونده برای رفع نقص نزد «${w?.currentStageLabel ?? '—'}» است؛ پس از رفع نقص دوباره برای بررسی ارسال می‌شود.`}
       </div>
+      {onSubmit && atPolicyholder && (realm === 'customer' || mine) && slots.every((s) => s.uploaded) && (
+        <div className="dfx-actions">
+          <button type="button" className="dfx-btn" disabled={submitting} onClick={onSubmit}>{submitting ? 'در حال ارسال…' : 'تایید و ثبت نهایی (ارسال برای بررسی)'}</button>
+        </div>
+      )}
       {actions && realm === 'org' && mine && moves.length > 0 && w && (
         <div className="dfx-actions">
           <WorkflowPanel claimId={claimId} workflow={{ ...w, actions: moves }} realm="org" onDone={onChanged} actionsOnly />

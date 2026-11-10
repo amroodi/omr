@@ -1,4 +1,5 @@
 'use client';
+import { DeathNoticeDate } from '../../../../components/DeathNoticeDate';
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
@@ -87,6 +88,7 @@ export default function CaseDocumentsPage() {
       <Flash text={aiNote ? AI_QUEUED_FA : null} ok />
       {!claim || !checklist ? <div className="card p-12 flex justify-center"><FancyLoader label="در حال بارگذاری مدارک" /></div> : (
         <>
+          <div className="mb-3 no-print"><DeathNoticeDate claimId={id} /></div>
           <div className="mb-3 no-print"><DeficiencyBox claimId={id} claim={claim} checklist={checklist} realm="org" canUpload={claim.status !== 'PAID' && (canFile || (canProcess && !!claim.workflow?.holdsDesk))} onChanged={reload} /></div>
           <div ref={sheet} className="cs-sheet">
             <CaseHero title="پیگیری آخرین وضعیت پرونده خسارت" claim={claim} notes={fv.case_notes || phaseText(claim)} back={`/org/claims/${id}`} />
