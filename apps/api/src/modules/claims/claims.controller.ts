@@ -70,6 +70,13 @@ export class ClaimsController {
     return this.claims.insurerEntryOptions();
   }
 
+  /** Panel 1's «مشخصات بیمه نامه»: the بیمه‌گزاران and their بیمه‌نامه‌ها this organization works with. */
+  @Permissions(PERMISSIONS.CLAIM_READ)
+  @Get('entry-policies')
+  entryPolicies() {
+    return this.claims.entryPolicies();
+  }
+
   @Permissions(PERMISSIONS.CLAIM_FILE)
   @Get('on-behalf/companies')
   onBehalfCompanies() {

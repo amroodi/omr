@@ -9,6 +9,11 @@ import { CaseTable, MyClaim } from '../../customer/case-table';
 import { Diamond, IC } from '../../customer/launcher';
 import { ORG_NAV } from '../nav';
 import { entryCaseHref, entryCases, matchCase } from './cases';
+import { getLine } from '../../../lib/line';
+
+/** One بیمه‌نامه of «مشخصات بیمه نامه» (GET /claims/entry-policies). */
+interface EntryPolicy { id: string; companyName: string; policyNumber: string | null; line: string | null; lineLabel: string | null; insurerName: string | null; brokerName: string | null; startDate: string | null; endDate: string | null; inForce: boolean }
+const POLICY_KEY = 'entry_policy';
 
 const fa = (n: number | string) => Number(n).toLocaleString('fa-IR');
 type View = null | 'search' | 'faq' | 'intro';
@@ -29,6 +34,8 @@ export default function EntryHome() {
   const [q, setQ] = useState('');
   const [found, setFound] = useState<MyClaim[] | null>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
+  const [policies, setPolicies] = useState<EntryPolicy[] | null>(null);
+  const [policyId, setPolicyId] = useState('');
 
   useEffect(() => {
     if (!getToken('org')) return;
@@ -36,7 +43,17 @@ export default function EntryHome() {
     entryCases().then(setClaims).catch((e) => setError(e.message));
     client.get<{ name: string | null; panel?: string | null; spareDesk?: boolean }>('/auth/me', 'org').then(setMe).catch(() => {});
     client.get<{ name: string }>('/tenant/branding', 'org').then((b) => setOrg(b.name)).catch(() => {});
+    // «مشخصات بیمه نامه»: only the بیمه‌نامه‌ها of the نوع بیمه‌نامه this panel works in.
+    client.get<EntryPolicy[]>('/claims/entry-policies', 'org').then((l) => {
+      const line = getLine();
+      const list = l.filter((p) => !line || !p.line || p.line === line);
+      setPolicies(list);
+      let saved = ''; try { saved = localStorage.getItem(POLICY_KEY) ?? ''; } catch { /* ignore */ }
+      setPolicyId(list.some((p) => p.id === saved) ? saved : (list.find((p) => p.inForce) ?? list[0])?.id ?? '');
+    }).catch(() => setPolicies([]));
   }, []);
+  const policy = policies?.find((p) => p.id === policyId) ?? null;
+  const pickPolicy = (id: string) => { setPolicyId(id); try { localStorage.setItem(POLICY_KEY, id); } catch { /* ignore */ } };
 
   const broker = me?.panel === 'BROKER';
   const stats = useMemo(() => {
@@ -64,6 +81,34 @@ export default function EntryHome() {
       <ErrorBox message={error} />
       {!claims ? <div className="pcard p-10 flex justify-center"><Spinner /></div> : (
         <div className="cu-home is-fill">
+          {/* «مشخصات بیمه نامه» — Sinad's first block: the بیمه‌نامه picked, its period and status, and who works here */}
+          <section className="pcard cu-spec">
+            <h2 className="cu-spec-h"><span>مشخصات بیمه نامه</span></h2>
+            <p className="cu-spec-note">در صورتی که بیمه‌گزار یا بیمه‌نامهٔ مورد نظر را در فهرست نمی‌بینید، با مدیر سامانهٔ {org || 'سازمان'} تماس بگیرید.</p>
+            <div className="cu-spec-row">
+              <label className="cu-select" title="بیمه‌نامه‌های بیمه‌گزاران، از جدیدترین">
+                <span className="cu-select-ico" style={{ color: 'var(--cu-ink)' }}><BigIcon path={IC.policy} size={20} /></span>
+                <select value={policyId} onChange={(e) => pickPolicy(e.target.value)} aria-label="بیمه‌نامه" disabled={!policies?.length}>
+                  {!policies ? <option value="">…</option> : policies.length === 0 ? <option value="">بیمه‌نامه‌ای ثبت نشده است</option>
+                    : policies.map((p) => <option key={p.id} value={p.id}>{[p.policyNumber || '—', p.companyName, broker ? p.insurerName : p.brokerName, p.lineLabel, p.startDate && p.endDate ? `${p.startDate} - ${p.endDate}` : null].filter(Boolean).join(' | ')}</option>)}
+                </select>
+              </label>
+              {policy && (
+                <div className="cu-spec-facts">
+                  <span><span style={{ color: 'var(--cu-ink)' }}><BigIcon path={IC.cal} size={18} /></span> تاریخ شروع: {policy.startDate ?? '—'}</span>
+                  <span><span style={{ color: 'var(--cu-ink)' }}><BigIcon path={IC.cal} size={18} /></span> تاریخ پایان: {policy.endDate ?? '—'}</span>
+                  <span><i className={`cu-dot${policy.inForce ? ' is-on' : ''}`} /> وضعیت: {policy.inForce ? 'فعال' : 'پایان یافته'}</span>
+                </div>
+              )}
+            </div>
+            <div className="cu-spec-row is-solo">
+              <label className="cu-select" title="کاربر وارد شده">
+                <span className="cu-select-ico" style={{ color: 'var(--cu-ink)' }}><BigIcon path={IC.user} size={20} /></span>
+                <select value="me" onChange={() => {}} aria-label="کاربر"><option value="me">{me?.name ?? '—'}{org ? ` — ${org}` : ''} — پنل ورود داده</option></select>
+              </label>
+            </div>
+          </section>
+
           <div className="cu-cards">
             <div className="pcard cu-card">
               <div><div className="cu-card-t">{broker ? 'کارگزاری' : 'بیمه‌گر'}</div><div className="cu-card-v">{org || '—'}</div>
