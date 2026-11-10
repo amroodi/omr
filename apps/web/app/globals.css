@@ -2612,3 +2612,6 @@ a.cu-card.is-link:hover { transform: translateY(-2px); box-shadow: 0 0 0 2px var
   .is-customer .cu-home.is-fill > .cu-spec .cu-spec-h { font-size: clamp(13px, calc(1.8 * var(--zvh)), 16px); }
   .is-customer .cu-home.is-fill > .cu-spec .cu-spec-facts { font-size: clamp(12px, calc(1.6 * var(--zvh)), 14.5px); }
 }
+
+.cu-spec-row.is-solo { grid-template-columns: minmax(0, 1fr) !important; }
+@media (min-width: 901px) { .is-customer .cu-home.is-fill > .cu-spec { gap: clamp(4px, calc(1 * var(--zvh)), 12px); } .is-customer .cu-home.is-fill > .cu-spec .cu-select select { height: clamp(31px, calc(4.4 * var(--zvh)), 44px); font-size: clamp(12px, calc(1.6 * var(--zvh)), 14.5px); border-radius: 22px; } }

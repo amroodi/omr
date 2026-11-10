@@ -267,6 +267,31 @@ export class ClaimsService {
     return u?.branchId ?? ctx.branchId ?? null;
   }
 
+  /**
+   * Panel 1's «مشخصات بیمه نامه» (as Sinad's first block): a کارگزاری sees its own بیمه‌گزاران' بیمه‌نامه‌ها,
+   * an insurer the بیمه‌نامه‌های it issued (with the کارگزاری that serves each company). Newest first.
+   */
+  async entryPolicies() {
+    const tenantId = getTenantIdOrThrow();
+    const db = this.prisma.unscoped();
+    const me = await db.tenant.findUnique({ where: { id: tenantId }, select: { kind: true } });
+    const insurer = me?.kind === 'INSURER';
+    const rows = await db.policyholderContract.findMany({
+      where: { isActive: true, company: { isActive: true, ...(insurer ? {} : { tenantId }) }, ...(insurer ? { insurerTenantId: tenantId } : {}) },
+      orderBy: [{ startDate: 'desc' }, { createdAt: 'desc' }], take: 1500,
+      select: { id: true, policyNumber: true, line: true, startDate: true, endDate: true, insurerTenantId: true, company: { select: { id: true, name: true, tenantId: true } } },
+    });
+    const orgIds = [...new Set(rows.flatMap((r) => [r.insurerTenantId, r.company.tenantId]))];
+    const names = new Map((orgIds.length ? await db.tenant.findMany({ where: { id: { in: orgIds } }, select: { id: true, name: true } }) : []).map((t) => [t.id, t.name]));
+    const now = new Date();
+    return rows.map((r) => ({
+      id: r.id, companyId: r.company.id, companyName: r.company.name, policyNumber: r.policyNumber, line: r.line, lineLabel: r.line ? kindLabel(r.line) : null,
+      insurerName: names.get(r.insurerTenantId) ?? null, brokerName: names.get(r.company.tenantId) ?? null,
+      startDate: r.startDate ? toJalali(r.startDate, false) : null, endDate: r.endDate ? toJalali(r.endDate, false) : null,
+      inForce: (!r.startDate || r.startDate <= now) && (!r.endDate || r.endDate >= now),
+    }));
+  }
+
   async onBehalfCompanies() {
     const companies = (await this.policyholders.list()).filter((c) => c.isActive);
     const accounts = companies.length
