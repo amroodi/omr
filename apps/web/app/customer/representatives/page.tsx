@@ -72,7 +72,7 @@ export default function Representatives() {
           <table className="table">
             <thead><tr>{['نام', 'کد ملی', 'موبایل', 'وضعیت', 'آخرین ورود', 'اقدام'].map((h) => <th key={h}>{h}</th>)}</tr></thead>
             <tbody>
-              {!rows ? <tr><td colSpan={6} className="text-center py-8"><span className="pspinner inline-block" /></td></tr>
+              {!rows ? <tr><td colSpan={6} className="text-center py-8"><span className="spin-quiet">…</span></td></tr>
                 : rows.length === 0 ? <tr><td colSpan={6} className="text-center py-8" style={{ color: 'var(--muted)' }}>هنوز نماینده‌ای ثبت نکرده‌اید.</td></tr>
                 : rows.map((r) => (
                   <tr key={r.id}>

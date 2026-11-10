@@ -6,6 +6,7 @@ import { ThemeApplier } from './components/ThemeApplier';
 import { Toaster } from './components/Toaster';
 import { FieldKeys } from './components/FieldKeys';
 import { PersianDigits } from './components/PersianDigits';
+import { GlobalSpinner } from './components/GlobalSpinner';
 import { THEME_BOOT_SCRIPT } from '../lib/theme';
 import { SCALE_BOOT_SCRIPT } from '../lib/scale';
 import { WALL_BOOT_SCRIPT } from '../lib/wallpaper';
@@ -47,6 +48,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Toaster />
         <FieldKeys />
         <PersianDigits />
+        <GlobalSpinner />
       </body>
     </html>
   );

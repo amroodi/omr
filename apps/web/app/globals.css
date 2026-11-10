@@ -2562,3 +2562,53 @@ a.cu-card.is-link:hover { transform: translateY(-2px); box-shadow: 0 0 0 2px var
 .dnd-btn:disabled { opacity: .55; }
 .dnd-err { flex-basis: 100%; color: var(--danger); font-size: 12px; }
 .dnd.is-ev { margin: 6px 0; border-style: dashed; }
+
+
+/* ── The one loading spinner (Sinad's): blurred, click-proof page; two glowing arcs turning opposite ways ── */
+.gsp { position: fixed; inset: 0; z-index: 10000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 42px;
+  backdrop-filter: blur(11px); -webkit-backdrop-filter: blur(11px); background: rgba(255, 255, 255, .1); cursor: progress; animation: gsp-in .18s ease-out; }
+:root.dark .gsp { background: rgba(0, 0, 0, .18); }
+@keyframes gsp-in { from { opacity: 0; } to { opacity: 1; } }
+.gsp-rings { position: relative; width: 216px; height: 216px; }
+.gsp-ring { position: absolute; inset: 0; }
+.gsp-ring.is-outer { --c: #00bd9c; animation: gsp-cw 1.15s linear infinite; }
+.gsp-ring.is-inner { --c: #f7931e; inset: 26px; animation: gsp-ccw 1.45s linear infinite; }
+.gsp-ring b { position: absolute; inset: 0; border-radius: 50%;
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3.5px), #000 calc(100% - 3px)); mask: radial-gradient(farthest-side, transparent calc(100% - 3.5px), #000 calc(100% - 3px)); }
+.gsp-ring.is-outer b { background: conic-gradient(from 0deg, transparent 0turn, transparent .5turn, var(--c) 1turn); }
+.gsp-ring.is-inner b { background: conic-gradient(from 0deg, var(--c) 0turn, transparent .5turn, transparent 1turn); }
+.gsp-ring i { position: absolute; top: -4px; left: 50%; width: 11px; height: 11px; margin-left: -5.5px; border-radius: 50%; background: var(--c);
+  box-shadow: 0 0 10px 3px color-mix(in srgb, var(--c) 70%, transparent), 0 0 34px 14px color-mix(in srgb, var(--c) 22%, transparent); }
+@keyframes gsp-cw { to { transform: rotate(360deg); } }
+@keyframes gsp-ccw { to { transform: rotate(-360deg); } }
+.gsp-text { font-size: 15px; font-weight: 500; color: #1f2430; text-shadow: 0 1px 2px rgba(255, 255, 255, .7); }
+:root.dark .gsp-text { color: #eef2f8; text-shadow: none; }
+@media (prefers-reduced-motion: reduce) { .gsp-ring { animation-duration: 3s; } }
+
+.spin-quiet { display: inline-block; letter-spacing: 2px; opacity: .7; }
+.fancy-loader.is-quiet { min-height: 160px; }
+
+
+/* ── Panel 1's first page (کارگزاری / بیمه‌گر panel 1 and the بیمه‌گزار panel): its cards and launcher grow to
+   fill the window — one screen shows everything, no empty space under it and no scrolling (desktop). ── */
+@media (min-width: 901px) {
+  .is-customer .cu-home.is-fill { min-height: calc(100 * var(--zvh) - var(--topbar-h) - 22px); gap: 14px; }
+  .is-customer .cu-home.is-fill > .cu-cards { flex: 1.1 1 0; min-height: 0; gap: 14px; }
+  .is-customer .cu-home.is-fill .cu-card { border-radius: 16px; padding: clamp(14px, calc(2.6 * var(--zvh)), 30px) clamp(16px, 1.6vw, 30px); }
+  .is-customer .cu-home.is-fill .cu-card-t, .is-customer .cu-home.is-fill .cu-card-t.is-big { font-size: clamp(13px, calc(1.7 * var(--zvh)), 16px); line-height: 1.8; margin-bottom: clamp(4px, calc(1 * var(--zvh)), 12px); }
+  .is-customer .cu-home.is-fill .cu-card-v { font-size: clamp(15px, calc(2.2 * var(--zvh)), 21px); line-height: 1.7; margin-bottom: clamp(2px, .calc(8 * var(--zvh)), 10px); }
+  .is-customer .cu-home.is-fill .cu-card-s, .is-customer .cu-home.is-fill .cu-card-k { font-size: clamp(12.5px, calc(1.65 * var(--zvh)), 15.5px); line-height: 1.9; }
+  .is-customer .cu-home.is-fill .cu-card > div:first-child { align-self: stretch; display: flex; flex-direction: column; justify-content: space-evenly; }
+  .is-customer .cu-home.is-fill .cu-card-ico svg { width: clamp(34px, calc(5.4 * var(--zvh)), 56px); height: clamp(34px, calc(5.4 * var(--zvh)), 56px); }
+  .is-customer .cu-home.is-fill > .cu-launch { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; justify-content: center; gap: clamp(8px, calc(2 * var(--zvh)), 22px); padding: clamp(12px, calc(2.4 * var(--zvh)), 28px) 18px; border-radius: 16px; }
+  .is-customer .cu-home.is-fill .cu-tiles { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; align-items: center; }
+  .is-customer .cu-home.is-fill .pdiamond-wrap { flex-direction: column; justify-content: center; text-align: center; gap: clamp(6px, calc(1.4 * var(--zvh)), 14px); padding: clamp(8px, calc(1.6 * var(--zvh)), 18px) 8px; border-radius: 12px; }
+  .is-customer .cu-home.is-fill .pdiamond { width: clamp(40px, calc(6.4 * var(--zvh)), 64px); height: clamp(40px, calc(6.4 * var(--zvh)), 64px); border-radius: 14px; margin: 8px; }
+  .is-customer .cu-home.is-fill .pdiamond svg { width: clamp(20px, calc(3.2 * var(--zvh)), 32px); height: clamp(20px, calc(3.2 * var(--zvh)), 32px); }
+  .is-customer .cu-home.is-fill .pdiamond-title { font-size: clamp(13.5px, calc(2 * var(--zvh)), 18px); line-height: 1.6; }
+  .is-customer .cu-home.is-fill .pdiamond-sub { font-size: clamp(11.5px, calc(1.6 * var(--zvh)), 14.5px); line-height: 1.6; }
+  .is-customer .cu-home.is-fill .cu-notice { margin-top: 0; padding: clamp(6px, calc(1.4 * var(--zvh)), 14px) 14px; border-radius: 10px; font-size: clamp(12px, calc(1.7 * var(--zvh)), 15px); line-height: 1.8; }
+  .is-customer .cu-home.is-fill > .cu-spec { padding: clamp(8px, calc(1.6 * var(--zvh)), 18px) 16px; border-radius: 16px; }
+  .is-customer .cu-home.is-fill > .cu-spec .cu-spec-h { font-size: clamp(13px, calc(1.8 * var(--zvh)), 16px); }
+  .is-customer .cu-home.is-fill > .cu-spec .cu-spec-facts { font-size: clamp(12px, calc(1.6 * var(--zvh)), 14.5px); }
+}

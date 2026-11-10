@@ -63,7 +63,7 @@ export default function EntryHome() {
       action={<button type="button" className="cu-intro-btn" onClick={() => open('intro')}>معرفی امکانات سامانه</button>}>
       <ErrorBox message={error} />
       {!claims ? <div className="pcard p-10 flex justify-center"><Spinner /></div> : (
-        <div className="cu-home">
+        <div className="cu-home is-fill">
           <div className="cu-cards">
             <div className="pcard cu-card">
               <div><div className="cu-card-t">{broker ? 'کارگزاری' : 'بیمه‌گر'}</div><div className="cu-card-v">{org || '—'}</div>

@@ -1,7 +1,11 @@
+import { track } from './busy';
 const BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:4000/api/v1';
 const TENANT = process.env.NEXT_PUBLIC_TENANT_SLUG || 'damuon';
 
-async function post<T>(path: string, body: unknown, token?: string): Promise<T> {
+function post<T>(path: string, body: unknown, token?: string): Promise<T> {
+  return track(path, rawPost<T>(path, body, token), 'POST');
+}
+async function rawPost<T>(path: string, body: unknown, token?: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: 'POST',
     headers: {
@@ -16,7 +20,10 @@ async function post<T>(path: string, body: unknown, token?: string): Promise<T> 
   return data as T;
 }
 
-async function get<T>(path: string, token: string): Promise<T> {
+function get<T>(path: string, token: string): Promise<T> {
+  return track(path, rawGet<T>(path, token));
+}
+async function rawGet<T>(path: string, token: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     headers: { 'x-tenant-slug': TENANT, Authorization: `Bearer ${token}` },
   });
