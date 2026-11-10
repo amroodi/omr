@@ -50,10 +50,10 @@ export default function CaseDocumentsPage() {
   })();
 
   // From the document's upload dialog (which shows progress and any error itself).
-  const upload = async (code: string, file: File, onProgress: OnProgress) => {
+  const upload = async (code: string, file: File, onProgress: OnProgress, extra = false) => {
     setError('');
     const fd = new FormData(); fd.append('file', file);
-    const r = await client.upload<{ aiQueued?: boolean }>(`/claims/${id}/documents?docCode=${encodeURIComponent(code)}`, fd, 'org', onProgress);
+    const r = await client.upload<{ aiQueued?: boolean }>(`/claims/${id}/documents?docCode=${encodeURIComponent(code)}${extra ? '&extra=1' : ''}`, fd, 'org', onProgress);
     if (r?.aiQueued) setAiNote(true);
     await reload();
   };
@@ -77,8 +77,8 @@ export default function CaseDocumentsPage() {
   };
 
   const rows = [
-    ...(checklist?.items ?? []).map((it) => ({ key: it.code, code: it.code, label: it.label, doc: it.documents[0] as ClaimDoc | undefined })),
-    ...(checklist?.otherDocuments ?? []).filter((d) => d.isLatest).map((d) => ({ key: d.id, code: '', label: `سایر مدارک — ${d.fileName}`, doc: d as ClaimDoc | undefined })),
+    ...(checklist?.items ?? []).map((it) => ({ key: it.code, code: it.code, label: it.label, doc: it.documents[0] as ClaimDoc | undefined, extras: it.extras ?? [] })),
+    ...(checklist?.otherDocuments ?? []).filter((d) => d.isLatest).map((d) => ({ key: d.id, code: '', label: `سایر مدارک — ${d.fileName}`, doc: d as ClaimDoc | undefined, extras: [] as ClaimDoc[] })),
   ];
 
   return (
@@ -113,6 +113,14 @@ export default function CaseDocumentsPage() {
                           title={r.doc ? 'جایگزینی فایل' : 'بارگذاری فایل'} subtitle={r.label} onUpload={(f, onP) => upload(r.code, f, onP)}>
                           {r.doc ? 'جایگزینی فایل' : 'بارگذاری فایل'}
                         </UploadButton>
+                      )}
+                      {/* pages added with «+» */}
+                      {r.extras.map((x, k) => (
+                        <button key={x.id} type="button" className="cs-mini no-pdf" title={`صفحهٔ ${faN(k + 2)} — ${x.uploadedAt ?? ''}`} onClick={() => client.view(`/claims/${id}/documents/${x.id}/file`, 'org').catch((e) => setError(e.message))}>{faN(k + 2)}</button>
+                      ))}
+                      {canFile && claim.status !== 'PAID' && r.code && r.doc && (
+                        <UploadButton className="cs-mini no-pdf" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" maxMB={15} camera multiple
+                          title="افزودن صفحه یا مدرک تکمیلی" subtitle={r.label} note="هر فایل به‌عنوان صفحهٔ دیگری از همین مدرک ذخیره می‌شود و فایل قبلی سر جایش می‌ماند." onUpload={(f, onP) => upload(r.code, f, onP, true)}>+</UploadButton>
                       )}
                     </span>
                     {desks.map((s) => <span key={s} className="cs-td-desk">{deskCell(r.doc, s)}</span>)}

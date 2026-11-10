@@ -10,7 +10,7 @@ import { Coverage, CoverageNote, coverageText } from './CoverageNote';
 import { Shell } from './Shell';
 import { CUSTOMER_NAV, POLICY_KEY, PolicyRow } from '../customer/nav';
 import { ORG_NAV } from '../org/nav';
-import { eventDateLabel, CAUSE_LABEL, EVENT_DATE_LABEL, INSURED_RELATIONS, insuredNameLabel } from './claim-wording';
+import { eventDateLabel, CAUSE_LABEL, EVENT_DATE_LABEL, INSURED_RELATIONS, insuredNameLabel, CaseDetail, causeDetailFor } from './claim-wording';
 import { useDraft } from '../../lib/draft';
 import { SearchPick } from './SearchPick';
 
@@ -107,18 +107,18 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
   const [brokerFor, setBrokerFor] = useState<{ id: string; name: string } | null | undefined>(undefined);
   const [isBroker, setIsBroker] = useState(false);
   // The typed / picked fields survive a page refresh (lib/draft); the company comes back from ?company=.
-  const [f, setF, clearF] = useDraft('claim', { claimType: 'DEATH_ILLNESS', eventDate: '', birthDate: '', deceasedFullName: '', deceasedNationalCode: '', relation: '', mainName: '', mainCode: '', causeOfDeath: '', description: '', startStage: '', deathCapital: '', accidentCapital: '' });
+  const [f, setF, clearF] = useDraft('claim', { claimType: 'DEATH_ILLNESS', eventDate: '', birthDate: '', deceasedFullName: '', deceasedNationalCode: '', relation: '', mainName: '', mainCode: '', causeOfDeath: '', causeDetail: '', description: '', startStage: '', deathCapital: '', accidentCapital: '' });
   // «اعلام خسارت»: is filing allowed from this login, and to which desks?
   const [notice, setNotice] = useState<{ enabled: boolean; targets: string[]; default: string; labels: Record<string, string> } | null>(null);
   useEffect(() => { client.get<any>(org ? '/claims/notice-options' : '/customer/notice-options', realm).then(setNotice).catch(() => setNotice(null)); }, []);
   const [causes, setCauses, clearCauses] = useDraft<string[]>('causes', []);
   // A brokerage's panel 1 without a بیمه‌نامه to read the form from: each نوع پرونده's «علت» list and label
   // from its insurers (the same lists the insurer's own panel 1 shows).
-  const [orgTypes, setOrgTypes] = useState<Record<string, { label: string; causes: string[]; causeLabel: string; death?: boolean; causeGroup?: string }>>({});
+  const [orgTypes, setOrgTypes] = useState<Record<string, { label: string; causes: string[]; causeLabel: string; death?: boolean; causeGroup?: string; detail?: CaseDetail | null }>>({});
   useEffect(() => {
     if (!org) return;
-    client.get<{ code: string; label: string; causes?: string[]; causeLabel?: string; death?: boolean; causeGroup?: string }[]>(`/claims/case-types${lineQuery()}`, 'org')
-      .then((l) => setOrgTypes(Object.fromEntries(l.map((t) => [t.code, { label: t.label, causes: t.causes ?? [], causeLabel: t.causeLabel ?? CAUSE_LABEL, death: t.death, causeGroup: t.causeGroup }])))).catch(() => {});
+    client.get<{ code: string; label: string; causes?: string[]; causeLabel?: string; death?: boolean; causeGroup?: string; detail?: CaseDetail | null }[]>(`/claims/case-types${lineQuery()}`, 'org')
+      .then((l) => setOrgTypes(Object.fromEntries(l.map((t) => [t.code, { label: t.label, causes: t.causes ?? [], causeLabel: t.causeLabel ?? CAUSE_LABEL, death: t.death, causeGroup: t.causeGroup, detail: t.detail ?? null }])))).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   // فن‌آوران coverage inquiry on the insured's کد ملی (the form's first field); null while Super Admin has it
@@ -196,6 +196,9 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
   // One cause from the list (a searchable drawer); typing only where the نوع پرونده has no list.
   const picked = causes.filter((c) => causeOptions.includes(c)).slice(0, 1);
   const cause = [...picked, causeOptions.length ? '' : f.causeOfDeath.trim()].filter(Boolean).join('، ');
+  // «نوع حادثه»: a second, required choice after some causes (Model View).
+  const detail = causeDetailFor((caseType as { detail?: CaseDetail | null } | undefined)?.detail ?? orgTypes[f.claimType]?.detail, picked[0]);
+  const causeDetail = detail?.options.includes(f.causeDetail ?? '') ? f.causeDetail : '';
   // Model View: «نوع بیمه‌شده» for this company? A همسر / فرزند also names the main insured.
   const askRelation = !!form?.dependents;
   // Any نوع بیمه‌شده but اصلی is a dependent (فرعی): the form also asks for the main insured.
@@ -257,6 +260,7 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
     if (birthIso && iso && new Date(birthIso) > new Date(iso)) return setError(`تاریخ تولد بعد از ${eventLabel} است`);
     if (form?.birthDate === 'required' && !birthIso) return setError('تاریخ تولد بیمه‌شده را وارد کنید');
     if (form?.cause === 'required' && !cause) return setError(`${causeLabel} را مشخص کنید`);
+    if (detail && !causeDetail) return setError(`${detail.label} را انتخاب کنید`);
     if (askRelation && !f.relation) return setError('نوع بیمه‌شده را انتخاب کنید');
     if (coverage === 'checking') return setError('استعلام کد ملی از سامانهٔ بیمه‌گر هنوز تمام نشده است');
     if (coverage?.blocked) return setError(coverageText(coverage));
@@ -278,6 +282,7 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
       if (iso) payload.eventDate = iso;
       if (birthIso) payload.deceasedBirthDate = birthIso;
       if (cause) payload.causeOfDeath = cause;
+      if (causeDetail) payload.causeDetail = causeDetail;
       if (f.startStage || (notice?.enabled && notice.targets.length > 1)) payload.startStage = f.startStage || startDefault;
       if (f.description.trim()) payload.description = f.description.trim();
       if (!agent && f.deathCapital) payload.deathCapital = f.deathCapital;
@@ -430,6 +435,12 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
             ) : (
               <input className="input" value={f.causeOfDeath} onChange={(e) => setF({ ...f, causeOfDeath: e.target.value })} maxLength={300} placeholder="شرح علت" />
             )}
+          </PField></div>
+          )}
+          {detail && (
+          <div className="md:col-span-2 lg:col-span-3"><PField label={`${detail.label} *`} help={`پس از «${picked[0]}» باید ${detail.label} را هم انتخاب کنید؛ مدارک الزامی پرونده بر اساس آن مشخص می‌شود.`}>
+            <SearchPick label={detail.label} options={detail.options.map((o) => ({ id: o, name: o }))} value={causeDetail} onPick={(v) => setF({ ...f, causeDetail: v })}
+              placeholder={`${detail.label} را انتخاب کنید…`} none="— انتخاب نشده —" />
           </PField></div>
           )}
         </div>

@@ -87,7 +87,12 @@ const perLine = <T>(stored: unknown, f: (l: Line) => T) => {
  * One نوع پرونده. causes: its own «علت» list (empty = the list of its causeGroup); death: the case speaks
  * of a متوفی and takes the ذینفع step.
  */
-export interface CaseType { code: string; label: string; causeGroup: 'DEATH' | 'ACCIDENT'; death: boolean; causes: string[] }
+export interface CaseType { code: string; label: string; causeGroup: 'DEATH' | 'ACCIDENT'; death: boolean; causes: string[]; detail?: CaseDetail | null }
+/**
+ * A second, required choice some causes ask for (e.g. «نوع حادثه» after «فوت در اثر حادثه…»): `causes` are the
+ * causes that ask it (empty = every cause of the type). Documents can be required only for some options.
+ */
+export interface CaseDetail { label: string; options: string[]; causes: string[] }
 /** بیمه‌گزار companies that file different نوع پرونده than the insurer's usual ones (a ticked company covers its subsidiaries). */
 export interface CompanyGroup { id: string; label: string; companyIds: string[]; lines: Record<Line, string[]>; dependents: boolean }
 /**
@@ -134,16 +139,22 @@ export interface WorkflowModel extends CaseRules {
 }
 const LIFE_TYPES = ['DEATH_ILLNESS', 'DISABILITY_ILLNESS'];
 const ACCIDENT_TYPES = ['DEATH_ACCIDENT', 'DISABILITY_ACCIDENT', 'MEDICAL_ACCIDENT', 'DAILY_GENERAL', 'DAILY_HOSPITAL'];
-export const DEFAULT_CASE_TYPES: CaseType[] = [
-  { code: 'DEATH_ILLNESS', label: 'فوت به هر علت', causeGroup: 'DEATH', death: true, causes: ['بیماری', 'سرطان', 'سکته قلبی بدون برگه ذینفع', 'فوت-عدم تعیین سهم ذینفعها و پرداخت در وجه وراث', 'انفجار', 'سکته قلبی-پرداخت در وجه وکیل یا وراث', 'سکته قلبی-پرداخت در وجه بیمه گذار', 'سکته مغزی-پرداخت در وجه بیمه گذار', 'فوت در اثر حادثه-پرداخت در وجه "وکیل یا وراث"', 'فوت در اثر حادثه-پرداخت در وجه "وراث قانونی"', 'سکته قلبی با برگه ذینفع', 'سکته مغزی با برگه ذینفع', 'فوت در اثر حادثه با برگه ذینفع', 'بیماری کرونا', 'بیماری های تنفسی', 'فوت در اثر حادثه-ذینفع "بیمه گذار"'] },
-  { code: 'DISABILITY_ILLNESS', label: 'از کار افتادگی دائم و کامل ناشی از بیماری', causeGroup: 'DEATH', death: false, causes: ['ازکارافتادگی کلی ناشی از بیماری با رأی کمیسیون پزشکی تأمین اجتماعی و تائید بیمه‌گر', 'ازکارافتادگی کلی ناشی از بیماری با رأی کمیسیون پزشکی بیمه گذار'] },
+/** «نوع حادثه» after a «فوت در اثر حادثه…» cause of «فوت به هر علت». */
+const ACCIDENT_DETAIL: CaseDetail = {
+  label: 'نوع حادثه',
+  options: ['حادثه در محل کار', 'فوت به علت حادثه', 'حادثه تصادف', 'نزاع و درگیری'],
+  causes: ['فوت در اثر حادثه-ذینفع "بیمه گزار"', 'فوت در اثر حادثه با برگه ذینفع', 'فوت در اثر حادثه-پرداخت در وجه "وکیل یا وراث"', 'فوت در اثر حادثه-پرداخت در وجه "وراث قانونی"'],
+};
+export const DEFAULT_CASE_TYPES: CaseType[] = ([
+  { code: 'DEATH_ILLNESS', label: 'فوت به هر علت', causeGroup: 'DEATH', death: true, causes: ['بیماری', 'سرطان', 'سکته قلبی بدون برگه ذینفع', 'فوت-عدم تعیین سهم ذینفعها و پرداخت در وجه وراث', 'انفجار', 'سکته قلبی-پرداخت در وجه وکیل یا وراث', 'سکته قلبی-پرداخت در وجه بیمه گزار', 'سکته مغزی-پرداخت در وجه بیمه گزار', 'فوت در اثر حادثه-پرداخت در وجه "وکیل یا وراث"', 'فوت در اثر حادثه-پرداخت در وجه "وراث قانونی"', 'سکته قلبی با برگه ذینفع', 'سکته مغزی با برگه ذینفع', 'فوت در اثر حادثه با برگه ذینفع', 'بیماری کرونا', 'بیماری های تنفسی', 'فوت در اثر حادثه-ذینفع "بیمه گزار"'], detail: ACCIDENT_DETAIL },
+  { code: 'DISABILITY_ILLNESS', label: 'از کار افتادگی دائم و کامل ناشی از بیماری', causeGroup: 'DEATH', death: false, causes: ['ازکارافتادگی کلی ناشی از بیماری با رأی کمیسیون پزشکی تأمین اجتماعی و تائید بیمه‌گر', 'ازکارافتادگی کلی ناشی از بیماری با رأی کمیسیون پزشکی بیمه گزار'] },
   { code: 'DEATH_ACCIDENT', label: 'فوت بر اثر حادثه', causeGroup: 'ACCIDENT', death: true, causes: ['حادثه ناشی از کار', 'حادثه غیر ناشی از کار (تصادف)', 'زلزله (با فرم تعیین ذینفع)', 'زلزله (بدون فرم تعیین ذینفع)', 'جنگ'] },
   { code: 'DISABILITY_ACCIDENT', label: 'نقص عضو و از کار افتادگی بر اثر حادثه', causeGroup: 'ACCIDENT', death: false, causes: ['حادثه ناشی از کار', 'حادثه غیر ناشی از کار (تصادف)', 'زلزله (با فرم تعیین ذینفع)', 'زلزله (بدون فرم تعیین ذینفع)', 'حادثه (با هزینه پزشکی)', 'حادثه (بدون هزینه پزشکی)', 'جنگ'] },
   { code: 'MEDICAL_ACCIDENT', label: 'جبران هزینه‌های پزشکی ناشی از حادثه', causeGroup: 'ACCIDENT', death: false, causes: ['حادثه ناشی از کار', 'حادثه غیر ناشی از کار (تصادف)', 'زلزله (با فرم تعیین ذینفع)', 'زلزله (بدون فرم تعیین ذینفع)', 'حادثه (با هزینه پزشکی)', 'حادثه (بدون هزینه پزشکی)', 'جنگ'] },
   // غرامت روزانه: no list of their own yet (the حادثه list applies)
   { code: 'DAILY_GENERAL', label: 'غرامت روزانه عمومی', causeGroup: 'ACCIDENT', death: false, causes: [] },
   { code: 'DAILY_HOSPITAL', label: 'غرامت روزانه بیمارستانی', causeGroup: 'ACCIDENT', death: false, causes: [] },
-];
+] as CaseType[]).map((t) => ({ ...t, detail: t.detail ?? null }));
 /** The «علت» options of one نوع پرونده: its own list, else its causeGroup's. */
 export function causesOf(model: WorkflowModel, code: string | null | undefined): string[] {
   const t = model.form.caseTypes.find((x) => x.code === code);
@@ -178,8 +189,8 @@ export const DEFAULT_WORKFLOW_MODEL: WorkflowModel = {
       'فوت-عدم تعیین سهم ذینفعها و پرداخت در وجه وراث',
       'انفجار',
       'سکته قلبی-پرداخت در وجه وکیل یا وراث',
-      'سکته قلبی-پرداخت در وجه بیمه گذار',
-      'سکته مغزی-پرداخت در وجه بیمه گذار',
+      'سکته قلبی-پرداخت در وجه بیمه گزار',
+      'سکته مغزی-پرداخت در وجه بیمه گزار',
       'فوت در اثر حادثه-پرداخت در وجه "وکیل یا وراث"',
       'فوت در اثر حادثه-پرداخت در وجه "وراث قانونی"',
       'سکته قلبی با برگه ذینفع',
@@ -187,7 +198,7 @@ export const DEFAULT_WORKFLOW_MODEL: WorkflowModel = {
       'فوت در اثر حادثه با برگه ذینفع',
       'بیماری کرونا',
       'بیماری های تنفسی',
-      'فوت در اثر حادثه-ذینفع "بیمه گذار"',
+      'فوت در اثر حادثه-ذینفع "بیمه گزار"',
       ],
       ACCIDENT: [
       'حادثه ناشی از کار',
@@ -234,11 +245,16 @@ export function modelFrom(stored: unknown): WorkflowModel {
   const rights = (r: any, def: PanelRights): PanelRights => ({ upload: flag(r?.upload, def.upload), submit: flag(r?.submit, def.submit) });
   // The standard types always exist (old cases carry their codes); an insurer can rename them and add its own.
   const storedTypes: any[] = Array.isArray(raw.form?.caseTypes) ? raw.form.caseTypes : [];
+  const caseDetail = (d: any): CaseDetail | null => {
+    const options = list(d?.options, 20);
+    return options.length ? { label: text(d?.label, 'نوع حادثه', 60), options, causes: list(d?.causes) } : null;
+  };
   const caseType = (r: any, def?: CaseType): CaseType => ({
     code: def?.code ?? r.code, label: text(r?.label, def?.label ?? r.code, 120),
     causeGroup: r?.causeGroup === 'DEATH' || r?.causeGroup === 'ACCIDENT' ? r.causeGroup : def?.causeGroup ?? 'ACCIDENT',
     death: flag(r?.death, def?.death ?? false),
     causes: Array.isArray(r?.causes) ? list(r.causes) : def?.causes ?? [],
+    detail: r && 'detail' in r ? caseDetail(r.detail) : def?.detail ?? null,
   });
   const caseTypes = [
     ...DEFAULT_CASE_TYPES.map((def) => caseType(storedTypes.find((r) => r?.code === def.code), def)),
@@ -312,6 +328,25 @@ export function typesFor(model: WorkflowModel, line: Line | null | undefined, co
 export function dependentsFor(model: WorkflowModel, companyChain: string[] = []): boolean {
   return model.form.groups.find((g) => g.companyIds.some((id) => companyChain.includes(id)))?.dependents ?? model.form.dependents;
 }
+
+/** «علت» texts compared loosely: spaces, ZWNJ, kashida, quotes, ي/ك and «گذار»/«گزار» don't matter. */
+export const normCause = (s: string | null | undefined) =>
+  (s ?? '').replace(/[يى]/g, 'ی').replace(/ك/g, 'ک').replace(/گذار/g, 'گزار').replace(/[\s\u200c\u0640"'«»]+/g, '');
+const sameCause = (list: string[], v: string | null | undefined) => { const c = normCause(v); return !!c && list.some((x) => normCause(x) === c); };
+
+/** The second choice the picked cause asks for (null = none). */
+export function detailFor(t: CaseType | null | undefined, cause: string | null | undefined): CaseDetail | null {
+  const d = t?.detail;
+  if (!d?.options.length) return null;
+  return !d.causes.length || sameCause(d.causes, cause) ? d : null;
+}
+
+type DocRule = { appliesToTypes: string[]; requiredTypes: string[]; causes?: string[] | null; requiredDetails?: string[] | null };
+type DocClaim = { claimType: string; causeOfDeath?: string | null; causeDetail?: string | null };
+/** Is the document listed for this case: its نوع پرونده, and its «علت» when the document names some. */
+export const docApplies = (r: DocRule, c: DocClaim) => r.appliesToTypes.includes(c.claimType) && (!r.causes?.length || sameCause(r.causes, c.causeOfDeath));
+/** Must it be uploaded before sending: required for the type, and for the «نوع حادثه» when the document names some. */
+export const docRequired = (r: DocRule, c: DocClaim) => r.requiredTypes.includes(c.claimType) && (!r.requiredDetails?.length || sameCause(r.requiredDetails, c.causeDetail));
 
 export const caseTypeOf = (model: WorkflowModel, code: string | null | undefined): CaseType | null => model.form.caseTypes.find((t) => t.code === code) ?? null;
 

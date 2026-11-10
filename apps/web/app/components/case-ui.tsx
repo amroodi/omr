@@ -18,12 +18,12 @@ export interface DocReview { stage: string; state: string; canEdit: boolean; cha
 /** «بررسی هوشمند مدارک» verdict on one file (null = not checked). */
 export interface DocAi { status: string; reason: string | null; detected: string | null }
 export interface ClaimDoc { id: string; fileName: string; status: string; statusLabel: string; note: string | null; uploadedAt: string | null; version: number; isLatest: boolean; reviews?: DocReview[]; ai?: DocAi | null }
-export interface ChecklistItem { code: string; label: string; required?: boolean; accidentOnly?: boolean; uploaded: boolean; aiRefused?: boolean; latestStatus: string | null; documents: ClaimDoc[]; deficiency?: { open: boolean; raisedAt: string; custom?: boolean } }
+export interface ChecklistItem { code: string; label: string; required?: boolean; accidentOnly?: boolean; uploaded: boolean; aiRefused?: boolean; latestStatus: string | null; documents: ClaimDoc[]; extras?: ClaimDoc[]; deficiency?: { open: boolean; raisedAt: string; custom?: boolean } }
 export interface Checklist { claimType: string; complete: boolean; note?: string; items: ChecklistItem[]; otherDocuments?: ClaimDoc[]; entryList?: boolean }
 export interface FieldRow { key: string; label: string; type: string; options: string[]; required: boolean; value: string | null; source: string | null; confirmed: boolean; canEdit: boolean }
 export interface FieldsData { party: string; manual?: boolean; groups: Record<string, FieldRow[]> }
 export interface CaseClaim {
-  coverageStatus?: string | null; insuredLinkEnabled?: boolean; causeOfDeath?: string | null; claimTypeLabel?: string | null; claimTypeDeath?: boolean;
+  coverageStatus?: string | null; insuredLinkEnabled?: boolean; causeOfDeath?: string | null; causeDetail?: string | null; claimTypeLabel?: string | null; claimTypeDeath?: boolean;
   id: string; claimNumber: string; policyNumber?: string | null; status: string; claimType: string; insurerTenantId?: string;
   deceasedName: string | null; deceasedNationalCode?: string | null; insuredRelation?: string | null; mainInsuredName?: string | null; mainInsuredNationalCode?: string | null; deceasedBirthDate?: string | null; deceasedAge?: number | null;
   eventDate: string | null; createdAt?: string | null; paidDate?: string | null; noticeDeadline: string | null; lateNotice: boolean;
@@ -216,7 +216,7 @@ export function CaseSummary({ claim, fv }: { claim: CaseClaim; fv: Record<string
         <InfoRow label="مبلغ قابل پرداخت" value={fmtAmount(fv.payable_amount || claim.payableAmount)} tone="amount" />
       </InfoCard>
       <InfoCard title={isDeath ? 'اطلاعات فوت' : 'اطلاعات حادثه'} icon={ICONS.doc} aside={claimTypeLabel(claim)}>
-        <InfoRow label="علت خسارت" value={fv.cause_of_death || claim.causeOfDeath || fv.death_kind} />
+        <InfoRow label="علت خسارت" value={[fv.cause_of_death || claim.causeOfDeath || fv.death_kind, claim.causeDetail].filter(Boolean).join(' — ')} />
         <InfoRow label={isDeath ? 'تاریخ فوت' : 'تاریخ حادثه'} value={claim.eventDate || d('death_date')} />
         <InfoRow label={isDeath ? 'سن متوفی' : 'سن بیمه‌شده'} value={claim.deceasedAge != null ? `${claim.deceasedAge.toLocaleString('fa-IR')} سال` : null} />
         <InfoRow label="وضعیت پرونده" value={statusText} />

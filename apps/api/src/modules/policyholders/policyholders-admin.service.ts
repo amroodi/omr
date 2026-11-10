@@ -238,7 +238,7 @@ export class PolicyholdersAdminService {
 
   /**
    * Import the insurer's yearly policy export. Each sheet is one line («عمر…» → عمر, «حوادث…» → حوادث);
-   * columns: شماره بیمه‌نامه، بیمه‌گذار («نام کد ۱۲۳۴»)، تاریخ شروع، تاریخ پایان. A company is matched
+   * columns: شماره بیمه‌نامه، بیمه‌گزار («نام کد ۱۲۳۴»)، تاریخ شروع، تاریخ پایان. A company is matched
    * by its کد بیمه‌گزار (then by exact name), so one company gets one login across both sheets; each
    * (line, number, start date) becomes one policy year. Safe to re-run: existing rows are skipped.
    */
@@ -270,7 +270,7 @@ export class PolicyholdersAdminService {
           else if (h.includes('تاریخپایان')) col.end = c;
         });
       }
-      if (!header || !col.holder) { out.errors.push({ sheet: ws.name, row: 0, message: 'ستون‌های «شماره بیمه نامه» و «بیمه گذار» پیدا نشد' }); return; }
+      if (!header || !col.holder) { out.errors.push({ sheet: ws.name, row: 0, message: 'ستون‌های «شماره بیمه نامه» و «بیمه گزار» پیدا نشد' }); return; }
       let count = 0;
       for (let r = header + 1; r <= ws.rowCount; r++) {
         const row = ws.getRow(r);

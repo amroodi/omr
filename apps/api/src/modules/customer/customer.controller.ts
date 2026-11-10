@@ -318,6 +318,7 @@ export class CustomerController {
       eventDate: dto.eventDate,
       description: dto.description,
       causeOfDeath: dto.causeOfDeath,
+      causeDetail: dto.causeDetail,
       beneficiaryType: dto.beneficiaryType,
       heirs: dto.heirs,
       startStage: dto.startStage,
@@ -409,8 +410,8 @@ export class CustomerController {
   @UseGuards(JwtAuthGuard)
   @Post('claims/:id/documents')
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 15 * 1024 * 1024 } }))
-  uploadClaimDoc(@Param('id') id: string, @Query('docCode') docCode: string, @UploadedFile() file: Express.Multer.File) {
-    return this.claims.uploadDocument(id, file, docCode);
+  uploadClaimDoc(@Param('id') id: string, @Query('docCode') docCode: string, @Query('extra') extra: string | undefined, @UploadedFile() file: Express.Multer.File) {
+    return this.claims.uploadDocument(id, file, docCode, extra === '1' || extra === 'true');
   }
 
   /** بیمه‌گزار sends the original documents to شعبه when asked. */

@@ -19,7 +19,7 @@ import { getContext, getTenantIdOrThrow } from '../../common/tenant/tenant-conte
 import { toJalali, toPersianDigits } from '../../common/jalali/jalali.util';
 import { SmsService } from '../auth/sms.service';
 import { RequestOtpDto, VerifyOtpDto } from './dto';
-import { caseTypeOf, chainOf, InsuredRelation, RELATION_FA, Stage } from '../claims/workflow';
+import { caseTypeOf, chainOf, docApplies, InsuredRelation, RELATION_FA, Stage } from '../claims/workflow';
 
 import { ModelStore } from '../model-view/model-store.service';
 import { ageAt, lossNoticeEntry } from '../claims/claims.service';
@@ -503,12 +503,13 @@ export class InquiryService {
   }
 
   /** Read-only document checklist of a claim for the inquiry («بررسی وضعیت مدارک»). */
-  private async documentStatus(c: { id: string; insurerTenantId: string; claimType: any; beneficiaryType?: string | null; line?: string | null }, manual: boolean) {
+  private async documentStatus(c: { id: string; insurerTenantId: string; claimType: any; causeOfDeath?: string | null; beneficiaryType?: string | null; line?: string | null }, manual: boolean) {
     const db = this.prisma.unscoped();
-    const [reqs, docs] = await Promise.all([
+    const [all, docs] = await Promise.all([
       db.requiredDocument.findMany({ where: { tenantId: c.insurerTenantId, isActive: true, appliesToTypes: { has: c.claimType }, code: { notIn: beneficiaryHiddenDocs(c.beneficiaryType) }, ...docKindWhere(c.line) }, orderBy: { order: 'asc' } }),
       db.document.findMany({ where: { claimId: c.id }, orderBy: { createdAt: 'desc' }, select: { id: true, docCode: true, createdAt: true, verificationStatus: true } }),
     ]);
+    const reqs = all.filter((r) => docApplies(r, c)); // the case's «علت» narrows some lists
     const reviews = docs.length && !manual ? await db.documentReview.findMany({ where: { documentId: { in: docs.map((d) => d.id) } } }) : [];
     const latest = new Map<string, (typeof docs)[number]>();
     for (const d of docs) if (d.docCode && !latest.has(d.docCode)) latest.set(d.docCode, d);

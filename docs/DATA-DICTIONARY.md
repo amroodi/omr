@@ -113,7 +113,7 @@ Sensitivity column drives encryption: **E** = AES-256-GCM field encryption, **H*
 Both legacy exports were print-only or stubbed. The rebuild produces real XLSX/PDF. Default
 case-list export columns (per tenant-overridable template):
 
-`ردیف, کد ملی (masked), نام بیمه‌گذار, نوع ذینفع, تاریخ فوت, مرحله پرونده, وضعیت پرونده, مبلغ پرداختی, تاریخ پرداخت`
+`ردیف, کد ملی (masked), نام بیمه‌گزار, نوع ذینفع, تاریخ فوت, مرحله پرونده, وضعیت پرونده, مبلغ پرداختی, تاریخ پرداخت`
 
 National ID is **masked** by default in exports (`•••••1478`); full value requires an explicit
 permission (`export:pii`) and is audit-logged.

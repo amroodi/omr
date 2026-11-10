@@ -16,6 +16,7 @@ import { ModelStore } from '../model-view/model-store.service';
 import { beneficiaryHiddenDocs } from '../required-docs/defaults';
 import { SessionsService } from '../security/sessions.service';
 import { docKindWhere } from '../../common/kinds';
+import { docApplies } from '../claims/workflow';
 
 const OTP_PURPOSE = 'insured-panel';
 const STATUS_FA: Record<string, string> = { PAID: 'پرداخت شده', REJECTED: 'رد شده' };
@@ -136,10 +137,10 @@ export class InsuredService {
       const c = r.claim;
       const m = this.store.get(c.insurerTenantId);
       const hidden = beneficiaryHiddenDocs(c.beneficiaryType);
-      const reqs = await this.db().requiredDocument.findMany({
+      const reqs = (await this.db().requiredDocument.findMany({
         where: { tenantId: c.insurerTenantId, isActive: true, appliesToTypes: { has: c.claimType }, code: { in: m.insured.docCodes.filter((x) => !hidden.includes(x)) }, ...docKindWhere(c.line) },
-        orderBy: { order: 'asc' }, select: { code: true, label: true },
-      });
+        orderBy: { order: 'asc' }, select: { code: true, label: true, appliesToTypes: true, requiredTypes: true, causes: true },
+      })).filter((r) => docApplies(r, c));
       const docs = await this.db().document.findMany({ where: { claimId: c.id, docCode: { in: reqs.map((x) => x.code) } }, orderBy: { createdAt: 'desc' }, select: { docCode: true, fileName: true, verificationStatus: true, aiStatus: true, aiReason: true, verificationNote: true } });
       out.push({
         id: c.id, claimNumber: c.claimNumber, claimType: c.claimType, claimTypeLabel: m.form.caseTypes.find((t) => t.code === c.claimType)?.label ?? c.claimType, closed: c.status === 'PAID' || c.status === 'REJECTED',

@@ -47,10 +47,12 @@ type Item = { id: number; name: string; pct: number; eta: number | null; state: 
  * (and its owner keeps showing progress) if the user closes the dialog.
  */
 export function UploadDialog({
-  open, onClose, onUpload, accept, maxMB, title = 'بارگذاری پرونده', subtitle, multiple = false, camera = false, closeOnDone = true, note, cameraOnly = false,
+  open, onClose, onUpload, accept, maxMB, title = 'بارگذاری پرونده', subtitle, multiple = false, camera = false, closeOnDone = true, note, cameraOnly = false, top,
 }: {
   open: boolean; onClose: () => void; onUpload: UploadFn; accept: string; maxMB: number;
   title?: string; subtitle?: ReactNode; multiple?: boolean; camera?: boolean; closeOnDone?: boolean; note?: ReactNode;
+  /** Shown above the drop zone (e.g. «جایگزینی فایل» / «+ افزودن صفحهٔ دیگر»). */
+  top?: ReactNode;
   /** On a phone, only «اسکن با دوربین» — no picking files from the device (بیمه‌گزار panel). */
   cameraOnly?: boolean;
 }) {
@@ -119,6 +121,7 @@ export function UploadDialog({
           <button type="button" className="pmodal-x" onClick={onClose} aria-label="بستن">×</button>
         </div>
         <div className="pmodal-body">
+          {top}
           <div
             className={`upd-drop${drag ? ' is-drag' : ''}`}
             onDragEnter={(e) => { e.preventDefault(); setDrag(true); }}
@@ -181,15 +184,20 @@ const CHECK = 'M20 6L9 17l-5-5';
  * One required document's upload control (مدارک مورد نیاز): an orange «?» with what to send, and a tile
  * with a paperclip and «افزودن تصویر مدارک» that opens the upload dialog. While the file goes up the
  * paperclip becomes the progress ring (with the time left); once uploaded it reads «جایگزینی فایل».
+ * With `onExtra`, an uploaded document also gets «+»: more pages of it, or a paper that goes with it
+ * (the dialog can switch between the two as well).
  */
 export function DocUploadTile({
   label, onUpload, uploaded = false, rejected = false, required = true, help, accept = '.pdf,.doc,.docx,.jpg,.jpeg,.png', maxMB = 15,
-  camera = true, disabled = false, compact = false, addText = 'افزودن تصویر مدارک', cameraOnly = false,
+  camera = true, disabled = false, compact = false, addText = 'افزودن تصویر مدارک', cameraOnly = false, onExtra,
 }: {
   label: string; onUpload: UploadFn; uploaded?: boolean; rejected?: boolean; required?: boolean; help?: string;
   accept?: string; maxMB?: number; camera?: boolean; disabled?: boolean; compact?: boolean; addText?: string; cameraOnly?: boolean;
+  /** Upload one more page / an accompanying paper of this document (not a replacement). */
+  onExtra?: UploadFn;
 }) {
   const [open, setOpen] = useState(false);
+  const [extra, setExtra] = useState(false); // the dialog adds a page instead of replacing
   const [prog, setProg] = useState<{ pct: number; eta: number | null } | null>(null);
   const [tip, setTip] = useState(false);
   const tipRef = useRef<HTMLSpanElement>(null);
@@ -209,6 +217,19 @@ export function DocUploadTile({
   };
 
   const text = uploaded ? (rejected ? 'جایگزینی مدرک ردشده' : 'جایگزینی فایل') : addText;
+  const canExtra = !!onExtra && uploaded && !rejected;
+  const runExtra: UploadFn = async (file, onP) => {
+    setProg({ pct: 0, eta: null });
+    try { await onExtra!(file, (pct, eta) => { onP(pct, eta); setProg({ pct, eta }); }); }
+    finally { setProg(null); }
+  };
+  const openAs = (asExtra: boolean) => { setExtra(asExtra); setOpen(true); };
+  const modes = canExtra ? (
+    <div className="upd-modes" role="tablist" aria-label="نوع بارگذاری">
+      <button type="button" role="tab" aria-selected={!extra} className={!extra ? 'is-on' : ''} onClick={() => setExtra(false)}>جایگزینی فایل</button>
+      <button type="button" role="tab" aria-selected={extra} className={extra ? 'is-on' : ''} onClick={() => setExtra(true)}><b aria-hidden>+</b> افزودن صفحه یا مدرک تکمیلی</button>
+    </div>
+  ) : null;
   const helpText = help || `فایل PDF، Word یا تصویر واضح (JPG، PNG) از «${label}» را بارگذاری کنید؛ حداکثر ${faN(maxMB)} مگابایت. روی گوشی می‌توانید مستقیم با دوربین عکس بگیرید.`;
   return (
     <span className={`dut${compact ? ' is-compact' : ''}`}>
@@ -216,14 +237,21 @@ export function DocUploadTile({
         <button type="button" className="dut-help" aria-label={`راهنمای ${label}`} aria-expanded={tip} aria-controls={tipId} onClick={() => setTip((v) => !v)}>?</button>
         {tip && <span className="dut-tip" id={tipId} role="tooltip">{helpText}</span>}
       </span>
-      <button type="button" className={`dut-tile${uploaded ? ' is-up' : ''}${rejected ? ' is-bad' : ''}`} disabled={disabled} onClick={() => setOpen(true)}
+      <button type="button" className={`dut-tile${uploaded ? ' is-up' : ''}${rejected ? ' is-bad' : ''}`} disabled={disabled} onClick={() => openAs(false)}
         aria-label={`${text} — ${label}`}>
         {prog ? <ProgressRing pct={prog.pct} eta={prog.eta} size={compact ? 30 : 36} />
           : <svg className="dut-ico" viewBox="0 0 24 24" aria-hidden><path d={uploaded && !rejected ? CHECK : CLIP} /></svg>}
         <span className="dut-t">{required && !uploaded && <span className="dut-req">* </span>}{prog ? 'در حال بارگذاری…' : text}</span>
       </button>
-      <UploadDialog open={open} onClose={() => setOpen(false)} onUpload={run} accept={accept} maxMB={maxMB} camera={camera} cameraOnly={cameraOnly}
-        title={uploaded ? 'جایگزینی مدرک' : 'بارگذاری مدرک'} subtitle={label} />
+      {canExtra && (
+        <button type="button" className="dut-plus" disabled={disabled || !!prog} onClick={() => openAs(true)} title="افزودن صفحهٔ دیگر یا مدرک تکمیلی" aria-label={`افزودن صفحهٔ دیگر — ${label}`}>
+          <svg viewBox="0 0 24 24" aria-hidden><path d="M12 5v14M5 12h14" /></svg>
+        </button>
+      )}
+      <UploadDialog open={open} onClose={() => setOpen(false)} onUpload={canExtra && extra ? runExtra : run} accept={accept} maxMB={maxMB} camera={camera} cameraOnly={cameraOnly}
+        multiple={canExtra && extra} top={modes}
+        note={canExtra && extra ? 'هر فایل به‌عنوان صفحهٔ دیگری از همین مدرک (یا مدرک همراه آن) ذخیره می‌شود و فایل قبلی سر جایش می‌ماند.' : undefined}
+        title={canExtra && extra ? 'افزودن صفحه یا مدرک تکمیلی' : uploaded ? 'جایگزینی مدرک' : 'بارگذاری مدرک'} subtitle={label} />
     </span>
   );
 }

@@ -63,6 +63,7 @@ export class FilingEditDto {
   // '' clears it
   @IsOptional() @IsString() deceasedBirthDate?: string;
   @IsOptional() @IsString() @Length(0, 300) causeOfDeath?: string;
+  @IsOptional() @IsString() @Length(0, 120) causeDetail?: string;
   @IsOptional() @IsString() @Length(0, 2000) description?: string;
 }
 
@@ -88,6 +89,12 @@ export class FileClaimDto {
   @IsString()
   @Length(0, 1500)
   causeOfDeath?: string;
+
+  // «نوع حادثه» when the cause asks for one (Model View caseType.detail)
+  @IsOptional()
+  @IsString()
+  @Length(0, 120)
+  causeDetail?: string;
 
   // نوع بیمه‌نامه chosen on the panel-1 login
   @IsOptional()
@@ -210,6 +217,12 @@ export class FileOnBehalfDto {
   @IsString()
   @Length(0, 1500)
   causeOfDeath?: string;
+
+  // «نوع حادثه» when the cause asks for one (Model View caseType.detail)
+  @IsOptional()
+  @IsString()
+  @Length(0, 120)
+  causeDetail?: string;
 
   @IsOptional()
   @IsUUID()

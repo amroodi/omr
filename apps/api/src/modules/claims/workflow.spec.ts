@@ -1,4 +1,4 @@
-import { above, actionsFor, causesOf, ActionContext, asLine, typesFor, below, chainOf, DEFAULT_WORKFLOW_MODEL, directTarget, higher, modelFrom, physicalActionsFor, rulesOf, stageLabels, WorkflowModel } from './workflow';
+import { above, actionsFor, causesOf, caseTypeOf, detailFor, docApplies, docRequired, normCause, ActionContext, asLine, typesFor, below, chainOf, DEFAULT_WORKFLOW_MODEL, directTarget, higher, modelFrom, physicalActionsFor, rulesOf, stageLabels, WorkflowModel } from './workflow';
 
 const broker = { brokerTenantId: 'b1' };
 const direct = { brokerTenantId: null };
@@ -280,5 +280,32 @@ describe('نوع بیمه‌نامه (policy kinds)', () => {
     expect(asLine('SAVINGS_LIFE')).toBe('SAVINGS_LIFE');
     expect(asLine('X')).toBeUndefined();
     expect(asLine(undefined)).toBeUndefined();
+  });
+});
+
+describe('documents per «علت» and «نوع حادثه»', () => {
+  const death = caseTypeOf(DEFAULT_WORKFLOW_MODEL, 'DEATH_ILLNESS');
+  it('«نوع حادثه» is asked only after a «فوت در اثر حادثه…» cause, whatever the spelling', () => {
+    expect(detailFor(death, 'بیماری')).toBeNull();
+    expect(detailFor(death, 'فوت در اثر حادثه با برگه ذینفع')?.label).toBe('نوع حادثه');
+    expect(detailFor(death, 'فوت در اثر حادثه-ذینفع "بیمه گذار"')).not.toBeNull(); // old spelling
+    expect(normCause('بیمه‌گذار')).toBe(normCause('بیمه گزار'));
+  });
+  it('a document with causes is listed only for them; requiredDetails narrows «الزامی»', () => {
+    const wait = { appliesToTypes: ['DEATH_ILLNESS'], requiredTypes: ['DEATH_ILLNESS'], causes: ['سرطان'], requiredDetails: [] };
+    expect(docApplies(wait, { claimType: 'DEATH_ILLNESS', causeOfDeath: 'سرطان' })).toBe(true);
+    expect(docApplies(wait, { claimType: 'DEATH_ILLNESS', causeOfDeath: 'بیماری' })).toBe(false);
+    expect(docApplies(wait, { claimType: 'DISABILITY_ILLNESS', causeOfDeath: 'سرطان' })).toBe(false);
+    const crash = { appliesToTypes: ['DEATH_ILLNESS'], requiredTypes: ['DEATH_ILLNESS'], requiredDetails: ['حادثه تصادف'] };
+    expect(docRequired(crash, { claimType: 'DEATH_ILLNESS', causeDetail: 'حادثه تصادف' })).toBe(true);
+    expect(docRequired(crash, { claimType: 'DEATH_ILLNESS', causeDetail: 'نزاع و درگیری' })).toBe(false);
+    expect(docRequired(crash, { claimType: 'DEATH_ILLNESS', causeDetail: null })).toBe(false);
+    expect(docRequired({ appliesToTypes: ['DEATH_ILLNESS'], requiredTypes: ['DEATH_ILLNESS'] }, { claimType: 'DEATH_ILLNESS' })).toBe(true);
+  });
+  it('Model View keeps the «نوع حادثه» of a type and lets it be removed', () => {
+    const m = modelFrom({ form: { caseTypes: [{ code: 'DEATH_ILLNESS', label: 'فوت', detail: null }] } });
+    expect(caseTypeOf(m, 'DEATH_ILLNESS')?.detail).toBeNull();
+    const k = modelFrom({ form: { caseTypes: [{ code: 'DEATH_ILLNESS', label: 'فوت', detail: { label: 'نوع', options: ['الف', ' '], causes: ['x'] } }] } });
+    expect(caseTypeOf(k, 'DEATH_ILLNESS')?.detail).toEqual({ label: 'نوع', options: ['الف'], causes: ['x'] });
   });
 });

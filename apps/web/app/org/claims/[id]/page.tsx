@@ -60,8 +60,8 @@ function ClaimDetail() {
   const w = claim?.workflow;
   const closed = claim?.status === 'PAID' || claim?.status === 'REJECTED';
   const docRows = [
-    ...(checklist?.items ?? []).map((it) => ({ key: it.code, label: it.label, required: !!it.required, doc: it.documents[0] as ClaimDoc | undefined, def: it.deficiency })),
-    ...(checklist?.otherDocuments ?? []).filter((d) => d.isLatest).map((d) => ({ key: d.id, label: `سایر مدارک — ${d.fileName}`, required: false, doc: d as ClaimDoc | undefined, def: undefined })),
+    ...(checklist?.items ?? []).map((it) => ({ key: it.code, label: it.label, required: !!it.required, doc: it.documents[0] as ClaimDoc | undefined, extras: it.extras ?? [], def: it.deficiency })),
+    ...(checklist?.otherDocuments ?? []).filter((d) => d.isLatest).map((d) => ({ key: d.id, label: `سایر مدارک — ${d.fileName}`, required: false, doc: d as ClaimDoc | undefined, extras: [] as ClaimDoc[], def: undefined })),
   ];
   const desks = ['BROKER', 'BRANCH', 'HQ', 'COUNCIL'].filter((s) => docRows.some((r) => r.doc?.reviews?.some((x) => x.stage === s)));
   const uploadedCount = docRows.filter((r) => r.doc).length;
@@ -93,7 +93,7 @@ function ClaimDetail() {
 
           {/* ── Grey strip: the facts an operator looks for first ── */}
           <div className="ev-strip cv-strip">
-            <div><span>بیمه‌گذار:</span><b>{claim.policyholderCompany?.name || fv.company_name || '—'}</b></div>
+            <div><span>بیمه‌گزار:</span><b>{claim.policyholderCompany?.name || fv.company_name || '—'}</b></div>
             <div><span>بیمه‌نامه:</span><b className="ltr">{claim.policyNumber || fv.policy_number || '—'}</b>{claim.lineLabel && <span>({claim.lineLabel})</span>}</div>
             <div><span>بیمه‌شده:</span><b>{isDeath && name !== '—' && !name.startsWith('مرحوم') ? `مرحوم ${name}` : name}</b></div>
             <div><span>کد ملی:</span><b className="ltr">{claim.deceasedNationalCode || fv.national_code || '—'}</b></div>
@@ -176,7 +176,8 @@ function ClaimDetail() {
                               const st = r.doc?.reviews?.find((x) => x.stage === d)?.state;
                               return <td key={d} style={{ color: st === 'APPROVED' ? '#0f7a55' : st === 'REJECTED' ? '#c0172f' : 'var(--muted)', fontWeight: 700 }}>{st === 'APPROVED' ? '✓' : st === 'REJECTED' ? '✕' : '—'}</td>;
                             })}
-                            <td>{r.doc && <button className="sn-act is-ghost" onClick={() => client.view(`/claims/${id}/documents/${r.doc!.id}/file`, 'org').catch((e) => setError(e.message))}>مشاهده</button>}</td>
+                            <td>{r.doc && <button className="sn-act is-ghost" onClick={() => client.view(`/claims/${id}/documents/${r.doc!.id}/file`, 'org').catch((e) => setError(e.message))}>مشاهده</button>}
+                              {(r.extras ?? []).map((x, k) => <button key={x.id} className="sn-act is-ghost" title="صفحهٔ افزوده با «+»" onClick={() => client.view(`/claims/${id}/documents/${x.id}/file`, 'org').catch((e) => setError(e.message))}>ص {(k + 2).toLocaleString('fa-IR')}</button>)}</td>
                           </tr>
                         ))}
                       </tbody>

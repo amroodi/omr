@@ -29,9 +29,9 @@ export function DeficiencyBox({ claimId, claim, checklist, realm, canUpload, onC
   const notes = open.flatMap((d) => d.items).filter((x) => !x.startsWith('مدرک ردشده:') && !x.startsWith('مدرک: ') && !slotLabels.has(x));
   const first = open[0];
 
-  const upload = async (code: string, f: File, onP: OnProgress) => {
+  const upload = async (code: string, f: File, onP: OnProgress, extra = false) => {
     const fd = new FormData(); fd.append('file', f);
-    await client.upload(`${api}/documents?docCode=${encodeURIComponent(code)}`, fd, realm, onP);
+    await client.upload(`${api}/documents?docCode=${encodeURIComponent(code)}${extra ? '&extra=1' : ''}`, fd, realm, onP);
     onChanged();
   };
 
@@ -49,6 +49,12 @@ export function DeficiencyBox({ claimId, claim, checklist, realm, canUpload, onC
           {canUpload && (
             <UploadButton className="dfx-btn" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" maxMB={15} camera title={it.documents[0] ? 'جایگزینی فایل' : 'بارگذاری فایل'} subtitle={it.label} onUpload={(f, onP) => upload(it.code, f, onP)}>
               {it.documents[0] && (done || kind === 'rejected') ? 'جایگزینی فایل' : 'بارگذاری فایل'}
+            </UploadButton>
+          )}
+          {canUpload && done && (
+            <UploadButton className="dfx-btn is-ghost" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" maxMB={15} camera multiple title="افزودن صفحه یا مدرک تکمیلی" subtitle={it.label}
+              note="هر فایل به‌عنوان صفحهٔ دیگری از همین مدرک ذخیره می‌شود و فایل قبلی سر جایش می‌ماند." onUpload={(f, onP) => upload(it.code, f, onP, true)}>
+              + صفحهٔ دیگر
             </UploadButton>
           )}
         </span>
