@@ -76,10 +76,12 @@ function WorkDesk() {
         setData(d);
         // «روند سیناد» (Alborz): the same میز کار, with Sinad's stage tiles (the kartable) in place of ours.
         if (d.sinad && orgMode() !== 'ENTRY') loadSinadTiles(d);
-        // Post-login summary tip — once per browser session, only if something awaits action.
+        // Post-login summary tip — once per login (the token's session id), in any tab, only if something awaits action.
         try {
-          if (d.summary.pendingActions > 0 && !sessionStorage.getItem('wdTipSeen')) {
-            setTip(true); sessionStorage.setItem('wdTipSeen', '1');
+          const tok = getToken('org') ?? '';
+          const sid = (JSON.parse(atob(tok.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))) as { sid?: string }).sid || tok.slice(-24);
+          if (d.summary.pendingActions > 0 && localStorage.getItem('wdTipSeen') !== sid) {
+            setTip(true); localStorage.setItem('wdTipSeen', sid);
           }
         } catch { /* private mode */ }
       })

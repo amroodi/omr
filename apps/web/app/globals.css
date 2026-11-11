@@ -2624,8 +2624,11 @@ a.cu-card.is-link:hover { transform: translateY(-2px); box-shadow: 0 0 0 2px var
   .is-customer .cu-home.is-fill { min-height: 0; gap: 14px; }
   .is-customer .cu-home.is-fill > .cu-spec { flex: none; aspect-ratio: 2323.6 / 232.35; padding: 12px 20px; gap: 6px; justify-content: space-between; }
   .is-customer .cu-home.is-fill > .cu-spec .cu-select select { height: 34px; }
-  .is-customer .cu-home.is-fill > .cu-cards { flex: none; gap: 20px; }
-  .is-customer .cu-home.is-fill .cu-card { aspect-ratio: 565.9 / 216.61; min-height: 0; padding: 16px 20px; }
+  .is-customer .cu-home.is-fill > .cu-cards { flex: none; gap: 20px; align-items: stretch; }
+  /* the shape is the least it takes: a long name (or narrow screen) makes the card — and its row — taller, never clipped */
+  .is-customer .cu-home.is-fill > .cu-cards { container-type: inline-size; }
+  .is-customer .cu-home.is-fill .cu-card { min-height: calc((100cqw - 60px) / 4 * 216.61 / 565.9); height: auto; padding: 16px 20px; }
+  .is-customer .cu-home.is-fill .cu-card-v { overflow-wrap: anywhere; }
   .is-customer .cu-home.is-fill .cu-card-t, .is-customer .cu-home.is-fill .cu-card-t.is-big { font-size: 14px; margin-bottom: 6px; }
   .is-customer .cu-home.is-fill .cu-card-v { font-size: 17px; margin-bottom: 4px; }
   .is-customer .cu-home.is-fill .cu-card-s, .is-customer .cu-home.is-fill .cu-card-k { font-size: 13px; }
@@ -2637,7 +2640,7 @@ a.cu-card.is-link:hover { transform: translateY(-2px); box-shadow: 0 0 0 2px var
   .is-customer .cu-home.is-fill .pdiamond svg { width: 20px; height: 20px; }
   .is-customer .cu-home.is-fill .pdiamond-title { font-size: 14px; line-height: 1.5; }
   .is-customer .cu-home.is-fill .pdiamond-sub { font-size: 12px; line-height: 1.5; }
-  .is-customer .cu-home.is-fill .cu-notice { aspect-ratio: 2283.6 / 55; display: flex; align-items: center; justify-content: center; padding: 0 14px; font-size: 13px; line-height: 1.6; }
+  .is-customer .cu-home.is-fill .cu-notice { aspect-ratio: 2283.6 / 55; min-height: auto; display: block; text-align: center; align-content: center; padding: 4px 14px; font-size: 13px; line-height: 1.6; }
 }
 
 /* «حذف» on an uploaded file (panel 1 / بیمه‌گزار): a small × on the file's corner, while no desk has decided on it. */

@@ -3,7 +3,7 @@ import JSZip from 'jszip';
 import { randomUUID } from 'crypto';
 import { uploadName } from '../../common/validation/upload-name';
 import { NoticeRule, NoticeSource, NoticeTarget, SOURCE_FA, TARGET_FA, TARGETS_OF, combine, rulesFor } from './claim-notice';
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditAction, ClaimStatus, Prisma, SalesChannel } from '@prisma/client';
 import { AuditService } from '../../common/audit/audit.service';
 import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
@@ -500,6 +500,8 @@ export class ClaimsService {
     // period — defined there? If not, the case isn't filed (or only warned about, as set). The form asks
     // first; this repeats it, since the form's answer can't be trusted. The answer is kept on the case.
     const coverage = nid ? await this.coverage.gate(insurerTenantId, nid, eventDate) : null;
+    // The same case twice (two operators, not knowing of each other): refused before it gets a number.
+    await this.assertNotDuplicate(insurerTenantId, input.claimType ?? 'DEATH_ILLNESS', nid, eventDate);
     // Numbering must see every case with this policy number (other brokerages' too), or it could pick a
     // number already taken: the unrestricted client, which returns only numbers.
     const claimNumber = await nextClaimNumber(this.prisma.unscoped() as any, input.policyNumber); // «سال/شماره بیمه‌نامه/n»
@@ -1402,6 +1404,32 @@ export class ClaimsService {
   }
 
   /** Panel 1 corrects what it filed (name, کد ملی, dates, cause, description) until panel 2 starts on it. */
+  /**
+   * One case per event. A death happens once: a national code with a death case (any نوع پرونده that is a
+   * death, at any insurer, not deleted) can't get another. Other cases (حوادث, غرامت…) may be many for one
+   * person, but not the same incident twice: the same نوع پرونده on the same تاریخ وقوع is refused.
+   */
+  private async assertNotDuplicate(insurerTenantId: string, claimType: string, nid: string | null | undefined, eventDate: Date | null, exceptId?: string) {
+    const hash = nid ? this.crypto.blindIndex(nid.trim()) : null;
+    if (!hash) return;
+    const u = this.prisma.unscoped();
+    const others = await u.claim.findMany({
+      where: { deceasedNationalCodeHash: hash, deletedAt: null, ...(exceptId ? { id: { not: exceptId } } : {}) },
+      select: { id: true, claimNumber: true, claimType: true, insurerTenantId: true, eventDate: true },
+    });
+    if (!others.length) return;
+    const isDeath = async (tenantId: string, type: string) => caseTypeOf(await this.modelOf(tenantId), type)?.death ?? false;
+    const day = (d: Date | null) => (d ? toJalali(d, false) : null);
+    if (await isDeath(insurerTenantId, claimType)) {
+      for (const o of others) {
+        if (await isDeath(o.insurerTenantId, o.claimType)) throw new ConflictException(`برای این کد ملی پیش‌تر پروندهٔ فوت (شمارهٔ ${o.claimNumber}) ثبت شده است؛ برای هر بیمه‌شده تنها یک پروندهٔ فوت ثبت می‌شود.`);
+      }
+      return;
+    }
+    const same = eventDate ? others.find((o) => o.insurerTenantId === insurerTenantId && o.claimType === claimType && day(o.eventDate) === day(eventDate)) : null;
+    if (same) throw new ConflictException(`همین خسارت برای این کد ملی و همین تاریخ وقوع پیش‌تر ثبت شده است (پروندهٔ شمارهٔ ${same.claimNumber}).`);
+  }
+
   async editFiling(claimId: string, input: { deceasedFullName?: string; deceasedNationalCode?: string; eventDate?: string; deceasedBirthDate?: string; causeOfDeath?: string; causeDetail?: string; insuredGender?: string; description?: string }) {
     const db = this.db();
     const claim = await db.claim.findUnique({ where: { id: claimId } });
@@ -1424,6 +1452,11 @@ export class ClaimsService {
       data.deceasedBirthDate = birth; changed.push('birthDate');
     }
     let event = claim.eventDate;
+    if (input.eventDate !== undefined || input.deceasedNationalCode !== undefined) {
+      // A new national code or date must not make it a copy of another case.
+      const nidNow = input.deceasedNationalCode?.trim() || (claim.deceasedNationalCode ? this.crypto.decrypt(claim.deceasedNationalCode) : null);
+      await this.assertNotDuplicate(claim.insurerTenantId, claim.claimType, nidNow, input.eventDate !== undefined ? new Date(input.eventDate) : claim.eventDate, claim.id);
+    }
     if (input.eventDate !== undefined) {
       event = new Date(input.eventDate);
       // The date must stay inside this case's بیمه‌نامه (another policy year means another case).
@@ -2975,7 +3008,9 @@ export class ClaimsService {
       claimedAmount: c.claimedAmount?.toString(), // = estimatedAmount (مبلغ برآوردی); kept for back-compat
       estimatedAmount: c.claimedAmount?.toString(), // مبلغ خسارت برآوردی — set at filing
       finalizedAmount: c.finalizedAmount != null ? c.finalizedAmount.toString() : null, // مبلغ خسارت قطعی — after assessment
-      payableAmount: (c.finalizedAmount ?? c.claimedAmount)?.toString(), // what will actually be paid
+      // مبلغ قابل پرداخت: the approved (قطعی) amount — never the filer's estimate or سرمایه فوت. A case paid
+      // without one was paid on its estimate (the payout falls back to it), so that is shown once PAID.
+      payableAmount: (c.finalizedAmount ?? (c.status === 'PAID' ? c.claimedAmount : null))?.toString() ?? null,
       policyNumber: c.policyNumber ?? null,
       description: c.description ?? null,
       deceasedName: c.deceasedFullName ? this.crypto.decrypt(c.deceasedFullName) : null,

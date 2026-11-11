@@ -143,7 +143,7 @@ export default function EntryHome() {
               {broker && can.spare && me?.spareDesk && <Diamond href="/org/spare" title="میز کار مستقل" sub="پرونده‌های بیرون از سلسله‌مراتب" icon={IC.policy} />}
               <Diamond onClick={() => open('faq')} active={view === 'faq'} title="سوالات متداول" sub="پاسخ پرسش‌های رایج" icon={IC.mail} />
             </div>
-            <div className="cu-notice">پرونده‌های نیازمند اقدام را ظرف مدت حداکثر یک ماه تعیین تکلیف کنید ( رفع نقص مدارک یا انصراف از درخواست )</div>
+            <div className="cu-notice">پرونده‌های نیازمند اقدام را ظرف مدت حداکثر یک ماه تعیین تکلیف کنید<br />( رفع نقص مدارک یا انصراف از درخواست )</div>
 
             <div ref={resultsRef} className="scroll-mt-24">
               {view && (

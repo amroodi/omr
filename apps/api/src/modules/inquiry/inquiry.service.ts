@@ -456,7 +456,8 @@ export class InquiryService {
       policyStartDate: fv.policy_start_date ?? null,
       deathCapital: fv.death_capital ?? null,
       accidentCapital: fv.accident_capital ?? null,
-      payableAmount: fv.payable_amount ?? (c.finalizedAmount ?? c.claimedAmount)?.toString() ?? null, // the approved amount once there is one
+      // the typed / approved amount only — not the estimate (or سرمایه فوت) before the case is assessed
+      payableAmount: fv.payable_amount ?? (c.finalizedAmount ?? (c.status === 'PAID' ? c.claimedAmount : null))?.toString() ?? null,
       payableKnown: !!(fv.payable_amount || c.finalizedAmount), // typed / finalized — not just the estimate
       claimedAmount: c.claimedAmount != null ? c.claimedAmount.toString() : null, // «فرایند رسیدگی پرونده»
       finalizedAmount: c.finalizedAmount != null ? c.finalizedAmount.toString() : null,

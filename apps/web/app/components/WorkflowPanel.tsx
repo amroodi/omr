@@ -59,10 +59,12 @@ function phase(w: Workflow): string {
  * record, and the actions the server offers this user. Every action can carry a note and — for
  * organizations — a letter (number/date/subject + optional scan).
  */
-export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact, actionsOnly }: {
+export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact, actionsOnly, physicalOnly }: {
   claimId: string; workflow: Workflow; realm: 'org' | 'customer'; onDone: () => void; compact?: boolean;
   /** Just the action buttons (the «نقص مدارک» box shows the rest itself). */
   actionsOnly?: boolean;
+  /** Just the «اصل مدارک» box (send / receive the originals) — e.g. on شعبه's ارزیابی. */
+  physicalOnly?: boolean;
 }) {
   const [open, setOpen] = useState<(WorkflowAction & { physical?: boolean }) | null>(null);
   const [tracking, setTracking] = useState('');
@@ -142,6 +144,7 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact, ac
   return (
     <div className="space-y-3">
       {!actionsOnly && <>
+      {!physicalOnly && <>
       {/* Chain */}
       <div className="flex items-center gap-1 flex-wrap text-xs">
         {w.chain.map((c, i) => {
@@ -168,6 +171,7 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact, ac
         </div>
       )}
 
+      </>}
       {/* «اعلام خسارت» has no button for now: it is a document the بیمه‌گزار uploads. */}
       {/* Original documents (side track) */}
       {w.physical && (w.physical.collected || w.physical.open || w.physical.actions.length > 0 || w.physical.events.length > 0) && (
@@ -215,7 +219,7 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact, ac
       </>}
 
       {/* Actions */}
-      {w.actions.length > 0 ? (
+      {physicalOnly ? null : w.actions.length > 0 ? (
         <div className="space-y-1.5">
           <div className={`flex flex-wrap gap-2 ${compact ? '' : 'items-center'}`}>
             {w.actions.map((a) => (

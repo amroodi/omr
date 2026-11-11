@@ -181,7 +181,7 @@ function CompanyDashboard({ mustChangePassword }: { mustChangePassword: boolean 
               <Diamond onClick={() => open('faq')} active={view === 'faq'} title="سوالات متداول" sub="پاسخ پرسش‌های رایج" icon={IC.mail} />
               {sharedCount > 0 && <Diamond href="/customer/shared" title="پرونده‌های اشتراکی" sub={`${fa(sharedCount)} پرونده از کارگزاری`} icon={IC.doc} />}
             </div>
-            <div className="cu-notice">لطفاً نسبت به تعیین تکلیف پرونده‌های نیازمند اقدام، ظرف مدت حداکثر یک ماه اقدام فرمایید ( رفع نقص مدارک یا انصراف از درخواست )</div>
+            <div className="cu-notice">لطفاً نسبت به تعیین تکلیف پرونده‌های نیازمند اقدام، ظرف مدت حداکثر یک ماه اقدام فرمایید<br />( رفع نقص مدارک یا انصراف از درخواست )</div>
 
             <div ref={resultsRef} className="scroll-mt-24">
               {view && (
