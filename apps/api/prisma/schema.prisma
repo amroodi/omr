@@ -887,6 +887,8 @@ enum ClaimStatus {
 model Claim {
   id          String       @id @default(uuid())
   claimNumber String       @unique
+  receiptCode String?      @unique // «کد پذیرش»: 8 digits given at filing, to follow the case up by
+  submitTo    String? // an insurer's panel-1 case held at the بیمه‌گزار desk: where «ثبت نهایی» sends it (once)
 
   // Parties (cross-tenant; plain id references, not relations)
   insurerTenantId String // بیمه‌گر — owns the claim

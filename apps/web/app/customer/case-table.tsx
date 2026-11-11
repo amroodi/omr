@@ -4,7 +4,7 @@ import { claimTypeLabel, STATUS_MAP } from '../components/ui';
 import { INSURED_RELATIONS } from '../components/claim-wording';
 
 export interface MyClaim {
-  id: string; claimNumber: string; policyNumber?: string | null; status: string; claimType: string; claimTypeLabel?: string | null; deceasedName: string | null; deceasedNationalCode?: string | null;
+  id: string; claimNumber: string; receiptCode?: string | null; policyNumber?: string | null; status: string; claimType: string; claimTypeLabel?: string | null; deceasedName: string | null; deceasedNationalCode?: string | null;
   needsAction: boolean; currentStageLabel?: string | null; eventDate?: string | null; createdAt?: string | null;
   claimedAmount?: string; payableAmount?: string; finalizedAmount?: string | null; policyholderCompanyId?: string | null;
   insuredRelation?: string | null; policyStart?: string | null; policyEnd?: string | null;
@@ -15,7 +15,7 @@ const faN = (n: number) => n.toLocaleString('fa-IR');
 /** The table of cases on «پیگیری خسارت», «نیازمند اقدام» and the پیشخوان's search (`href`: panel 1 of an organization). */
 export function CaseTable({ rows, href = (id) => `/customer/claims/${id}/workflow` }: { rows: MyClaim[]; href?: (id: string) => string }) {
   const relations = rows.some((c) => c.insuredRelation);
-  const heads = ['عملیات', 'شماره پرونده', 'بیمه‌شده', 'کد ملی', ...(relations ? ['نسبت'] : []), 'نوع خسارت', 'بازهٔ بیمه‌نامه', 'تاریخ وقوع', 'مبلغ برآوردی (ریال)', 'مبلغ قابل پرداخت (ریال)', 'وضعیت پرونده'];
+  const heads = ['عملیات', 'شماره پرونده', 'کد پذیرش', 'بیمه‌شده', 'کد ملی', ...(relations ? ['نسبت'] : []), 'نوع خسارت', 'بازهٔ بیمه‌نامه', 'تاریخ وقوع', 'مبلغ برآوردی (ریال)', 'مبلغ قابل پرداخت (ریال)', 'وضعیت پرونده'];
   return (
     <div className="overflow-x-auto">
       <table className="table cu-group-t">
@@ -25,6 +25,7 @@ export function CaseTable({ rows, href = (id) => `/customer/claims/${id}/workflo
             <tr key={c.id} className={c.status === 'PAID' ? 'is-paid' : c.status === 'REJECTED' ? 'is-rejected' : undefined}>
               <td><Link href={href(c.id)} target="_blank" rel="noopener" className="cu-more">جزئیات بیشتر</Link></td>
               <td className="latin-digits" style={{ whiteSpace: 'nowrap' }}>{c.claimNumber}</td>
+              <td className="latin-digits" style={{ whiteSpace: 'nowrap' }}>{c.receiptCode ?? '—'}</td>
               <td>{c.deceasedName ?? '—'}</td>
               <td className="latin-digits" style={{ whiteSpace: 'nowrap' }}>{c.deceasedNationalCode ?? '—'}</td>
               {relations && <td>{INSURED_RELATIONS[c.insuredRelation ?? 'MAIN']}</td>}

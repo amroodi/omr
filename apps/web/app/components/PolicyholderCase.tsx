@@ -19,11 +19,11 @@ import { JalaliDatePicker } from './JalaliDatePicker';
 import { causeDetailFor, filerText, GENDERS, personTitle } from './claim-wording';
 import { Flash } from './Toaster';
 import { DeficiencyBox } from './DeficiencyBox';
+import { RESULT_KEY, SubmitOutcome } from './SubmitResult';
 
 const DESK_FA: Record<string, string> = { BROKER: 'کارگزاری', BRANCH: 'شعبه', HQ: 'مدیریت ستاد', COUNCIL: 'شورای فنی' };
 const OK = 'M20 6L9 17l-5-5';
 const NO = 'M18 6L6 18M6 6l12 12';
-const RESULT_KEY = (id: string) => `submitResult:${id}`;
 const asc = (s: string | null | undefined) => (s ?? '').replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
 function jalaliToIso(input: string): string | null {
   const p = asc(input).split('/').map((x) => parseInt(x, 10));
@@ -162,7 +162,6 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
   const api = `${org ? '/claims' : '/customer/claims'}/${id}`;
   const page = org ? `/org/claims/${id}` : `/customer/claims/${id}`;
   const { claim, checklist, error, setError, reload } = useCase(id, realm);
-  const [sentOk, setSentOk] = useState(false);
   const [insurers, setInsurers] = useState<Record<string, string>>({});
   const [lateWarn, setLateWarn] = useState(true);
   const [up, setUp] = useState<Record<string, UpState>>({});
@@ -216,11 +215,12 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
     if (!checklist || !claim || sending) return;
     const missing = checklist.items.filter((it) => !it.uploaded && it.required).map((it) => it.label);
     const rejected = checklist.items.filter((it) => it.documents[0]?.reviews?.some((r) => r.state === 'REJECTED')).map((it) => it.label);
-    const fail = (reason: string, items: string[] = []) => {
-      if (org) { setError([reason, ...items].join(' ')); return; } // panel 1: said right here
-      try { sessionStorage.setItem(RESULT_KEY(id), JSON.stringify({ ok: false, reason, items })); } catch { /* ignore */ }
-      router.push(`/customer/claims/${id}/result`);
+    // Every panel 1 shows the outcome on its own page (big green check with «کد پذیرش», or red ✕ and why).
+    const show = (o: SubmitOutcome) => {
+      try { sessionStorage.setItem(RESULT_KEY(id), JSON.stringify(o)); } catch { /* ignore */ }
+      router.push(`${page}/result`);
     };
+    const fail = (reason: string, items: string[] = []) => show({ ok: false, reason, items });
     if (uploading) return fail('بارگذاری یک یا چند مدرک هنوز تمام نشده است؛ پس از پایان بارگذاری دوباره «ثبت نهایی» را بزنید.');
     if (heirsMissing) return fail('نام، کد ملی و شماره شبای ذینفعان را بنویسید و «ذخیرهٔ ذینفعان» را بزنید.');
     if (missing.length) return fail('مدارک الزامی زیر هنوز بارگذاری نشده‌اند؛ پس از بارگذاری آن‌ها دوباره «ثبت نهایی» را بزنید:', missing);
@@ -228,10 +228,8 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
     if (submitAction?.disabled) return fail(submitAction.disabled);
     setSending(true);
     try {
-      await client.post(`${api}/rectify`, {}, realm);
-      if (org) { setSentOk(true); await reload(); return; }
-      try { sessionStorage.setItem(RESULT_KEY(id), JSON.stringify({ ok: true })); } catch { /* ignore */ }
-      router.push(`/customer/claims/${id}/result`);
+      const after = await client.post<{ receiptCode?: string | null; claimNumber?: string; workflow?: { currentStageLabel?: string | null } }>(`${api}/rectify`, {}, realm);
+      show({ ok: true, receiptCode: after?.receiptCode ?? claim.receiptCode ?? null, claimNumber: after?.claimNumber ?? claim.claimNumber, sentTo: after?.workflow?.currentStageLabel ?? null });
     } catch (e: any) {
       fail(e.message || 'ثبت مدارک انجام نشد؛ لطفاً دوباره تلاش کنید.');
     } finally { setSending(false); }
@@ -257,7 +255,6 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
       ) : undefined}>
       <div className="cu-home">
         <ErrorBox message={error} />
-        <Flash text={sentOk ? 'مدارک ثبت نهایی شد و پرونده برای رسیدگی ارسال شد.' : null} ok />
         {!claim ? <div className="pcard p-10 flex justify-center"><Spinner /></div> : (
           <>
             {/* مشخصات پرونده — laid out like the home's «مشخصات بیمه نامه» */}
@@ -286,6 +283,7 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
             <div className="cu-cards">
               <div className="pcard cu-card">
                 <div><div className="cu-card-t">پرونده خسارت</div><div className="cu-card-v">{claim.claimNumber}</div>
+                  {claim.receiptCode && <div className="cu-card-s">کد پذیرش: <bdi>{claim.receiptCode}</bdi></div>}
                   <div className="cu-card-s">{claimTypeLabel(claim)}</div></div>
                 <span className="cu-card-ico"><BigIcon path={IC.doc} size={34} /></span>
               </div>
