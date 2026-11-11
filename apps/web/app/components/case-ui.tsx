@@ -27,7 +27,7 @@ export interface CaseClaim {
   id: string; claimNumber: string; policyNumber?: string | null; status: string; claimType: string; insurerTenantId?: string;
   deceasedName: string | null; deceasedNationalCode?: string | null; insuredRelation?: string | null; mainInsuredName?: string | null; mainInsuredNationalCode?: string | null; deceasedBirthDate?: string | null; deceasedAge?: number | null;
   eventDate: string | null; createdAt?: string | null; paidDate?: string | null; noticeDeadline: string | null; lateNotice: boolean;
-  claimedAmount: string; estimatedAmount?: string; finalizedAmount?: string | null; payableAmount?: string;
+  claimedAmount: string; estimatedAmount?: string; finalizedAmount?: string | null; payableAmount?: string | null;
   currentStageLabel?: string | null; flowDirection?: string | null; flowPurpose?: string | null;
   policyholderCompany?: { name: string; phone: string | null } | null;
   policyHolder?: { name: string | null; nationalCode: string | null } | null;
@@ -213,7 +213,7 @@ export function CaseSummary({ claim, fv }: { claim: CaseClaim; fv: Record<string
         <InfoRow label="تاریخ شروع بیمه‌نامه" value={d('policy_start_date')} />
         <InfoRow label="سرمایه فوت" value={fmtAmount(fv.death_capital)} tone="amount" />
         <InfoRow label="سرمایه حادثه" value={fmtAmount(fv.accident_capital)} />
-        <InfoRow label="مبلغ قابل پرداخت" value={fmtAmount(fv.payable_amount || claim.payableAmount)} tone="amount" />
+        <InfoRow label="مبلغ قابل پرداخت" value={fmtAmount(fv.payable_amount || claim.payableAmount) ?? 'ثبت نشده'} tone="amount" />
       </InfoCard>
       <InfoCard title={isDeath ? 'اطلاعات فوت' : 'اطلاعات حادثه'} icon={ICONS.doc} aside={claimTypeLabel(claim)}>
         <InfoRow label="علت خسارت" value={[fv.cause_of_death || claim.causeOfDeath || fv.death_kind, claim.causeDetail].filter(Boolean).join(' — ')} />

@@ -256,6 +256,8 @@ export default function EvaluatePage() {
 
               {tab === 'eval' ? (
                 <div className="ev-pane">
+                  {/* اصل مدارک: receive (or send) the originals right here — e.g. «دریافت اصل مدارک» from the کارگزاری. */}
+                  {w?.physical && (w.physical.actions.length > 0 || w.physical.open) && <WorkflowPanel claimId={id} workflow={w} realm="org" onDone={load} compact physicalOnly />}
                   <div className="ev-fields">
                     <div><span>نوع پرونده</span><b>{claim.claimTypeLabel || claim.claimType}</b></div>
                     <div><span>علت</span><b>{claim.causeOfDeath || '—'}{claim.causeDetail ? ` — ${claim.causeDetail}` : ''}</b></div>
@@ -269,6 +271,9 @@ export default function EvaluatePage() {
                     <div className="ev-item-head"><b>مدارک پرونده</b><span>{checklist?.complete ? 'کامل' : 'ناقص'}</span></div>
 <DeathNoticeDate claimId={id} className="is-ev" />
                     {docRows('شعبه')}
+                    {!closed && rows.some(({ d }) => { const r = deskReview(d); return r?.canEdit && r.state !== 'APPROVED'; }) && (
+                      <button className="ev-btn w-full mt-2" disabled={busy} onClick={approveAll}>تایید همهٔ مدارک در این مرحله</button>
+                    )}
                     {missing.length > 0 && (
                       <button className="ev-doc is-missing w-full" onClick={() => setShowMissing((v) => !v)} aria-expanded={showMissing}>
                         <span>{missing.length.toLocaleString('fa-IR')} مدرک بارگذاری نشده است</span><span>{showMissing ? 'بستن ▴' : 'نمایش ▾'}</span>
