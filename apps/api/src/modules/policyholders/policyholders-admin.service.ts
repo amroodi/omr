@@ -256,8 +256,16 @@ export class PolicyholdersAdminService {
     wb.eachSheet((ws) => {
       const title = fa(ws.name);
       // The sheet's name says the نوع بیمه‌نامه: the catalog's longest matching name wins («عمر مانده بدهکار» also contains «عمر»).
+      // A kind also answers to its name without «گروهی» and to what its parentheses say («عمر» → عمر گروهی,
+      // «عمر مانده بدهکار» → عمر انفرادی (مانده بدهکار)).
       const norm = (x: string) => x.replace(/‌/g, ' ').replace(/\s+/g, ' ').trim();
-      const line = [...allKinds()].sort((x, y) => y.label.length - x.label.length).find((k) => norm(title).includes(norm(k.label)))?.code ?? null;
+      const names = allKinds().flatMap((k) => {
+        const l = norm(k.label);
+        const inner = l.match(/\(([^)]+)\)/)?.[1]?.trim();
+        const bare = norm(l.replace(/\([^)]*\)/g, ''));
+        return [l, bare.replace(/ گروهی$/, ''), ...(inner ? [inner, `${bare.split(' ')[0]} ${inner}`] : [])].filter(Boolean).map((n) => ({ n, code: k.code }));
+      }).sort((x, y) => y.n.length - x.n.length);
+      const line = names.find((x) => norm(title).includes(x.n))?.code ?? null;
       if (!line) { out.errors.push({ sheet: ws.name, row: 0, message: `نام برگه باید نوع بیمه‌نامه را داشته باشد (${allKinds().map((k) => k.label).join('، ')})؛ این برگه وارد نشد` }); return; }
       // Header row: the first row that names the policy-number column.
       let header = 0; const col: Record<string, number> = {};

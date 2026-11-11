@@ -1,6 +1,6 @@
 import { assertNotPaid } from './archived';
 import JSZip from 'jszip';
-import { randomUUID } from 'crypto';
+import { randomInt, randomUUID } from 'crypto';
 import { uploadName } from '../../common/validation/upload-name';
 import { NoticeRule, NoticeSource, NoticeTarget, SOURCE_FA, TARGET_FA, TARGETS_OF, combine, rulesFor } from './claim-notice';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
@@ -28,7 +28,7 @@ import { beneficiaryHiddenDocs } from '../required-docs/defaults';
 import { toAsciiDigits } from '../../common/jalali/jalali.util';
 import { ModelStore } from '../model-view/model-store.service';
 import { CoverageService } from '../model-view/coverage.service';
-import { above, actionsFor, causesOf, CaseDetail, detailFor, docApplies, docRequired, normCause, rulesOf, WorkflowModel, Line, lineForm, InsuredRelation, RELATION_FA, DEPENDENT_RELATIONS, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, physicalActionsFor, PhysicalActionKey, physicalBelow, PhysicalState, directTarget, Purpose, ReviewDesk, Stage, STAGE_FA, WorkflowAction, caseTypeOf, dependentsFor, EntryWay, typesFor } from './workflow';
+import { above, actionsFor, causesOf, CaseDetail, detailFor, docApplies, docRequired, normCause, rulesOf, WorkflowModel, Line, lineForm, InsuredRelation, RELATION_FA, DEPENDENT_RELATIONS, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, physicalActionsFor, PhysicalActionKey, physicalBelow, PhysicalState, directTarget, Purpose, ReviewDesk, Stage, STAGE_FA, submitTarget, WorkflowAction, caseTypeOf, dependentsFor, EntryWay, typesFor } from './workflow';
 import { allKinds, docKindWhere, isKind, kindLabel, kindsOf } from '../../common/kinds';
 
 const CLAIM_DOC_MIME = new Set([
@@ -464,21 +464,25 @@ export class ClaimsService {
         : 'ارسال پرونده به این مرحله در تنظیمات اعلام خسارت مجاز نیست.');
     }
     if (wanted === 'BROKER' && input.channel !== 'BROKER') throw new BadRequestException('این پرونده کارگزاری ندارد؛ مرحلهٔ دیگری را انتخاب کنید.');
-    const firstStage: Stage = wanted as Stage;
+    // An insurer's panel 1 keeps the case (like the بیمه‌گزار) until its «ثبت نهایی»: documents first, then it
+    // goes to the desk Model View set (`submitTo`).
+    const target: Stage = wanted as Stage;
+    const holdForEntry = staffKind === 'INSURER' && ctx?.panelMode === 'ENTRY' && target !== 'POLICYHOLDER';
+    const firstStage: Stage = holdForEntry ? 'POLICYHOLDER' : target;
     const byPolicyHolder = firstStage === 'POLICYHOLDER';
     let startBranchId = moarefBranchId;
     // An insurer's شعبه files a case: that شعبه handles it (whoever sold the بیمه‌نامه).
-    const ownBranch = staffKind === 'INSURER' && firstStage === 'BRANCH' ? await this.callerBranchId() : null;
+    const ownBranch = staffKind === 'INSURER' && target === 'BRANCH' ? await this.callerBranchId() : null;
     if (ownBranch) {
       const b = await db.branch.findFirst({ where: { id: ownBranch, tenantId: insurerTenantId }, select: { id: true } });
       if (b) startBranchId = b.id;
     }
-    if (firstStage === 'BRANCH' && !startBranchId && input.branchId) {
+    if (target === 'BRANCH' && !startBranchId && input.branchId) {
       const b = await db.branch.findFirst({ where: { id: input.branchId, tenantId: insurerTenantId }, select: { id: true } });
       if (!b) throw new BadRequestException('شعبه متعلق به بیمه‌گر پرونده نیست');
       startBranchId = b.id;
     }
-    if (staffKind === 'INSURER' && firstStage === 'BRANCH' && !startBranchId) throw new BadRequestException('شعبه‌ای را که پرونده به آن می‌رود انتخاب کنید');
+    if (staffKind === 'INSURER' && target === 'BRANCH' && !startBranchId) throw new BadRequestException('شعبه‌ای را که پرونده به آن می‌رود انتخاب کنید');
 
     const heirs = this.cleanHeirs(input.heirs);
     const nid = input.deceasedNationalCode;
@@ -508,6 +512,8 @@ export class ClaimsService {
     const claim = await db.claim.create({
       data: {
         claimNumber,
+        receiptCode: await this.newReceiptCode(),
+        submitTo: holdForEntry ? target : null,
         insurerTenantId: insurerTenantId,
         channel: input.channel,
         brokerTenantId: input.channel === 'BROKER' ? input.brokerTenantId : null,
@@ -803,9 +809,11 @@ export class ClaimsService {
       case 'SUBMIT': {
         const resubmit = (await db.claimDeficiency.count({ where: { claimId, resolvedAt: null } })) > 0;
         await db.claimDeficiency.updateMany({ where: { claimId, resolvedAt: null }, data: { resolvedAt: new Date() } });
-        await this.move(claim, step, { ...base, closeState: 'FORWARDED', to: up!, direction: 'UP', purpose: 'REVIEW', status: ClaimStatus.UNDER_REVIEW });
+        // An insurer's panel-1 case goes, the first time, to the desk Model View set (see file()).
+        const to = submitTarget(claim) ?? up!;
+        await this.move(claim, step, { ...base, closeState: 'FORWARDED', to, direction: 'UP', purpose: 'REVIEW', status: ClaimStatus.UNDER_REVIEW, extra: claim.submitTo ? { submitTo: null } : undefined });
         await this.audit.record({ action: resubmit ? AuditAction.CLAIM_RECTIFY : AuditAction.CLAIM_SUBMIT, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId });
-        await this.notifyHolder(claim, up!, resubmit ? 'رفع نقص انجام شد' : 'پرونده خسارت جدید', resubmit
+        await this.notifyHolder(claim, to, resubmit ? 'رفع نقص انجام شد' : 'پرونده خسارت جدید', resubmit
           ? `نقص مدارک پروندهٔ ${claim.claimNumber} رفع شد؛ مدارک اصلاح‌شده در دست بررسی شماست.`
           : `پروندهٔ ${claim.claimNumber} برای بررسی به میز کار شما رسید.`);
         break;
@@ -981,6 +989,15 @@ export class ClaimsService {
     const d = await this.fields.listForClaim(claimId);
     for (const g of Object.values(d.groups)) for (const f of g as any[]) f.canEdit = false;
     return d;
+  }
+
+  /** «کد پذیرش»: a random 8-digit code given at filing, to follow the case up by. */
+  private async newReceiptCode(): Promise<string> {
+    const db = this.prisma.unscoped();
+    for (;;) {
+      const code = String(10000000 + randomInt(90000000));
+      if (!(await db.claim.findUnique({ where: { receiptCode: code }, select: { id: true } }))) return code;
+    }
   }
 
   async rectify(claimId: string, note?: string) {
@@ -1274,7 +1291,7 @@ export class ClaimsService {
       where: {
         imported: true,
         ...(tenantId ? { OR: [{ insurerTenantId: tenantId }, { brokerTenantId: tenantId }] } : {}),
-        ...(term ? { AND: [{ OR: [{ claimNumber: { contains: term, mode: 'insensitive' } }, { policyNumber: { contains: term } }, { employerName: { contains: term, mode: 'insensitive' } }] }] } : {}),
+        ...(term ? { AND: [{ OR: [{ claimNumber: { contains: term, mode: 'insensitive' } }, { receiptCode: term }, { policyNumber: { contains: term } }, { employerName: { contains: term, mode: 'insensitive' } }] }] } : {}),
       },
       orderBy: { createdAt: 'desc' },
       take: 2000,
@@ -2835,7 +2852,7 @@ export class ClaimsService {
 
     // «شماره بیمه‌نامه» (cases are titled by it); the internal CLM number still matches for older links.
     const pn = clean(q.policyNumber) || clean(q.claimNumber);
-    if (pn) and.push({ OR: [{ policyNumber: { contains: pn, mode: 'insensitive' } }, { claimNumber: { contains: pn, mode: 'insensitive' } }] });
+    if (pn) and.push({ OR: [{ policyNumber: { contains: pn, mode: 'insensitive' } }, { claimNumber: { contains: pn, mode: 'insensitive' } }, { receiptCode: toAsciiDigits(pn) }] });
     // «نوع ذینفع»: the beneficiary-type field, or the imported column on older claims.
     if (clean(q.beneficiaryType)) {
       const bt = clean(q.beneficiaryType);
@@ -2991,6 +3008,7 @@ export class ClaimsService {
       insuredLinkEnabled: this.store.get(c.insurerTenantId).insured.enabled,
       id: c.id,
       claimNumber: c.claimNumber,
+      receiptCode: c.receiptCode ?? null, // «کد پذیرش»
       status: c.status,
       claimType: c.claimType,
       claimTypeLabel: caseTypeOf(this.store.get(c.insurerTenantId), c.claimType)?.label ?? c.claimType,

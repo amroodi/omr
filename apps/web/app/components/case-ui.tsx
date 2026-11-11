@@ -24,7 +24,7 @@ export interface FieldRow { key: string; label: string; type: string; options: s
 export interface FieldsData { party: string; manual?: boolean; groups: Record<string, FieldRow[]> }
 export interface CaseClaim {
   coverageStatus?: string | null; insuredLinkEnabled?: boolean; causeOfDeath?: string | null; causeDetail?: string | null; insuredGender?: string | null; filedBy?: Filer | null; fixedHere?: boolean; claimTypeLabel?: string | null; claimTypeDeath?: boolean;
-  id: string; claimNumber: string; policyNumber?: string | null; status: string; claimType: string; insurerTenantId?: string;
+  id: string; claimNumber: string; receiptCode?: string | null; policyNumber?: string | null; status: string; claimType: string; insurerTenantId?: string;
   deceasedName: string | null; deceasedNationalCode?: string | null; insuredRelation?: string | null; mainInsuredName?: string | null; mainInsuredNationalCode?: string | null; deceasedBirthDate?: string | null; deceasedAge?: number | null;
   eventDate: string | null; createdAt?: string | null; paidDate?: string | null; noticeDeadline: string | null; lateNotice: boolean;
   claimedAmount: string; estimatedAmount?: string; finalizedAmount?: string | null; payableAmount?: string | null;

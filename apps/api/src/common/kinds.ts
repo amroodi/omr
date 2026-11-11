@@ -7,11 +7,12 @@ export interface PolicyKind { code: string; label: string; active: boolean }
 
 /** The starting catalog (also what an empty PlatformConfig.policyKinds means). */
 export const DEFAULT_KINDS: PolicyKind[] = [
-  { code: 'LIFE', label: 'عمر', active: true },
-  { code: 'ACCIDENT', label: 'حوادث', active: true },
-  { code: 'LIABILITY', label: 'مسئولیت', active: true },
-  { code: 'CREDIT_LIFE', label: 'عمر مانده بدهکار', active: true },
-  { code: 'SAVINGS_LIFE', label: 'عمر پس‌انداز', active: true },
+  { code: 'LIFE', label: 'عمر گروهی', active: true },
+  { code: 'ACCIDENT', label: 'حوادث گروهی', active: true },
+  { code: 'CREDIT_LIFE', label: 'عمر انفرادی (مانده بدهکار)', active: true },
+  { code: 'ACCIDENT_INDIVIDUAL', label: 'حوادث انفرادی', active: true },
+  { code: 'LIABILITY', label: 'مسئولیت', active: false },
+  { code: 'SAVINGS_LIFE', label: 'عمر پس‌انداز', active: false },
 ];
 
 export const KIND_CODE = /^[A-Z][A-Z0-9_]{1,30}$/;

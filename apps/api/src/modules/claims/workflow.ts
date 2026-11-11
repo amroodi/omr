@@ -146,11 +146,12 @@ const ACCIDENT_DETAIL: CaseDetail = {
   causes: ['فوت در اثر حادثه-ذینفع "بیمه گزار"', 'فوت در اثر حادثه با برگه ذینفع', 'فوت در اثر حادثه-پرداخت در وجه "وکیل یا وراث"', 'فوت در اثر حادثه-پرداخت در وجه "وراث قانونی"'],
 };
 export const DEFAULT_CASE_TYPES: CaseType[] = ([
-  { code: 'DEATH_ILLNESS', label: 'فوت به هر علت', causeGroup: 'DEATH', death: true, causes: ['بیماری', 'سرطان', 'سکته قلبی بدون برگه ذینفع', 'فوت-عدم تعیین سهم ذینفعها و پرداخت در وجه وراث', 'انفجار', 'سکته قلبی-پرداخت در وجه وکیل یا وراث', 'سکته قلبی-پرداخت در وجه بیمه گزار', 'سکته مغزی-پرداخت در وجه بیمه گزار', 'فوت در اثر حادثه-پرداخت در وجه "وکیل یا وراث"', 'فوت در اثر حادثه-پرداخت در وجه "وراث قانونی"', 'سکته قلبی با برگه ذینفع', 'سکته مغزی با برگه ذینفع', 'فوت در اثر حادثه با برگه ذینفع', 'بیماری کرونا', 'بیماری های تنفسی', 'فوت در اثر حادثه-ذینفع "بیمه گزار"'], detail: ACCIDENT_DETAIL },
+  { code: 'DEATH_ILLNESS', label: 'فوت به هر علت', causeGroup: 'DEATH', death: true, causes: ['بیماری', 'سرطان', 'سکته قلبی بدون برگه ذینفع', 'فوت-عدم تعیین سهم ذینفعها و پرداخت در وجه وراث', 'انفجار', 'سکته قلبی-پرداخت در وجه وکیل یا وراث', 'سکته قلبی-پرداخت در وجه بیمه گزار', 'سکته مغزی-پرداخت در وجه بیمه گزار', 'فوت در اثر حادثه-پرداخت در وجه "وکیل یا وراث"', 'فوت در اثر حادثه-پرداخت در وجه "وراث قانونی"', 'سکته قلبی با برگه ذینفع', 'سکته مغزی با برگه ذینفع', 'فوت در اثر حادثه با برگه ذینفع', 'بیماری کرونا', 'بیماری های تنفسی', 'فوت در اثر حادثه-ذینفع "بیمه گزار"', 'جنگ'], detail: ACCIDENT_DETAIL },
   { code: 'DISABILITY_ILLNESS', label: 'از کار افتادگی دائم و کامل ناشی از بیماری', causeGroup: 'DEATH', death: false, causes: ['ازکارافتادگی کلی ناشی از بیماری با رأی کمیسیون پزشکی تأمین اجتماعی و تائید بیمه‌گر', 'ازکارافتادگی کلی ناشی از بیماری با رأی کمیسیون پزشکی بیمه گزار'] },
-  { code: 'DEATH_ACCIDENT', label: 'فوت بر اثر حادثه', causeGroup: 'ACCIDENT', death: true, causes: ['حادثه ناشی از کار', 'حادثه غیر ناشی از کار (تصادف)', 'زلزله (با فرم تعیین ذینفع)', 'زلزله (بدون فرم تعیین ذینفع)', 'جنگ'] },
-  { code: 'DISABILITY_ACCIDENT', label: 'نقص عضو و از کار افتادگی بر اثر حادثه', causeGroup: 'ACCIDENT', death: false, causes: ['حادثه ناشی از کار', 'حادثه غیر ناشی از کار (تصادف)', 'زلزله (با فرم تعیین ذینفع)', 'زلزله (بدون فرم تعیین ذینفع)', 'حادثه (با هزینه پزشکی)', 'حادثه (بدون هزینه پزشکی)', 'جنگ'] },
-  { code: 'MEDICAL_ACCIDENT', label: 'جبران هزینه‌های پزشکی ناشی از حادثه', causeGroup: 'ACCIDENT', death: false, causes: ['حادثه ناشی از کار', 'حادثه غیر ناشی از کار (تصادف)', 'زلزله (با فرم تعیین ذینفع)', 'زلزله (بدون فرم تعیین ذینفع)', 'حادثه (با هزینه پزشکی)', 'حادثه (بدون هزینه پزشکی)', 'جنگ'] },
+  // «جنگ» is a cause of عمر only (فوت به هر علت), never of a حوادث type.
+  { code: 'DEATH_ACCIDENT', label: 'فوت بر اثر حادثه', causeGroup: 'ACCIDENT', death: true, causes: ['حادثه ناشی از کار', 'حادثه غیر ناشی از کار (تصادف)', 'زلزله (با فرم تعیین ذینفع)', 'زلزله (بدون فرم تعیین ذینفع)', 'حادثه (با هزینه پزشکی)', 'حادثه (بدون هزینه پزشکی)'] },
+  { code: 'DISABILITY_ACCIDENT', label: 'نقص عضو و از کار افتادگی بر اثر حادثه', causeGroup: 'ACCIDENT', death: false, causes: ['حادثه ناشی از کار', 'حادثه غیر ناشی از کار (تصادف)', 'زلزله (با فرم تعیین ذینفع)', 'زلزله (بدون فرم تعیین ذینفع)', 'حادثه (با هزینه پزشکی)', 'حادثه (بدون هزینه پزشکی)'] },
+  { code: 'MEDICAL_ACCIDENT', label: 'جبران هزینه‌های پزشکی ناشی از حادثه', causeGroup: 'ACCIDENT', death: false, causes: ['حادثه ناشی از کار', 'حادثه غیر ناشی از کار (تصادف)', 'زلزله (با فرم تعیین ذینفع)', 'زلزله (بدون فرم تعیین ذینفع)', 'حادثه (با هزینه پزشکی)', 'حادثه (بدون هزینه پزشکی)'] },
   // غرامت روزانه: no list of their own yet (the حادثه list applies)
   { code: 'DAILY_GENERAL', label: 'غرامت روزانه عمومی', causeGroup: 'ACCIDENT', death: false, causes: [] },
   { code: 'DAILY_HOSPITAL', label: 'غرامت روزانه بیمارستانی', causeGroup: 'ACCIDENT', death: false, causes: [] },
@@ -214,10 +215,11 @@ export const DEFAULT_WORKFLOW_MODEL: WorkflowModel = {
       ACCIDENT: { insuredLabel: 'نام بیمه‌شده (مصدوم/متوفی)', claimTypes: ACCIDENT_TYPES, causeLabel: 'علت خسارت' },
       LIABILITY: { insuredLabel: 'نام زیان‌دیده', claimTypes: [], causeLabel: 'علت خسارت' },
       CREDIT_LIFE: { insuredLabel: 'نام بیمه‌شده (متوفی/از کار افتاده)', claimTypes: [], causeLabel: 'علت خسارت' },
+      ACCIDENT_INDIVIDUAL: { insuredLabel: 'نام بیمه‌شده (مصدوم/متوفی)', claimTypes: [], causeLabel: 'علت خسارت' },
       SAVINGS_LIFE: { insuredLabel: 'نام بیمه‌شده (متوفی/از کار افتاده)', claimTypes: [], causeLabel: 'علت خسارت' },
     },
     caseTypes: DEFAULT_CASE_TYPES,
-    groups: [{ id: 'copper', label: 'شرکت‌های زیرمجموعه صنایع ملی مس ایران', companyIds: [], lines: { LIFE: LIFE_TYPES, ACCIDENT: ['DEATH_ACCIDENT', 'DISABILITY_ACCIDENT'], LIABILITY: [], CREDIT_LIFE: [], SAVINGS_LIFE: [] }, dependents: false }],
+    groups: [{ id: 'copper', label: 'شرکت‌های زیرمجموعه صنایع ملی مس ایران', companyIds: [], lines: { LIFE: LIFE_TYPES, ACCIDENT: ['DEATH_ACCIDENT', 'DISABILITY_ACCIDENT'], LIABILITY: [], CREDIT_LIFE: [], ACCIDENT_INDIVIDUAL: [], SAVINGS_LIFE: [] }, dependents: false }],
     dependents: true,
     causeNotes: {},
     docsNote: 'تصاویر مدارک موجود در پرونده باید خوانا و ممهور به مهر برابر اصل توسط مراجع یا مقامات ذی‌صلاح قانونی باشد.',
@@ -379,6 +381,15 @@ export function below(claim: { brokerTenantId: string | null }, s: Stage): Stage
   return i > 0 ? c[i - 1] : null;
 }
 
+/**
+ * An insurer's panel-1 case waits at the بیمه‌گزار desk until its «ثبت نهایی»; it then goes (the first time
+ * only) to the desk Model View set when it was filed — which may skip the کارگزاری.
+ */
+export function submitTarget(claim: { brokerTenantId: string | null; currentStage?: Stage | string | null; submitTo?: string | null }): Stage | null {
+  const t = claim.submitTo as Stage | null | undefined;
+  return claim.currentStage === 'POLICYHOLDER' && t && t !== 'POLICYHOLDER' && chainOf(claim).includes(t) ? t : null;
+}
+
 export function above(claim: { brokerTenantId: string | null }, s: Stage): Stage | null {
   const c = chainOf(claim);
   const i = c.indexOf(s);
@@ -407,6 +418,7 @@ export interface ActionContext {
     flowDirection: Direction | null;
     flowPurpose: Purpose | null;
     returnTargetStage: Stage | null;
+    submitTo?: string | null; // see submitTarget
     lossNoticeNumber: string | null;
     lossNoticeDate?: Date | null; // set when اعلام خسارت was recorded (with or without a number)
     finalizedAmount: { toString(): string } | null;
@@ -487,7 +499,7 @@ export function actionsFor(ctx: ActionContext): WorkflowAction[] {
   if (!s || ['PAID', 'REJECTED'].includes(claim.status)) return [];
   const out: WorkflowAction[] = [];
   const dn = below(claim, s);
-  const up = above(claim, s);
+  const up = (s === 'POLICYHOLDER' ? submitTarget(claim) : null) ?? above(claim, s);
   const notApproved = !model.stages[s].reviewDocs ? undefined : docs.count === 0 ? 'مدرکی بارگذاری نشده است' : !docs.allApproved ? `ابتدا همهٔ مدارک را در مرحلهٔ ${fa[s]} تایید کنید` : undefined;
 
   if (s === 'POLICYHOLDER') {

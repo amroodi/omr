@@ -42,6 +42,13 @@ describe('actionsFor', () => {
     expect(get(c, 'SUBMIT')?.disabled).toContain('گواهی فوت');
   });
 
+  it("an insurer's panel-1 case held for «ثبت نهایی» goes to the desk set at filing, even past کارگزاری", () => {
+    const docs = { docs: { count: 1, allApproved: false, rejectedLabels: [], rejectedAnywhere: [] } };
+    expect(get(ctx({ currentStage: 'POLICYHOLDER', submitTo: 'BRANCH' }, docs), 'SUBMIT')?.label).toBe('ارسال به شعبه');
+    expect(get(ctx({ currentStage: 'POLICYHOLDER', submitTo: 'BROKER', brokerTenantId: null }, docs), 'SUBMIT')?.label).toBe('ارسال به شعبه');
+    expect(get(ctx({ currentStage: 'POLICYHOLDER', submitTo: null }, docs), 'SUBMIT')?.label).toBe('ارسال به کارگزاری');
+  });
+
   it('کارگزاری forwards to شعبه only after approving every document, and picks the branch', () => {
     expect(get(ctx({}, { docs: { count: 2, allApproved: false, rejectedLabels: [], rejectedAnywhere: [] } }), 'FORWARD')?.disabled).toBeTruthy();
     const f = get(ctx(), 'FORWARD')!;
@@ -240,7 +247,10 @@ describe('Model View: cause lists', () => {
     const m = modelFrom({ form: {} });
     expect(causesOf(m, 'DISABILITY_ILLNESS')).toHaveLength(2);
     expect(causesOf(m, 'DEATH_ILLNESS')).not.toContain(causesOf(m, 'DISABILITY_ILLNESS')[0]);
-    expect(causesOf(m, 'DEATH_ACCIDENT')).toContain('جنگ');
+    // «جنگ»: عمر only
+    expect(causesOf(m, 'DEATH_ILLNESS')).toContain('جنگ');
+    for (const t of ['DEATH_ACCIDENT', 'DISABILITY_ACCIDENT', 'MEDICAL_ACCIDENT']) expect(causesOf(m, t)).not.toContain('جنگ');
+    expect(causesOf(m, 'DEATH_ACCIDENT')).toContain('حادثه (بدون هزینه پزشکی)');
     expect(causesOf(m, 'DAILY_GENERAL')).toEqual(m.form.causeLists.ACCIDENT);
     const saved = modelFrom({ form: { caseTypes: [{ code: 'MEDICAL_ACCIDENT', causes: ['x'] }], lines: { LIFE: { causeLabel: 'علت' } } } });
     expect(causesOf(saved, 'MEDICAL_ACCIDENT')).toEqual(['x']);
