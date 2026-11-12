@@ -11,6 +11,19 @@ export interface MyClaim {
 }
 
 const faN = (n: number) => n.toLocaleString('fa-IR');
+const ascii = (s: string) => s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
+
+/** «پیگیری خسارت» search: کد پذیرش, شماره پرونده / بیمه‌نامه, کد ملی or name (Persian digits too). */
+export function caseMatches(c: MyClaim, q: string): boolean {
+  const t = ascii(q).trim();
+  if (!t) return true;
+  return [c.receiptCode, c.claimNumber, c.policyNumber, c.deceasedNationalCode].some((v) => !!v && ascii(v).includes(t)) || (!!c.deceasedName && c.deceasedName.includes(q.trim()));
+}
+
+/** The search box above the «پیگیری خسارت» tabs. */
+export function CaseSearch({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return <input className="input cu-track-q" value={value} onChange={(e) => onChange(e.target.value)} placeholder="جستجو با کد پذیرش، شماره پرونده، کد ملی یا نام" aria-label="جستجوی پرونده" />;
+}
 
 /** The table of cases on «پیگیری خسارت», «نیازمند اقدام» and the پیشخوان's search (`href`: panel 1 of an organization). */
 export function CaseTable({ rows, href = (id) => `/customer/claims/${id}/workflow` }: { rows: MyClaim[]; href?: (id: string) => string }) {

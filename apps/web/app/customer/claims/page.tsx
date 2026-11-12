@@ -7,7 +7,7 @@ import { getLine, lineQuery } from '../../../lib/line';
 import { Shell } from '../../components/Shell';
 import { claimTypeLabel, ErrorBox, FancyLoader, STATUS_MAP } from '../../components/ui';
 import { CUSTOMER_NAV, POLICY_KEY, PolicyRow } from '../nav';
-import { CaseTable, MyClaim } from '../case-table';
+import { CaseSearch, caseMatches, CaseTable, MyClaim } from '../case-table';
 
 type GroupBy = 'status' | 'type' | 'stage' | 'month';
 const GROUPS: [GroupBy, string][] = [
@@ -39,6 +39,7 @@ export default function CustomerTrack() {
   const [groupBy, setGroupBy] = useState<GroupBy>('status');
   const [tab, setTab] = useState<Tab>('all');
   const [error, setError] = useState('');
+  const [q, setQ] = useState(''); // کد پذیرش / شماره / کد ملی / نام
   // «broker» login: ?company=… narrows to one بیمه‌گزار
   const [companyId, setCompanyId] = useState('');
 
@@ -62,7 +63,7 @@ export default function CustomerTrack() {
   const policy = policies.find((p) => p.id === policyId) ?? null;
   const inPolicy = useMemo(() => (claims ?? []).filter((c) => (!companyId || c.policyholderCompanyId === companyId) && (!policy || c.policyNumber === policy.policyNumber)), [claims, policy, companyId]);
   const action = inPolicy.filter((c) => c.needsAction || c.status === 'RETURNED_INCOMPLETE');
-  const shown = tab === 'action' ? action : inPolicy.filter((c) => inTab(tab, c));
+  const shown = (tab === 'action' ? action : inPolicy.filter((c) => inTab(tab, c))).filter((c) => caseMatches(c, q));
 
   const groups = useMemo(() => {
     const key = (c: MyClaim): [string, string] => {
@@ -87,6 +88,7 @@ export default function CustomerTrack() {
       <ErrorBox message={error} />
       <div className="pcard cu-track">
         <div className="cu-track-head">
+          <CaseSearch value={q} onChange={setQ} />
           <div className="cu-radios" role="radiogroup" aria-label="نحوهٔ دسته‌بندی">
             {GROUPS.map(([k, l]) => (
               <label key={k}><input type="radio" name="groupBy" checked={groupBy === k} onChange={() => setGroupBy(k)} /> {l}</label>

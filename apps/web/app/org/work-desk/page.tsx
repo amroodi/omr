@@ -19,7 +19,7 @@ interface QueueRow { id: string; claimNumber: string; policyNumber?: string | nu
 
 const fa = (n: number) => n.toLocaleString('fa-IR');
 const EMPTY = {
-  policyNumber: '', mainNationalCode: '', subNationalCode: '', deceasedName: '', claimType: '', line: '', insurerTenantId: '',
+  policyNumber: '', receiptCode: '', mainNationalCode: '', subNationalCode: '', deceasedName: '', claimType: '', line: '', insurerTenantId: '',
   eventFrom: '', eventTo: '', status: '', channel: '', createdFrom: '', createdTo: '', estMin: '', estMax: '', finMin: '', finMax: '', docCode: '', beneficiaryType: '',
 };
 const STATUS_OPTIONS: [string, string][] = [
@@ -191,6 +191,7 @@ function WorkDesk() {
     const p = new URLSearchParams();
     const set = (k: string, v: string) => { if (v) p.set(k, v); };
     set('policyNumber', toAscii(f.policyNumber).trim());
+    set('receiptCode', toAscii(f.receiptCode).replace(/\D/g, ''));
     set('mainNationalCode', toAscii(f.mainNationalCode).replace(/\D/g, ''));
     set('subNationalCode', toAscii(f.subNationalCode).replace(/\D/g, ''));
     set('deceasedName', f.deceasedName.trim());
@@ -235,17 +236,18 @@ function WorkDesk() {
       <div className="pcard p-5 pform sn-search">
         <div className="sn-fields">
           <input className="input" placeholder="شماره بیمه‌نامه" value={f.policyNumber} onChange={upd('policyNumber')} style={{ direction: 'ltr', textAlign: 'right' }} />
+          <input className="input" placeholder="کد پذیرش" value={f.receiptCode} onChange={upd('receiptCode')} inputMode="numeric" maxLength={8} style={{ direction: 'ltr', textAlign: 'right' }} title="کدی که پس از ثبت پرونده داده شد" />
           <input className="input" placeholder="کد ملی بیمه‌شده اصلی" value={f.mainNationalCode} onChange={upd('mainNationalCode')} inputMode="numeric" title="پرونده‌های بیمه‌شدهٔ اصلی و زیرمجموعهٔ او" />
           <input className="input" placeholder="کد ملی بیمه‌شده فرعی" value={f.subNationalCode} onChange={upd('subNationalCode')} inputMode="numeric" title="فقط پرونده‌های همین همسر یا فرزند" />
           <input className="input" placeholder="نام بیمه‌شده" value={f.deceasedName} onChange={upd('deceasedName')} />
-          <select className="input" value={f.claimType} onChange={(e) => setF({ ...f, claimType: e.target.value })}>
-            <option value="">— نوع پرونده —</option>
-            {Object.entries(caseTypes).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
-          {/* نوع بیمه‌نامه: panel 2 sees every kind; this narrows the list to one. */}
+          {/* نوع بیمه‌نامه first (panel 2 sees every kind; this narrows the list to one), then نوع پرونده */}
           <select className="input" value={f.line} onChange={(e) => setF({ ...f, line: e.target.value })} aria-label="نوع بیمه‌نامه">
             <option value="">— نوع بیمه‌نامه —</option>
             {kinds?.map((k) => <option key={k.code} value={k.code}>{k.label}</option>)}
+          </select>
+          <select className="input" value={f.claimType} onChange={(e) => setF({ ...f, claimType: e.target.value })}>
+            <option value="">— نوع پرونده —</option>
+            {Object.entries(caseTypes).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
           <select className="input" value={f.insurerTenantId} onChange={(e) => setF({ ...f, insurerTenantId: e.target.value })}>
             <option value="">— بیمه‌گر —</option>
@@ -379,8 +381,8 @@ function WorkDesk() {
                             <span className="flex items-center gap-1">
                               {sinadTab ? (
                                 <>
-                                  {r.needsAction && ['evaluate', 'later', 'final', 'returned', 'pay'].includes(sinadTab) && (
-                                    <a href={`/org/claims/${r.id}/evaluate`} className="sn-act is-green">{sinadTab === 'final' ? 'ارزیابی نهایی' : sinadTab === 'returned' || sinadTab === 'pay' ? 'اقدام' : 'ارزیابی'}</a>
+                                  {r.needsAction && ['evaluate', 'later', 'final', 'approve', 'returned', 'pay'].includes(sinadTab) && (
+                                    <a href={`/org/claims/${r.id}/evaluate`} className="sn-act is-green">{sinadTab === 'final' || sinadTab === 'approve' ? 'ارزیابی نهایی' : sinadTab === 'returned' || sinadTab === 'pay' ? 'اقدام' : 'ارزیابی'}</a>
                                   )}
                                   {(sinadTab === 'doctor' || sinadTab === 'exam') && (
                                     <button className="sn-act" onClick={() => { setOpinionText(''); setOpinion({ id: r.id, name: r.deceasedName || r.claimNumber }); }}>اظهار نظر پزشک معتمد</button>
@@ -389,7 +391,7 @@ function WorkDesk() {
                                     <button className="sn-act is-ghost" disabled={busyOp} onClick={() => sinadOp(r.id, 'release')} title="پرونده به پرونده‌های تخصیص‌نیافتهٔ شعبه برمی‌گردد">خارج کردن از کارتابل</button>
                                   )}
                                 </>
-                              ) : !entry && <a href={`/org/claims/${r.id}/assess`} target="_blank" rel="noopener" className="sn-act" title="باز شدن در زبانهٔ جدید">ارزیابی</a>}
+                              ) : !entry && <a href={`/org/claims/${r.id}/evaluate`} target="_blank" rel="noopener" className="sn-act" title="باز شدن در زبانهٔ جدید">ارزیابی</a>}
                               <a href={`/org/claims/${r.id}`} target="_blank" rel="noopener" className="sn-act is-ghost" title="باز شدن در زبانهٔ جدید">مشاهده</a>
                             </span>
                           </td>

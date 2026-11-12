@@ -958,6 +958,8 @@ model Claim {
   evaluatorId    String? // OrgUser the case is allocated to at شعبه (nobody else at the branch sees it)
   evaluatorAt    DateTime?
   evaluatorLater Boolean   @default(false) // «بعدا بررسی میکنم» → «در انتظار بررسی‌های من»
+  amountApprovedAt   DateTime? // ستاد approved the amount شعبه proposed (cleared when شعبه changes it)
+  amountApprovedById String?
   doctorState    String? // REFER = در انتظار اظهار نظر پزشک معتمد, EXAM = دعوت به معاینه
   doctorNote     String? // the last «اظهار نظر پزشک معتمد»
   fraudCheck     String? // CLEAN = «بررسی کردم، تقلب نیست», FRAUD = «تقلب است، عودت شود»
@@ -1014,9 +1016,63 @@ model ClaimHeir {
   nationalCode String? // ENCRYPTED — کد ملی (rows from before it was asked for have none)
   relation  String? // نسبت with the main insured (rows from before it was asked for have none)
   sharePercent Decimal? @db.Decimal(5, 2) // سهم (٪) on the form, when it gives one
+  fatherName   String? // نام پدر (حوالهٔ پرداخت)
+  birthCertNo  String? // شماره شناسنامه
   order     Int      @default(0)
   createdAt DateTime @default(now())
 
+  @@index([claimId])
+}
+
+// مجوز سرپرستی (حدود اختیار): ستاد lets one شعبه operator pay one case, up to `ceiling` rials. Given with the
+// payment order (on شورای فنی's word when it decided), used up by the payment, revoked if the case goes back.
+model PaymentAuthority {
+  id                 String    @id @default(uuid())
+  claimId            String
+  tenantId           String // the INSURER
+  branchId           String?
+  granteeId          String? // OrgUser of شعبه who has the case (null: the handling شعبه's operators)
+  ceiling            Decimal   @db.Decimal(20, 0)
+  grantedById        String?
+  requestedByCouncil Boolean   @default(false)
+  status             String    @default("ACTIVE") // ACTIVE | USED | REVOKED
+  note               String?
+  createdAt          DateTime  @default(now())
+  closedAt           DateTime?
+
+  @@index([claimId])
+  @@index([granteeId, status])
+}
+
+// «فرم ارفاقی»: ستاد's allowance for شعبه on a special case or exception (the form's fields come later).
+model ClaimConcession {
+  id          String   @id @default(uuid())
+  claimId     String
+  tenantId    String // the INSURER
+  createdById String?
+  details     String? // optional
+  fields      Json? // the insurer's form, once it is given
+  createdAt   DateTime @default(now())
+
+  @@index([claimId])
+}
+
+// «اظهار نظر پزشک معتمد»: شعبه fills its part and refers the case to one of the insurer's trusted doctors, who
+// signs in to the doctor panel, fills the rest and registers it; the case then goes back to its evaluator.
+model DoctorReferral {
+  id          String    @id @default(uuid())
+  claimId     String
+  tenantId    String // the INSURER
+  doctorId    String // OrgUser with doctor:opine
+  kind        String // REFER (اظهار نظر) | EXAM (دعوت به معاینه)
+  request     Json // شعبه's part of the form
+  answer      Json? // the doctor's part
+  status      String    @default("PENDING") // PENDING | DONE | CANCELLED
+  createdById String?
+  createdAt   DateTime  @default(now())
+  answeredAt  DateTime?
+
+  @@index([doctorId, status])
   @@index([claimId])
 }
 

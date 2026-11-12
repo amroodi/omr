@@ -40,6 +40,9 @@ export const PERMISSIONS = {
   // Import
   IMPORT_BATCH: 'import:batch',
 
+  // «پزشک معتمد»: signs in to the doctor panel only and answers the cases referred to them
+  DOCTOR_OPINE: 'doctor:opine',
+
   // «میز کار مستقل» of a brokerage (only while Super Admin has it on)
   SPARE_WORK: 'spare:work',
 

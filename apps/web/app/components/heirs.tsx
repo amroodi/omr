@@ -13,11 +13,14 @@ export const BENEFICIARY_FORM = 'beneficiary_form'; // required document «فر�
 export const INHERITANCE_CERT = 'inheritance_cert'; // required document «گواهی انحصار وراثت»
 export const NO_FORM_LETTER = 'no_beneficiary_form_letter'; // «نامه بیمه‌گزار مبنی بر پر نکردن فرم ذینفع» (with ندارد)
 const HAS_FORM = 'ذینفع قانونی'; const NO_FORM = 'وراث قانونی';
-export const BENEFICIARY_KINDS = [HAS_FORM, NO_FORM];
+/** «بیمه گزار»: paid to the بیمه‌گزار, who pays whoever should receive it (no people or documents here). */
+export const TO_POLICYHOLDER = 'بیمه گزار';
+export const BENEFICIARY_KINDS = [HAS_FORM, NO_FORM, TO_POLICYHOLDER];
+const CHOICES: [string, string][] = [[HAS_FORM, 'دارد'], [NO_FORM, 'ندارد'], [TO_POLICYHOLDER, 'بیمه گزار']];
 const FORM_ACCEPT = '.pdf,.jpg,.jpeg,.png,.doc,.docx';
 
-export interface HeirRow { fullName: string; relation: string; nationalCode: string; iban: string; share: string }
-const EMPTY_ROW: HeirRow = { fullName: '', relation: '', nationalCode: '', iban: '', share: '' };
+export interface HeirRow { fullName: string; relation: string; nationalCode: string; iban: string; share: string; fatherName: string; birthCertNo: string }
+const EMPTY_ROW: HeirRow = { fullName: '', relation: '', nationalCode: '', iban: '', share: '', fatherName: '', birthCertNo: '' };
 /** «۳۳٫۵» / «33.5» / «33/5» → 33.5; '' → null; anything else → NaN. */
 const shareNum = (s: string): number | null => {
   const a = toAscii(s).trim().replace(/[٫/,]/g, '.').replace(/%|٪/g, '');
@@ -68,9 +71,11 @@ const rowsBody = (rows: HeirRow[]) => rows.map((h) => ({
   fullName: h.fullName.trim(), relation: h.relation.trim(), iban: normIban(h.iban),
   ...(h.nationalCode.trim() ? { nationalCode: toAscii(h.nationalCode).trim() } : {}),
   ...(shareNum(h.share) !== null ? { sharePercent: shareNum(h.share)! } : {}),
+  ...(h.fatherName.trim() ? { fatherName: h.fatherName.trim() } : {}),
+  ...(h.birthCertNo.trim() ? { birthCertNo: toAscii(h.birthCertNo).trim() } : {}),
 }));
-const toRow = (h: { fullName: string; relation?: string; nationalCode: string; iban: string; sharePercent?: number | null }): HeirRow =>
-  ({ fullName: h.fullName, relation: h.relation ?? '', nationalCode: h.nationalCode, iban: h.iban, share: h.sharePercent != null ? String(h.sharePercent) : '' });
+const toRow = (h: { fullName: string; relation?: string; nationalCode: string; iban: string; sharePercent?: number | null; fatherName?: string; birthCertNo?: string }): HeirRow =>
+  ({ fullName: h.fullName, relation: h.relation ?? '', nationalCode: h.nationalCode, iban: h.iban, share: h.sharePercent != null ? String(h.sharePercent) : '', fatherName: h.fatherName ?? '', birthCertNo: h.birthCertNo ?? '' });
 
 /** Name, نسبت, کد ملی (optional), سهم ٪ (optional) + شبا rows with add / remove. */
 function HeirRows({ rows, onChange, disabled }: { rows: HeirRow[]; onChange: (rows: HeirRow[]) => void; disabled?: boolean }) {
@@ -105,6 +110,11 @@ function HeirRows({ rows, onChange, disabled }: { rows: HeirRow[]; onChange: (ro
               {badIban && <div className="text-xs mt-1" style={{ color: 'var(--danger)' }}>شماره شبا نامعتبر است</div>}
             </div>
             <button type="button" className="btn btn-ghost btn-sm" disabled={disabled || rows.length === 1} onClick={() => onChange(rows.filter((_, j) => j !== i))} title="حذف این ردیف" style={{ color: 'var(--danger)' }}>✕</button>
+            {/* For the payment order (حوالهٔ پرداخت), as on the insurer's «گیرندگان خسارت» table */}
+            <div className="md:col-span-6 grid gap-2 grid-cols-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,2.8fr)]">
+              <input className="input" value={h.fatherName} disabled={disabled} onChange={(e) => set(i, 'fatherName', e.target.value)} placeholder="نام پدر" maxLength={60} />
+              <input className="input latin-digits" value={h.birthCertNo} disabled={disabled} onChange={(e) => set(i, 'birthCertNo', e.target.value)} placeholder="شماره شناسنامه" inputMode="numeric" maxLength={12} style={ltr} />
+            </div>
           </div>
         );
       })}
@@ -113,7 +123,7 @@ function HeirRows({ rows, onChange, disabled }: { rows: HeirRow[]; onChange: (ro
   );
 }
 
-interface HeirsData { beneficiaryType: string | null; canEdit: boolean; form: { id: string; fileName: string } | null; heirs: { id: string; fullName: string; relation?: string; nationalCode: string; iban: string; sharePercent?: number | null }[] }
+interface HeirsData { beneficiaryType: string | null; canEdit: boolean; payeesProblem?: string | null; form: { id: string; fileName: string } | null; heirs: { id: string; fullName: string; relation?: string; nationalCode: string; iban: string; sharePercent?: number | null; fatherName?: string; birthCertNo?: string }[] }
 
 /**
  * In the checklist's beneficiary row: asks دارد / ندارد; on دارد also takes each ذینفع.
@@ -129,7 +139,7 @@ export function BeneficiaryChoice({ claimId, realm, onChosen, onMissing }: { cla
   const show = (x: HeirsData) => {
     setD(x); setDirty(false);
     setRows(x.heirs.length ? x.heirs.map(toRow) : [{ ...EMPTY_ROW }]);
-    onMissing?.(x.beneficiaryType === HAS_FORM && x.heirs.length === 0);
+    onMissing?.((x.beneficiaryType === HAS_FORM || x.beneficiaryType === NO_FORM) && x.heirs.length === 0);
   };
   useEffect(() => { client.get<HeirsData>(`${base}/heirs`, realm).then(show).catch(() => setD(null)); /* eslint-disable-next-line */ }, [claimId]);
   if (!d) return null;
@@ -140,14 +150,14 @@ export function BeneficiaryChoice({ claimId, realm, onChosen, onMissing }: { cla
   };
   const choose = (kind: string) => {
     if (kind === d.beneficiaryType) return;
-    if (kind === NO_FORM && d.heirs.length && !window.confirm('ذینفعان ثبت‌شده حذف می‌شوند. ادامه می‌دهید؟')) return;
-    put(kind, kind === NO_FORM ? [] : filled(rows).filter((h) => !rowsProblem([h])));
+    if (kind === TO_POLICYHOLDER && d.heirs.length && !window.confirm('ذینفعان ثبت‌شده حذف می‌شوند. ادامه می‌دهید؟')) return;
+    put(kind, kind === TO_POLICYHOLDER ? [] : filled(rows).filter((h) => !rowsProblem([h])));
   };
   const save = () => {
     const list = filled(rows);
     const problem = list.length ? rowsProblem(list) : 'مشخصات دست‌کم یک ذینفع را بنویسید.';
     if (problem) return setError(problem);
-    put(HAS_FORM, list);
+    put(d.beneficiaryType === NO_FORM ? NO_FORM : HAS_FORM, list);
   };
 
   return (
@@ -156,14 +166,15 @@ export function BeneficiaryChoice({ claimId, realm, onChosen, onMissing }: { cla
       {d.canEdit && (
         <div className="flex items-center gap-2 flex-wrap">
           <b>فرم تعیین/تغییر ذینفع:</b>
-          {[[HAS_FORM, 'دارد'], [NO_FORM, 'ندارد']].map(([k, l]) => (
+          {CHOICES.map(([k, l]) => (
             <button key={k} type="button" disabled={busy} onClick={() => choose(k)} className={`btn btn-sm ${d.beneficiaryType === k ? 'btn-primary' : 'btn-ghost'}`} aria-pressed={d.beneficiaryType === k}>{l}</button>
           ))}
         </div>
       )}
-      {d.beneficiaryType === HAS_FORM && (d.canEdit ? (
+      {d.beneficiaryType === TO_POLICYHOLDER && <p className="text-xs" style={{ color: 'var(--muted)' }}>خسارت در وجه بیمه‌گزار پرداخت می‌شود و بیمه‌گزار آن را به گیرندگان می‌پردازد؛ مدرک یا مشخصات ذینفع لازم نیست.</p>}
+      {(d.beneficiaryType === HAS_FORM || d.beneficiaryType === NO_FORM) && (d.canEdit ? (
         <div className="space-y-2">
-          <div className="font-bold">مشخصات ذینفعان *</div>
+          <div className="font-bold">{d.beneficiaryType === NO_FORM ? 'مشخصات وراث قانونی (طبق گواهی حصر وراثت) *' : 'مشخصات ذینفعان *'}</div>
           <HeirRows rows={rows} onChange={(r) => { setRows(r); setDirty(true); onMissing?.(true); }} disabled={busy} />
           <button type="button" className="btn btn-primary btn-sm" onClick={save} disabled={busy || !dirty}>{busy ? '…' : dirty ? 'ذخیرهٔ ذینفعان' : 'ذخیره شد'}</button>
         </div>
@@ -187,7 +198,7 @@ export function HeirsCard({ claimId, realm, className = 'card p-4' }: { claimId:
   if (!d || (!d.beneficiaryType && !d.heirs.length && !d.form && !d.canEdit)) return null;
   const save = async () => {
     if (!edit) return;
-    const rows = filled(edit.heirs);
+    const rows = edit.beneficiaryType === TO_POLICYHOLDER ? [] : filled(edit.heirs);
     const problem = rowsProblem(rows);
     if (problem) return setError(problem);
     setBusy(true); setError('');
@@ -212,6 +223,7 @@ export function HeirsCard({ claimId, realm, className = 'card p-4' }: { claimId:
         )}
       </div>
       <Flash text={error} ok={false} />
+      {d.payeesProblem && <div className="alert-warning text-xs mb-3">پیش از دستور پرداخت: {d.payeesProblem}.</div>}
       <div className="text-sm mb-3 flex items-center gap-2 flex-wrap">
         <b>فرم تعیین ذینفع / وراث:</b>
         {d.form
@@ -227,21 +239,23 @@ export function HeirsCard({ claimId, realm, className = 'card p-4' }: { claimId:
               {[...new Set([...BENEFICIARY_KINDS, ...(edit.beneficiaryType ? [edit.beneficiaryType] : [])])].map((k) => <option key={k} value={k}>{k}</option>)}
             </select>
           </div>
-          <HeirRows rows={edit.heirs} onChange={(heirs) => setEdit({ ...edit, heirs })} disabled={busy} />
+          {edit.beneficiaryType !== TO_POLICYHOLDER && <HeirRows rows={edit.heirs} onChange={(heirs) => setEdit({ ...edit, heirs })} disabled={busy} />}
           <div className="flex gap-2">
             <button type="button" className="btn btn-primary btn-sm" onClick={save} disabled={busy}>{busy ? '…' : 'ذخیره'}</button>
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEdit(null)} disabled={busy}>انصراف</button>
           </div>
         </div>
+      ) : d.beneficiaryType === TO_POLICYHOLDER ? (
+        <p className="text-sm" style={{ color: 'var(--muted)' }}>خسارت در وجه بیمه‌گزار پرداخت می‌شود؛ بیمه‌گزار آن را به گیرندگان می‌پردازد.</p>
       ) : d.heirs.length === 0 ? (
         <p className="text-sm" style={{ color: 'var(--muted)' }}>ذینفع / وارثی ثبت نشده است.</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="table text-sm w-full">
-            <thead><tr><th style={{ width: 40 }}>#</th><th>نام و نام خانوادگی</th><th>نسبت</th><th>کد ملی</th><th>سهم</th><th>شماره شبا</th></tr></thead>
+            <thead><tr><th style={{ width: 40 }}>#</th><th>نام و نام خانوادگی</th><th>نام پدر</th><th>شماره شناسنامه</th><th>نسبت</th><th>کد ملی</th><th>سهم</th><th>شماره شبا</th></tr></thead>
             <tbody>
               {d.heirs.map((h, i) => (
-                <tr key={h.id}><td>{(i + 1).toLocaleString('fa-IR')}</td><td>{h.fullName}</td><td>{h.relation || '—'}</td><td className="latin-digits" style={{ direction: 'ltr', textAlign: 'right' }}>{h.nationalCode || '—'}</td><td>{h.sharePercent != null ? `${faN(h.sharePercent)}٪` : '—'}</td><td className="latin-digits" style={{ direction: 'ltr', textAlign: 'right' }}>{h.iban}</td></tr>
+                <tr key={h.id}><td>{(i + 1).toLocaleString('fa-IR')}</td><td>{h.fullName}</td><td>{h.fatherName || '—'}</td><td className="latin-digits">{h.birthCertNo || '—'}</td><td>{h.relation || '—'}</td><td className="latin-digits" style={{ direction: 'ltr', textAlign: 'right' }}>{h.nationalCode || '—'}</td><td>{h.sharePercent != null ? `${faN(h.sharePercent)}٪` : '—'}</td><td className="latin-digits" style={{ direction: 'ltr', textAlign: 'right' }}>{h.iban}</td></tr>
               ))}
             </tbody>
           </table>
