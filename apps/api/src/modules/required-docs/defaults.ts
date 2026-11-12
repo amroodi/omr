@@ -93,8 +93,13 @@ export const RETIRED_DOC_CODES = ['social_security_history', 'beneficiary_iban',
  * «فرم تعیین/تغییر ذینفع»: دارد → the form and its people; ندارد → the انحصار وراثت certificate (and the
  * بیمه‌گزار's letter that no form was filled) instead. The documents a case's choice takes off its checklist.
  */
+/** Every document about who receives the money (ذینفع form, حصر وراثت, their IDs and شبا), in the default and Alborz lists. */
+export const BENEFICIARY_DOC_CODES = ['beneficiary_form', 'inheritance_cert', 'no_beneficiary_form_letter', 'heirs_id_national_card', 'iban_printout',
+  'li_beneficiary_form', 'li_heirs_id', 'li_heirs_iban', 'da_crash_beneficiary_form', 'da_crash_heirs_id', 'da_crash_heirs_iban'];
 export function beneficiaryHiddenDocs(beneficiaryType: string | null | undefined): string[] {
   if (beneficiaryType === 'ذینفع قانونی') return ['inheritance_cert', 'no_beneficiary_form_letter'];
   if (beneficiaryType === 'وراث قانونی') return ['beneficiary_form'];
+  // Paid to the بیمه‌گزار: no ذینفع / وراث documents (it pays the people itself).
+  if (beneficiaryType === 'بیمه گزار') return [...BENEFICIARY_DOC_CODES];
   return [];
 }

@@ -9,6 +9,8 @@ import { Workflow, WorkflowPanel } from '../../../../components/WorkflowPanel';
 import { DocMedia } from '../../../../components/DocViewer';
 import { OnProgress, UploadButton } from '../../../../components/upload';
 import { Filer, filerText, INSURED_RELATIONS, personTitle } from '../../../../components/claim-wording';
+import { PaymentBox, PaymentInfo } from '../../../../components/PaymentBox';
+import { HeirsCard } from '../../../../components/heirs';
 
 /**
  * «ارزیابی» window of «روند سیناد» (Alborz): full screen like Sinad's — grey case strip on top, the scans
@@ -25,8 +27,9 @@ interface Claim {
   createdAt?: string | null; causeOfDeath?: string | null; causeDetail?: string | null; description?: string | null; policyNumber?: string | null; coverageStatus?: string | null; lateNotice?: boolean;
   policyHolder?: { name: string | null } | null; broker?: { name: string } | null; currentStage?: string | null; flowDirection?: string | null;
   deficiencies?: { items: string[]; createdAt: string | null; resolvedAt: string | null }[];
-  workflow?: Workflow;
+  workflow?: Workflow & PaymentInfo;
 }
+interface Referral { id: string; kind: string; status: string; doctor: string | null; by: string | null; request: Record<string, string>; answer: Record<string, string> | null; at: string; answeredAt: string | null }
 interface Sinad {
   enabled: boolean; evaluator: { id: string; name: string; at: string | null; me: boolean } | null; later: boolean;
   doctor: { state: string | null; note: string | null }; fraudCheck: string | null; risk: { level: 'LOW' | 'MEDIUM' | 'HIGH'; reasons: string[] };
@@ -59,7 +62,12 @@ export default function EvaluatePage() {
   const [returnNote, setReturnNote] = useState('');
   const [picked, setPicked] = useState<string[]>([]);
   const [openGroup, setOpenGroup] = useState<number | null>(0);
-  const [modal, setModal] = useState<null | 'history' | 'family' | 'note' | 'refer' | 'actions' | 'doctor'>(null);
+  const [modal, setModal] = useState<null | 'history' | 'family' | 'note' | 'refer' | 'actions' | 'doctor' | 'heirs'>(null);
+  // «اظهار نظر پزشک معتمد»: which doctor, and شعبه's part of the form (the insurer's form will replace these fields)
+  const [doctors, setDoctors] = useState<{ id: string; name: string }[] | null>(null);
+  const [doctorId, setDoctorId] = useState('');
+  const [doctorReq, setDoctorReq] = useState({ question: '', history: '' });
+  const [referrals, setReferrals] = useState<Referral[]>([]);
   const [noteText, setNoteText] = useState('');
   const [doctorKind, setDoctorKind] = useState<'doctor-refer' | 'doctor-exam'>('doctor-refer');
   const [evaluators, setEvaluators] = useState<{ id: string; name: string }[] | null>(null);
@@ -77,6 +85,7 @@ export default function EvaluatePage() {
         client.get<DocMeta[]>(`/claims/${id}/documents`, 'org'),
       ]);
       setClaim(c); setSinad(s); setChecklist(cl); setDocs(dl);
+      client.get<Referral[]>(`/claims/${id}/doctor-referrals`, 'org').then(setReferrals).catch(() => setReferrals([]));
       setAmount((a) => a || (c.finalizedAmount ? String(Number(c.finalizedAmount)) : ''));
     } catch (e: any) { setError(e.message); }
   };
@@ -88,16 +97,16 @@ export default function EvaluatePage() {
 
   // Latest document of each item, with this desk's ✓/✕.
   const rows = useMemo(() => {
-    const out: { label: string; d: ClaimDoc }[] = [];
+    const out: { label: string; d: ClaimDoc; code?: string }[] = [];
     checklist?.items.forEach((it) => {
       const d = it.documents.find((x) => x.isLatest) || it.documents[0];
-      if (d) out.push({ label: it.label, d });
+      if (d) out.push({ label: it.label, d, code: it.code });
       (it.extras ?? []).forEach((x, i) => out.push({ label: `${it.label} — صفحهٔ ${(i + 2).toLocaleString('fa-IR')}`, d: x })); // pages added with «+»
     });
     checklist?.otherDocuments?.filter((d) => d.isLatest).forEach((d) => out.push({ label: d.fileName, d }));
     return out;
   }, [checklist]);
-  const missing = checklist?.items.filter((it) => !it.documents.length).map((it) => it.label) ?? [];
+  const missing = checklist?.items.filter((it) => !it.documents.length).map((it) => ({ code: it.code, label: it.label, required: !!(it as { required?: boolean }).required })) ?? [];
   const branchReview = (d: ClaimDoc) => d.reviews?.find((r) => r.stage === 'BRANCH');
   // This desk's ✓/✕ on a document: شعبه in «روند سیناد», otherwise whichever desk the viewer may review now.
   const deskReview = (d: ClaimDoc) => (sinad?.canEvaluate ? branchReview(d) : d.reviews?.find((r) => r.canEdit) ?? d.reviews?.find((r) => r.stage === claim?.currentStage));
@@ -122,12 +131,14 @@ export default function EvaluatePage() {
       </div>
     </div>
   );
-  const docRows = (stageLabel: string) => rows.map(({ label, d }) => {
+  const docRows = (stageLabel: string) => rows.map(({ label, d, code }) => {
     const r = deskReview(d);
     return (
       <div key={d.id}>
         <div className={`ev-doc${doc?.id === d.id ? ' is-on' : ''}`}>
           <button className="ev-doc-name" onClick={() => { const i = docs.findIndex((x) => x.id === d.id); if (i >= 0) setDocIdx(i); }} title="نمایش در تصویر">{label}</button>
+          {/* A new version of the document (e.g. a clearer scan), uploaded by this desk itself */}
+          {code && !closedNow && <UploadButton className="ev-up" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" maxMB={15} camera title="بارگذاری دوبارهٔ مدرک" subtitle={label} onUpload={(f, onP) => uploadDoc(f, onP, code)}>بارگذاری</UploadButton>}
           {r && <ReviewButtons state={r.state} editable={r.canEdit && !closedNow} busy={busy} label={stageLabel} onSet={(st) => setReview(d, st)} />}
         </div>
         {r?.state === 'REJECTED' && r.note && <div className="ev-doc-why">دلیل رد: {r.note}</div>}
@@ -182,9 +193,13 @@ export default function EvaluatePage() {
     router.push('/org/work-desk');
   });
 
-  const uploadDoc = async (file: File, onProgress: OnProgress) => {
+  const openDoctor = (kind: 'doctor-refer' | 'doctor-exam') => {
+    setDoctorKind(kind); setNoteText(''); setDoctorId(''); setDoctorReq({ question: '', history: '' }); setModal('doctor');
+    if (!doctors) client.get<{ id: string; name: string }[]>('/claims/sinad/doctors', 'org').then(setDoctors).catch(() => setDoctors([]));
+  };
+  const uploadDoc = async (file: File, onProgress: OnProgress, code = 'OTHER') => {
     const fd = new FormData(); fd.append('file', file);
-    await client.upload(`/claims/${id}/documents?docCode=OTHER`, fd, 'org', onProgress);
+    await client.upload(`/claims/${id}/documents?docCode=${encodeURIComponent(code)}`, fd, 'org', onProgress);
     await load();
   };
 
@@ -192,6 +207,20 @@ export default function EvaluatePage() {
     return <div className="ev-full"><ErrorBox message={error} />{!error && <div className="flex-1 flex items-center justify-center"><FancyLoader label="در حال بارگذاری ارزیابی…" /></div>}</div>;
   }
   const closed = ['PAID', 'REJECTED'].includes(claim.status);
+  // Documents not uploaded yet: the desk can upload each one here (e.g. شعبه's «فرم تعیین وضعیت پوشش»).
+  const missingRows = missing.length > 0 && (
+    <>
+      <button className="ev-doc is-missing w-full" onClick={() => setShowMissing((v) => !v)} aria-expanded={showMissing}>
+        <span>{missing.length.toLocaleString('fa-IR')} مدرک بارگذاری نشده است</span><span>{showMissing ? 'بستن ▴' : 'نمایش و بارگذاری ▾'}</span>
+      </button>
+      {showMissing && missing.map((m) => (
+        <div key={m.code} className="ev-doc is-missing">
+          <span>{m.label}{m.required ? ' *' : ''}</span>
+          {!closed && <UploadButton className="ev-up is-solid" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" maxMB={15} camera title="بارگذاری مدرک" subtitle={m.label} onUpload={(f, onP) => uploadDoc(f, onP, m.code)}>بارگذاری</UploadButton>}
+        </div>
+      ))}
+    </>
+  );
   const relation = claim.insuredRelation ? INSURED_RELATIONS[claim.insuredRelation] ?? claim.insuredRelation : 'اصلی';
   const doc = docs[docIdx];
   const fraudRed = sinad.fraudCheck === 'FRAUD' || sinad.risk.level === 'HIGH';
@@ -246,6 +275,18 @@ export default function EvaluatePage() {
 
           {sinad.doctor.state && <div className="ev-yellow">پرونده {sinad.doctor.state === 'EXAM' ? 'در انتظار معاینه توسط پزشک معتمد' : 'در انتظار اظهار نظر پزشک معتمد'} است.</div>}
           {sinad.doctor.note && <div className="ev-yellow"><b>اظهار نظر پزشک معتمد:</b> {sinad.doctor.note}</div>}
+          {referrals.length > 0 && (
+            <div className="ev-item">
+              <div className="ev-item-head"><b>ارجاع به پزشک معتمد</b><span>{referrals.length.toLocaleString('fa-IR')}</span></div>
+              {referrals.map((r) => (
+                <div key={r.id} className="ev-ref">
+                  <div><b>{r.kind === 'EXAM' ? 'دعوت به معاینه' : 'اظهار نظر'}</b> — {r.doctor ?? 'پزشک معتمد'} — {r.at} — {r.status === 'DONE' ? `ثبت شد (${r.answeredAt})` : 'در انتظار پزشک'}</div>
+                  {r.request?.question && <div>درخواست شعبه: {r.request.question}</div>}
+                  {r.answer && <div className="ev-ref-a">نظر پزشک: {r.answer.opinion}{r.answer.percent ? ` — درصد: ${r.answer.percent}` : ''}{r.answer.examDate ? ` — تاریخ معاینه: ${r.answer.examDate}` : ''}{r.answer.notes ? ` — ${r.answer.notes}` : ''}</div>}
+                </div>
+              ))}
+            </div>
+          )}
 
           {branchEval ? (
             <>
@@ -274,12 +315,7 @@ export default function EvaluatePage() {
                     {!closed && rows.some(({ d }) => { const r = deskReview(d); return r?.canEdit && r.state !== 'APPROVED'; }) && (
                       <button className="ev-btn w-full mt-2" disabled={busy} onClick={approveAll}>تایید همهٔ مدارک در این مرحله</button>
                     )}
-                    {missing.length > 0 && (
-                      <button className="ev-doc is-missing w-full" onClick={() => setShowMissing((v) => !v)} aria-expanded={showMissing}>
-                        <span>{missing.length.toLocaleString('fa-IR')} مدرک بارگذاری نشده است</span><span>{showMissing ? 'بستن ▴' : 'نمایش ▾'}</span>
-                      </button>
-                    )}
-                    {showMissing && missing.map((l) => <div key={l} className="ev-doc is-missing"><span>{l}</span></div>)}
+                    {missingRows}
                   </div>
 
                   <div className="ev-amount">
@@ -297,8 +333,8 @@ export default function EvaluatePage() {
                     <>
                       <div className="ev-actions">
                         <button className="ev-btn" disabled={busy} onClick={() => { setReferTo(''); setModal('refer'); if (!evaluators) client.get<{ id: string; name: string }[]>('/claims/sinad/evaluators', 'org').then(setEvaluators).catch(() => setEvaluators([])); }}>ارجاع</button>
-                        <button className="ev-btn" disabled={busy} onClick={() => { setDoctorKind('doctor-refer'); setNoteText(''); setModal('doctor'); }}>پزشک معتمد</button>
-                        <button className="ev-btn" disabled={busy} onClick={() => { setDoctorKind('doctor-exam'); setNoteText(''); setModal('doctor'); }}>دعوت به معاینه</button>
+                        <button className="ev-btn" disabled={busy} onClick={() => openDoctor('doctor-refer')}>اظهار نظر پزشک معتمد</button>
+                        <button className="ev-btn" disabled={busy} onClick={() => openDoctor('doctor-exam')}>دعوت به معاینه</button>
                       </div>
                       <div className="ev-actions">
                         <button className="ev-btn" disabled={busy} onClick={() => run(async () => { await op('later'); router.push('/org/work-desk'); })}>بعدا بررسی میکنم</button>
@@ -359,10 +395,12 @@ export default function EvaluatePage() {
 <DeathNoticeDate claimId={id} className="is-ev" />
                 {docRows(w?.currentStageLabel ?? '')}
                 {rows.length === 0 && <div className="ev-doc is-missing"><span>مدرکی بارگذاری نشده است.</span></div>}
+                {missingRows}
                 {!closed && rows.some(({ d }) => { const r = deskReview(d); return r?.canEdit && r.state !== 'APPROVED'; }) && (
                   <button className="ev-btn w-full mt-2" disabled={busy} onClick={approveAll}>تایید همهٔ مدارک در این مرحله</button>
                 )}
               </div>
+              {w && <PaymentBox claimId={id} info={w} finalizedAmount={claim.finalizedAmount} closed={closed} onDone={load} />}
               {w && <WorkflowPanel claimId={id} workflow={w} realm="org" onDone={load} compact />}
               {!w?.holdsDesk && <div className="text-xs" style={{ color: 'var(--muted)' }}>این پرونده اکنون در «{w?.currentStageLabel || '—'}» است و اقدامی برای شما ندارد.</div>}
             </div>
@@ -412,6 +450,7 @@ export default function EvaluatePage() {
         <span className="ev-icons-sep" />
         <button onClick={() => setModal('history')}><Icon path="M12 8v4l3 2M3 12a9 9 0 109-9 9 9 0 00-7 3.4M3 4v4h4" /><span>تاریخچه</span></button>
         <button onClick={() => setModal('family')}><Icon path="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" /><span>خسارت اعضای خانواده</span></button>
+        <button onClick={() => setModal('heirs')}><Icon path="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM19 8v6M22 11h-6" /><span>ذینفعان</span></button>
         <button onClick={() => { setNoteText(''); setModal('note'); }}><Icon path="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.1 2.1 0 013 3L12 15l-4 1 1-4z" /><span>یادداشت ارزیاب</span></button>
         {!closed && <UploadButton className="ev-icon-btn" accept=".pdf,.jpg,.jpeg,.png" maxMB={15} camera title="افزودن پیوست" onUpload={uploadDoc}><Icon path="M21.4 11.1l-9.2 9.2a6 6 0 01-8.5-8.5l9.2-9.2a4 4 0 015.7 5.7l-9.2 9.2a2 2 0 01-2.8-2.8l8.5-8.5" /><span>افزودن پیوست</span></UploadButton>}
         <button onClick={() => window.open(`/org/claims/${id}`, '_blank')}><Icon path="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6" /><span>پرونده کامل</span></button>
@@ -420,9 +459,9 @@ export default function EvaluatePage() {
 
       {modal && (
         <Overlay onClose={() => setModal(null)}>
-          <div className="pmodal" style={{ maxWidth: modal === 'actions' || modal === 'family' || modal === 'history' ? 720 : 520 }} onClick={(e) => e.stopPropagation()}>
+          <div className="pmodal" style={{ maxWidth: modal === 'heirs' ? 1000 : modal === 'actions' || modal === 'family' || modal === 'history' || modal === 'doctor' ? 720 : 520 }} onClick={(e) => e.stopPropagation()}>
             <div className="pmodal-head">
-              <span className="pmodal-title">{({ history: 'تاریخچه', family: 'خسارت اعضای خانواده و پرونده‌های مرتبط', note: 'یادداشت ارزیاب', refer: 'ارجاع به ارزیاب دیگر', actions: 'سایر اقدامات پرونده', doctor: doctorKind === 'doctor-exam' ? 'دعوت به معاینه' : 'ارجاع به پزشک معتمد' } as const)[modal]}</span>
+              <span className="pmodal-title">{({ history: 'تاریخچه', family: 'خسارت اعضای خانواده و پرونده‌های مرتبط', note: 'یادداشت ارزیاب', refer: 'ارجاع به ارزیاب دیگر', actions: 'سایر اقدامات پرونده', heirs: 'ذینفعان / گیرندگان خسارت', doctor: doctorKind === 'doctor-exam' ? 'دعوت به معاینه — فرم پزشک معتمد' : 'اظهار نظر پزشک معتمد — فرم ارجاع' } as const)[modal]}</span>
               <button className="pmodal-x" onClick={() => setModal(null)} aria-label="بستن">×</button>
             </div>
             <div className="pmodal-body text-sm space-y-2">
@@ -444,12 +483,33 @@ export default function EvaluatePage() {
                   </tbody>
                 </table>
               )}
-              {(modal === 'note' || modal === 'doctor') && (
-                <>
-                  <textarea className="input" rows={4} maxLength={1000} value={noteText} onChange={(e) => setNoteText(e.target.value)}
-                    placeholder={modal === 'note' ? 'یادداشت ارزیاب (فقط برای کارکنان بیمه‌گر)' : 'توضیح برای پزشک معتمد (اختیاری)'} />
-                  {modal === 'doctor' && <div className="text-xs" style={{ color: 'var(--muted)' }}>پرونده به برگهٔ «{doctorKind === 'doctor-exam' ? 'دعوت به معاینه' : 'در انتظار اظهار نظر پزشک معتمد'}» می‌رود و پس از اظهار نظر پزشک معتمد به کارتابل شما برمی‌گردد.</div>}
-                </>
+              {modal === 'heirs' && <HeirsCard claimId={id} realm="org" className="" />}
+              {modal === 'note' && (
+                <textarea className="input" rows={4} maxLength={1000} value={noteText} onChange={(e) => setNoteText(e.target.value)} placeholder="یادداشت ارزیاب (فقط برای کارکنان بیمه‌گر)" />
+              )}
+              {modal === 'doctor' && (
+                // Sinad-style referral form: شعبه's part here; the doctor fills theirs in the پنل پزشک معتمد.
+                <div className="ev-dform">
+                  <div className="ev-dform-sec">مشخصات بیمه‌شده</div>
+                  <div className="ev-dform-grid">
+                    <div><span>نام</span><b>{personTitle(claim.deceasedName, { death: !!claim.claimTypeDeath, gender: claim.insuredGender }) || '—'}</b></div>
+                    <div><span>کد ملی</span><b className="ltr">{claim.deceasedNationalCode || '—'}</b></div>
+                    <div><span>سن</span><b>{claim.deceasedAge != null ? claim.deceasedAge.toLocaleString('fa-IR') : '—'}</b></div>
+                    <div><span>نوع پرونده</span><b>{claim.claimTypeLabel || claim.claimType}</b></div>
+                    <div><span>تاریخ وقوع</span><b>{claim.eventDate || '—'}</b></div>
+                    <div><span>علت</span><b>{claim.causeOfDeath || '—'}</b></div>
+                  </div>
+                  <div className="ev-dform-sec">بخش شعبه</div>
+                  <label className="label">پزشک معتمد *</label>
+                  {!doctors ? <Spinner size={20} /> : doctors.length === 0
+                    ? <div className="text-xs" style={{ color: 'var(--danger)' }}>پزشک معتمدی تعریف نشده است؛ مدیر سازمان کاربری با نقش «پزشک معتمد» بسازد.</div>
+                    : <select className="input" value={doctorId} onChange={(e) => setDoctorId(e.target.value)}><option value="">انتخاب پزشک معتمد…</option>{doctors.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select>}
+                  <label className="label">موضوع / سؤال از پزشک معتمد *</label>
+                  <textarea className="input" rows={3} maxLength={2000} value={doctorReq.question} onChange={(e) => setDoctorReq({ ...doctorReq, question: e.target.value })} placeholder="مثلاً: تعیین درصد نقص عضو، ارتباط علت فوت با سابقهٔ بیماری…" />
+                  <label className="label">سوابق پزشکی / توضیحات شعبه</label>
+                  <textarea className="input" rows={2} maxLength={2000} value={doctorReq.history} onChange={(e) => setDoctorReq({ ...doctorReq, history: e.target.value })} />
+                  <div className="text-xs" style={{ color: 'var(--muted)' }}>پرونده به برگهٔ «{doctorKind === 'doctor-exam' ? 'دعوت به معاینه' : 'در انتظار اظهار نظر پزشک معتمد'}» و کارتابل پزشک انتخاب‌شده می‌رود و پس از ثبت نظر پزشک به کارتابل شما برمی‌گردد.</div>
+                </div>
               )}
               {modal === 'refer' && (
                 !evaluators ? <div className="flex justify-center py-4"><Spinner size={28} /></div> : (
@@ -464,11 +524,11 @@ export default function EvaluatePage() {
             {(modal === 'note' || modal === 'doctor' || modal === 'refer') && (
               <div className="flex border-t" style={{ borderColor: 'var(--border)' }}>
                 <button onClick={() => setModal(null)} className="flex-1 py-3 font-bold" style={{ color: 'var(--muted)', borderInlineEnd: '1px solid var(--border)' }}>انصراف</button>
-                <button disabled={busy || (modal === 'note' && !noteText.trim()) || (modal === 'refer' && !referTo)} className="flex-1 py-3 font-bold" style={{ color: 'var(--brand-700)' }}
+                <button disabled={busy || (modal === 'note' && !noteText.trim()) || (modal === 'refer' && !referTo) || (modal === 'doctor' && (!doctorId || !doctorReq.question.trim()))} className="flex-1 py-3 font-bold" style={{ color: 'var(--brand-700)' }}
                   onClick={() => {
                     const m = modal; setModal(null);
                     if (m === 'note') run(() => op('note', { note: noteText.trim() }));
-                    else if (m === 'doctor') run(async () => { await op(doctorKind, noteText.trim() ? { note: noteText.trim() } : {}); router.push('/org/work-desk'); });
+                    else if (m === 'doctor') run(async () => { await client.post(`/claims/${id}/sinad/${doctorKind}`, { doctorId, note: doctorReq.question.trim(), request: { question: doctorReq.question.trim(), history: doctorReq.history.trim() } }, 'org'); router.push('/org/work-desk'); });
                     else run(async () => { await op('refer', { userId: referTo }); router.push('/org/work-desk'); });
                   }}>ثبت</button>
               </div>

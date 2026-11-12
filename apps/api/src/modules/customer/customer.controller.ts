@@ -393,6 +393,14 @@ export class CustomerController {
     return this.claims.editFiling(id, dto);
   }
 
+  /** The بیمه‌گزار / نماینده who registered the case removes it, until panel 2 starts on it. */
+  @Realms('CUSTOMER')
+  @UseGuards(JwtAuthGuard)
+  @Delete('claims/:id/filing')
+  withdrawFiling(@Param('id') id: string) {
+    return this.claims.withdrawFiling(id);
+  }
+
   /** The بیمه‌گزار corrects them while the case is on their desk. */
   @Realms('CUSTOMER')
   @UseGuards(JwtAuthGuard)

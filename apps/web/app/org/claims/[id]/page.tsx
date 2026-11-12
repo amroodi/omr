@@ -13,6 +13,7 @@ import { ArchivedNotice, CaseSummary, ClaimDoc, DEATH_TYPES, STATUS_FA, useCase 
 import { filerText, INSURED_RELATIONS, personTitle } from '../../../components/claim-wording';
 import { CaseEditForm } from './case-edit';
 import { HeirsCard } from '../../../components/heirs';
+import { PaymentBox, PaymentInfo } from '../../../components/PaymentBox';
 import { PolicyholderCase } from '../../../components/PolicyholderCase';
 import { DeficiencyBox } from '../../../components/DeficiencyBox';
 
@@ -84,7 +85,7 @@ function ClaimDetail() {
             <span className="cv-title-btns no-print">
               <button className={`cv-tbtn${mode === 'preview' ? ' is-on' : ''}`} onClick={() => setMode('preview')}>مشاهده</button>
               {claim.status !== 'PAID' && <button className={`cv-tbtn${mode === 'edit' ? ' is-on' : ''}`} onClick={() => setMode('edit')}>ویرایش</button>}
-              <Link href={`/org/claims/${id}/assess`} className="cv-tbtn is-strong">ارزیابی</Link>
+              <Link href={`/org/claims/${id}/evaluate`} className="cv-tbtn is-strong">ارزیابی</Link>
               <Link href={`/org/claims/${id}/documents`} className="cv-tbtn">مدارک</Link>
               <a href={`/org/reminders?claim=${id}&n=${encodeURIComponent(claim.claimNumber)}`} target="_blank" rel="noopener" className="cv-tbtn" title="یادآوری پیگیری این پرونده برای خودتان یا همکار">یادآور</a>
               {perms.exp && <button className="cv-tbtn" onClick={() => client.download(`/exports/claim/${id}.xlsx`, 'org', `claim-${claim.policyNumber || claim.claimNumber}.xlsx`)}>اکسل</button>}
@@ -153,7 +154,7 @@ function ClaimDetail() {
 
               {/* ── Tabs ── */}
               <div className="ev-tabs cv-tabs no-print">
-                {([['info', 'مشخصات پرونده'], ['docs', `مدارک (${uploadedCount.toLocaleString('fa-IR')} از ${docRows.length.toLocaleString('fa-IR')})`], ['flow', 'گردش کار'], ['heirs', 'ذینفعان'], ['defs', `سوابق نقص${openDefs ? ` (${openDefs.toLocaleString('fa-IR')} باز)` : ''}`]] as [Tab, string][]).map(([k, l]) => (
+                {([['info', 'مشخصات پرونده'], ['docs', `مدارک (${uploadedCount.toLocaleString('fa-IR')} از ${docRows.length.toLocaleString('fa-IR')})`], ['heirs', 'ذینفعان'], ['flow', 'گردش کار'], ['defs', `سوابق نقص${openDefs ? ` (${openDefs.toLocaleString('fa-IR')} باز)` : ''}`]] as [Tab, string][]).map(([k, l]) => (
                   <button key={k} className={tab === k ? 'is-on' : ''} onClick={() => setTab(k)}>{l}</button>
                 ))}
               </div>
@@ -191,6 +192,7 @@ function ClaimDetail() {
                 {tab === 'flow' && (
                   <div className="space-y-3">
                     {w && <WorkflowPanel claimId={id} workflow={{ ...w, actions: [] }} realm="org" onDone={reload} />}
+                    {w && <div className="ev-like"><PaymentBox claimId={id} info={w as PaymentInfo} finalizedAmount={claim.finalizedAmount} closed={closed} onDone={reload} /></div>}
                     <WorkflowTimeline claimId={id} steps={claim.steps} realm="org" />
                   </div>
                 )}

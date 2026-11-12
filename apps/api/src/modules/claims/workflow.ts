@@ -34,7 +34,9 @@ export type ActionKey =
   | 'FIX_HERE' // a desk a return reached fixes it itself and reviews the case again (no further down)
   | 'MARK_PAID' // شعبه records the payout to the beneficiary
   | 'REJECT_FINAL' // substantive rejection (not covered etc.)
-  | 'REQUEST_PHYSICAL'; // ask for the original documents (side track — the claim stays put)
+  | 'REQUEST_PHYSICAL' // ask for the original documents (side track — the claim stays put)
+  | 'APPROVE_AMOUNT' // ستاد approves the amount شعبه proposed (the case stays at ستاد)
+  | 'REJECT_AMOUNT'; // ستاد rejects it, with the reason, back to شعبه
 
 export interface WorkflowAction {
   key: ActionKey;
@@ -159,7 +161,26 @@ export const DEFAULT_CASE_TYPES: CaseType[] = ([
 /** The «علت» options of one نوع پرونده: its own list, else its causeGroup's. */
 export function causesOf(model: WorkflowModel, code: string | null | undefined): string[] {
   const t = model.form.caseTypes.find((x) => x.code === code);
-  return t?.causes.length ? t.causes : model.form.causeLists[t?.causeGroup ?? 'ACCIDENT'];
+  return groupCauses(t?.causes.length ? t.causes : model.form.causeLists[t?.causeGroup ?? 'ACCIDENT']);
+}
+
+/**
+ * Causes that start alike sit together on the forms (every «سکته…», then every «فوت…»): ordered by where their
+ * first word, then their first two words, first appear in the list; otherwise the list's own order is kept.
+ */
+export function groupCauses(list: string[]): string[] {
+  const words = (s: string) => s.replace(/ي/g, 'ی').replace(/ك/g, 'ک').split(/[\s\-‌]+/).filter(Boolean);
+  const first = new Map<string, number>();
+  const firstTwo = new Map<string, number>();
+  list.forEach((c, i) => {
+    const w = words(c);
+    if (!first.has(w[0] ?? '')) first.set(w[0] ?? '', i);
+    const k2 = w.slice(0, 2).join(' ');
+    if (!firstTwo.has(k2)) firstTwo.set(k2, i);
+  });
+  return list.map((c, i) => ({ c, i, w: words(c) }))
+    .sort((a, b) => (first.get(a.w[0] ?? '')! - first.get(b.w[0] ?? '')!) || (firstTwo.get(a.w.slice(0, 2).join(' '))! - firstTwo.get(b.w.slice(0, 2).join(' '))!) || a.i - b.i)
+    .map((x) => x.c);
 }
 export const DEFAULT_WORKFLOW_MODEL: WorkflowModel = {
   councilEnabled: true,
@@ -407,7 +428,14 @@ export interface DeskDocFacts {
   rejectedLabels: string[]; // latest documents rejected at this desk
   rejectedAnywhere: string[]; // latest documents rejected at any desk (must be replaced before SUBMIT)
   deficiencyMissing?: string[]; // documents an open نقص asks for that have not been uploaded since
+  insurerMissing?: string[]; // documents only the insurer provides (فرم تعیین وضعیت پوشش…) that شعبه must still upload
 }
+
+/**
+ * Documents only the insurer can provide — «فرم تکمیل شده تعیین وضعیت پوشش بیمه شده توسط واحد صدور» (and its
+ * «بررسی دوره انتظار»): required only of شعبه's evaluator before sending the case on; optional everywhere else.
+ */
+export const insurerOnlyDoc = (code: string) => /coverage_form|waiting_period/.test(code);
 
 export interface ActionContext {
   claim: {
@@ -433,7 +461,20 @@ export interface ActionContext {
   model?: WorkflowModel;
   /** Why this login can't send the case on from the بیمه‌گزار desk (Model View). */
   submitBlocked?: string;
+  /** Why the گیرندگان خسارت aren't ready for a payment yet (name, کد ملی, شبا, shares); undefined = ready. */
+  payeesMissing?: string;
+  /** Has ستاد approved the amount شعبه proposed? (undefined = not asked, as before) */
+  amountApproved?: boolean;
+  /**
+   * مجوز سرپرستی (حدود اختیار) of this case for the caller: given by ستاد with the payment order, to the شعبه
+   * operator who has the case, up to the approved amount; used up by the payment. Null = none for them.
+   */
+  authority?: { ceiling: number } | null;
 }
+
+/** The amount a payment pays: the approved (قطعی) amount, else the estimate. */
+export const payAmount = (claim: { finalizedAmount: { toString(): string } | null; claimedAmount: { toString(): string } }) =>
+  Number((claim.finalizedAmount ?? claim.claimedAmount).toString());
 
 // ── Original (physical) documents ──
 // They go to شعبه and stay there, unless ستاد or شورای فنی ask for them; a request travels down one desk
@@ -516,8 +557,18 @@ export function actionsFor(ctx: ActionContext): WorkflowAction[] {
 
   if (claim.flowDirection === 'DOWN') {
     if (claim.flowPurpose === 'PAYMENT') {
-      if (s === 'BRANCH') out.push({ key: 'MARK_PAID', label: 'ثبت پرداخت به ذینفع', tone: 'primary' });
-      else if (dn) out.push({ key: 'DOWN_FORWARD', label: `ارسال به ${fa[dn]} برای پرداخت`, tone: 'primary' });
+      if (s === 'BRANCH') {
+        // No payment without the مجوز سرپرستی ستاد gave this operator for this case, up to its ceiling.
+        const auth = ctx.authority;
+        const disabled = ctx.payeesMissing
+          ?? (ctx.authority === undefined ? undefined
+            : !auth ? 'مجوز سرپرستی (حدود اختیار) پرداخت این پرونده برای شما صادر نشده است؛ مدیریت ستاد آن را همراه دستور پرداخت صادر می‌کند'
+            : payAmount(claim) > auth.ceiling ? `مبلغ پرداخت بیش از سقف مجوز سرپرستی (${auth.ceiling.toLocaleString('fa-IR')} ریال) است` : undefined);
+        out.push({ key: 'MARK_PAID', label: 'ثبت پرداخت به ذینفع', tone: 'primary', disabled, confirm: true });
+      } else if (dn) {
+        // شورای فنی's order reaches ستاد: ستاد hands it to شعبه with the مجوز سرپرستی.
+        out.push({ key: 'DOWN_FORWARD', label: s === 'HQ' ? `صدور مجوز سرپرستی و ارسال به ${fa[dn]} برای پرداخت` : `ارسال به ${fa[dn]} برای پرداخت`, tone: 'primary', disabled: s === 'HQ' ? ctx.payeesMissing : undefined });
+      }
       return out;
     }
     // The desk a return reached may fix it itself (upload / replace what was asked, set the amount…) and
@@ -541,6 +592,7 @@ export function actionsFor(ctx: ActionContext): WorkflowAction[] {
   if (s === 'BROKER' || s === 'BRANCH') {
     let disabled = notApproved;
     // «اعلام خسارت» is a document the بیمه‌گزار uploads for now (no شعبه button): it no longer blocks.
+    if (!disabled && s === 'BRANCH' && docs.insurerMissing?.length) disabled = `ابتدا این مدارک را (که فقط بیمه‌گر صادر می‌کند) بارگذاری کنید: ${docs.insurerMissing.join('، ')}`;
     if (!disabled && s === 'BRANCH' && claim.finalizedAmount == null) disabled = 'ابتدا مبلغ خسارت قطعی را ثبت کنید';
     if (!disabled && s === 'BRANCH' && !ph.at && (rules.requireOriginals || waitingOriginals)) disabled = waitingOriginals ?? `ابتدا اصل مدارک را از ${fa[phBase]} دریافت کنید`;
     if (!disabled && s === 'BROKER' && !ctx.branches.length) disabled = 'بیمه‌گر هیچ شعبه‌ای تعریف نکرده است';
@@ -563,13 +615,22 @@ export function actionsFor(ctx: ActionContext): WorkflowAction[] {
       let disabled = notApproved ?? waitingOriginals;
       if (!disabled && claim.finalizedAmount == null) disabled = noAmount;
       if (!disabled && rules.councilEnabled && ceiling != null && payable > ceiling) disabled = 'مبلغ بیش از سقف اختیار مدیریت ستاد است؛ پرونده را به شورای فنی ارجاع دهید';
-      out.push({ key: 'PAY_ORDER', label: 'دستور پرداخت — ارسال به شعبه', tone: 'primary', disabled });
+      // The amount شعبه proposed: ستاد approves it, or rejects it back to شعبه with the reason.
+      if (claim.finalizedAmount != null && ctx.amountApproved === false) {
+        out.push({ key: 'APPROVE_AMOUNT', label: 'تایید مبلغ خسارت پیشنهادی شعبه', tone: 'primary', confirm: true });
+        out.push({ key: 'REJECT_AMOUNT', label: 'رد مبلغ و عودت به شعبه', tone: 'danger', needsNote: true });
+        if (!disabled) disabled = 'ابتدا مبلغ خسارت پیشنهادی شعبه را تایید کنید';
+      }
+      if (!disabled) disabled = ctx.payeesMissing;
+      out.push({ key: 'PAY_ORDER', label: 'دستور پرداخت و صدور مجوز سرپرستی برای شعبه', tone: 'primary', disabled });
       if (rules.councilEnabled) out.push(council);
     }
   } else if (s === 'COUNCIL') {
     let disabled = notApproved ?? waitingOriginals;
     if (!disabled && claim.finalizedAmount == null) disabled = 'مبلغ خسارت قطعی را شعبه ثبت نکرده است';
-    out.push({ key: 'PAY_ORDER', label: 'دستور پرداخت — ارسال به مدیریت ستاد', tone: 'primary', disabled });
+    if (!disabled) disabled = ctx.payeesMissing;
+    // شورای فنی doesn't give the مجوز سرپرستی itself: it orders ستاد to give it to شعبه.
+    out.push({ key: 'PAY_ORDER', label: 'دستور پرداخت — ارسال به مدیریت ستاد برای صدور مجوز سرپرستی', tone: 'primary', disabled });
   }
 
   // Ask for the originals: شعبه from the کارگزاری (a broker's case) or the بیمه‌گزار (after approving the

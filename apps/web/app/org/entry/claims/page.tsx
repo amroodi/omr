@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { hasPerm } from '../../../../lib/client';
 import { Shell } from '../../../components/Shell';
 import { claimTypeLabel, ErrorBox, FancyLoader, STATUS_MAP } from '../../../components/ui';
-import { CaseTable, MyClaim } from '../../../customer/case-table';
+import { CaseSearch, caseMatches, CaseTable, MyClaim } from '../../../customer/case-table';
 import { ORG_NAV } from '../../nav';
 import { entryCaseHref, entryCases } from '../cases';
 
@@ -30,6 +30,7 @@ export default function EntryTrack() {
   const [tab, setTab] = useState<Tab>('all');
   const [newHref, setNewHref] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [q, setQ] = useState(''); // کد پذیرش / شماره / کد ملی / نام
 
   useEffect(() => {
     const t = new URLSearchParams(window.location.search).get('tab') as Tab | null;
@@ -40,7 +41,7 @@ export default function EntryTrack() {
 
   const all = claims ?? [];
   const action = all.filter((c) => c.needsAction);
-  const shown = tab === 'action' ? action : all.filter((c) => inTab(tab, c));
+  const shown = (tab === 'action' ? action : all.filter((c) => inTab(tab, c))).filter((c) => caseMatches(c, q));
   const groups = useMemo(() => {
     const key = (c: MyClaim): [string, string] => {
       if (groupBy === 'type') return [c.claimType, claimTypeLabel(c)];
@@ -62,6 +63,7 @@ export default function EntryTrack() {
       <ErrorBox message={error} />
       <div className="pcard cu-track">
         <div className="cu-track-head">
+          <CaseSearch value={q} onChange={setQ} />
           <div className="cu-radios" role="radiogroup" aria-label="نحوهٔ دسته‌بندی">
             {GROUPS.map(([k, l]) => (
               <label key={k}><input type="radio" name="groupBy" checked={groupBy === k} onChange={() => setGroupBy(k)} /> {l}</label>

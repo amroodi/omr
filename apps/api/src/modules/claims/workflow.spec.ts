@@ -1,4 +1,4 @@
-import { above, actionsFor, causesOf, caseTypeOf, detailFor, docApplies, docRequired, normCause, ActionContext, asLine, typesFor, below, chainOf, DEFAULT_WORKFLOW_MODEL, directTarget, higher, modelFrom, physicalActionsFor, rulesOf, stageLabels, WorkflowModel } from './workflow';
+import { above, actionsFor, causesOf, groupCauses, caseTypeOf, detailFor, docApplies, docRequired, normCause, ActionContext, asLine, typesFor, below, chainOf, DEFAULT_WORKFLOW_MODEL, directTarget, higher, modelFrom, physicalActionsFor, rulesOf, stageLabels, WorkflowModel } from './workflow';
 
 const broker = { brokerTenantId: 'b1' };
 const direct = { brokerTenantId: null };
@@ -81,9 +81,25 @@ describe('actionsFor', () => {
   });
 
   it('شورای فنی orders payment down through ستاد', () => {
-    expect(get(ctx({ currentStage: 'COUNCIL', finalizedAmount: '1' }), 'PAY_ORDER')?.label).toBe('دستور پرداخت — ارسال به مدیریت ستاد');
+    expect(get(ctx({ currentStage: 'COUNCIL', finalizedAmount: '1' }), 'PAY_ORDER')?.label).toContain('ارسال به مدیریت ستاد');
     expect(keys(ctx({ currentStage: 'HQ', flowDirection: 'DOWN', flowPurpose: 'PAYMENT', status: 'APPROVED' }))).toEqual(['DOWN_FORWARD']);
     expect(keys(ctx({ currentStage: 'BRANCH', flowDirection: 'DOWN', flowPurpose: 'PAYMENT', status: 'APPROVED' }))).toEqual(['MARK_PAID']);
+  });
+
+  it("ستاد approves شعبه's amount before a payment order; شعبه pays only with its مجوز سرپرستی, up to the ceiling", () => {
+    const docsOk = { docs: { count: 1, allApproved: true, rejectedLabels: [], rejectedAnywhere: [] } };
+    const hq = ctx({ currentStage: 'HQ', finalizedAmount: '500' }, { ...docsOk, amountApproved: false });
+    expect(keys(hq)).toEqual(expect.arrayContaining(['APPROVE_AMOUNT', 'REJECT_AMOUNT']));
+    expect(get(hq, 'PAY_ORDER')?.disabled).toContain('تایید');
+    expect(get(hq, 'REJECT_AMOUNT')?.needsNote).toBe(true);
+    const ok = ctx({ currentStage: 'HQ', finalizedAmount: '500' }, { ...docsOk, amountApproved: true });
+    expect(keys(ok)).not.toContain('APPROVE_AMOUNT');
+    expect(get(ok, 'PAY_ORDER')?.disabled).toBeUndefined();
+    expect(get(ctx({ currentStage: 'HQ', finalizedAmount: '500' }, { ...docsOk, amountApproved: true, payeesMissing: 'شبا' }), 'PAY_ORDER')?.disabled).toBe('شبا');
+    const pay = { currentStage: 'BRANCH' as const, flowDirection: 'DOWN' as const, flowPurpose: 'PAYMENT' as const, status: 'APPROVED', finalizedAmount: '500' };
+    expect(get(ctx(pay, { authority: null }), 'MARK_PAID')?.disabled).toContain('مجوز سرپرستی');
+    expect(get(ctx(pay, { authority: { ceiling: 400 } }), 'MARK_PAID')?.disabled).toContain('سقف');
+    expect(get(ctx(pay, { authority: { ceiling: 500 } }), 'MARK_PAID')?.disabled).toBeUndefined();
   });
 
   it('a return travels desk by desk, with a direct skip for admins only', () => {
@@ -247,11 +263,16 @@ describe('Model View: cause lists', () => {
     const m = modelFrom({ form: {} });
     expect(causesOf(m, 'DISABILITY_ILLNESS')).toHaveLength(2);
     expect(causesOf(m, 'DEATH_ILLNESS')).not.toContain(causesOf(m, 'DISABILITY_ILLNESS')[0]);
+    // Causes that start alike sit together: no «فوت…» between two «سکته…»
+    const list = causesOf(m, 'DEATH_ILLNESS');
+    const firstWord = (s: string) => s.split(/[\s-]+/)[0];
+    const runs = list.map(firstWord).filter((w, i, a) => i === 0 || a[i - 1] !== w);
+    expect(new Set(runs).size).toBe(runs.length);
     // «جنگ»: عمر only
     expect(causesOf(m, 'DEATH_ILLNESS')).toContain('جنگ');
     for (const t of ['DEATH_ACCIDENT', 'DISABILITY_ACCIDENT', 'MEDICAL_ACCIDENT']) expect(causesOf(m, t)).not.toContain('جنگ');
     expect(causesOf(m, 'DEATH_ACCIDENT')).toContain('حادثه (بدون هزینه پزشکی)');
-    expect(causesOf(m, 'DAILY_GENERAL')).toEqual(m.form.causeLists.ACCIDENT);
+    expect(causesOf(m, 'DAILY_GENERAL')).toEqual(groupCauses(m.form.causeLists.ACCIDENT));
     const saved = modelFrom({ form: { caseTypes: [{ code: 'MEDICAL_ACCIDENT', causes: ['x'] }], lines: { LIFE: { causeLabel: 'علت' } } } });
     expect(causesOf(saved, 'MEDICAL_ACCIDENT')).toEqual(['x']);
     expect(saved.form.lines.LIFE.causeLabel).toBe('علت');

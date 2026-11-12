@@ -22,7 +22,7 @@ import { CoverageService } from '../model-view/coverage.service';
 import { CoverageCheckDto, StaffCoverageCheckDto } from '../customer/dto';
 import { ClaimsService } from './claims.service';
 import { asLine } from './workflow';
-import { SinadOpDto, SinadAssignDto, EvaluatorSettingsDto, ActionDto, DecisionDto, FileClaimDto, FileOnBehalfDto, FilingEditDto, HeirsDto, LetterDto, LossNoticeDto, PhysicalDto, RectifyDto } from './dto';
+import { ConcessionDto, DoctorAnswerDto, SinadOpDto, SinadAssignDto, EvaluatorSettingsDto, ActionDto, DecisionDto, FileClaimDto, FileOnBehalfDto, FilingEditDto, HeirsDto, LetterDto, LossNoticeDto, PhysicalDto, RectifyDto } from './dto';
 
 const docLimits = { fileSize: 15 * 1024 * 1024 };
 
@@ -249,6 +249,27 @@ export class ClaimsController {
     return this.claims.sinadCase(id);
   }
 
+  /** «ارجاع به پزشک معتمد»: the insurer's trusted doctors. */
+  @Permissions(PERMISSIONS.CLAIM_PROCESS)
+  @Get('sinad/doctors')
+  sinadDoctors() {
+    return this.claims.sinadDoctors();
+  }
+
+  /** The case's referrals to trusted doctors (with their answers). */
+  @Permissions(PERMISSIONS.CLAIM_READ)
+  @Get(':id/doctor-referrals')
+  caseReferrals(@Param('id', ParseUUIDPipe) id: string) {
+    return this.claims.caseReferrals(id);
+  }
+
+  /** «فرم ارفاقی»: ستاد's allowance for شعبه on this case. */
+  @Permissions(PERMISSIONS.CLAIM_PROCESS)
+  @Post(':id/concessions')
+  addConcession(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ConcessionDto) {
+    return this.claims.addConcession(id, dto.details);
+  }
+
   /** Kartable operations: take, release, refer, later, resume, doctor-refer, doctor-exam, doctor-opinion, fraud-clean, fraud-flag, note. */
   @Permissions(PERMISSIONS.CLAIM_PROCESS)
   @Post(':id/sinad/:op')
@@ -289,6 +310,14 @@ export class ClaimsController {
   @Put(':id/filing')
   editFiling(@Param('id') id: string, @Body() dto: FilingEditDto) {
     return this.claims.editFiling(id, dto);
+  }
+
+  /** کاربر ثبت removes the case they registered, until panel 2 starts on it (checked in the service). */
+  @EntryOnly()
+  @Permissions(PERMISSIONS.CLAIM_READ)
+  @Delete(':id/filing')
+  withdrawFiling(@Param('id') id: string) {
+    return this.claims.withdrawFiling(id);
   }
 
   /** Required-document checklist (filtered by the claim's cause of death). */
@@ -452,5 +481,38 @@ export class ClaimsController {
     res.setHeader('Content-Type', mimeType);
     res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fileName)}"`);
     res.send(buffer);
+  }
+}
+
+/** پنل پزشک معتمد: the doctor sees only the cases referred to them, reads them and registers their part. */
+@Controller('doctor')
+export class DoctorController {
+  constructor(private readonly claims: ClaimsService) {}
+
+  @Permissions(PERMISSIONS.DOCTOR_OPINE)
+  @Get('referrals')
+  list() {
+    return this.claims.doctorReferrals();
+  }
+
+  @Permissions(PERMISSIONS.DOCTOR_OPINE)
+  @Get('referrals/:id')
+  one(@Param('id', ParseUUIDPipe) id: string) {
+    return this.claims.doctorReferral(id);
+  }
+
+  @Permissions(PERMISSIONS.DOCTOR_OPINE)
+  @Get('referrals/:id/documents/:docId/file')
+  async file(@Param('id', ParseUUIDPipe) id: string, @Param('docId', ParseUUIDPipe) docId: string, @Res() res: Response) {
+    const { buffer, mimeType, fileName } = await this.claims.doctorFile(id, docId);
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fileName)}"`);
+    res.send(buffer);
+  }
+
+  @Permissions(PERMISSIONS.DOCTOR_OPINE)
+  @Post('referrals/:id/answer')
+  answer(@Param('id', ParseUUIDPipe) id: string, @Body() dto: DoctorAnswerDto) {
+    return this.claims.doctorAnswer(id, dto);
   }
 }

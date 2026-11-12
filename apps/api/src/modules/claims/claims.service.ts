@@ -28,7 +28,7 @@ import { beneficiaryHiddenDocs } from '../required-docs/defaults';
 import { toAsciiDigits } from '../../common/jalali/jalali.util';
 import { ModelStore } from '../model-view/model-store.service';
 import { CoverageService } from '../model-view/coverage.service';
-import { above, actionsFor, causesOf, CaseDetail, detailFor, docApplies, docRequired, normCause, rulesOf, WorkflowModel, Line, lineForm, InsuredRelation, RELATION_FA, DEPENDENT_RELATIONS, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, physicalActionsFor, PhysicalActionKey, physicalBelow, PhysicalState, directTarget, Purpose, ReviewDesk, Stage, STAGE_FA, submitTarget, WorkflowAction, caseTypeOf, dependentsFor, EntryWay, typesFor } from './workflow';
+import { above, actionsFor, causesOf, CaseDetail, detailFor, docApplies, docRequired, normCause, rulesOf, WorkflowModel, Line, lineForm, InsuredRelation, RELATION_FA, DEPENDENT_RELATIONS, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, physicalActionsFor, PhysicalActionKey, physicalBelow, PhysicalState, directTarget, insurerOnlyDoc, Purpose, ReviewDesk, Stage, STAGE_FA, submitTarget, WorkflowAction, caseTypeOf, dependentsFor, EntryWay, typesFor } from './workflow';
 import { allKinds, docKindWhere, isKind, kindLabel, kindsOf } from '../../common/kinds';
 
 const CLAIM_DOC_MIME = new Set([
@@ -45,7 +45,9 @@ export const BENEFICIARY_FILE_CODE = 'BENEFICIARY_FILE';
 export const EXCEL_MIME = new Set(['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel']);
 
 /** A ذینفع / وارث named on the deceased's beneficiary form. */
-export interface HeirInput { fullName: string; iban?: string; nationalCode?: string; relation?: string; sharePercent?: number }
+export interface HeirInput { fullName: string; iban?: string; nationalCode?: string; relation?: string; sharePercent?: number; fatherName?: string; birthCertNo?: string }
+/** «بیمه گزار»: the money goes to the بیمه‌گزار (no ذینفع rows). */
+export const PAYEE_POLICYHOLDER = 'بیمه گزار';
 /** شبا as typed («IR06 2960 …», Persian digits, or the 24 digits alone) → «IR» + 24 digits. */
 const normIban = (s: string) => {
   const a = toAsciiDigits(s ?? '').replace(/[\s-]/g, '').toUpperCase();
@@ -695,8 +697,16 @@ export class ClaimsService {
     const reviewing = !!s && s !== 'POLICYHOLDER';
     const stateAt = (d: (typeof latest)[number]) => d.reviews.find((r) => r.stage === s)?.state ?? 'PENDING';
     const missing = (await this.deficiencySlots(claim.id)).filter((x) => x.open && !x.uploaded).map((x) => x.label);
+    // شعبه: the insurer's own forms this case requires and nobody has uploaded yet.
+    let insurerMissing: string[] = [];
+    if (s === 'BRANCH') {
+      const own = await this.db().requiredDocument.findMany({ where: { tenantId: claim.insurerTenantId, isActive: true, code: { notIn: beneficiaryHiddenDocs(claim.beneficiaryType) }, ...docKindWhere(claim.line) }, select: { code: true, label: true, appliesToTypes: true, requiredTypes: true, causes: true, requiredDetails: true } });
+      const have = new Set(latest.map((d) => d.docCode));
+      insurerMissing = own.filter((r) => insurerOnlyDoc(r.code) && docApplies(r, claim) && docRequired(r, claim) && !have.has(r.code)).map((r) => r.label);
+    }
     return {
       deficiencyMissing: missing,
+      insurerMissing,
       count: latest.length,
       allApproved: reviewing && latest.length > 0 && latest.every((d) => stateAt(d) === 'APPROVED'),
       rejectedLabels: reviewing ? latest.filter((d) => stateAt(d) === 'REJECTED').map(label) : [],
@@ -748,7 +758,13 @@ export class ClaimsService {
     ]);
     const model = await this.modelOf(claim.insurerTenantId);
     const submitBlocked = this.panelRights(model)?.submit === false ? 'ارسال پرونده از این پنل غیرفعال است' : undefined;
-    return actionsFor({ claim, isAdmin: desk.isAdmin, hqCeiling: insurer?.hqCeiling ?? null, docs, branches, physical, model, submitBlocked });
+    // Payment: the گیرندگان خسارت must be complete, ستاد approves شعبه's amount, شعبه pays with its مجوز سرپرستی.
+    const s = claim.currentStage as Stage;
+    const paying = s === 'HQ' || s === 'COUNCIL' || (s === 'BRANCH' && claim.flowPurpose === 'PAYMENT');
+    const payeesMissing = paying ? this.payeesProblem(claim, await db.claimHeir.findMany({ where: { claimId: claim.id }, select: { fullName: true, nationalCode: true, iban: true, sharePercent: true } })) ?? undefined : undefined;
+    const amountApproved = s === 'HQ' && claim.flowDirection === 'UP' ? !!claim.amountApprovedAt : undefined;
+    const authority = s === 'BRANCH' && claim.flowPurpose === 'PAYMENT' ? await this.myAuthority(claim, desk) : undefined;
+    return actionsFor({ claim, isAdmin: desk.isAdmin, hqCeiling: insurer?.hqCeiling ?? null, docs, branches, physical, model, submitBlocked, payeesMissing, amountApproved, authority });
   }
 
   /** The claim's place in the chain + what the caller can do, for the panels. */
@@ -775,7 +791,73 @@ export class ClaimsService {
       chargoon: !!myOrg?.chargoonEnabled, // this organization's letters carry «شماره چارگون»
       actions: await this.availableActions(claim, desk),
       physical: await this.physicalView(claim, desk),
+      ...(await this.paymentView(claim)),
     };
+  }
+
+  /** Amount approval, مجوز سرپرستی and «فرم ارفاقی» of a case, for panel 2. */
+  private async paymentView(claim: any) {
+    const u = this.prisma.unscoped();
+    const [auths, concessions] = await Promise.all([
+      u.paymentAuthority.findMany({ where: { claimId: claim.id }, orderBy: { createdAt: 'desc' }, take: 5 }),
+      u.claimConcession.findMany({ where: { claimId: claim.id }, orderBy: { createdAt: 'desc' } }),
+    ]);
+    const ids = [...new Set([claim.amountApprovedById, ...auths.flatMap((a) => [a.granteeId, a.grantedById]), ...concessions.map((c) => c.createdById)].filter((x): x is string => !!x))];
+    const users = ids.length ? await u.orgUser.findMany({ where: { id: { in: ids } }, select: { id: true, displayName: true, username: true } }) : [];
+    const who = (id: string | null) => { const x = users.find((y) => y.id === id); return x ? x.displayName || x.username : null; };
+    const STATUS: Record<string, string> = { ACTIVE: 'فعال', USED: 'استفاده شد (پرداخت انجام شد)', REVOKED: 'لغو شد' };
+    return {
+      amountApproval: claim.amountApprovedAt ? { at: toJalali(claim.amountApprovedAt), by: who(claim.amountApprovedById) } : null,
+      paymentAuthorities: auths.map((a) => ({
+        id: a.id, ceiling: a.ceiling.toString(), status: a.status, statusLabel: STATUS[a.status] ?? a.status, grantee: who(a.granteeId) ?? 'کارشناسان شعبهٔ رسیدگی‌کننده',
+        grantedBy: who(a.grantedById), byCouncil: a.requestedByCouncil, at: toJalali(a.createdAt), closedAt: a.closedAt ? toJalali(a.closedAt) : null, note: a.note,
+      })),
+      concessions: concessions.map((c) => ({ id: c.id, details: c.details, by: who(c.createdById), at: toJalali(c.createdAt) })),
+    };
+  }
+
+  /** The caller's active مجوز سرپرستی on this case (null: none). */
+  private async myAuthority(claim: any, desk: Desk): Promise<{ ceiling: number } | null> {
+    const me = getContext()?.actorId;
+    const a = await this.prisma.unscoped().paymentAuthority.findFirst({
+      where: { claimId: claim.id, status: 'ACTIVE', OR: [{ granteeId: me ?? '__none__' }, { granteeId: null, ...(desk.branchId ? { branchId: desk.branchId } : { id: '__none__' }) }] },
+      orderBy: { createdAt: 'desc' },
+    });
+    return a ? { ceiling: Number(a.ceiling.toString()) } : null;
+  }
+
+  /**
+   * ستاد gives شعبه the مجوز سرپرستی with the payment order: for this case only, up to the approved amount, to the
+   * شعبه operator who has the case (its evaluator, else whoever sent it up from شعبه). Any earlier one is revoked.
+   */
+  private async grantAuthority(claim: any, byCouncil: boolean) {
+    const u = this.prisma.unscoped();
+    const lastBranch = await u.claimStep.findFirst({ where: { claimId: claim.id, stage: 'BRANCH', decidedById: { not: null } }, orderBy: { order: 'desc' }, select: { decidedById: true } });
+    const granteeId = claim.evaluatorId ?? lastBranch?.decidedById ?? null;
+    await this.revokeAuthority(claim.id, 'مجوز تازه صادر شد');
+    const a = await u.paymentAuthority.create({ data: {
+      claimId: claim.id, tenantId: claim.insurerTenantId, branchId: claim.handlingBranchId ?? null, granteeId,
+      ceiling: new Prisma.Decimal((claim.finalizedAmount ?? claim.claimedAmount).toString()), grantedById: this.actor(), requestedByCouncil: byCouncil,
+    } });
+    await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'PaymentAuthority', targetId: a.id, metadata: { claimId: claim.id, ceiling: a.ceiling.toString(), granteeId, byCouncil } });
+  }
+
+  private async revokeAuthority(claimId: string, note: string, status: 'REVOKED' | 'USED' = 'REVOKED') {
+    await this.prisma.unscoped().paymentAuthority.updateMany({ where: { claimId, status: 'ACTIVE' }, data: { status, closedAt: new Date(), note } });
+  }
+
+  /** «فرم ارفاقی»: ستاد's allowance for شعبه on a special case or exception (details optional; the form comes later). */
+  async addConcession(claimId: string, details?: string) {
+    const claim = await this.db().claim.findUnique({ where: { id: claimId } });
+    if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
+    this.assertParticipant(claim);
+    assertNotPaid(claim);
+    const desk = await this.myDesk();
+    if (desk.stage !== 'HQ' && !desk.insurerAdmin) throw new ForbiddenException('فرم ارفاقی را مدیریت ستاد صادر می‌کند');
+    const c = await this.prisma.unscoped().claimConcession.create({ data: { claimId, tenantId: claim.insurerTenantId, createdById: this.actor(), details: details?.trim().slice(0, 2000) || null } });
+    await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'ClaimConcession', targetId: c.id, metadata: { claimId } });
+    await this.notifyHolder(claim, 'BRANCH', 'فرم ارفاقی', `مدیریت ستاد برای پروندهٔ ${claim.claimNumber} فرم ارفاقی صادر کرد.`);
+    return this.get(claimId);
   }
 
   /**
@@ -840,8 +922,24 @@ export class ClaimsService {
         await this.notifyHolder(claim, 'COUNCIL', 'ارجاع به شورای فنی', `پروندهٔ ${claim.claimNumber} از مدیریت ستاد به شورای فنی ارجاع شد.`);
         break;
       }
+      case 'APPROVE_AMOUNT': { // ستاد approves شعبه's amount; the case stays at ستاد
+        await db.claim.update({ where: { id: claimId }, data: { amountApprovedAt: new Date(), amountApprovedById: this.actor() } });
+        await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { amountApproved: claim.finalizedAmount?.toString() } });
+        break;
+      }
+      case 'REJECT_AMOUNT': { // ستاد rejects the amount: back to شعبه with the reason
+        const items = [`مبلغ خسارت پیشنهادی شعبه (${Number(claim.finalizedAmount ?? 0).toLocaleString('fa-IR')} ریال) توسط ${this.store.labels(claim.insurerTenantId)[s]} رد شد: ${note}`];
+        await db.claimDeficiency.create({ data: { claimId, raisedByTenantId: getContext()?.tenantId ?? null, raisedByStepId: step.id, items: JSON.stringify(items), slots: null } });
+        await this.move(claim, step, { ...base, closeState: 'RETURNED_INCOMPLETE', to: dn!, direction: 'DOWN', purpose: 'DEFICIENCY', status: ClaimStatus.RETURNED_INCOMPLETE, extra: { returnTargetStage: higher(claim.returnTargetStage as Stage | null, s), amountApprovedAt: null, amountApprovedById: null } });
+        await this.revokeAuthority(claimId, 'مبلغ رد شد');
+        await this.audit.record({ action: AuditAction.CLAIM_RETURN_INCOMPLETE, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { by: s, to: dn, items, amountRejected: true } });
+        await this.notifyHolder(claim, dn!, 'رد مبلغ خسارت', `مبلغ خسارت پیشنهادی پروندهٔ ${claim.claimNumber} رد شد: ${note}`);
+        break;
+      }
       case 'PAY_ORDER': {
         await this.move(claim, step, { ...base, closeState: 'APPROVED', to: dn!, direction: 'DOWN', purpose: 'PAYMENT', status: ClaimStatus.APPROVED, extra: { returnTargetStage: null } });
+        // ستاد's order goes straight to شعبه, with the مجوز سرپرستی (شورای فنی's goes to ستاد, who gives it).
+        if (s === 'HQ') await this.grantAuthority(claim, false);
         await this.audit.record({ action: AuditAction.CLAIM_APPROVE, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { by: s } });
         await this.notifyHolder(claim, dn!, 'دستور پرداخت', `برای پروندهٔ ${claim.claimNumber} از سوی ${this.store.labels(claim.insurerTenantId)[s]} دستور پرداخت صادر شد.`);
         await this.notifyPolicyHolder(claim.policyHolderId, 'تایید پرونده خسارت', `پروندهٔ ${claim.claimNumber} تایید شد و دستور پرداخت صادر شده است.`);
@@ -865,6 +963,7 @@ export class ClaimsService {
         if (!items.length) throw new BadRequestException('حداقل یک مدرک را انتخاب یا رد کنید، یا یک مورد نقص بنویسید');
         const to: Stage = a.key === 'RETURN_DIRECT' ? directTarget(claim, s) : dn!;
         await db.claimDeficiency.create({ data: { claimId, raisedByTenantId: getContext()?.tenantId ?? null, raisedByStepId: step.id, items: JSON.stringify(items), slots: slots.length ? JSON.stringify(slots) : null } });
+        await this.revokeAuthority(claimId, 'پرونده عودت شد');
         await this.move(claim, step, { ...base, closeState: 'RETURNED_INCOMPLETE', to, direction: 'DOWN', purpose: 'DEFICIENCY', status: ClaimStatus.RETURNED_INCOMPLETE, extra: { returnTargetStage: higher(claim.returnTargetStage as Stage | null, s) } });
         await this.audit.record({ action: AuditAction.CLAIM_RETURN_INCOMPLETE, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { by: s, to, items } });
         await this.notifyHolder(claim, to, 'عودت پرونده برای رفع نقص', `پروندهٔ ${claim.claimNumber} از سوی ${this.store.labels(claim.insurerTenantId)[s]} برای رفع نقص عودت شد: ${items.join('، ')}`);
@@ -875,6 +974,8 @@ export class ClaimsService {
         const to: Stage = a.key === 'DOWN_DIRECT' ? directTarget(claim, s) : dn!;
         const purpose = claim.flowPurpose as Purpose;
         await this.move(claim, step, { ...base, closeState: 'FORWARDED', to, direction: 'DOWN', purpose, status: claim.status });
+        // شورای فنی's payment order handed on by ستاد: ستاد gives شعبه the مجوز سرپرستی (on the council's word).
+        if (purpose === 'PAYMENT' && s === 'HQ' && to === 'BRANCH') await this.grantAuthority(claim, true);
         await this.audit.record({ action: AuditAction.CLAIM_FORWARD, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { from: s, to, purpose } });
         await this.notifyHolder(claim, to, purpose === 'PAYMENT' ? 'دستور پرداخت' : 'عودت پرونده برای رفع نقص', purpose === 'PAYMENT'
           ? `دستور پرداخت پروندهٔ ${claim.claimNumber} برای اقدام به شما ارسال شد.`
@@ -890,6 +991,7 @@ export class ClaimsService {
       }
       case 'MARK_PAID': {
         await this.move(claim, step, { ...base, closeState: 'ACKED', to: null, status: ClaimStatus.PAID });
+        await this.revokeAuthority(claimId, 'پرداخت انجام شد', 'USED'); // the مجوز ends with the payment
         await this.audit.record({ action: AuditAction.CLAIM_PAY, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId });
         await this.notifyPolicyHolder(claim.policyHolderId, 'پرداخت خسارت', `خسارت پروندهٔ ${claim.claimNumber} پرداخت شد.`);
         if (claim.brokerTenantId) await this.notifyOrg(claim.brokerTenantId, 'پرداخت خسارت', `خسارت پروندهٔ ${claim.claimNumber} توسط شعبه پرداخت شد.`, `/org/claims/${claimId}`);
@@ -1191,7 +1293,9 @@ export class ClaimsService {
     if (!getContext()?.assistBy && (await this.myDesk()).stage !== 'BRANCH') throw new ForbiddenException('مبلغ خسارت قطعی را فقط شعبه ثبت می‌کند');
     const normalized = String(amount ?? '').replace(/[^\d.]/g, '');
     if (normalized === '' || isNaN(Number(normalized)) || Number(normalized) < 0) throw new BadRequestException('مبلغ قطعی نامعتبر است');
-    await db.claim.update({ where: { id: claimId }, data: { finalizedAmount: new Prisma.Decimal(normalized) } });
+    // A new amount needs ستاد's approval again.
+    const changed = claim.finalizedAmount == null || claim.finalizedAmount.toString() !== new Prisma.Decimal(normalized).toString();
+    await db.claim.update({ where: { id: claimId }, data: { finalizedAmount: new Prisma.Decimal(normalized), ...(changed ? { amountApprovedAt: null, amountApprovedById: null } : {}) } });
     await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { finalizedAmount: normalized } });
     await this.notifyAdminsActivity('ثبت مبلغ قطعی خسارت', `${await this.actorLabel()} مبلغ قطعی خسارت پروندهٔ ${claim.claimNumber} را ثبت کرد.`, `/org/claims/${claimId}`);
     return this.reload(claimId);
@@ -1415,6 +1519,8 @@ export class ClaimsService {
       : ctx?.actorType === 'ORG_USER' && ctx.panelMode === 'ENTRY' && (perms.includes(PERMISSIONS.CLAIM_FILE) || perms.includes(PERMISSIONS.CLAIM_FILE_ON_BEHALF))
         && (ctx.tenantId === claim.insurerTenantId || ctx.tenantId === claim.brokerTenantId);
     if (!panel1) return null;
+    // Only the user who registered the case (کاربر ثبت) edits or removes it (cases from before this was kept: anyone as before).
+    if (claim.filedById && claim.filedById !== ctx?.actorId && !ctx?.assistBy) return { editable: false, reason: 'ویرایش و حذف پرونده فقط توسط کاربری که آن را ثبت کرده ممکن است.' };
     if (claim.imported || ['APPROVED', 'REJECTED', 'PAID'].includes(claim.status)) return { editable: false, reason: 'پرونده بسته شده است.' };
     if (await this.panel2Started(claim)) return { editable: false, reason: 'بررسی پرونده آغاز شده است؛ برای اصلاح مشخصات با کارشناس تماس بگیرید.' };
     return { editable: true, reason: null };
@@ -1445,6 +1551,19 @@ export class ClaimsService {
     }
     const same = eventDate ? others.find((o) => o.insurerTenantId === insurerTenantId && o.claimType === claimType && day(o.eventDate) === day(eventDate)) : null;
     if (same) throw new ConflictException(`همین خسارت برای این کد ملی و همین تاریخ وقوع پیش‌تر ثبت شده است (پروندهٔ شمارهٔ ${same.claimNumber}).`);
+  }
+
+  /** کاربر ثبت withdraws the case they registered, until panel 2 starts on it (soft delete, as an admin's). */
+  async withdrawFiling(claimId: string) {
+    const db = this.db();
+    const claim = await db.claim.findUnique({ where: { id: claimId } });
+    if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
+    this.assertParticipant(claim);
+    const state = await this.filingEditState(claim);
+    if (!state?.editable) throw new ForbiddenException(state?.reason ?? 'اجازهٔ حذف این پرونده را ندارید');
+    await this.prisma.unscoped().claim.update({ where: { id: claimId }, data: { deletedAt: new Date() } });
+    await this.audit.record({ action: AuditAction.DELETE, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { claimNumber: claim.claimNumber, soft: true, byFiler: true, retentionDays: CLAIM_RETENTION_DAYS } });
+    return { deleted: true };
   }
 
   async editFiling(claimId: string, input: { deceasedFullName?: string; deceasedNationalCode?: string; eventDate?: string; deceasedBirthDate?: string; causeOfDeath?: string; causeDetail?: string; insuredGender?: string; description?: string }) {
@@ -1539,21 +1658,47 @@ export class ClaimsService {
       if (nationalCode && !isValidNationalCode(nationalCode)) throw new BadRequestException(`کد ملی «${fullName}» نامعتبر است.`);
       const sharePercent = h.sharePercent ?? undefined;
       if (sharePercent != null && (sharePercent < 0 || sharePercent > 100)) throw new BadRequestException(`سهم «${fullName}» باید بین ۰ تا ۱۰۰ درصد باشد.`);
-      return { fullName, iban, nationalCode, relation: h.relation?.trim() || undefined, sharePercent };
+      const birthCertNo = toAsciiDigits(h.birthCertNo ?? '').trim() || undefined;
+      if (birthCertNo && !/^\d{1,12}$/.test(birthCertNo)) throw new BadRequestException(`شماره شناسنامهٔ «${fullName}» نامعتبر است.`);
+      return { fullName, iban, nationalCode, relation: h.relation?.trim() || undefined, sharePercent, fatherName: h.fatherName?.trim() || undefined, birthCertNo };
     });
     const total = rows.reduce((t, h) => t + (h.sharePercent ?? 0), 0);
     if (total > 100.001) throw new BadRequestException('جمع سهم ذینفعان بیش از ۱۰۰ درصد است.');
     return rows;
   }
 
-  /** Who may change the heirs: staff who process cases (and see PII), or the بیمه‌گزار while it's on their desk. */
-  private canEditHeirs(claim: { status: string; currentStage: string | null }) {
+  /**
+   * Who may change the heirs: staff who process cases (and see PII), the شعبه / ستاد desk holding the case
+   * (they make sure the payees are complete before payment), or the بیمه‌گزار while it's on their desk.
+   */
+  private async canEditHeirs(claim: any) {
     const ctx = getContext();
     if (claim.status === 'PAID') return false;
     if (ctx?.actorType === 'CUSTOMER') return claim.currentStage === 'POLICYHOLDER';
     if (ctx?.panelMode === 'ENTRY') return claim.currentStage === 'POLICYHOLDER'; // panel 1: like the بیمه‌گزار
     const perms = ctx?.permissions ?? [];
-    return ctx?.actorType === 'SUPER_ADMIN' || (perms.includes(PERMISSIONS.CLAIM_PROCESS) && perms.includes(PERMISSIONS.VIEW_PII));
+    if (ctx?.actorType === 'SUPER_ADMIN' || (perms.includes(PERMISSIONS.CLAIM_PROCESS) && perms.includes(PERMISSIONS.VIEW_PII))) return true;
+    if (!perms.includes(PERMISSIONS.CLAIM_PROCESS)) return false;
+    const desk = await this.myDesk();
+    return (desk.stage === 'BRANCH' || desk.stage === 'HQ') && this.holdsDesk(claim, desk);
+  }
+
+  /**
+   * گیرندگان خسارت must be complete before a payment order: the فن‌آوران payment service needs, for each one,
+   * name, کد ملی and شبا, and their shares adding up to 100٪ (one person alone takes it all). Null = ready.
+   */
+  private payeesProblem(claim: { beneficiaryType: string | null }, heirs: { fullName: string; nationalCode: string | null; iban: string | null; sharePercent: unknown }[]): string | null {
+    if (claim.beneficiaryType === PAYEE_POLICYHOLDER) return null;
+    if (!heirs.length) return 'گیرندگان خسارت (ذینفعان / وراث) با کد ملی و شماره شبا در برگهٔ «ذینفعان» ثبت نشده‌اند';
+    const name = (h: { fullName: string }) => this.crypto.decrypt(h.fullName) ?? '';
+    const bad = heirs.find((h) => !h.nationalCode || !h.iban);
+    if (bad) return `کد ملی و شماره شبای «${name(bad)}» در برگهٔ «ذینفعان» کامل نیست`;
+    if (heirs.length > 1) {
+      if (heirs.some((h) => h.sharePercent == null)) return 'سهم (٪) هر یک از گیرندگان خسارت را در برگهٔ «ذینفعان» بنویسید';
+      const total = heirs.reduce((t, h) => t + Number(h.sharePercent), 0);
+      if (Math.abs(total - 100) > 0.01) return `جمع سهم گیرندگان خسارت ${total.toLocaleString('fa-IR')}٪ است؛ باید ۱۰۰٪ باشد`;
+    }
+    return null;
   }
 
   /** «ذینفع / وراث قانونی»: the kind, each person's name and شبا (masked for staff without view:pii). */
@@ -1562,17 +1707,20 @@ export class ClaimsService {
     if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
     this.assertParticipant(claim);
     const ctx = getContext();
-    const full = ctx?.actorType !== 'ORG_USER' || (ctx.permissions ?? []).includes(PERMISSIONS.VIEW_PII);
+    const canEdit = await this.canEditHeirs(claim);
+    // Whoever may edit them sees them whole (a masked value saved back would spoil the payment data).
+    const full = canEdit || ctx?.actorType !== 'ORG_USER' || (ctx.permissions ?? []).includes(PERMISSIONS.VIEW_PII);
     // The deceased's form itself: the latest upload in the checklist's «فرم تعیین ذینفع» slot.
     const form = await this.db().document.findFirst({ where: { claimId, docCode: BENEFICIARY_FORM_CODE }, orderBy: { createdAt: 'desc' }, select: { id: true, fileName: true } });
     return {
       beneficiaryType: claim.beneficiaryType,
-      canEdit: this.canEditHeirs(claim),
+      canEdit,
+      payeesProblem: this.payeesProblem(claim, claim.heirs),
       form,
       heirs: claim.heirs.map((h) => {
         const iban = this.crypto.decrypt(h.iban) ?? '';
         const nationalCode = h.nationalCode ? this.crypto.decrypt(h.nationalCode) ?? '' : '';
-        return { id: h.id, sharePercent: h.sharePercent != null ? Number(h.sharePercent) : null, relation: h.relation ?? '', nationalCode: full ? nationalCode : nationalCode ? `••••••${nationalCode.slice(-4)}` : '', fullName: this.crypto.decrypt(h.fullName) ?? '', iban: full ? iban : `IR••••••••••••••••••••${iban.slice(-4)}` };
+        return { id: h.id, sharePercent: h.sharePercent != null ? Number(h.sharePercent) : null, relation: h.relation ?? '', nationalCode: full ? nationalCode : nationalCode ? `••••••${nationalCode.slice(-4)}` : '', fullName: this.crypto.decrypt(h.fullName) ?? '', iban: full ? iban : `IR••••••••••••••••••••${iban.slice(-4)}`, fatherName: h.fatherName ?? '', birthCertNo: full ? h.birthCertNo ?? '' : '' };
       }),
     };
   }
@@ -1584,11 +1732,11 @@ export class ClaimsService {
     if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
     this.assertParticipant(claim);
     assertNotPaid(claim); // archived once paid
-    if (!this.canEditHeirs(claim)) throw new ForbiddenException('اجازهٔ ویرایش ذینفعان این پرونده را ندارید');
-    const heirs = this.cleanHeirs(input.heirs);
+    if (!(await this.canEditHeirs(claim))) throw new ForbiddenException('اجازهٔ ویرایش ذینفعان این پرونده را ندارید');
+    const heirs = input.beneficiaryType === PAYEE_POLICYHOLDER ? [] : this.cleanHeirs(input.heirs);
     await db.$transaction([
       db.claimHeir.deleteMany({ where: { claimId } }),
-      ...(heirs.length ? [db.claimHeir.createMany({ data: heirs.map((h, i) => ({ claimId, fullName: this.crypto.encrypt(h.fullName)!, iban: h.iban ? this.crypto.encrypt(h.iban) : null, nationalCode: h.nationalCode ? this.crypto.encrypt(h.nationalCode) : null, relation: h.relation ?? null, sharePercent: h.sharePercent ?? null, order: i })) })] : []),
+      ...(heirs.length ? [db.claimHeir.createMany({ data: heirs.map((h, i) => ({ claimId, fullName: this.crypto.encrypt(h.fullName)!, iban: h.iban ? this.crypto.encrypt(h.iban) : null, nationalCode: h.nationalCode ? this.crypto.encrypt(h.nationalCode) : null, relation: h.relation ?? null, sharePercent: h.sharePercent ?? null, fatherName: h.fatherName ?? null, birthCertNo: h.birthCertNo ?? null, order: i })) })] : []),
       db.claim.update({ where: { id: claimId }, data: { beneficiaryType: input.beneficiaryType || null } }),
     ]);
     await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { heirs: heirs.length, beneficiaryType: input.beneficiaryType ?? null } });
@@ -1743,6 +1891,8 @@ export class ClaimsService {
         }),
       }));
     const entryList = await this.entryRequired(claim, reqs.map((r) => r.code));
+    const xc = getContext();
+    const insurerDesk = xc?.actorType === 'SUPER_ADMIN' || (xc?.actorType === 'ORG_USER' && xc.panelMode !== 'ENTRY' && xc.tenantId === claim.insurerTenantId);
     const items = [...reqs, ...kept].map((r) => {
       const group = byCode.get(r.code) ?? [];
       const latest = group[0];
@@ -1750,7 +1900,9 @@ export class ClaimsService {
         code: r.code,
         label: r.label,
         appliesToTypes: r.appliesToTypes,
-        required: kept.includes(r) ? false : entryList ? entryList.required.has(r.code) || (entryList.accident.has(r.code) && this.isCrash(claim)) : docRequired(r, claim),
+        // The insurer's own forms are required only of its panel-2 desks (شعبه uploads them); optional elsewhere.
+        required: kept.includes(r) || (insurerOnlyDoc(r.code) && !insurerDesk) ? false : entryList ? entryList.required.has(r.code) || (entryList.accident.has(r.code) && this.isCrash(claim)) : docRequired(r, claim),
+        insurerOnly: insurerOnlyDoc(r.code),
         accidentOnly: !!entryList?.accident.has(r.code), // «در صورت وقوع سانحه تصادف» (not greyed)
         uploaded: !!latest && latest.aiStatus !== 'MISMATCH', // a refused newest file leaves the slot to fix
         aiRefused: latest?.aiStatus === 'MISMATCH',
@@ -2395,6 +2547,7 @@ export class ClaimsService {
       'stage-branch': { label: 'در دست بررسی شعبه', where: up('BRANCH'), desk: ['BRANCH'] },
       'stage-hq': { label: 'در دست بررسی مدیریت ستاد', where: up('HQ'), desk: ['HQ'] },
       'stage-council': { label: 'در دست بررسی شورای فنی', where: up('COUNCIL'), desk: ['COUNCIL'] },
+      'approve-amount': { label: 'در انتظار تایید پرونده خسارت', where: { ...up('HQ'), finalizedAmount: { not: null }, amountApprovedAt: null }, desk: ['BRANCH', 'HQ', 'COUNCIL'] },
       'returning': { label: 'عودت‌شده — در انتظار ارسال به سطح پایین‌تر', where: { flowDirection: 'DOWN', flowPurpose: 'DEFICIENCY', currentStage: { not: 'POLICYHOLDER' } }, desk: ['BROKER', 'BRANCH', 'HQ'] },
       'to-pay': { label: 'دستور پرداخت — در انتظار پرداخت', where: { flowPurpose: 'PAYMENT', status: ClaimStatus.APPROVED }, desk: ['BRANCH', 'HQ'] },
       'physical': { label: 'اصل مدارک — درخواست‌های باز', where: { physicalRequests: { some: { status: { in: ['REQUESTED', 'SENT'] } } } }, desk: ['BRANCH', 'HQ', 'COUNCIL'] },
@@ -2494,6 +2647,8 @@ export class ClaimsService {
       { key: 'doctor', label: 'در انتظار اظهار نظر پزشک معتمد', where: { currentStage: 'BRANCH', doctorState: 'REFER' }, seats: ['BRANCH'] },
       { key: 'exam', label: 'دعوت به معاینه', where: { currentStage: 'BRANCH', doctorState: 'EXAM' }, seats: ['BRANCH'] },
       { key: 'final', label: 'در انتظار ارزیابی نهایی', where: { currentStage: { in: ['HQ', 'COUNCIL'] }, flowDirection: 'UP' }, seats: ['BRANCH', 'HQ', 'COUNCIL'] },
+      // شعبه's amount waiting for ستاد's approval (تایید / رد مبلغ خسارت)
+      { key: 'approve', label: 'در انتظار تایید پرونده خسارت', where: { currentStage: 'HQ', flowDirection: 'UP', finalizedAmount: { not: null }, amountApprovedAt: null }, seats: ['BRANCH', 'HQ', 'COUNCIL'] },
       { key: 'returned', label: 'عودت‌شده — در انتظار ارسال', where: { flowDirection: 'DOWN', flowPurpose: 'DEFICIENCY', currentStage: { in: ['BRANCH', 'HQ', 'COUNCIL'] } }, seats: ['BRANCH', 'HQ', 'COUNCIL'] },
       { key: 'pay', label: 'در انتظار پرداخت خسارت (واریز وجه)', where: { flowPurpose: 'PAYMENT', status: ClaimStatus.APPROVED }, seats: ['BRANCH', 'HQ', 'COUNCIL'] },
       { key: 'paid', label: 'پرداخت شده', where: { status: ClaimStatus.PAID }, seats: ['BRANCH', 'HQ', 'COUNCIL'] },
@@ -2769,11 +2924,114 @@ export class ClaimsService {
     return users.filter((u) => u.id !== s.me && (u.desk == null || u.desk === 'BRANCH')).map((u) => ({ id: u.id, name: u.displayName || u.username }));
   }
 
+  /** The insurer's trusted doctors (users whose role has doctor:opine). */
+  private async doctorsOf(tenantId: string) {
+    const users = await this.prisma.unscoped().orgUser.findMany({ where: { tenantId, isActive: true, role: { permissions: { has: PERMISSIONS.DOCTOR_OPINE } } }, orderBy: { displayName: 'asc' }, select: { id: true, displayName: true, username: true } });
+    return users.map((u) => ({ id: u.id, name: u.displayName || u.username }));
+  }
+
+  /** «ارجاع به پزشک معتمد»: the doctors شعبه may pick. */
+  async sinadDoctors() {
+    const s = await this.sinadDesk();
+    if (!s) return [];
+    return this.doctorsOf(s.tenantId);
+  }
+
+  // ─────────────────────────── پنل پزشک معتمد ───────────────────────────
+  private doctorId(): string {
+    const ctx = getContext();
+    if (ctx?.actorType !== 'ORG_USER' || !(ctx.permissions ?? []).includes(PERMISSIONS.DOCTOR_OPINE) || !ctx.actorId) throw new ForbiddenException('این بخش فقط برای پزشک معتمد است');
+    return ctx.actorId;
+  }
+
+  private async myReferral(id: string) {
+    const r = await this.prisma.unscoped().doctorReferral.findUnique({ where: { id } });
+    if (!r || r.doctorId !== this.doctorId()) throw new NotFoundException('ارجاع یافت نشد');
+    return r;
+  }
+
+  /** The doctor's کارتابل: the cases referred to them (waiting first), with what the case needs to be read. */
+  async doctorReferrals() {
+    const me = this.doctorId();
+    const u = this.prisma.unscoped();
+    const rows = await u.doctorReferral.findMany({ where: { doctorId: me, status: { not: 'CANCELLED' } }, orderBy: [{ status: 'desc' }, { createdAt: 'desc' }], take: 300 });
+    const claims = await u.claim.findMany({ where: { id: { in: rows.map((r) => r.claimId) } }, select: { id: true, claimNumber: true, claimType: true, insurerTenantId: true, deceasedFullName: true, eventDate: true, causeOfDeath: true, deletedAt: true } });
+    const byId = new Map(claims.map((c) => [c.id, c]));
+    return rows.filter((r) => byId.get(r.claimId) && !byId.get(r.claimId)!.deletedAt).map((r) => {
+      const c = byId.get(r.claimId)!;
+      return {
+        id: r.id, kind: r.kind, kindLabel: r.kind === 'EXAM' ? 'دعوت به معاینه' : 'اظهار نظر پزشک معتمد', status: r.status, statusLabel: r.status === 'DONE' ? 'ثبت شده' : 'در انتظار اظهار نظر',
+        createdAt: toJalali(r.createdAt), answeredAt: r.answeredAt ? toJalali(r.answeredAt) : null,
+        claimNumber: c.claimNumber, name: this.crypto.decrypt(c.deceasedFullName), claimTypeLabel: caseTypeOf(this.store.get(c.insurerTenantId), c.claimType)?.label ?? c.claimType,
+        eventDate: c.eventDate ? toJalali(c.eventDate, false) : null, cause: c.causeOfDeath,
+      };
+    });
+  }
+
+  /** One referral: the case, its documents (to read), شعبه's part and the doctor's own (once registered). */
+  async doctorReferral(id: string) {
+    const r = await this.myReferral(id);
+    const u = this.prisma.unscoped();
+    const c = await u.claim.findUnique({ where: { id: r.claimId } });
+    if (!c || c.deletedAt) throw new NotFoundException('پرونده یافت نشد');
+    const docs = await u.document.findMany({ where: { claimId: c.id }, orderBy: { createdAt: 'desc' }, select: { id: true, docCode: true, fileName: true, mimeType: true, createdAt: true } });
+    const labels = new Map((await u.requiredDocument.findMany({ where: { tenantId: c.insurerTenantId }, select: { code: true, label: true } })).map((x) => [x.code, x.label]));
+    const seen = new Set<string>();
+    const latest = docs.filter((d) => { if (!d.docCode || d.docCode === 'OTHER') return true; if (seen.has(d.docCode)) return false; seen.add(d.docCode); return true; });
+    const by = r.createdById ? await u.orgUser.findUnique({ where: { id: r.createdById }, select: { displayName: true, username: true } }) : null;
+    return {
+      id: r.id, kind: r.kind, kindLabel: r.kind === 'EXAM' ? 'دعوت به معاینه' : 'اظهار نظر پزشک معتمد', status: r.status, request: r.request, answer: r.answer,
+      createdAt: toJalali(r.createdAt), answeredAt: r.answeredAt ? toJalali(r.answeredAt) : null, referredBy: by ? by.displayName || by.username : null,
+      claim: {
+        claimNumber: c.claimNumber, name: this.crypto.decrypt(c.deceasedFullName), nationalCode: this.crypto.decrypt(c.deceasedNationalCode),
+        claimTypeLabel: caseTypeOf(this.store.get(c.insurerTenantId), c.claimType)?.label ?? c.claimType, eventDate: c.eventDate ? toJalali(c.eventDate, false) : null,
+        birthDate: c.deceasedBirthDate ? toJalali(c.deceasedBirthDate, false) : null, cause: c.causeOfDeath, causeDetail: c.causeDetail, description: c.description, gender: c.insuredGender,
+      },
+      documents: latest.map((d) => ({ id: d.id, label: (d.docCode && labels.get(d.docCode)) || d.fileName, fileName: d.fileName, mimeType: d.mimeType })),
+    };
+  }
+
+  /** A document of a referred case, for the doctor to read. */
+  async doctorFile(id: string, docId: string) {
+    const r = await this.myReferral(id);
+    const doc = await this.prisma.unscoped().document.findFirst({ where: { id: docId, claimId: r.claimId }, select: { storageKey: true, mimeType: true, fileName: true } });
+    if (!doc) throw new NotFoundException('سند یافت نشد');
+    await this.audit.record({ action: AuditAction.VIEW, tenantId: r.tenantId, targetType: 'ClaimDocumentFile', targetId: docId, metadata: { doctorReferral: id } });
+    return { buffer: await this.storage.read(doc.storageKey), mimeType: doc.mimeType, fileName: doc.fileName };
+  }
+
+  /** The doctor registers their part: the case goes back to its evaluator's «در انتظار ارزیابی اولیه». */
+  async doctorAnswer(id: string, answer: { opinion: string; percent?: string; examDate?: string; notes?: string }) {
+    const r = await this.myReferral(id);
+    if (r.status !== 'PENDING') throw new BadRequestException('اظهار نظر این ارجاع پیش‌تر ثبت شده است');
+    const u = this.prisma.unscoped();
+    const clean = Object.fromEntries(Object.entries(answer).filter(([, v]) => typeof v === 'string' && v.trim()).map(([k, v]) => [k, (v as string).trim()]));
+    await u.doctorReferral.update({ where: { id }, data: { answer: clean, status: 'DONE', answeredAt: new Date() } });
+    const claim = await u.claim.findUnique({ where: { id: r.claimId } });
+    if (claim && claim.doctorState) {
+      const text = [clean.opinion, clean.percent ? `درصد: ${clean.percent}` : null, clean.notes].filter(Boolean).join(' — ').slice(0, 1000);
+      await u.claim.update({ where: { id: r.claimId }, data: { doctorState: null, doctorNote: text, evaluatorLater: false } });
+      await u.claimDeskEvent.create({ data: { claimId: r.claimId, kind: 'DOCTOR_OPINION', note: text, actorId: r.doctorId } });
+    }
+    await this.audit.record({ action: AuditAction.EDIT, tenantId: r.tenantId, targetType: 'DoctorReferral', targetId: id, metadata: { claimId: r.claimId } });
+    return this.doctorReferral(id);
+  }
+
+  /** Referrals of a case, for شعبه's ارزیابی window (the doctor's answer once registered). */
+  async caseReferrals(claimId: string) {
+    const u = this.prisma.unscoped();
+    const rows = await u.doctorReferral.findMany({ where: { claimId, status: { not: 'CANCELLED' } }, orderBy: { createdAt: 'desc' } });
+    const ids = [...new Set(rows.flatMap((r) => [r.doctorId, r.createdById]).filter((x): x is string => !!x))];
+    const users = await u.orgUser.findMany({ where: { id: { in: ids } }, select: { id: true, displayName: true, username: true } });
+    const who = (x: string | null) => { const y = users.find((z) => z.id === x); return y ? y.displayName || y.username : null; };
+    return rows.map((r) => ({ id: r.id, kind: r.kind, status: r.status, doctor: who(r.doctorId), by: who(r.createdById), request: r.request, answer: r.answer, at: toJalali(r.createdAt), answeredAt: r.answeredAt ? toJalali(r.answeredAt) : null }));
+  }
+
   /**
    * Kartable operations on one case. They never move it along the chain (that is `act`): they decide who at
    * شعبه holds it and record the evaluator's own steps.
    */
-  async sinadOp(claimId: string, op: string, input: { note?: string; userId?: string }) {
+  async sinadOp(claimId: string, op: string, input: { note?: string; userId?: string; doctorId?: string; request?: Record<string, string> }) {
     const s = await this.sinadDesk();
     if (!s) throw new ForbiddenException('کارتابل سیناد برای سازمان شما فعال نیست');
     const db = this.prisma.unscoped();
@@ -2814,6 +3072,13 @@ export class ClaimsService {
       case 'doctor-refer': // «ارجاع به پزشک معتمد»
       case 'doctor-exam': // «دعوت به معاینه»
         need(atBranch && claim.flowDirection === 'UP' && holds, 'پرونده در اختیار شما نیست');
+        // To one trusted doctor, with شعبه's part of the form: it shows on that doctor's کارتابل.
+        if (input.doctorId) {
+          need(!!(await this.doctorsOf(s.tenantId)).find((d) => d.id === input.doctorId), 'پزشک معتمد را از فهرست انتخاب کنید');
+          await db.doctorReferral.updateMany({ where: { claimId, status: 'PENDING' }, data: { status: 'CANCELLED' } });
+          const request = Object.fromEntries(Object.entries(input.request ?? {}).filter(([k, v]) => typeof v === 'string' && k.length <= 40).slice(0, 30).map(([k, v]) => [k, String(v).slice(0, 2000)]));
+          await db.doctorReferral.create({ data: { claimId, tenantId: s.tenantId, doctorId: input.doctorId, kind: op === 'doctor-refer' ? 'REFER' : 'EXAM', request: { ...request, ...(note ? { note } : {}) }, createdById: s.me } });
+        }
         await db.claim.update({ where: { id: claimId }, data: { doctorState: op === 'doctor-refer' ? 'REFER' : 'EXAM', evaluatorId: claim.evaluatorId ?? s.me, evaluatorAt: claim.evaluatorAt ?? new Date() } });
         await event(op === 'doctor-refer' ? 'DOCTOR_REFER' : 'DOCTOR_EXAM');
         break;
@@ -2851,6 +3116,8 @@ export class ClaimsService {
     const clean = (s?: string) => (s ?? '').trim();
 
     // «شماره بیمه‌نامه» (cases are titled by it); the internal CLM number still matches for older links.
+    const rc = toAsciiDigits(clean(q.receiptCode)).replace(/\D/g, '');
+    if (rc) and.push({ receiptCode: rc }); // «کد پذیرش»
     const pn = clean(q.policyNumber) || clean(q.claimNumber);
     if (pn) and.push({ OR: [{ policyNumber: { contains: pn, mode: 'insensitive' } }, { claimNumber: { contains: pn, mode: 'insensitive' } }, { receiptCode: toAsciiDigits(pn) }] });
     // «نوع ذینفع»: the beneficiary-type field, or the imported column on older claims.

@@ -206,6 +206,12 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
     try { await client.del(`${api}/documents/${p.id}`, realm); await reload(); } catch (e: any) { setError(e.message); }
   };
 
+  /** «حذف پرونده»: only the user who registered it, until panel 2 starts on it (the server checks again). */
+  const withdraw = async () => {
+    if (!claim || !window.confirm(`پرونده ${claim.claimNumber} حذف شود؟ پس از حذف، پرونده در فهرست شما نمایش داده نمی‌شود.`)) return;
+    setError('');
+    try { await client.del(`${api}/filing`, realm); router.push(org ? '/org/entry/claims' : '/customer/claims'); } catch (e: any) { setError(e.message); }
+  };
   const atMyDesk = claim?.workflow?.currentStage === 'POLICYHOLDER';
   const submitAction = claim?.workflow?.actions.find((a) => a.key === 'SUBMIT');
   const uploading = Object.values(up).some((s) => 'pct' in s);
@@ -262,6 +268,7 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
               <h2 className="cu-spec-h">
                 <span>مشخصات پرونده</span>
                 {claim.filingEdit?.editable && !editing && <button type="button" className="btn btn-ghost btn-sm no-print" onClick={() => setEditing(true)}>ویرایش مشخصات</button>}
+                {claim.filingEdit?.editable && !editing && <button type="button" className="btn btn-ghost btn-sm no-print" style={{ color: 'var(--danger)' }} onClick={withdraw}>حذف پرونده</button>}
               </h2>
               <div className="cu-spec-row">
                 <div className="cu-select is-static">
@@ -332,6 +339,8 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
               <p className="text-xs mb-3" style={{ color: 'var(--muted)' }}>مدارک ستاره‌دار (*) الزامی است؛ بقیه را برحسب مورد بارگذاری کنید.{checklist?.note ? ` ${checklist.note}` : ''}</p>
               <Flash text={aiNote ? AI_QUEUED_FA : null} ok />
               {/* Sinad-style document table: ردیف · عنوان مدرک · وضعیت · تصاویر مدارک (each page a thumbnail; «+» adds pages) */}
+              {/* فرم تعیین ذینفع: دارد / ندارد / بیمه گزار — decides which documents the list asks for */}
+              {claim.claimTypeDeath && <div className="sdocs-benef"><BeneficiaryChoice claimId={id} realm={realm} onChosen={reload} onMissing={setHeirsMissing} /></div>}
               <div className="sdocs" role="table" aria-label="مدارک مورد نیاز">
                 <div className="sdocs-head" role="row"><span role="columnheader">ردیف</span><span role="columnheader">عنوان مدرک</span><span role="columnheader">وضعیت</span><span role="columnheader">تصاویر مدارک</span></div>
                 {(() => { let n = 0; return checklist?.items.map((it) => {
@@ -377,7 +386,7 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
                           )}
                         </div>
                       </div>
-                      {isBeneficiary && <BeneficiaryChoice claimId={id} realm={realm} onChosen={reload} onMissing={setHeirsMissing} />}
+                      {isBeneficiary && !claim.claimTypeDeath && <BeneficiaryChoice claimId={id} realm={realm} onChosen={reload} onMissing={setHeirsMissing} />}
                       {st && 'error' in st && <div className="cu-err">بارگذاری انجام نشد: {st.error}</div>}
 
                       {/* Precise trail of the current file: when it was uploaded, then each desk's decision */}

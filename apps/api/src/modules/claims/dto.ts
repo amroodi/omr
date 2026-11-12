@@ -5,6 +5,7 @@ import {
   ArrayMaxSize,
   ArrayNotEmpty,
   IsArray,
+  IsObject,
   IsEnum,
   IsIn,
   IsISO8601,
@@ -24,7 +25,8 @@ import {
 import { ToAsciiDigits } from '../../common/validation/to-ascii.decorator';
 import { KIND_CODE } from '../../common/kinds';
 
-export const BENEFICIARY_KINDS = ['ذینفع قانونی', 'وراث قانونی'] as const;
+// «بیمه گزار»: paid to the بیمه‌گزار, who pays whoever should receive it (nothing more to fill here for now).
+export const BENEFICIARY_KINDS = ['ذینفع قانونی', 'وراث قانونی', 'بیمه گزار'] as const;
 
 /** One ذینفع / وارث from the beneficiary form: name, کد ملی + شبا. */
 export class HeirDto {
@@ -54,6 +56,9 @@ export class HeirDto {
   @Min(0)
   @Max(100)
   sharePercent?: number; // سهم (٪) on the form, when it gives one
+
+  @IsOptional() @IsString() @Length(0, 60) fatherName?: string; // نام پدر (حوالهٔ پرداخت)
+  @IsOptional() @ToAsciiDigits() @IsString() @Length(0, 12) birthCertNo?: string; // شماره شناسنامه
 }
 
 /** Panel 1 corrects what it filed, until panel 2 starts on the case. Only the fields sent change. */
@@ -298,7 +303,7 @@ export class DecisionDto {
   deficiencies?: string[];
 }
 
-const ACTION_KEYS = ['SUBMIT', 'FORWARD', 'REFER_COUNCIL', 'PAY_ORDER', 'RETURN', 'RETURN_DIRECT', 'DOWN_FORWARD', 'DOWN_DIRECT', 'FIX_HERE', 'MARK_PAID', 'REJECT_FINAL', 'REQUEST_PHYSICAL'] as const;
+const ACTION_KEYS = ['SUBMIT', 'FORWARD', 'REFER_COUNCIL', 'PAY_ORDER', 'RETURN', 'RETURN_DIRECT', 'DOWN_FORWARD', 'DOWN_DIRECT', 'FIX_HERE', 'MARK_PAID', 'REJECT_FINAL', 'REQUEST_PHYSICAL', 'APPROVE_AMOUNT', 'REJECT_AMOUNT'] as const;
 
 export class ActionDto {
   @IsIn(ACTION_KEYS as unknown as string[])
@@ -347,6 +352,23 @@ export class SinadOpDto {
   @IsOptional()
   @IsUUID()
   userId?: string;
+
+  // «پزشک معتمد»: the doctor the case is referred to, and شعبه's part of the form
+  @IsOptional() @IsUUID() doctorId?: string;
+  @IsOptional() @IsObject() request?: Record<string, string>;
+}
+
+/** «فرم ارفاقی» (the insurer's form comes later: details only for now). */
+export class ConcessionDto {
+  @IsOptional() @IsString() @Length(0, 2000) details?: string;
+}
+
+/** The trusted doctor's part of the «اظهار نظر پزشک معتمد» form. */
+export class DoctorAnswerDto {
+  @IsString() @Length(2, 3000) opinion!: string; // نظر پزشک معتمد
+  @IsOptional() @IsString() @Length(0, 20) percent?: string; // درصد نقص عضو / از کار افتادگی (در صورت لزوم)
+  @IsOptional() @IsString() @Length(0, 30) examDate?: string; // تاریخ معاینه
+  @IsOptional() @IsString() @Length(0, 2000) notes?: string; // توضیحات
 }
 
 /** «تخصیص پرونده‌ها»: hand cases to one evaluator, or (no userId) back to the branch's pool. */
