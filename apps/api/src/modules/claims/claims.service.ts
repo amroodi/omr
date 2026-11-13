@@ -28,7 +28,7 @@ import { beneficiaryHiddenDocs } from '../required-docs/defaults';
 import { toAsciiDigits } from '../../common/jalali/jalali.util';
 import { ModelStore } from '../model-view/model-store.service';
 import { CoverageService } from '../model-view/coverage.service';
-import { above, actionsFor, causesOf, CaseDetail, detailFor, docApplies, docRequired, normCause, rulesOf, WorkflowModel, Line, lineForm, InsuredRelation, RELATION_FA, DEPENDENT_RELATIONS, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, physicalActionsFor, PhysicalActionKey, physicalBelow, PhysicalState, directTarget, insurerOnlyDoc, Purpose, ReviewDesk, Stage, STAGE_FA, submitTarget, WorkflowAction, caseTypeOf, dependentsFor, EntryWay, typesFor } from './workflow';
+import { above, actionsFor, causesOf, CaseDetail, detailFor, docApplies, docRequired, normCause, rulesOf, WorkflowModel, Line, lineForm, InsuredRelation, RELATION_FA, DEPENDENT_RELATIONS, ActionKey, below, chainOf, DeskDocFacts, Direction, higher, physicalActionsFor, PhysicalActionKey, physicalBelow, PhysicalState, directTarget, insurerOnlyDoc, Purpose, ReviewDesk, Stage, STAGE_FA, submitTarget, formCauses, WorkflowAction, caseTypeOf, dependentsFor, EntryWay, typesFor } from './workflow';
 import { allKinds, docKindWhere, isKind, kindLabel, kindsOf } from '../../common/kinds';
 
 const CLAIM_DOC_MIME = new Set([
@@ -250,7 +250,7 @@ export class ClaimsService {
       way: model.entry.way,
       // The filing form's own fields, as set in Model View (the server checks them again).
       form: {
-        cause: model.form.cause, birthDate: model.form.birthDate, causeLists: model.form.causeLists, causeNotes: model.form.causeNotes,
+        cause: model.form.cause, birthDate: model.form.birthDate, causeLists: formCauses(model).causeLists, causeNotes: model.form.causeNotes,
         caseTypes: model.form.caseTypes.map((t) => ({ code: t.code, causeGroup: t.causeGroup, causes: causesOf(model, t.code), detail: t.detail ?? null })),
         causeLabels: Object.fromEntries(Object.keys(model.form.lines).map((l) => [l, lineForm(model, l).causeLabel])),
       },

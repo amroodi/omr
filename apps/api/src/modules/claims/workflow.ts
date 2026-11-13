@@ -164,6 +164,14 @@ export function causesOf(model: WorkflowModel, code: string | null | undefined):
   return groupCauses(t?.causes.length ? t.causes : model.form.causeLists[t?.causeGroup ?? 'ACCIDENT']);
 }
 
+/** The «علت» lists of a filing form (every panel 1), with causes that start alike together. */
+export function formCauses(model: WorkflowModel) {
+  return {
+    causeLists: { DEATH: groupCauses(model.form.causeLists.DEATH), ACCIDENT: groupCauses(model.form.causeLists.ACCIDENT) },
+    caseTypes: model.form.caseTypes.map((t) => ({ ...t, causes: groupCauses(t.causes) })),
+  };
+}
+
 /**
  * Causes that start alike sit together on the forms (every «سکته…», then every «فوت…»): ordered by where their
  * first word, then their first two words, first appear in the list; otherwise the list's own order is kept.
