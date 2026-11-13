@@ -6,7 +6,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { customerClaimWhere, getContext, getTenantIdOrThrow } from '../../common/tenant/tenant-context';
 
 import { ModelStore } from '../model-view/model-store.service';
-import { dependentsFor, Line, lineForm, typesFor } from '../claims/workflow';
+import { dependentsFor, formCauses, Line, lineForm, typesFor } from '../claims/workflow';
 import { activeContracts, fitsLine, policyRows } from '../policyholders/policy-rows';
 import { toAsciiDigits, toJalali } from '../../common/jalali/jalali.util';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -465,7 +465,7 @@ export class CustomerService {
   private formOf(insurerId: string, line: Line | null, chain: string[]) {
     const m = this.store.get(insurerId);
     return {
-      insuredLabel: lineForm(m, line ?? 'ACCIDENT').insuredLabel, causeLabel: lineForm(m, line ?? 'ACCIDENT').causeLabel, eventLabel: m.form.eventLabel, birthDate: m.form.birthDate, cause: m.form.cause, causeLists: m.form.causeLists, caseTypes: m.form.caseTypes, dependents: dependentsFor(m, chain),
+      insuredLabel: lineForm(m, line ?? 'ACCIDENT').insuredLabel, causeLabel: lineForm(m, line ?? 'ACCIDENT').causeLabel, eventLabel: m.form.eventLabel, birthDate: m.form.birthDate, cause: m.form.cause, ...formCauses(m), dependents: dependentsFor(m, chain),
     };
   }
 
