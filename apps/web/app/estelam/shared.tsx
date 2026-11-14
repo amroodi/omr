@@ -195,8 +195,6 @@ export function EstelamFrame({ children }: { children: (r: any, token: string | 
           <span>دامون</span>
         </Link>
         <nav className="est-links">
-          <Link href="/"><Icon path="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1V9.5z" /> صفحه اصلی</Link>
-          {r && <Link href="/estelam"><Icon path="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM14 2v6h6" /> مشخصات پرونده</Link>}
           {r && <Link href={CONTACT.href}><Icon path={CONTACT.icon} /> {CONTACT.label}</Link>}
           {r && passwordLogin(token) && <Link href="/estelam/password"><Icon path="M5 11h14v10H5zM8 11V7a4 4 0 018 0v4" /> تغییر رمز عبور</Link>}
           <button type="button" onClick={exit}><Icon path={EXIT_ICON} /> خروج</button>
