@@ -132,6 +132,8 @@ export function coverageMessage(r: { status: CoverageStatus; reason?: string }):
   return 'پوشش بیمه‌ای معتبر است';
 }
 
+export interface CoverageRecord { status: CoverageStatus; policyStart: string | null } // policyStart: ISO
+
 /** What the filing form gets back (and the server enforces again on «ثبت پرونده»). */
 export interface CoverageAnswer {
   status: CoverageStatus;
@@ -215,18 +217,22 @@ export class CoverageService implements OnModuleInit, OnModuleDestroy {
    * The same check when the case is filed (the form's answer isn't trusted): refuses a person who isn't
    * covered (when set to), and returns the status to record on the new case. null = inquiry off.
    */
-  async gate(insurerId: string, nationalCode: string, eventDate: Date | null): Promise<CoverageStatus | null> {
+  async gate(insurerId: string, nationalCode: string, eventDate: Date | null): Promise<CoverageRecord | null> {
     const a = await this.lookup(insurerId, nationalCode, eventDate);
     if (!a) return null;
     if (a.blocked) {
       if (a.status === 'NOT_CHECKED') throw new ServiceUnavailableException(`${a.message} و تا پاسخ آن پرونده ثبت نمی‌شود؛ کمی بعد دوباره تلاش کنید.`);
       throw new BadRequestException(`${a.message}؛ پرونده برای پرداخت خسارت ثبت نمی‌شود.`);
     }
-    return a.status;
+    return { status: a.status, policyStart: a.policy?.start ?? null };
   }
 
-  async record(claimId: string, status: CoverageStatus) {
-    await this.prisma.unscoped().claim.update({ where: { id: claimId }, data: { coverageStatus: status, coverageCheckedAt: status === 'NOT_CHECKED' ? null : new Date() } });
+  /** The answer kept on the case: its status, and the بیمه‌نامه start date when the reply gives one. */
+  async record(claimId: string, r: CoverageRecord) {
+    await this.prisma.unscoped().claim.update({
+      where: { id: claimId },
+      data: { coverageStatus: r.status, coverageCheckedAt: r.status === 'NOT_CHECKED' ? null : new Date(), ...(r.policyStart ? { insurerPolicyStart: new Date(r.policyStart) } : {}) },
+    });
   }
 
   /** Cases still NOT_CHECKED: as soon as the service answers they are filled in, at its rate limit. */
@@ -244,7 +250,7 @@ export class CoverageService implements OnModuleInit, OnModuleDestroy {
         for (const c of due) {
           const nid = c.deceasedNationalCode ? this.crypto.decrypt(c.deceasedNationalCode) : null;
           if (!nid) continue;
-          try { await this.record(c.id, judgeCoverage(await this.ask(cfg, nid), cfg, c.eventDate).status); checked++; } catch { break; } // still down: try again next minute
+          try { const r = judgeCoverage(await this.ask(cfg, nid), cfg, c.eventDate); await this.record(c.id, { status: r.status, policyStart: r.policy?.start ?? null }); checked++; } catch { break; } // still down: try again next minute
         }
       }
     } finally { this.busy = false; }
