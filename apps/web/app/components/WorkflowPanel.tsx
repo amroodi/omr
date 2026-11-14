@@ -54,6 +54,15 @@ function phase(w: Workflow): string {
   return 'در حال بررسی';
 }
 
+// The yes / no question of a confirm-first action — each says what «بله» actually does.
+const CONFIRM_DEFAULT = { q: 'آیا از انجام این اقدام مطمئن هستید؟', yes: 'بله، انجام شود' };
+function confirmText(key: string): { q: string; yes: string } {
+  if (key === 'MARK_PAID') return { q: 'آیا مطمئن هستید که پرداخت این پرونده به ذینفع ثبت شود؟ پس از ثبت، مجوز سرپرستی باطل می‌شود و این کار برگشت‌پذیر نیست.', yes: 'بله، پرداخت ثبت شود' };
+  if (key === 'APPROVE_AMOUNT') return { q: 'آیا مبلغ خسارت پیشنهادی شعبه تایید شود؟', yes: 'بله، تایید شود' };
+  if (key === 'RETURN_DIRECT') return { q: 'آیا مطمئن هستید که این پرونده را به بیمه‌گزار برمی‌گردانید؟', yes: 'بله، برگشت داده شود' };
+  return CONFIRM_DEFAULT;
+}
+
 /**
  * The claim's position in the chain (بیمه‌گزار → کارگزاری → شعبه → ستاد → شورای فنی), the اعلام خسارت
  * record, and the actions the server offers this user. Every action can carry a note and — for
@@ -87,6 +96,7 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact, ac
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [sure, setSure] = useState(false); // «آیا مطمئن هستید؟» step of a confirm-first action
+  const ask = open ? confirmText(open.key) : CONFIRM_DEFAULT;
   const base = realm === 'customer' ? '/customer/claims' : '/claims';
   const cur = w.chain.findIndex((c) => c.stage === w.currentStage);
   const asksNumber = w.lossNoticeAsksNumber !== false;
@@ -313,14 +323,14 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact, ac
               <Flash text={err} ok={false} />
               {sure && (
                 <div className="rounded-lg p-3 font-bold" style={{ background: 'var(--surface-2)', color: 'var(--danger)' }} role="alert">
-                  آیا مطمئن هستید که این پرونده را به بیمه‌گزار برمی‌گردانید؟
+                  {ask.q}
                 </div>
               )}
             </div>
             {sure ? (
               <div className="flex border-t" style={{ borderColor: 'var(--border)' }}>
                 <button onClick={() => setSure(false)} disabled={busy} className="flex-1 py-3 font-bold" style={{ color: 'var(--muted)', borderInlineEnd: '1px solid var(--border)' }}>خیر</button>
-                <button onClick={submit} disabled={busy} className="flex-1 py-3 font-bold" style={{ color: 'var(--danger)' }}>{busy ? 'در حال ارسال…' : 'بله، برگشت داده شود'}</button>
+                <button onClick={submit} disabled={busy} className="flex-1 py-3 font-bold" style={{ color: 'var(--danger)' }}>{busy ? 'در حال ارسال…' : ask.yes}</button>
               </div>
             ) : (
               <div className="flex border-t" style={{ borderColor: 'var(--border)' }}>
