@@ -64,7 +64,7 @@ export const NOTICE = { href: '/estelam/notice', label: 'اعلام خسارت',
 export function EstelamTiles({ r }: { r: any }) {
   const tiles = [{ ...NOTICE, off: !r?.selfFiling }, ...PANELS.map((p) => ({ ...p, off: !!r?.selfEntry }))];
   return (
-    <div className="est-tiles">
+    <div className="sn-box est-tiles">
       {tiles.map((t) => {
         const body = (
           <>
@@ -175,14 +175,19 @@ export function EstelamSide({ r }: { r: any }) {
 }
 
 /** White top bar, page body, footer line and the back-to-top button shared by every inquiry page. */
-export function EstelamFrame({ children }: { children: (r: any, token: string | null) => ReactNode }) {
+export interface FrameCtx { cases: InquiryCase[]; pick: (id: string) => void }
+
+/** The title in the top bar for each page (Sinad shows the current view's name there). */
+const TITLES: Record<string, string> = {
+  '/estelam': 'مشاهده و پیگیری پرونده خسارت', '/estelam/notice': 'اعلام خسارت', '/estelam/contact': 'تماس و ارتباط', '/estelam/password': 'تغییر رمز عبور',
+};
+
+export function EstelamFrame({ children }: { children: (r: any, token: string | null, ctx: FrameCtx) => ReactNode }) {
   const { r, token, ready, cases, pick } = useInquiry();
   const exit = useExit();
   const path = usePathname();
   const [showTop, setShowTop] = useState(false);
-  // Sinad's side menu: open on wide screens, an icon strip otherwise (the toggle switches it).
-  const [open, setOpen] = useState(false);
-  useEffect(() => { setOpen(window.innerWidth >= 1100); }, []);
+  const [open, setOpen] = useState(false); // Sinad's side menu: an icon strip until it is opened
   const box = useRef<HTMLDivElement>(null); // the page scrolls inside this full-window layer
   useEffect(() => {
     const el = box.current; if (!el) return;
@@ -190,62 +195,57 @@ export function EstelamFrame({ children }: { children: (r: any, token: string | 
     on(); el.addEventListener('scroll', on, { passive: true });
     return () => el.removeEventListener('scroll', on);
   }, []);
+  useEffect(() => setOpen(false), [path]);
+  // Always light, like Sinad: the app's dark theme is set aside while panel 3 is open.
+  useEffect(() => {
+    const root = document.documentElement;
+    const dark = root.classList.contains('dark');
+    root.classList.remove('dark');
+    return () => { if (dark) root.classList.add('dark'); };
+  }, []);
   const noCase = !!r?.selfEntry;
   const items = [
-    { href: '/estelam', label: 'مشخصات پرونده', icon: 'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM14 2v6h6', off: false },
+    { href: '/estelam', label: 'مشخصات پرونده', icon: 'M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1V9.5z', off: false },
     { href: NOTICE.href, label: NOTICE.label, icon: NOTICE.icon, off: !r?.selfFiling },
     ...PANELS.map((p) => ({ href: p.href as string, label: p.label as string, icon: p.icon as string, off: noCase })),
     { href: CONTACT.href, label: CONTACT.label, icon: CONTACT.icon, off: false },
     ...(passwordLogin(token) ? [{ href: '/estelam/password', label: 'تغییر رمز عبور', icon: 'M5 11h14v10H5zM8 11V7a4 4 0 018 0v4', off: false }] : []),
   ];
+  const title = TITLES[path] ?? PANELS.find((p) => p.href === path)?.label ?? TITLES['/estelam'];
 
   return (
     <div className={`est est-sn${open ? ' is-open' : ''}`} ref={box}>
-      <aside className="sn-side" aria-label="منوی پنل">
+      <div className="sn-side" aria-label="منوی پنل">
         <div className="sn-side-head">
-          <Link href="/" className="sn-logo" aria-label="دامون"><BrandMark size={open ? 64 : 34} /></Link>
-          {open && (
-            <div className="sn-side-org">
-              <span>کارگزاری رسمی بیمه مستقیم برخط آتیه اندیشان دامون</span>
-              {r?.deceasedName && <b>{r.deceasedName}</b>}
-              {(r?.claimNumber || r?.caseNumber) && <span className="sn-side-no"><CaseNo n={r.claimNumber || r.caseNumber} /></span>}
-            </div>
-          )}
+          <Link href="/" className="sn-logo" aria-label="دامون"><BrandMark size={open ? 70 : 36} bare /></Link>
+          {open && <div className="sn-side-org">کارگزاری رسمی بیمه مستقیم برخط آتیه اندیشان دامون</div>}
         </div>
-        <button type="button" className="sn-toggle" onClick={() => setOpen(!open)}>
+        <button type="button" className="sn-toggle" onClick={() => setOpen(!open)} aria-label={open ? 'بستن منو' : 'باز کردن منو'}>
           <Icon path={open ? 'M9 18l6-6-6-6' : 'M15 18l-6-6 6-6'} />{open && <span>بستن منو</span>}
         </button>
-        {r && (
-          <nav className="sn-nav">
-            {items.map((m) => (m.off
-              ? <span key={m.href} className="is-off" title={m.label}><Icon path={m.icon} />{open && <span>{m.label}</span>}</span>
-              : <Link key={m.href} href={m.href} title={m.label} className={path === m.href ? 'is-active' : undefined}><Icon path={m.icon} />{open && <span>{m.label}</span>}</Link>))}
-          </nav>
-        )}
-        <button type="button" className="sn-exit" onClick={exit} title="خروج"><Icon path={EXIT_ICON} />{open && <span>خروج</span>}</button>
-      </aside>
+        {r && items.map((m) => (m.off
+          ? <span key={m.href} className="sn-row is-off" title={m.label}><Icon path={m.icon} />{open && <span>{m.label}</span>}</span>
+          : <Link key={m.href} href={m.href} title={m.label} className={`sn-row${path === m.href ? ' is-active' : ''}`}><Icon path={m.icon} />{open && <span>{m.label}</span>}</Link>))}
+        <button type="button" className="sn-row sn-exit" onClick={exit} title="خروج"><Icon path={EXIT_ICON} />{open && <span>خروج</span>}</button>
+      </div>
+      {open && <div className="sn-scrim" onClick={() => setOpen(false)} />}
 
-      <header className="sn-head">
-        <h1>مشاهده و پیگیری پرونده خسارت</h1>
+      <div className="sn-head">
+        <h1>{title}</h1>
         {r && <Link href={CONTACT.href} className="sn-head-btn">{CONTACT.label}</Link>}
-      </header>
+      </div>
 
-      <main className="est-main sn-main">
+      <div className="sn-page">
         {!ready ? (
           <div className="flex justify-center p-16"><Spinner /></div>
         ) : !r ? (
-          <div className="est-card p-10 text-center space-y-4">
-            <p style={{ color: 'var(--muted)' }}>اطلاعات استعلامی یافت نشد. لطفاً دوباره استعلام کنید.</p>
-            <Link href="/" className="est-btn inline-flex">استعلام جدید</Link>
+          <div className="sn-box text-center space-y-4">
+            <p>اطلاعات استعلامی یافت نشد. لطفاً دوباره استعلام کنید.</p>
+            <Link href="/" className="sn-btn">استعلام جدید</Link>
           </div>
-        ) : (
-          <>
-            {cases.length > 1 && <CasePicker cases={cases} current={r?.id} onPick={pick} />}
-            {children(r, token)}
-          </>
-        )}
+        ) : children(r, token, { cases, pick })}
         <div className="sn-foot">امور مشتریان کارگزاری دامون: <bdi>۰۲۱-۵۷۳۸۹۰۰۰</bdi></div>
-      </main>
+      </div>
 
       {showTop && (
         <button type="button" className="est-totop" aria-label="بازگشت به بالا" onClick={() => box.current?.scrollTo({ top: 0, behavior: 'smooth' })}>
@@ -256,34 +256,12 @@ export function EstelamFrame({ children }: { children: (r: any, token: string | 
   );
 }
 
-/**
- * The looked-up کد ملی covers several cases: a main insured's own (one per نوع بیمه‌نامه — a death in an
- * accident may have a عمر and a حوادث case) and their dependents'. Pick which one the pages show.
- */
-function CasePicker({ cases, current, onPick }: { cases: InquiryCase[]; current?: string; onPick: (id: string) => void }) {
-  return (
-    <div className="est-card est-cases">
-      <div className="est-cases-h">پرونده‌های این کد ملی ({cases.length.toLocaleString('fa-IR')})</div>
-      <div className="est-cases-list">
-        {cases.map((c) => (
-          <button key={c.id} type="button" className={c.id === current ? 'is-on' : undefined} onClick={() => onPick(c.id)} aria-pressed={c.id === current}>
-            <b>{c.name || '—'}</b>
-            <span>{c.relation}{c.line ? ` — ${c.line}` : ''}</span>
-            <span>{c.claimType}{c.eventDate ? ` — ${c.eventDate}` : ''}</span>
-            <span><CaseNo n={c.claimNumber} /></span>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 /** Dark heading card of a sub-page, with a way back to the case. */
-export function SubHead({ title, icon }: { title: string; icon: string }) {
+export function SubHead({ title }: { title: string; icon?: string }) {
   return (
-    <div className="est-hero est-hero-sm">
-      <div className="est-hero-title"><span className="est-hero-ico"><Icon path={icon} /></span>{title}</div>
-      <Link href="/estelam" className="est-exit est-exit-ghost"><Icon path="M9 18l6-6-6-6" /> بازگشت به پرونده</Link>
+    <div className="sn-box sn-subhead">
+      <div className="sn-boxhead"><h3>{title}</h3><hr /><Link href="/estelam" className="sn-back">بازگشت به پرونده</Link></div>
     </div>
   );
 }
@@ -301,9 +279,10 @@ export function InfoRow({ label, value }: { label: string; value: ReactNode }) {
 /** Info column: dark header with the orange dot, white body. */
 export function InfoCol({ title, icon, children }: { title: string; icon?: string; children: ReactNode }) {
   return (
-    <section className="est-col">
-      <h3 className="est-col-h"><span className="est-dot" />{title}{icon && <span className="sn-card-ico"><Icon path={icon} /></span>}</h3>
-      <div className="est-col-b">{children}</div>
+    <section className="sn-box sn-card">
+      <h4>{title}</h4>
+      {icon && <span className="sn-card-ico"><Icon path={icon} /></span>}
+      <div className="sn-card-b">{children}</div>
     </section>
   );
 }
