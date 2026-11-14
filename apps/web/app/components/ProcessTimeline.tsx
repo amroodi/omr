@@ -95,3 +95,62 @@ export function ProcessTimeline({ c, fv, splitNumber = false }: { c: CaseClaim &
     </section>
   );
 }
+
+/** The rows of «گزارش وضعیت پرونده خسارت» (PDF): the same steps as the timeline above, one per row. */
+export function processRows(c: CaseClaim & { steps?: TimelineStep[]; lossNotice?: LossNoticeEntry | null; paidDate?: string | null; createdAt?: string | null; payableAmount?: string }, fv: Record<string, string>) {
+  const rows: { stage: string; status: string; date: string; note: string }[] = [];
+  const manual = !!c.story?.manual;
+  if (!(c.imported && (c.status === 'PAID' || c.status === 'REJECTED'))) rows.push({ stage: 'ثبت پرونده', status: 'ثبت شد', date: c.createdAt ?? '', note: claimTypeLabel(c) });
+  if (manual) for (const h of c.story?.history ?? []) rows.push({ stage: h.title, status: h.detail || '', date: h.at, note: '' });
+  if (manual && !(c.story?.history ?? []).length) {
+    for (const s of WF_STEPS) {
+      const st = s.status && !blankVal(fv[s.status]) ? (s.amount ? fmtAmount(fv[s.status]) ?? fv[s.status] : fv[s.status]) : '';
+      const dt = s.date && !blankVal(fv[s.date]) ? faD(fv[s.date]) : '';
+      if (st || dt) rows.push({ stage: s.label, status: st, date: dt, note: '' });
+    }
+  }
+  if (!manual) {
+    const steps = withLossNotice((c.steps ?? []).filter((s) => s.state !== 'PENDING' || s.order === Math.max(...(c.steps ?? []).map((x) => x.order))), c.lossNotice);
+    for (const s of steps) {
+      const pending = s.state === 'PENDING';
+      rows.push({
+        stage: `${s.stageLabel || s.holderName || 'مرحله'}${s.branchName ? ` — ${s.branchName}` : ''}`,
+        status: pending ? 'در حال بررسی' : ACTION_FA[s.action || ''] || STATE_FA[s.state] || s.state,
+        date: s.decidedAt ?? '',
+        note: [s.note, ...(s.letters ?? []).map((l) => `نامه ${l.number ?? ''}${l.date ? ` (${l.date})` : ''}`)].filter(Boolean).join(' — '),
+      });
+    }
+    if (c.status === 'PAID') rows.push({ stage: 'پرداخت خسارت', status: 'دستور پرداخت صادر شد', date: c.paidDate && !blankVal(c.paidDate) ? c.paidDate : '', note: c.payableAmount ? rial(c.payableAmount) : '' });
+  }
+  return rows;
+}
+
+/**
+ * The body of «گزارش وضعیت پرونده خسارت» as the designer drew it: company and name on the right, the dates on the
+ * left, the stages table, then «توضیحات پرونده». Laid on the letterhead by downloadBrandedPdf.
+ */
+export function StatusReportBody({ c, fv, notes }: { c: any; fv: Record<string, string>; notes: string }) {
+  const isDeath = c.claimTypeDeath ?? DEATH_TYPES.has(c.claimType);
+  const rows = processRows(c, fv);
+  return (
+    <div className="pdf-r">
+      <div className="pdf-r-info">
+        <div><b>شرکت:</b> {c.policyholderCompany?.name || fv.company_name || '—'}</div>
+        <div><b>تاریخ ثبت اولیه:</b> {c.createdAt?.split(' ')[0] || '—'}</div>
+        <div><b>{isDeath ? 'نام متوفی' : 'نام بیمه‌شده'}:</b> {c.deceasedName ? `${isDeath ? 'مرحوم ' : ''}${c.deceasedName}` : '—'}</div>
+        <div><b>تاریخ پرداخت:</b> {c.paidDate && !blankVal(c.paidDate) ? c.paidDate : '—'}</div>
+      </div>
+      <table className="pdf-r-table">
+        <thead><tr><th>مرحله</th><th>وضعیت</th><th>تاریخ</th><th>توضیحات</th></tr></thead>
+        <tbody>
+          {rows.map((r, i) => <tr key={i}><td>{r.stage}</td><td>{r.status}</td><td>{r.date.split(' ')[0]}</td><td>{r.note}</td></tr>)}
+          {Array.from({ length: Math.max(0, 6 - rows.length) }, (_, i) => <tr key={`e${i}`}><td /><td /><td /><td /></tr>)}
+        </tbody>
+      </table>
+      <div className="pdf-r-notes">
+        <div className="pdf-r-notes-h"><b>توضیحات پرونده:</b></div>
+        <p>{notes}</p>
+      </div>
+    </div>
+  );
+}
