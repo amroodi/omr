@@ -239,7 +239,7 @@ export function InfoRow({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="est-row">
       <span className="est-row-l">{label}:</span>
-      <span className="est-row-v">{value ?? '—'}</span>
+      <span className="est-row-v">{value == null || value === '' ? 'ندارد' : value}</span>
     </div>
   );
 }
