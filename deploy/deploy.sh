@@ -50,13 +50,25 @@ fi
 rm -rf apps/api/dist.prev
 
 echo "==> Building web (NEXT_PUBLIC_API_BASE=$PUBLIC_API_BASE, NEXT_PUBLIC_TENANT_SLUG=$PUBLIC_TENANT_SLUG)"
-NEXT_PUBLIC_API_BASE="$PUBLIC_API_BASE" NEXT_PUBLIC_TENANT_SLUG="$PUBLIC_TENANT_SLUG" \
-  npm --workspace apps/web run build
+# Built into a separate folder: the running site keeps serving its own .next untouched until the new build is
+# complete (building in place deleted the pages' script files under it — «Application error» until a restart).
+( cd apps/web && rm -rf .next-build )
+if ! NEXT_DIST_DIR=.next-build NEXT_PUBLIC_API_BASE="$PUBLIC_API_BASE" NEXT_PUBLIC_TENANT_SLUG="$PUBLIC_TENANT_SLUG" \
+  npm --workspace apps/web run build; then
+  git checkout -- apps/web/next-env.d.ts apps/web/tsconfig.json  # Next writes the build folder's name into these
+  echo "!! Web build failed — the site keeps running the previous build and the services were NOT restarted."
+  ( cd apps/web && rm -rf .next-build )
+  exit 1
+fi
+git checkout -- apps/web/next-env.d.ts apps/web/tsconfig.json  # Next writes the build folder's name into these
+( cd apps/web && rm -rf .next.prev && if [ -d .next ]; then mv .next .next.prev; fi && mv .next-build .next )
 
 echo "==> Restarting services"
 # Restarted one unit per call so a single NOPASSWD sudoers line can match each exactly.
 sudo systemctl restart omr-api
 sudo systemctl restart omr-web
+
+rm -rf apps/web/.next.prev
 
 echo "==> Done. Status:"
 systemctl --no-pager --lines=0 status omr-api omr-web || true
