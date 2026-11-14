@@ -570,7 +570,7 @@ export function actionsFor(ctx: ActionContext): WorkflowAction[] {
         const auth = ctx.authority;
         const disabled = ctx.payeesMissing
           ?? (ctx.authority === undefined ? undefined
-            : !auth ? 'مجوز سرپرستی (حدود اختیار) پرداخت این پرونده برای شما صادر نشده است؛ مدیریت ستاد آن را همراه دستور پرداخت صادر می‌کند'
+            : !auth ? 'مجوز سرپرستی پرداخت این پرونده برای شما صادر نشده است'
             : payAmount(claim) > auth.ceiling ? `مبلغ پرداخت بیش از سقف مجوز سرپرستی (${auth.ceiling.toLocaleString('fa-IR')} ریال) است` : undefined);
         out.push({ key: 'MARK_PAID', label: 'ثبت پرداخت به ذینفع', tone: 'primary', disabled, confirm: true });
       } else if (dn) {
