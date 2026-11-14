@@ -1,4 +1,4 @@
-import { assertNotPaid } from './archived';
+import { ARCHIVE_FA, assertNotPaid, closedCase } from './archived';
 import JSZip from 'jszip';
 import { randomInt, randomUUID } from 'crypto';
 import { uploadName } from '../../common/validation/upload-name';
@@ -777,7 +777,7 @@ export class ClaimsService {
     return {
       chain: chainOf(claim, await this.modelOf(claim.insurerTenantId)).map((st) => ({ stage: st, label: this.store.labels(claim.insurerTenantId)[st] })),
       currentStage: s,
-      currentStageLabel: s ? this.store.labels(claim.insurerTenantId)[s] : null,
+      currentStageLabel: closedCase(claim) ? ARCHIVE_FA : s ? this.store.labels(claim.insurerTenantId)[s] : null,
       direction: claim.flowDirection ?? null,
       purpose: claim.flowPurpose ?? null,
       returnTargetStage: claim.returnTargetStage ?? null,
@@ -3317,7 +3317,7 @@ export class ClaimsService {
       lateNotice: c.lateNotice,
       createdAt: c.createdAt ? toJalali(c.createdAt) : null,
       currentStage: c.currentStage ?? null,
-      currentStageLabel: c.currentStage ? this.store.labels(c.insurerTenantId)[c.currentStage as Stage] : null,
+      currentStageLabel: closedCase(c) ? ARCHIVE_FA : c.currentStage ? this.store.labels(c.insurerTenantId)[c.currentStage as Stage] : null,
       flowDirection: c.flowDirection ?? null,
       flowPurpose: c.flowPurpose ?? null,
     };
