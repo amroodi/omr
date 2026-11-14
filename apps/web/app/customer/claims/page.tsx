@@ -68,7 +68,7 @@ export default function CustomerTrack() {
   const groups = useMemo(() => {
     const key = (c: MyClaim): [string, string] => {
       if (groupBy === 'type') return [c.claimType, claimTypeLabel(c)];
-      if (groupBy === 'stage') return [c.currentStageLabel ?? 'بسته‌شده', c.currentStageLabel ? `نزد ${c.currentStageLabel}` : 'پرونده‌های بسته‌شده'];
+      if (groupBy === 'stage') return [c.currentStageLabel ?? 'بایگانی', !c.currentStageLabel || c.currentStageLabel === 'بایگانی' ? 'بایگانی' : `نزد ${c.currentStageLabel}`];
       if (groupBy === 'month') { const m = (c.createdAt ?? '').slice(0, 7); return [m || '—', m ? `ثبت‌شده در ${m}` : 'بدون تاریخ']; }
       return [c.status, `پرونده‌های ${STATUS_MAP[c.status]?.label ?? c.status}`];
     };

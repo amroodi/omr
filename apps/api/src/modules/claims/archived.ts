@@ -9,3 +9,7 @@ export const ARCHIVED_FA = 'این پرونده پرداخت شده و بایگ�
 export function assertNotPaid(claim: { status: string }) {
   if (claim.status === 'PAID') throw new ForbiddenException({ statusCode: 403, code: 'CASE_ARCHIVED', message: ARCHIVED_FA });
 }
+
+/** A paid or rejected case is closed: its place is «بایگانی». */
+export const ARCHIVE_FA = 'بایگانی';
+export const closedCase = (c: { status: string }) => c.status === 'PAID' || c.status === 'REJECTED';

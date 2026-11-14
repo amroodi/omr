@@ -47,7 +47,7 @@ export function CaseTable({ rows, href = (id) => `/customer/claims/${id}/workflo
               <td>{c.eventDate ?? '—'}</td>
               <td>{faN(Number(c.claimedAmount || 0))}</td>
               <td>{c.finalizedAmount ? faN(Number(c.finalizedAmount)) : '—'}</td>
-              <td>{STATUS_MAP[c.status]?.label ?? c.status}{c.currentStageLabel ? ` — نزد ${c.currentStageLabel}` : ''}{c.needsAction ? ' (نیازمند اقدام شما)' : ''}</td>
+              <td>{STATUS_MAP[c.status]?.label ?? c.status}{c.currentStageLabel ? (c.currentStageLabel === 'بایگانی' ? ' — بایگانی' : ` — نزد ${c.currentStageLabel}`) : ''}{c.needsAction ? ' (نیازمند اقدام شما)' : ''}</td>
             </tr>
           ))}
         </tbody>
