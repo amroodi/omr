@@ -359,8 +359,9 @@ export class SinadOpDto {
 }
 
 /** «فرم ارفاقی» (the insurer's form comes later: details only for now). */
-export class ConcessionDto {
-  @IsOptional() @IsString() @Length(0, 2000) details?: string;
+/** «فرم گزارش خسارت ارفاقی»: the values of the caller's own section(s). */
+export class ConcessionFieldsDto {
+  @IsObject() fields!: Record<string, string>;
 }
 
 /** The trusted doctor's part of the «اظهار نظر پزشک معتمد» form. */
@@ -369,6 +370,7 @@ export class DoctorAnswerDto {
   @IsOptional() @IsString() @Length(0, 20) percent?: string; // درصد نقص عضو / از کار افتادگی (در صورت لزوم)
   @IsOptional() @IsString() @Length(0, 30) examDate?: string; // تاریخ معاینه
   @IsOptional() @IsString() @Length(0, 2000) notes?: string; // توضیحات
+  @IsOptional() @IsObject() fields?: Record<string, string>; // the rest of the doctor's part of the paper form
 }
 
 /** «تخصیص پرونده‌ها»: hand cases to one evaluator, or (no userId) back to the branch's pool. */

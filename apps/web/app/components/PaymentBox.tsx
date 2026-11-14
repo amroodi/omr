@@ -1,12 +1,20 @@
 'use client';
 import { useState } from 'react';
 import { client } from '../../lib/client';
+import { ConcessionPaper, ConcessionSection } from './paper/ConcessionPaper';
+import { PaperModal, Values } from './paper/Paper';
+
+export interface Concession {
+  id: string; status: string; statusLabel: string; details: string | null; at: string;
+  fields: Values; signatures: Partial<Record<ConcessionSection, { name: string; at: string }>>; section: ConcessionSection | null;
+}
 
 /** What panel 2 is told about a case's payment (see the API's paymentView). */
 export interface PaymentInfo {
   amountApproval?: { at: string; by: string | null } | null;
   paymentAuthorities?: { id: string; ceiling: string; status: string; statusLabel: string; grantee: string; grantedBy: string | null; byCouncil: boolean; at: string; closedAt: string | null; note: string | null }[];
-  concessions?: { id: string; details: string | null; by: string | null; at: string }[];
+  concessions?: Concession[];
+  canStartConcession?: boolean;
   myStage?: string | null;
 }
 
@@ -14,22 +22,29 @@ const rial = (v: string | number) => `${Number(v).toLocaleString('fa-IR')} ری�
 
 /**
  * «تایید مبلغ، مجوز سرپرستی و فرم ارفاقی»: whether ستاد approved شعبه's amount, the مجوز سرپرستی (حدود اختیار)
- * ستاد gave for this case (to whom, up to how much, and whether it was used), and ستاد's «فرم ارفاقی» — which
- * ستاد adds right here.
+ * ستاد gave for this case (to whom, up to how much, and whether it was used), and the «فرم گزارش خسارت ارفاقی»:
+ * شعبه starts it, each desk fills and registers its own section on the sheet.
  */
-export function PaymentBox({ claimId, info, finalizedAmount, closed, onDone }: { claimId: string; info: PaymentInfo; finalizedAmount?: string | null; closed?: boolean; onDone: () => void }) {
-  const [open, setOpen] = useState(false);
-  const [details, setDetails] = useState('');
+export function PaymentBox({ claimId, info, finalizedAmount, onDone }: { claimId: string; info: PaymentInfo; finalizedAmount?: string | null; closed?: boolean; onDone: () => void }) {
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<Values>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const auths = info.paymentAuthorities ?? [];
   const active = auths.find((a) => a.status === 'ACTIVE');
-  const hq = info.myStage === 'HQ';
-  const save = async () => {
+  const list = info.concessions ?? [];
+  const cur = list.find((c) => c.id === openId) ?? null;
+  const open = (c: Concession) => { setDraft(c.fields ?? {}); setError(''); setOpenId(c.id); };
+  const run = async (fn: () => Promise<unknown>, close = false) => {
     setBusy(true); setError('');
-    try { await client.post(`/claims/${claimId}/concessions`, { details: details.trim() || undefined }, 'org'); setOpen(false); setDetails(''); onDone(); }
-    catch (e: any) { setError(e.message); } finally { setBusy(false); }
+    try { await fn(); if (close) setOpenId(null); onDone(); } catch (e: any) { setError(e.message); } finally { setBusy(false); }
   };
+  const start = () => run(async () => {
+    const r = await client.post<{ workflow?: PaymentInfo }>(`/claims/${claimId}/concessions`, {}, 'org');
+    const c = (r?.workflow?.concessions ?? []).find((x) => x.section === 'BRANCH');
+    if (c) open(c);
+  });
+  const SIGN_FA: Record<ConcessionSection, string> = { BRANCH: 'ثبت بخش شعبه', HQ: 'ثبت بخش مدیریت بیمه های اشخاص', COUNCIL: 'ثبت بخش شورای فنی' };
   return (
     <div className="ev-item pay-box">
       <div className="ev-item-head"><b>پرداخت خسارت</b><span>{active ? 'مجوز سرپرستی فعال' : ''}</span></div>
@@ -42,22 +57,35 @@ export function PaymentBox({ claimId, info, finalizedAmount, closed, onDone }: {
           <div>وضعیت: {a.statusLabel}{a.closedAt ? ` (${a.closedAt})` : ''}</div>
         </div>
       )) : <div className="text-xs" style={{ color: 'var(--muted)' }}>مجوز سرپرستی صادر نشده است.</div>}
-      {(info.concessions ?? []).length > 0 && (
+      {list.length > 0 && (
         <div className="pay-cons">
           <b>فرم ارفاقی</b>
-          {info.concessions!.map((c) => <div key={c.id}>— {c.details || 'بدون توضیح'} <span style={{ color: 'var(--muted)' }}>({c.by ?? 'ستاد'}، {c.at})</span></div>)}
+          {list.map((c) => (
+            <div key={c.id} className="pay-con">
+              {Object.keys(c.fields ?? {}).length === 0 && !c.section ? <span>— {c.details || 'بدون توضیح'} <span style={{ color: 'var(--muted)' }}>({c.at})</span></span> : (
+                <>
+                  <span>{c.statusLabel} <span style={{ color: 'var(--muted)' }}>({c.at})</span></span>
+                  <button className={`ev-btn${c.section ? ' is-main' : ''}`} onClick={() => open(c)}>{c.section ? 'تکمیل فرم' : 'مشاهده فرم'}</button>
+                </>
+              )}
+            </div>
+          ))}
         </div>
       )}
-      {hq && !closed && (open ? (
-        <div className="space-y-2">
-          <textarea className="input" rows={3} maxLength={2000} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="توضیحات فرم ارفاقی (اختیاری) — برای موارد خاص و استثنا" />
-          {error && <div className="text-xs" style={{ color: 'var(--danger)' }}>{error}</div>}
-          <div className="flex gap-2">
-            <button className="ev-btn is-main" disabled={busy} onClick={save}>ثبت فرم ارفاقی</button>
-            <button className="ev-btn" disabled={busy} onClick={() => setOpen(false)}>انصراف</button>
-          </div>
-        </div>
-      ) : <button className="ev-btn w-full" onClick={() => setOpen(true)}>صدور فرم ارفاقی برای شعبه</button>)}
+      {info.canStartConcession && <button className="ev-btn w-full" disabled={busy} onClick={start}>فرم ارفاقی</button>}
+      {error && !cur && <div className="text-xs" style={{ color: 'var(--danger)' }}>{error}</div>}
+      {cur && (
+        <PaperModal title="فرم گزارش خسارت ارفاقی" onClose={() => setOpenId(null)} actions={cur.section && (
+          <>
+            {error && <div className="w-full text-center text-sm font-bold" style={{ color: '#fecaca' }}>{error}</div>}
+            <button className="btn btn-solid" disabled={busy} onClick={() => { if (window.confirm(`${SIGN_FA[cur.section!]}؟`)) run(() => client.post(`/claims/${claimId}/concessions/${cur.id}/sign`, { fields: draft }, 'org'), true); }}>{SIGN_FA[cur.section]}</button>
+            <button className="btn" disabled={busy} onClick={() => run(() => client.put(`/claims/${claimId}/concessions/${cur.id}`, { fields: draft }, 'org'))}>ذخیره</button>
+            {cur.section === 'BRANCH' && <button className="btn" style={{ color: 'var(--danger)' }} disabled={busy} onClick={() => { if (window.confirm('فرم ارفاقی حذف شود؟')) run(() => client.del(`/claims/${claimId}/concessions/${cur.id}`, 'org'), true); }}>حذف فرم</button>}
+          </>
+        )}>
+          <ConcessionPaper values={cur.section ? draft : cur.fields} onChange={cur.section ? setDraft : undefined} section={cur.section} signs={cur.signatures ?? {}} />
+        </PaperModal>
+      )}
     </div>
   );
 }
