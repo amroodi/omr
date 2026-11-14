@@ -940,6 +940,7 @@ model Claim {
   // ── Workflow position ── where the claim sits in the chain right now (null once closed).
   coverageStatus    String? // VALID | INVALID | NOT_FOUND | NOT_CHECKED (null: inquiry off for this insurer)
   coverageCheckedAt DateTime?
+  insurerPolicyStart DateTime? // تاریخ شروع بیمه‌نامه from فن‌آوران (wins over the panel-2 field)
   currentStage      WorkflowStage?
   flowDirection     FlowDirection?
   flowPurpose       FlowPurpose?

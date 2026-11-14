@@ -57,6 +57,10 @@ export interface OcrDraftField {
   confidence: number;
 }
 
+/** تاریخ شروع بیمه‌نامه from فن‌آوران, as a field value (Jalali, ASCII digits); null when it gave none. */
+const insurerPolicyStart = (claim: { insurerPolicyStart?: Date | null }) =>
+  claim.insurerPolicyStart ? toJalali(claim.insurerPolicyStart, false).replace(/[۰-۹]/g, (x) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(x))) : null;
+
 @Injectable()
 export class ClaimFieldsService {
   constructor(
@@ -153,6 +157,9 @@ export class ClaimFieldsService {
 
     const groups: Record<string, any[]> = { CLAIM_DATA: [], BENEFICIARY: [], WORKFLOW_STAGE: [] };
     for (const d of defs) {
+      // تاریخ شروع بیمه‌نامه that فن‌آوران reported: shown as is, not typed.
+      const api = d.key === 'policy_start_date' ? insurerPolicyStart(claim) : null;
+      if (api) { groups[d.group].push({ key: d.key, label: d.label, type: d.type, options: d.options, required: d.required, value: api, source: 'API', confidence: null, confirmed: true, canEdit: false }); continue; }
       const v = vmap.get(d.key);
       // An empty field shows what the claim itself already knows (filled at filing or by import),
       // marked source CLAIM so the edit form can store it on the next save. Values derived from the
@@ -187,6 +194,8 @@ export class ClaimFieldsService {
     const out: Record<string, string> = {};
     for (const [k, v] of Object.entries(facts)) if (v) out[k] = v;
     for (const v of values) if (v.value) out[v.key] = v.value;
+    const api = insurerPolicyStart(claim);
+    if (api) out.policy_start_date = api; // فن‌آوران wins over the panel-2 entry
     return out;
   }
 
@@ -362,6 +371,7 @@ export class ClaimFieldsService {
     if (TYPED_ONLY_KEYS.has(key)) {
       if (!this.noticeEditable(claim)) throw new ForbiddenException(claim.brokerTenantId ? 'تاریخ اعلام فوت را فقط کارگزاری در پنل ۲ ثبت می‌کند' : 'تاریخ اعلام فوت را کارشناسی ثبت می‌کند که پرونده در میز کار اوست');
     } else if (!def.editableBy.includes(party) && !(await this.manualMode(claim))) throw new ForbiddenException('اجازه ویرایش این فیلد را ندارید');
+    if (key === 'policy_start_date' && insurerPolicyStart(claim)) throw new ForbiddenException('این فیلد از سامانهٔ بیمه‌گر خوانده می‌شود');
     if (MANUAL_FLOW_KEYS.has(key) && !(await this.handKept(claim))) throw new ForbiddenException('این فیلد از گردش کار سلسله‌مراتب پر می‌شود');
 
     const maxAmount = key === 'payable_amount' ? await this.sumInsuredCeiling(claimId) : undefined;
