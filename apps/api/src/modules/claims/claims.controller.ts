@@ -22,7 +22,7 @@ import { CoverageService } from '../model-view/coverage.service';
 import { CoverageCheckDto, StaffCoverageCheckDto } from '../customer/dto';
 import { ClaimsService } from './claims.service';
 import { asLine } from './workflow';
-import { ConcessionDto, DoctorAnswerDto, SinadOpDto, SinadAssignDto, EvaluatorSettingsDto, ActionDto, DecisionDto, FileClaimDto, FileOnBehalfDto, FilingEditDto, HeirsDto, LetterDto, LossNoticeDto, PhysicalDto, RectifyDto } from './dto';
+import { ConcessionFieldsDto, DoctorAnswerDto, SinadOpDto, SinadAssignDto, EvaluatorSettingsDto, ActionDto, DecisionDto, FileClaimDto, FileOnBehalfDto, FilingEditDto, HeirsDto, LetterDto, LossNoticeDto, PhysicalDto, RectifyDto } from './dto';
 
 const docLimits = { fileSize: 15 * 1024 * 1024 };
 
@@ -263,11 +263,29 @@ export class ClaimsController {
     return this.claims.caseReferrals(id);
   }
 
-  /** «فرم ارفاقی»: ستاد's allowance for شعبه on this case. */
+  /** «فرم گزارش خسارت ارفاقی»: شعبه starts it; each desk fills and registers its own section. */
   @Permissions(PERMISSIONS.CLAIM_PROCESS)
   @Post(':id/concessions')
-  addConcession(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ConcessionDto) {
-    return this.claims.addConcession(id, dto.details);
+  startConcession(@Param('id', ParseUUIDPipe) id: string) {
+    return this.claims.startConcession(id);
+  }
+
+  @Permissions(PERMISSIONS.CLAIM_PROCESS)
+  @Put(':id/concessions/:cid')
+  saveConcession(@Param('id', ParseUUIDPipe) id: string, @Param('cid', ParseUUIDPipe) cid: string, @Body() dto: ConcessionFieldsDto) {
+    return this.claims.saveConcession(id, cid, dto.fields);
+  }
+
+  @Permissions(PERMISSIONS.CLAIM_PROCESS)
+  @Post(':id/concessions/:cid/sign')
+  signConcession(@Param('id', ParseUUIDPipe) id: string, @Param('cid', ParseUUIDPipe) cid: string, @Body() dto: ConcessionFieldsDto) {
+    return this.claims.signConcession(id, cid, dto.fields);
+  }
+
+  @Permissions(PERMISSIONS.CLAIM_PROCESS)
+  @Delete(':id/concessions/:cid')
+  discardConcession(@Param('id', ParseUUIDPipe) id: string, @Param('cid', ParseUUIDPipe) cid: string) {
+    return this.claims.discardConcession(id, cid);
   }
 
   /** Kartable operations: take, release, refer, later, resume, doctor-refer, doctor-exam, doctor-opinion, fraud-clean, fraud-flag, note. */

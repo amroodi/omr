@@ -4,7 +4,7 @@ import { AuditService } from '../../common/audit/audit.service';
 import { HashService } from '../../common/crypto/hash.service';
 import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { ENTRY_PERMISSIONS } from '../../common/rbac/permissions';
+import { ENTRY_PERMISSIONS, PERMISSIONS } from '../../common/rbac/permissions';
 import { getContext, getTenantIdOrThrow } from '../../common/tenant/tenant-context';
 import { SessionsService } from '../security/sessions.service';
 
@@ -164,6 +164,8 @@ export class UsersService {
     const role = await this.prisma.scoped.role.findFirst({ where: { id: roleId }, select: { permissions: true } });
     if (!role) throw new BadRequestException('نقش نامعتبر است');
     const held = new Set(getContext()?.permissions ?? []);
+    // «پزشک معتمد» opens only the doctor panel (no claims access): whoever manages users may give it.
+    if (held.has(PERMISSIONS.USER_MANAGE)) held.add(PERMISSIONS.DOCTOR_OPINE);
     const escalating = role.permissions.filter((p) => !held.has(p));
     if (escalating.length > 0) {
       throw new ForbiddenException(`نمی‌توانید نقشی با مجوزهای بالاتر از خود اختصاص دهید: ${escalating.join(', ')}`);

@@ -1051,9 +1051,13 @@ model ClaimConcession {
   claimId     String
   tenantId    String // the INSURER
   createdById String?
-  details     String? // optional
-  fields      Json? // the insurer's form, once it is given
+  details     String? // optional (the first, form-less version)
+  fields      Json? // «فرم گزارش خسارت ارفاقی»: b_* شعبه, h_* مدیریت ستاد, c_* شورای فنی, m_* مدیرعامل/هیئت مدیره
+  // BRANCH (شعبه fills) → HQ (ستاد fills) → SIGNED (ستاد registered; شورای فنی fills if the case goes there) → DONE
+  status      String   @default("BRANCH")
+  signatures  Json? // { BRANCH | HQ | COUNCIL: { name, at } }
   createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
 
   @@index([claimId])
 }

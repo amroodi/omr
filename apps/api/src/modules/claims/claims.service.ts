@@ -1,4 +1,5 @@
 import { ARCHIVE_FA, assertNotPaid, closedCase } from './archived';
+import { CONCESSION_GATE, CONCESSION_KEYS, CONCESSION_STATUS, COST_TYPE, doctorFormOf } from './forms';
 import JSZip from 'jszip';
 import { randomInt, randomUUID } from 'crypto';
 import { uploadName } from '../../common/validation/upload-name';
@@ -764,7 +765,13 @@ export class ClaimsService {
     const payeesMissing = paying ? this.payeesProblem(claim, await db.claimHeir.findMany({ where: { claimId: claim.id }, select: { fullName: true, nationalCode: true, iban: true, sharePercent: true } })) ?? undefined : undefined;
     const amountApproved = s === 'HQ' && claim.flowDirection === 'UP' ? !!claim.amountApprovedAt : undefined;
     const authority = s === 'BRANCH' && claim.flowPurpose === 'PAYMENT' ? await this.myAuthority(claim, desk) : undefined;
-    return actionsFor({ claim, isAdmin: desk.isAdmin, hqCeiling: insurer?.hqCeiling ?? null, docs, branches, physical, model, submitBlocked, payeesMissing, amountApproved, authority });
+    const actions = actionsFor({ claim, isAdmin: desk.isAdmin, hqCeiling: insurer?.hqCeiling ?? null, docs, branches, physical, model, submitBlocked, payeesMissing, amountApproved, authority });
+    // «فرم ارفاقی»: the desk whose section is due registers it before the case moves on.
+    const gate = CONCESSION_GATE[s];
+    if (gate && (await this.prisma.unscoped().claimConcession.count({ where: { claimId: claim.id, status: gate.status } }))) {
+      for (const a of actions) if (gate.keys.includes(a.key) && !a.disabled) a.disabled = 'ابتدا بخش خود در فرم ارفاقی را ثبت کنید';
+    }
+    return actions;
   }
 
   /** The claim's place in the chain + what the caller can do, for the panels. */
@@ -802,7 +809,7 @@ export class ClaimsService {
       u.paymentAuthority.findMany({ where: { claimId: claim.id }, orderBy: { createdAt: 'desc' }, take: 5 }),
       u.claimConcession.findMany({ where: { claimId: claim.id }, orderBy: { createdAt: 'desc' } }),
     ]);
-    const ids = [...new Set([claim.amountApprovedById, ...auths.flatMap((a) => [a.granteeId, a.grantedById]), ...concessions.map((c) => c.createdById)].filter((x): x is string => !!x))];
+    const ids = [...new Set([claim.amountApprovedById, ...auths.flatMap((a) => [a.granteeId, a.grantedById])].filter((x): x is string => !!x))];
     const users = ids.length ? await u.orgUser.findMany({ where: { id: { in: ids } }, select: { id: true, displayName: true, username: true } }) : [];
     const who = (id: string | null) => { const x = users.find((y) => y.id === id); return x ? x.displayName || x.username : null; };
     const STATUS: Record<string, string> = { ACTIVE: 'فعال', USED: 'استفاده شد (پرداخت انجام شد)', REVOKED: 'لغو شد' };
@@ -812,8 +819,105 @@ export class ClaimsService {
         id: a.id, ceiling: a.ceiling.toString(), status: a.status, statusLabel: STATUS[a.status] ?? a.status, grantee: who(a.granteeId) ?? 'کارشناسان شعبهٔ رسیدگی‌کننده',
         grantedBy: who(a.grantedById), byCouncil: a.requestedByCouncil, at: toJalali(a.createdAt), closedAt: a.closedAt ? toJalali(a.closedAt) : null, note: a.note,
       })),
-      concessions: concessions.map((c) => ({ id: c.id, details: c.details, by: who(c.createdById), at: toJalali(c.createdAt) })),
+      concessions: await Promise.all(concessions.map(async (c) => {
+        const section = await this.concessionSection(claim, c);
+        const signs = (c.signatures ?? {}) as Record<string, { name: string; at: string }>;
+        return {
+          id: c.id, status: c.status, statusLabel: CONCESSION_STATUS[c.status] ?? c.status, details: c.details, at: toJalali(c.createdAt),
+          fields: (c.fields ?? {}) as Record<string, string>, signatures: Object.fromEntries(Object.entries(signs).map(([k, v]) => [k, { name: v.name, at: toJalali(new Date(v.at), false) }])),
+          section, // the section the caller fills now (null: read only)
+        };
+      })),
+      canStartConcession: claim.currentStage === 'BRANCH' && !concessions.some((c) => c.status === 'BRANCH' || c.status === 'HQ') && this.holdsDesk(claim, await this.myDesk()) && claim.status !== 'PAID',
     };
+  }
+
+  // ─────────────────────────── «فرم گزارش خسارت ارفاقی» ───────────────────────────
+  /** The section the caller may fill on this form now: the desk holding the case, at the form's turn. */
+  private async concessionSection(claim: any, c: { status: string }): Promise<'BRANCH' | 'HQ' | 'COUNCIL' | null> {
+    if (claim.status === 'PAID' || claim.deletedAt) return null;
+    const turn = c.status === 'BRANCH' ? 'BRANCH' : c.status === 'HQ' ? 'HQ' : c.status === 'SIGNED' ? 'COUNCIL' : null;
+    if (!turn || claim.currentStage !== turn) return null;
+    return this.holdsDesk(claim, await this.myDesk()) ? turn : null;
+  }
+
+  private async concessionOf(claimId: string, cid: string) {
+    const claim = await this.db().claim.findUnique({ where: { id: claimId } });
+    if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
+    this.assertParticipant(claim);
+    assertNotPaid(claim);
+    const c = await this.prisma.unscoped().claimConcession.findFirst({ where: { id: cid, claimId } });
+    if (!c) throw new NotFoundException('فرم ارفاقی یافت نشد');
+    return { claim, c, section: await this.concessionSection(claim, c) };
+  }
+
+  /** Only the caller's own section's keys (b_ شعبه, h_ ستاد, c_/m_ شورای فنی), as plain short strings. */
+  private concessionValues(section: 'BRANCH' | 'HQ' | 'COUNCIL', input: Record<string, unknown> | undefined) {
+    const prefixes = CONCESSION_KEYS[section];
+    return Object.fromEntries(Object.entries(input ?? {})
+      .filter(([k, v]) => /^[a-z]_[A-Za-z0-9]{1,30}$/.test(k) && prefixes.includes(k.slice(0, 2)) && typeof v === 'string')
+      .slice(0, 80).map(([k, v]) => [k, (v as string).trim().slice(0, 2000)]));
+  }
+
+  /** شعبه starts the form on the case it holds, filled in with what the case already knows. */
+  async startConcession(claimId: string) {
+    const db = this.prisma.unscoped();
+    const claim = await this.db().claim.findUnique({ where: { id: claimId } });
+    if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
+    this.assertParticipant(claim);
+    assertNotPaid(claim);
+    if (claim.currentStage !== 'BRANCH' || !this.holdsDesk(claim, await this.myDesk())) throw new ForbiddenException('فرم ارفاقی را شعبه‌ای که پرونده در اختیار اوست شروع می‌کند');
+    if (await db.claimConcession.count({ where: { claimId, status: { in: ['BRANCH', 'HQ'] } } })) throw new BadRequestException('فرم ارفاقی باز این پرونده هنوز ثبت نشده است');
+    const [company, contract] = await Promise.all([
+      claim.policyholderCompanyId ? db.policyholderCompany.findUnique({ where: { id: claim.policyholderCompanyId }, select: { name: true } }) : null,
+      claim.policyholderCompanyId && claim.policyNumber ? db.policyholderContract.findFirst({ where: { companyId: claim.policyholderCompanyId, insurerTenantId: claim.insurerTenantId, policyNumber: claim.policyNumber }, select: { startDate: true, endDate: true } }) : null,
+    ]);
+    const jd = (d: Date | null | undefined) => (d ? toJalali(d, false) : '');
+    const fields: Record<string, string> = {
+      b_claimNo: claim.claimNumber ?? '', b_policyNo: claim.policyNumber ?? '',
+      b_phType: company ? 'حقوقی' : '', b_phName: company?.name ?? '',
+      b_start: jd(claim.insurerPolicyStart ?? contract?.startDate), b_end: jd(contract?.endDate),
+      b_insured: this.crypto.decrypt(claim.deceasedFullName) ?? '', b_nid: this.crypto.decrypt(claim.deceasedNationalCode) ?? '',
+      b_costType: COST_TYPE[claim.claimType] ?? '',
+    };
+    const c = await db.claimConcession.create({ data: { claimId, tenantId: claim.insurerTenantId, createdById: this.actor(), fields: Object.fromEntries(Object.entries(fields).filter(([, v]) => v)) } });
+    await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'ClaimConcession', targetId: c.id, metadata: { claimId, op: 'start' } });
+    return this.get(claimId);
+  }
+
+  /** Save the caller's section (a draft: it can be changed until registered). */
+  async saveConcession(claimId: string, cid: string, input: Record<string, unknown>) {
+    const { claim, c, section } = await this.concessionOf(claimId, cid);
+    if (!section) throw new ForbiddenException('این بخش از فرم ارفاقی در اختیار شما نیست');
+    await this.prisma.unscoped().claimConcession.update({ where: { id: c.id }, data: { fields: { ...((c.fields ?? {}) as object), ...this.concessionValues(section, input) } } });
+    await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'ClaimConcession', targetId: c.id, metadata: { claimId, op: 'save', section } });
+    return this.get(claimId);
+  }
+
+  /** Register the caller's section: stamped with their name and the date, and locked. */
+  async signConcession(claimId: string, cid: string, input: Record<string, unknown>) {
+    const { claim, c, section } = await this.concessionOf(claimId, cid);
+    if (!section) throw new ForbiddenException('این بخش از فرم ارفاقی در اختیار شما نیست');
+    const fields = { ...((c.fields ?? {}) as Record<string, string>), ...this.concessionValues(section, input) };
+    const need = (keys: string[], msg: string) => { if (!keys.some((k) => fields[k]?.trim())) throw new BadRequestException(msg); };
+    if (section === 'BRANCH') { need(['b_amount'], 'مبلغ ارفاقی درخواستی را بنویسید'); need(['b_reason'], 'علت درخواست ارفاقی را بنویسید'); }
+    if (section === 'HQ') need(['h_1amt', 'h_2amt'], 'مبلغ را بنویسید');
+    if (section === 'COUNCIL') need(['c_ok'], 'موافقت یا عدم موافقت شورای فنی را مشخص کنید');
+    const me = await this.prisma.unscoped().orgUser.findUnique({ where: { id: this.actor() ?? '' }, select: { displayName: true, username: true } });
+    const signatures = { ...((c.signatures ?? {}) as object), [section]: { name: me ? me.displayName || me.username : '—', at: new Date().toISOString() } };
+    const next = section === 'BRANCH' ? 'HQ' : section === 'HQ' ? 'SIGNED' : 'DONE';
+    await this.prisma.unscoped().claimConcession.update({ where: { id: c.id }, data: { fields, signatures, status: next } });
+    await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'ClaimConcession', targetId: c.id, metadata: { claimId, op: 'sign', section } });
+    return this.get(claimId);
+  }
+
+  /** شعبه drops a form it hasn't registered yet. */
+  async discardConcession(claimId: string, cid: string) {
+    const { claim, c, section } = await this.concessionOf(claimId, cid);
+    if (section !== 'BRANCH' || c.status !== 'BRANCH') throw new ForbiddenException('فقط فرم ثبت‌نشدهٔ شعبه حذف می‌شود');
+    await this.prisma.unscoped().claimConcession.delete({ where: { id: c.id } });
+    await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'ClaimConcession', targetId: c.id, metadata: { claimId, op: 'discard' } });
+    return this.get(claimId);
   }
 
   /** The caller's active مجوز سرپرستی on this case (null: none). */
@@ -844,20 +948,6 @@ export class ClaimsService {
 
   private async revokeAuthority(claimId: string, note: string, status: 'REVOKED' | 'USED' = 'REVOKED') {
     await this.prisma.unscoped().paymentAuthority.updateMany({ where: { claimId, status: 'ACTIVE' }, data: { status, closedAt: new Date(), note } });
-  }
-
-  /** «فرم ارفاقی»: ستاد's allowance for شعبه on a special case or exception (details optional; the form comes later). */
-  async addConcession(claimId: string, details?: string) {
-    const claim = await this.db().claim.findUnique({ where: { id: claimId } });
-    if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
-    this.assertParticipant(claim);
-    assertNotPaid(claim);
-    const desk = await this.myDesk();
-    if (desk.stage !== 'HQ' && !desk.insurerAdmin) throw new ForbiddenException('فرم ارفاقی را مدیریت ستاد صادر می‌کند');
-    const c = await this.prisma.unscoped().claimConcession.create({ data: { claimId, tenantId: claim.insurerTenantId, createdById: this.actor(), details: details?.trim().slice(0, 2000) || null } });
-    await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'ClaimConcession', targetId: c.id, metadata: { claimId } });
-    await this.notifyHolder(claim, 'BRANCH', 'فرم ارفاقی', `مدیریت ستاد برای پروندهٔ ${claim.claimNumber} فرم ارفاقی صادر کرد.`);
-    return this.get(claimId);
   }
 
   /**
@@ -2978,10 +3068,11 @@ export class ClaimsService {
     const labels = new Map((await u.requiredDocument.findMany({ where: { tenantId: c.insurerTenantId }, select: { code: true, label: true } })).map((x) => [x.code, x.label]));
     const seen = new Set<string>();
     const latest = docs.filter((d) => { if (!d.docCode || d.docCode === 'OTHER') return true; if (seen.has(d.docCode)) return false; seen.add(d.docCode); return true; });
-    const by = r.createdById ? await u.orgUser.findUnique({ where: { id: r.createdById }, select: { displayName: true, username: true } }) : null;
+    const [by, doctor] = await Promise.all([r.createdById, r.doctorId].map((x) => (x ? u.orgUser.findUnique({ where: { id: x }, select: { displayName: true, username: true } }) : null)));
     return {
       id: r.id, kind: r.kind, kindLabel: r.kind === 'EXAM' ? 'دعوت به معاینه' : 'اظهار نظر پزشک معتمد', status: r.status, request: r.request, answer: r.answer,
       createdAt: toJalali(r.createdAt), answeredAt: r.answeredAt ? toJalali(r.answeredAt) : null, referredBy: by ? by.displayName || by.username : null,
+      doctorName: doctor ? doctor.displayName || doctor.username : null, form: (r.request as any)?.form === 'ACCIDENT' || (!(r.request as any)?.form && doctorFormOf(c) === 'ACCIDENT') ? 'ACCIDENT' : 'LIFE',
       claim: {
         claimNumber: c.claimNumber, name: this.crypto.decrypt(c.deceasedFullName), nationalCode: this.crypto.decrypt(c.deceasedNationalCode),
         claimTypeLabel: caseTypeOf(this.store.get(c.insurerTenantId), c.claimType)?.label ?? c.claimType, eventDate: c.eventDate ? toJalali(c.eventDate, false) : null,
@@ -3001,11 +3092,13 @@ export class ClaimsService {
   }
 
   /** The doctor registers their part: the case goes back to its evaluator's «در انتظار ارزیابی اولیه». */
-  async doctorAnswer(id: string, answer: { opinion: string; percent?: string; examDate?: string; notes?: string }) {
+  async doctorAnswer(id: string, answer: { opinion: string; percent?: string; examDate?: string; notes?: string; fields?: Record<string, unknown> }) {
     const r = await this.myReferral(id);
     if (r.status !== 'PENDING') throw new BadRequestException('اظهار نظر این ارجاع پیش‌تر ثبت شده است');
     const u = this.prisma.unscoped();
-    const clean = Object.fromEntries(Object.entries(answer).filter(([, v]) => typeof v === 'string' && v.trim()).map(([k, v]) => [k, (v as string).trim()]));
+    const { fields, ...main } = answer;
+    const extra = Object.entries(fields ?? {}).filter(([k, v]) => /^[A-Za-z][A-Za-z0-9]{0,30}$/.test(k) && typeof v === 'string').slice(0, 30).map(([k, v]) => [k, (v as string).slice(0, 2000)]);
+    const clean = Object.fromEntries([...extra, ...Object.entries(main)].filter(([, v]) => typeof v === 'string' && v.trim()).map(([k, v]) => [k, (v as string).trim()]));
     await u.doctorReferral.update({ where: { id }, data: { answer: clean, status: 'DONE', answeredAt: new Date() } });
     const claim = await u.claim.findUnique({ where: { id: r.claimId } });
     if (claim && claim.doctorState) {
