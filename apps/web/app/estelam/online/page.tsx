@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { pickedClaim, inquiryApi, InquiryThread } from '../../../lib/api';
-import { EstelamFrame, SIDE_MENU, SubHead } from '../shared';
+import { EstelamFrame, PANELS, SubHead } from '../shared';
 import { Flash } from '../../components/Toaster';
 
 const REFRESH_MS = 20_000;
@@ -69,7 +69,7 @@ function Chat({ token }: { token: string }) {
 }
 
 export default function EstelamOnline() {
-  const menu = SIDE_MENU[4];
+  const menu = PANELS[3];
   return (
     <EstelamFrame>
       {(_r, token) => (
