@@ -22,6 +22,7 @@ import { RequestOtpDto, VerifyOtpDto } from './dto';
 import { caseTypeOf, chainOf, docApplies, InsuredRelation, RELATION_FA, Stage } from '../claims/workflow';
 
 import { ModelStore } from '../model-view/model-store.service';
+import { CoverageService } from '../model-view/coverage.service';
 import { ageAt, lossNoticeEntry } from '../claims/claims.service';
 import { fromJalali, toAsciiDigits } from '../../common/jalali/jalali.util';
 
@@ -65,7 +66,107 @@ export class InquiryService {
     private readonly policyholders: PolicyholdersService,
     private readonly notifications: NotificationsService,
     private readonly fields: ClaimFieldsService,
+    private readonly coverage: CoverageService,
   ) {}
+
+  /**
+   * «اعلام خسارت» in panel 3 for one insurer: Super Admin turned it on and فن‌آوران is on for it.
+   * Both are needed; with either off panel 3 works only for کد ملی that have a case.
+   */
+  private async selfFilingOn(insurerId: string): Promise<boolean> {
+    return this.store.get(insurerId).insured.selfFiling && (await this.coverage.isOn(insurerId));
+  }
+
+  /**
+   * Panel 3 without a case: the insurer (this organization, or an insurer it works with) that has
+   * «اعلام خسارت» on and whose فن‌آوران lists this کد ملی as covered. null: no entry.
+   */
+  private async selfEntryInsurer(tenantId: string, nid: string): Promise<string | null> {
+    const db = this.prisma.unscoped();
+    const me = await db.tenant.findUnique({ where: { id: tenantId }, select: { kind: true } });
+    const ids = me?.kind === 'INSURER' ? [tenantId]
+      : (await db.brokerInsurerPartnership.findMany({ where: { brokerTenantId: tenantId, isActive: true }, select: { insurerTenantId: true } })).map((p) => p.insurerTenantId);
+    for (const id of ids) {
+      if (!(await this.selfFilingOn(id))) continue;
+      const a = await this.coverage.lookup(id, nid, null);
+      if (a?.status === 'VALID') return id;
+    }
+    return null;
+  }
+
+  /** The record token of a panel-3 entry without a case (no claim ids: it reads no case). */
+  private selfToken(tenantId: string, insurerId: string, phone: string | null, nh?: string) {
+    return this.jwt.signAsync(
+      { kind: 'record', tenantId, caseId: null, claimId: null, claimIds: [], sub: null, self: insurerId, ph: phone ? this.crypto.encrypt(phone) : null, ...(nh ? { nh } : {}) },
+      { expiresIn: jwtTtl(this.config.get<string>('RECORD_TOKEN_TTL', '10m')) },
+    );
+  }
+
+  /** Panel 3 with no case: what the page shows (the insurer's name; «اعلام خسارت» on while it still is). */
+  /** Super Admin's choice for panel 3: کد ملی + mobile (OTP) when on, کد ملی + password when off. */
+  private async phoneLogin(): Promise<boolean> {
+    const pc = await this.prisma.unscoped().platformConfig.findUnique({ where: { id: 'platform' }, select: { inquiryPhoneLogin: true } });
+    return pc?.inquiryPhoneLogin ?? true;
+  }
+
+  private async assertPhoneLogin() {
+    if (!(await this.phoneLogin())) throw new ForbiddenException('ورود با کد ملی و رمز عبور است.');
+  }
+
+  async loginConfig() {
+    return { phone: await this.phoneLogin(), otp: await this.otpEnabled() };
+  }
+
+  /** A کد ملی's panel-3 password: the one it set, else the کد ملی itself. */
+  private async passwordOk(nid: string, password: string): Promise<boolean> {
+    const row = await this.prisma.unscoped().inquiryPassword.findUnique({ where: { nidHash: this.crypto.blindIndex(nid)! } });
+    const typed = toAsciiDigits(password).trim();
+    return row ? this.hash.verifyPassword(row.passwordHash, password) : typed === nid || (typed.length < 10 && typed.padStart(10, '0') === nid);
+  }
+
+  /** Panel 3 with the phone field off: کد ملی + password; the same cases (or no-case entry) as by mobile. */
+  async passwordLogin(dto: { nationalCode: string; password: string; companyId?: string }): Promise<{ token: string; expiresIn: string }> {
+    if (await this.phoneLogin()) throw new ForbiddenException('ورود با کد ملی و شماره موبایل است.');
+    const tenantId = getTenantIdOrThrow();
+    const ip = getContext()?.ip ?? 'unknown';
+    const nid = this.nid10(dto.nationalCode);
+    const nidHash = this.crypto.blindIndex(nid)!;
+    if (!(await this.rateLimit.hit(`ipw:ip:${ip}`, 30, 3600))) throw new TooManyRequestsException('تعداد تلاش‌ها زیاد است. بعداً تلاش کنید.');
+    if (!(await this.rateLimit.hit(`ipw:nid:${nidHash}`, 10, 3600))) throw new TooManyRequestsException('تعداد تلاش‌ها زیاد است. بعداً تلاش کنید.');
+    if (!(await this.passwordOk(nid, dto.password))) throw new ForbiddenException('کد ملی یا رمز عبور نادرست است.');
+    const ttl = this.config.get<string>('RECORD_TOKEN_TTL', '10m');
+    const claim = await this.findClaimByDeceased(tenantId, nidHash, dto.companyId);
+    await this.recordInquiry(tenantId, claim, '', dto.nationalCode, ip);
+    if (claim) {
+      const claimIds = await this.grantedIds(tenantId, nid, claim.id, dto.companyId);
+      const token = await this.jwt.signAsync({ kind: 'record', tenantId, caseId: null, claimId: claim.id, claimIds, sub: null, ph: null, nh: nidHash }, { expiresIn: jwtTtl(ttl) });
+      return { token, expiresIn: ttl };
+    }
+    const selfInsurer = await this.selfEntryInsurer(tenantId, nid);
+    if (!selfInsurer) throw new ForbiddenException('پرونده‌ای برای این مشخصات یافت نشد.');
+    return { token: await this.selfToken(tenantId, selfInsurer, null, nidHash), expiresIn: ttl };
+  }
+
+  /** The holder of a password login changes its password (no notice, nothing asked of them). */
+  async changePassword(current: string, next: string) {
+    const ctx = getContext();
+    const nidHash = ctx?.scopedNidHash;
+    if (!nidHash) throw new ForbiddenException('تغییر رمز عبور فقط پس از ورود با رمز عبور ممکن است.');
+    if (!(await this.rateLimit.hit(`ipwc:${nidHash}`, 5, 3600))) throw new TooManyRequestsException('تعداد تلاش‌ها زیاد است. بعداً تلاش کنید.');
+    const db = this.prisma.unscoped();
+    const row = await db.inquiryPassword.findUnique({ where: { nidHash } });
+    const ok = row ? await this.hash.verifyPassword(row.passwordHash, current) : this.crypto.blindIndex(this.nid10(toAsciiDigits(current).trim())) === nidHash;
+    if (!ok) throw new ForbiddenException('رمز عبور فعلی نادرست است.');
+    const passwordHash = await this.hash.hashPassword(next);
+    await db.inquiryPassword.upsert({ where: { nidHash }, update: { passwordHash }, create: { nidHash, passwordHash } });
+    await this.audit.record({ action: AuditAction.EDIT, targetType: 'InquiryPassword', tenantId: ctx?.tenantId ?? undefined, actorType: 'INSURED' });
+    return { ok: true };
+  }
+
+  private async selfEntryView(insurerId: string) {
+    const t = await this.prisma.unscoped().tenant.findUnique({ where: { id: insurerId }, select: { name: true } });
+    return { selfEntry: true, insurerName: t?.name ?? null, selfFiling: await this.selfFilingOn(insurerId) };
+  }
 
   /** Platform master switch: is OTP required at all? (false = view record directly, no code). */
   private async otpEnabled(): Promise<boolean> {
@@ -237,6 +338,7 @@ export class InquiryService {
   async listScopedClaims() {
     const ctx = getContext();
     const ids = ctx?.scopedClaimIds?.length ? ctx.scopedClaimIds : ctx?.scopedClaimId ? [ctx.scopedClaimId] : [];
+    if (!ids.length && ctx?.scopedSelfInsurerId) return [];
     if (!ids.length) throw new ForbiddenException('توکن نامعتبر است.');
     const db = this.prisma.unscoped();
     const rows = await db.claim.findMany({ where: { id: { in: ids }, deletedAt: null }, orderBy: { createdAt: 'desc' } });
@@ -274,6 +376,7 @@ export class InquiryService {
    * the queried National ID are recorded for traceability. Generic response (never reveals existence).
    */
   async requestClaimStatus(dto: RequestOtpDto): Promise<{ ok: true; message: string; otpRequired: boolean }> {
+    await this.assertPhoneLogin();
     const tenantId = getTenantIdOrThrow();
     const ctx = getContext();
     const ip = ctx?.ip ?? 'unknown';
@@ -292,11 +395,13 @@ export class InquiryService {
 
     if (!(await this.otpEnabled())) return { ok: true, otpRequired: false, message: 'مشاهده پرونده بدون کد تایید فعال است.' };
 
-    if (claim) {
+    // No case: a کد ملی registered at فن‌آوران may still come in, where «اعلام خسارت» is on.
+    const selfInsurer = claim ? null : await this.selfEntryInsurer(tenantId, this.nid10(dto.nationalCode));
+    if (claim || selfInsurer) {
       const code = this.hash.generateOtp(Number(this.config.get('OTP_LENGTH', 6)));
       const ttl = Number(this.config.get('OTP_TTL_SECONDS', 180));
       await this.prisma.scoped.otpChallenge.create({
-        data: { tenantId, purpose: 'inquiry', phoneHash, claimId: claim.id, codeHash: this.hash.hashOtp(code), maxAttempts: Number(this.config.get('OTP_MAX_ATTEMPTS', 5)), expiresAt: new Date(Date.now() + ttl * 1000) },
+        data: { tenantId, purpose: 'inquiry', phoneHash, claimId: claim?.id ?? null, selfInsurerId: selfInsurer, nidHash: selfInsurer ? nidHash : null, codeHash: this.hash.hashOtp(code), maxAttempts: Number(this.config.get('OTP_MAX_ATTEMPTS', 5)), expiresAt: new Date(Date.now() + ttl * 1000) },
       });
       try {
         const pc = await this.prisma.unscoped().platformConfig.findUnique({ where: { id: 'platform' }, select: { inquiryUsePlatform: true } });
@@ -311,13 +416,20 @@ export class InquiryService {
 
   /** Deceased-NID inquiry when OTP is disabled platform-wide — mints the record token directly. */
   async directClaimStatus(dto: RequestOtpDto): Promise<{ token: string; expiresIn: string }> {
+    await this.assertPhoneLogin();
     if (await this.otpEnabled()) throw new ForbiddenException('کد تایید لازم است.');
     const tenantId = getTenantIdOrThrow();
     const ctx = getContext();
     const nidHash = this.crypto.blindIndex(this.nid10(dto.nationalCode))!;
     const claim = await this.findClaimByDeceased(tenantId, nidHash, dto.companyId);
-    if (!claim) throw new ForbiddenException('پرونده‌ای برای این مشخصات یافت نشد.');
     const phone = this.normalizePhone(dto.phone);
+    if (!claim) {
+      const selfInsurer = await this.selfEntryInsurer(tenantId, this.nid10(dto.nationalCode));
+      if (!selfInsurer) throw new ForbiddenException('پرونده‌ای برای این مشخصات یافت نشد.');
+      await this.recordInquiry(tenantId, null, phone, dto.nationalCode, ctx?.ip ?? 'unknown');
+      const ttl0 = this.config.get<string>('RECORD_TOKEN_TTL', '10m');
+      return { token: await this.selfToken(tenantId, selfInsurer, phone), expiresIn: ttl0 };
+    }
     await this.recordInquiry(tenantId, claim, phone, dto.nationalCode, ctx?.ip ?? 'unknown');
     const ttl = this.config.get<string>('RECORD_TOKEN_TTL', '10m');
     // `ph` = the requester's phone (encrypted) so «پاسخگوی آنلاین» knows whom to answer.
@@ -327,6 +439,7 @@ export class InquiryService {
   }
 
   async verifyOtp(dto: VerifyOtpDto): Promise<{ token: string; expiresIn: string }> {
+    await this.assertPhoneLogin();
     const tenantId = getTenantIdOrThrow();
     const ctx = getContext();
     const ip = ctx?.ip ?? 'unknown';
@@ -359,6 +472,13 @@ export class InquiryService {
       data: { consumedAt: new Date() },
     });
 
+    // Panel 3 without a case: only for the کد ملی the code was sent for, and only while «اعلام خسارت» is still on.
+    if (challenge.selfInsurerId) {
+      if (challenge.nidHash !== this.crypto.blindIndex(this.nid10(dto.nationalCode)) || !(await this.selfFilingOn(challenge.selfInsurerId))) throw new ForbiddenException('کد نامعتبر یا منقضی شده است.');
+      await this.audit.record({ action: AuditAction.OTP_VERIFY, targetType: 'InquirySelfEntry', targetId: challenge.selfInsurerId, tenantId, actorType: 'INSURED' });
+      return { token: await this.selfToken(tenantId, challenge.selfInsurerId, this.normalizePhone(dto.phone)), expiresIn: this.config.get<string>('RECORD_TOKEN_TTL', '10m') };
+    }
+
     // Mint a token scoped to record ids — not the National ID: the claim the code was sent for and, with
     // it, the rest of that کد ملی's family (see familyClaims), only when that family holds this claim.
     const claimIds = challenge.claimId ? await this.grantedIds(tenantId, dto.nationalCode, challenge.claimId, dto.companyId) : [];
@@ -382,6 +502,7 @@ export class InquiryService {
     const ctx = getContext();
     const claimId = this.scopedClaim(pick);
     if (claimId) return this.getScopedClaim(claimId);
+    if (ctx?.scopedSelfInsurerId) return this.selfEntryView(ctx.scopedSelfInsurerId);
 
     const caseId = ctx?.scopedCaseId;
     if (!caseId) throw new ForbiddenException('توکن نامعتبر است.');
@@ -444,6 +565,7 @@ export class InquiryService {
       claimTypeLabel: caseTypeOf(this.store.get(c.insurerTenantId), c.claimType)?.label ?? c.claimType,
       claimTypeDeath: caseTypeOf(this.store.get(c.insurerTenantId), c.claimType)?.death ?? false,
       insurerName: insurer?.name ?? null,
+      selfFiling: await this.selfFilingOn(c.insurerTenantId), // «اعلام خسارت» in panel 3
       deceasedName: dec(c.deceasedFullName),
       insuredGender: c.insuredGender ?? null, // «آقای» / «خانم»
       nationalCode: nid, // the requester typed it themselves (OTP-verified), so it is shown in full
@@ -534,18 +656,20 @@ export class InquiryService {
    * «پاسخگوی آنلاین» — the requester leaves a question about the claim they looked up. It reaches the
    * کارگزاری's inbox only («پاسخگوی آنلاین» in the کارگزاری panel); staff answer on the (OTP-verified) phone.
    */
-  async leaveMessage(message: string, pick?: string) {
+  async leaveMessage(message: string, pick?: string, typedPhone?: string) {
     const ctx = getContext();
     const claimId = this.scopedClaim(pick);
-    if (!claimId || !ctx?.scopedPhone) throw new ForbiddenException('برای ارسال پیام ابتدا استعلام کنید.');
+    // A password login has no verified mobile: the requester gives the one the answer goes to.
+    const scopedPhone = ctx?.scopedPhone ?? (typedPhone ? this.crypto.encrypt(this.normalizePhone(typedPhone)) : undefined);
+    if (!claimId || !scopedPhone) throw (claimId ? new BadRequestException('شماره موبایل را بنویسید') : new ForbiddenException('برای ارسال پیام ابتدا استعلام کنید.'));
     const text = String(message ?? '').trim();
     if (text.length < 3) throw new BadRequestException('متن پیام را بنویسید');
-    if (!(await this.rateLimit.hit(`inqmsg:${claimId}:${ctx.scopedPhone}`, 5, 3600))) throw new TooManyRequestsException('تعداد پیام‌ها زیاد است. بعداً تلاش کنید.');
+    if (!(await this.rateLimit.hit(`inqmsg:${claimId}:${this.crypto.blindIndex(this.crypto.decrypt(scopedPhone))}`, 5, 3600))) throw new TooManyRequestsException('تعداد پیام‌ها زیاد است. بعداً تلاش کنید.');
     const c = await this.prisma.unscoped().claim.findUnique({ where: { id: claimId }, select: { id: true, claimNumber: true, brokerTenantId: true, insurerTenantId: true, policyHolderId: true, policyholderCompanyId: true } });
     if (!c) throw new NotFoundException('پرونده یافت نشد.');
     const companyId = c.policyholderCompanyId ?? (await this.companyOfFiler(c.policyHolderId));
-    const phoneIdx = this.crypto.blindIndex(this.crypto.decrypt(ctx.scopedPhone));
-    await this.prisma.unscoped().inquiryMessage.create({ data: { claimId, companyId, phone: ctx.scopedPhone, phoneIdx, message: text.slice(0, 2000) } });
+    const phoneIdx = this.crypto.blindIndex(this.crypto.decrypt(scopedPhone));
+    await this.prisma.unscoped().inquiryMessage.create({ data: { claimId, companyId, phone: scopedPhone, phoneIdx, message: text.slice(0, 2000) } });
     const body = `پیام جدید از استعلام‌کنندهٔ پروندهٔ ${c.claimNumber}: «${text.slice(0, 140)}»`;
     // Only the کارگزاری answers «پاسخگوی آنلاین» — the بیمه‌گزار panel and the insurer aren't involved.
     if (c.brokerTenantId) await this.notifications.notify({ tenantId: c.brokerTenantId, audience: 'ORG', title: 'پاسخگوی آنلاین', body, link: '/org/messages' });
@@ -558,11 +682,18 @@ export class InquiryService {
    * کارگزاری's answers, oldest first. Matched by the verified phone, so a later inquiry from the same
    * mobile sees the whole thread and nobody else's.
    */
-  async thread(pick?: string) {
+  async thread(pick?: string, typedPhone?: string) {
     const ctx = getContext();
     const claimId = this.scopedClaim(pick);
-    if (!claimId || !ctx?.scopedPhone) throw new ForbiddenException('برای دیدن گفتگو ابتدا استعلام کنید.');
-    const phone = this.crypto.decrypt(ctx.scopedPhone);
+    if (!claimId) throw new ForbiddenException('برای دیدن گفتگو ابتدا استعلام کنید.');
+    // A password login: the thread of the mobile it gave (none yet: an empty thread that asks for one).
+    const typed = typedPhone && /^(\+?98|0)?9\d{9}$/.test(toAsciiDigits(typedPhone)) ? this.normalizePhone(toAsciiDigits(typedPhone)) : null;
+    const phone = ctx?.scopedPhone ? this.crypto.decrypt(ctx.scopedPhone) : typed;
+    if (!phone) {
+      const c0 = await this.prisma.unscoped().claim.findUnique({ where: { id: claimId }, select: { brokerTenantId: true } });
+      const b0 = c0?.brokerTenantId ? await this.prisma.unscoped().tenant.findUnique({ where: { id: c0.brokerTenantId }, select: { name: true } }) : null;
+      return { brokerName: b0?.name ?? 'کارگزاری', messages: [], askPhone: true };
+    }
     const idx = this.crypto.blindIndex(phone);
     const db = this.prisma.unscoped();
     const rows = await db.inquiryMessage.findMany({ where: { claimId, OR: [{ phoneIdx: idx }, { phoneIdx: null }] }, orderBy: { createdAt: 'asc' }, take: 200 });
@@ -573,6 +704,7 @@ export class InquiryService {
     return {
       brokerName: broker?.name ?? 'کارگزاری',
       messages: mine.map((m) => ({ id: m.id, fromStaff: m.fromStaff, message: m.message, at: toJalali(m.createdAt), answered: !m.fromStaff && !!m.handledAt })),
+      askPhone: !ctx?.scopedPhone, // a password login sends its mobile with each message
     };
   }
 

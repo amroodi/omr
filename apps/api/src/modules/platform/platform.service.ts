@@ -31,7 +31,7 @@ export class PlatformService {
 
   async getSmsConfig() {
     const cfg = await this.load();
-    const row = await this.db().findUnique({ where: { id: PLATFORM_ID }, select: { inquiryUsePlatform: true, otpEnabled: true } });
+    const row = await this.db().findUnique({ where: { id: PLATFORM_ID }, select: { inquiryUsePlatform: true, otpEnabled: true, inquiryPhoneLogin: true } });
     return {
       drivers: SMS_DRIVERS,
       configured: !!cfg,
@@ -46,6 +46,7 @@ export class PlatformService {
       hasPassword: !!cfg?.password,
       inquiryUsePlatform: row?.inquiryUsePlatform ?? true,
       otpEnabled: row?.otpEnabled ?? true,
+      inquiryPhoneLogin: row?.inquiryPhoneLogin ?? true,
     };
   }
 
@@ -57,6 +58,13 @@ export class PlatformService {
     });
     await this.audit.record({ action: AuditAction.EDIT, actorType: 'SUPER_ADMIN', targetType: 'PlatformOtp', metadata: { otpEnabled: enabled } });
     return { ok: true, otpEnabled: enabled };
+  }
+
+  /** Panel 3 login: کد ملی + mobile (with OTP) when on; کد ملی + password when off. */
+  async setInquiryPhoneLogin(enabled: boolean) {
+    await this.db().upsert({ where: { id: PLATFORM_ID }, update: { inquiryPhoneLogin: enabled }, create: { id: PLATFORM_ID, inquiryPhoneLogin: enabled } });
+    await this.audit.record({ action: AuditAction.EDIT, actorType: 'SUPER_ADMIN', targetType: 'PlatformInquiryLogin', metadata: { inquiryPhoneLogin: enabled } });
+    return { ok: true, inquiryPhoneLogin: enabled };
   }
 
   /** Whether quick-inquiry OTPs should use the platform gateway (default true). */

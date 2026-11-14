@@ -71,4 +71,10 @@ export class PlatformController {
   setOtpEnabled(@Body() dto: SetPlatformSmsDto) {
     return this.platform.setOtpEnabled(!!dto.enabled);
   }
+
+  /** Panel 3 login: کد ملی + mobile (OTP) on, کد ملی + password off. */
+  @Put('inquiry-phone-login')
+  setInquiryPhoneLogin(@Body() dto: SetPlatformSmsDto) {
+    return this.platform.setInquiryPhoneLogin(!!dto.enabled);
+  }
 }

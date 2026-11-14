@@ -50,12 +50,42 @@ export function phaseText(r: any): string {
 
 /** The five actions under the info columns — each one is its own page (the panel has no side menu). */
 export const PANELS = [
-  { href: '/estelam/process', label: 'وضعیت پرونده', icon: 'M11 19a8 8 0 100-16 8 8 0 000 16zM21 21l-4.3-4.3' },
-  { href: '/estelam/documents', label: 'آخرین وضعیت مدارک', icon: 'M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9l-7-7zM13 2v7h7M9 15l2 2 4-4' },
-  { href: '/estelam/beneficiaries', label: 'ذینفع‌ها', icon: 'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75' },
-  { href: '/estelam/online', label: 'پاسخگوی آنلاین', icon: 'M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z' },
-  { href: '/estelam/faq', label: 'سوالات متداول', icon: 'M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01M12 22a10 10 0 100-20 10 10 0 000 20z' },
+  { href: '/estelam/process', label: 'وضعیت پرونده', sub: 'مراحل رسیدگی پرونده', icon: 'M11 19a8 8 0 100-16 8 8 0 000 16zM21 21l-4.3-4.3' },
+  { href: '/estelam/documents', label: 'آخرین وضعیت مدارک', sub: 'مدارک ارسال‌شده و نواقص', icon: 'M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9l-7-7zM13 2v7h7M9 15l2 2 4-4' },
+  { href: '/estelam/beneficiaries', label: 'ذینفع‌ها', sub: 'گیرندگان خسارت', icon: 'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75' },
+  { href: '/estelam/online', label: 'پاسخگوی آنلاین', sub: 'پشتیبانی پرونده', icon: 'M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z' },
+  { href: '/estelam/faq', label: 'سوالات متداول', sub: 'پرسش‌های رایج', icon: 'M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3M12 17h.01M12 22a10 10 0 100-20 10 10 0 000 20z' },
 ] as const;
+
+/** «اعلام خسارت»: a بیمه‌شده files a case (on only where Super Admin turned it on, with فن‌آوران). */
+export const NOTICE = { href: '/estelam/notice', label: 'اعلام خسارت', sub: 'ثبت پرونده خسارت', icon: 'M21.4 11.1l-9.2 9.2a6 6 0 01-8.5-8.5l9.2-9.2a4 4 0 015.7 5.7l-9.2 9.2a2 2 0 01-2.8-2.8l8.5-8.5' };
+
+/** The action tiles, Sinad-style: icon in a diamond, title, one line under it; a tile that can't be used is grey. */
+export function EstelamTiles({ r }: { r: any }) {
+  const tiles = [{ ...NOTICE, off: !r?.selfFiling }, ...PANELS.map((p) => ({ ...p, off: !!r?.selfEntry }))];
+  return (
+    <div className="est-tiles">
+      {tiles.map((t) => {
+        const body = (
+          <>
+            <span className="est-tile-ico"><Icon path={t.icon} /></span>
+            <span className="est-tile-t">{t.label}</span>
+            <span className="est-tile-s">{t.sub}</span>
+          </>
+        );
+        return t.off
+          ? <span key={t.href} className="est-tile is-off" aria-disabled="true">{body}</span>
+          : <Link key={t.href} href={t.href} className="est-tile">{body}</Link>;
+      })}
+    </div>
+  );
+}
+
+/** Was this panel-3 visit a کد ملی + password login (its token names the کد ملی)? */
+export function passwordLogin(token: string | null): boolean {
+  if (!token) return false;
+  try { return !!JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).nh; } catch { return false; }
+}
 
 /** «تماس و ارتباط» — in the top bar (not among the buttons). */
 export const CONTACT = { href: '/estelam/contact', label: 'تماس و ارتباط', icon: 'M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.13.96.36 1.9.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0122 16.92z' };
@@ -109,7 +139,6 @@ const EXIT_ICON = 'M15 3H5a2 2 0 00-2 2v14a2 2 0 002 2h10M17 16l4-4-4-4M21 12H9'
 /** The inquiry panel's side menu: every page of the looked-up case. */
 export const SIDE_MENU = [
   { href: '/estelam', label: 'مشخصات پرونده', icon: 'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM14 2v6h6' },
-  { href: '/estelam/process', label: 'وضعیت پرونده', icon: PANELS[0].icon },
   { href: '/estelam/process', label: 'وضعیت پرونده', icon: PANELS[0].icon },
   { href: '/estelam/documents', label: 'آخرین وضعیت مدارک', icon: PANELS[1].icon },
   { href: '/estelam/online', label: 'گفتگو', icon: PANELS[3].icon },
@@ -169,6 +198,7 @@ export function EstelamFrame({ children }: { children: (r: any, token: string | 
           <Link href="/"><Icon path="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1V9.5z" /> صفحه اصلی</Link>
           {r && <Link href="/estelam"><Icon path="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM14 2v6h6" /> مشخصات پرونده</Link>}
           {r && <Link href={CONTACT.href}><Icon path={CONTACT.icon} /> {CONTACT.label}</Link>}
+          {r && passwordLogin(token) && <Link href="/estelam/password"><Icon path="M5 11h14v10H5zM8 11V7a4 4 0 018 0v4" /> تغییر رمز عبور</Link>}
           <button type="button" onClick={exit}><Icon path={EXIT_ICON} /> خروج</button>
         </nav>
       </header>

@@ -124,7 +124,9 @@ export interface WorkflowModel extends CaseRules {
   stages: Record<Stage, { label: string; reviewDocs: boolean }>; // reviewDocs: must this desk ✓ every document before sending on?
   byType: Record<string, Partial<CaseRules>>; // نوع پرونده → what differs from the rules above
   panels: { COMPANY: PanelRights; REPRESENTATIVE: PanelRights };
-  insured: { enabled: boolean; docCodes: string[]; linkDays: number }; // پنل بیمه‌شده: what they upload; how long an invitation lasts
+  // پنل بیمه‌شده: what an invited بیمه‌شده uploads; how long an invitation lasts. selfFiling: «اعلام خسارت» in panel 3
+  // (a بیمه‌شده files their own case, or a deceased relative's) — only with فن‌آوران on, for کد ملی registered there.
+  insured: { enabled: boolean; docCodes: string[]; linkDays: number; selfFiling: boolean };
   entry: { way: EntryWay }; // the insurer's own panel-1 filings (see EntryWay)
   form: {
     eventLabel: string;
@@ -205,7 +207,7 @@ export const DEFAULT_WORKFLOW_MODEL: WorkflowModel = {
   },
   byType: {},
   panels: { COMPANY: { upload: true, submit: true }, REPRESENTATIVE: { upload: true, submit: true } },
-  insured: { enabled: false, docCodes: [], linkDays: 7 },
+  insured: { enabled: false, docCodes: [], linkDays: 7, selfFiling: false },
   entry: { way: 'BROKER' },
   form: {
     eventLabel: 'تاریخ وقوع',
@@ -323,7 +325,7 @@ export function modelFrom(stored: unknown): WorkflowModel {
     stages,
     byType,
     panels: { COMPANY: rights(raw.panels?.COMPANY, d.panels.COMPANY), REPRESENTATIVE: rights(raw.panels?.REPRESENTATIVE, d.panels.REPRESENTATIVE) },
-    insured: { enabled: flag(raw.insured?.enabled, false), docCodes: list(raw.insured?.docCodes), linkDays: days >= 1 && days <= 60 ? Math.round(days) : d.insured.linkDays },
+    insured: { enabled: flag(raw.insured?.enabled, false), docCodes: list(raw.insured?.docCodes), linkDays: days >= 1 && days <= 60 ? Math.round(days) : d.insured.linkDays, selfFiling: flag(raw.insured?.selfFiling, false) },
     entry: { way: ENTRY_WAYS.includes(raw.entry?.way) ? raw.entry.way : d.entry.way },
     form: {
       eventLabel: text(raw.form?.eventLabel, d.form.eventLabel),

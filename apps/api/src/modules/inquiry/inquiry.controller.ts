@@ -2,7 +2,7 @@ import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { Public, Realms } from '../../common/rbac/decorators';
 import { TenantResolverGuard } from '../../common/tenant/tenant-resolver.guard';
-import { InquiryMessageDto, RequestOtpDto, VerifyOtpDto } from './dto';
+import { InquiryMessageDto, InquiryPasswordDto, PasswordLoginDto, RequestOtpDto, VerifyOtpDto } from './dto';
 import { InquiryService } from './inquiry.service';
 
 @Controller('inquiry')
@@ -49,6 +49,30 @@ export class InquiryController {
     return this.inquiry.directVerify(dto);
   }
 
+  /** How panel 3 logs in: کد ملی + mobile (OTP), or کد ملی + password (Super Admin's switch). */
+  @Public()
+  @UseGuards(TenantResolverGuard)
+  @Get('login-config')
+  loginConfig() {
+    return this.inquiry.loginConfig();
+  }
+
+  /** Panel 3 with the phone field off: کد ملی + password. */
+  @Public()
+  @UseGuards(TenantResolverGuard)
+  @Post('password-login')
+  passwordLogin(@Body() dto: PasswordLoginDto) {
+    return this.inquiry.passwordLogin(dto);
+  }
+
+  /** The کد ملی holder changes their panel-3 password (password logins only). */
+  @Realms('RECORD')
+  @UseGuards(JwtAuthGuard)
+  @Post('password')
+  changePassword(@Body() dto: InquiryPasswordDto) {
+    return this.inquiry.changePassword(dto.current, dto.next);
+  }
+
   /** Step 3 — requires the record token from step 2. Returns that one case only. */
   @Realms('RECORD')
   @UseGuards(JwtAuthGuard)
@@ -70,14 +94,14 @@ export class InquiryController {
   @UseGuards(JwtAuthGuard)
   @Post('message')
   message(@Body() dto: InquiryMessageDto) {
-    return this.inquiry.leaveMessage(dto.message, dto.claimId);
+    return this.inquiry.leaveMessage(dto.message, dto.claimId, dto.phone);
   }
 
   /** «گفتگو» — the requester's questions and the کارگزاری's answers on this claim. */
   @Realms('RECORD')
   @UseGuards(JwtAuthGuard)
   @Get('messages')
-  messages(@Query('claimId') claimId?: string) {
-    return this.inquiry.thread(claimId);
+  messages(@Query('claimId') claimId?: string, @Query('phone') phone?: string) {
+    return this.inquiry.thread(claimId, phone);
   }
 }

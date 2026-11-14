@@ -28,7 +28,7 @@ describe('A/B/C route access', () => {
       'POST /auth/org/login', 'POST /auth/super/login',
       'POST /customer/login/company', 'POST /customer/login/direct', 'POST /customer/login/representative', 'POST /customer/login/request-otp', 'POST /customer/login/verify-otp',
       'POST /customer/signup/direct', 'POST /customer/signup/request-otp', 'POST /customer/signup/verify-otp',
-      'POST /inquiry/claim-direct', 'POST /inquiry/direct', 'POST /inquiry/request-claim', 'POST /inquiry/request-otp', 'POST /inquiry/verify-otp',
+      'POST /inquiry/claim-direct', 'POST /inquiry/direct', 'POST /inquiry/password-login', 'POST /inquiry/request-claim', 'POST /inquiry/request-otp', 'POST /inquiry/verify-otp',
       'POST /insured/login/request-otp', 'POST /insured/login/verify-otp',
       'POST /upload-link/:token/documents',
     ].sort());
@@ -43,14 +43,14 @@ describe('A/B/C route access', () => {
 
   it('A/B: the panel markers are exactly these (panel 1 default-denies every other staff write)', () => {
     // heirs and the original documents: panel 1 only while the case sits at the بیمه‌گزار's desk (checked in the service)
-    expect(list(routes.filter((r) => r.entry === 'allowed'))).toEqual(['POST /claims/:id/documents', 'POST /claims/:id/physical', 'POST /exports/table.xlsx', 'PUT /claims/:id/heirs']);
+    expect(list(routes.filter((r) => r.entry === 'allowed'))).toEqual(['DELETE /claims/:id/documents/:docId', 'POST /claims/:id/documents', 'POST /claims/:id/physical', 'POST /exports/table.xlsx', 'PUT /claims/:id/heirs']);
     // rectify: panel 1's «ثبت نهایی» after رفع نقص; coverage-check: the panel-1 filing forms' فن‌آوران lookup;
     // filing: panel 1 corrects its case until panel 2 starts on it
-    expect(list(routes.filter((r) => r.entry === 'only' && !r.path.startsWith('/spare')))).toEqual(['POST /claims', 'POST /claims/:id/rectify', 'POST /claims/coverage-check', 'POST /claims/on-behalf', 'POST /claims/on-behalf/coverage-check', 'POST /import/commit', 'POST /import/preview', 'PUT /claims/:id/filing']);
+    expect(list(routes.filter((r) => r.entry === 'only' && !r.path.startsWith('/spare')))).toEqual(['DELETE /claims/:id/filing', 'POST /claims', 'POST /claims/:id/rectify', 'POST /claims/coverage-check', 'POST /claims/on-behalf', 'POST /claims/on-behalf/coverage-check', 'POST /import/commit', 'POST /import/preview', 'PUT /claims/:id/filing']);
   });
 
   it('C: the inquiry token reads its case, leaves a question, and signs out — nothing else', () => {
-    expect(list(routes.filter((r) => r.realms.includes('RECORD')))).toEqual(['GET /inquiry/case', 'GET /inquiry/cases', 'GET /inquiry/messages', 'POST /inquiry/message', 'POST /security/logout']);
+    expect(list(routes.filter((r) => r.realms.includes('RECORD')))).toEqual(['GET /inquiry/case', 'GET /inquiry/cases', 'GET /inquiry/messages', 'POST /inquiry/message', 'POST /inquiry/password', 'POST /security/logout']);
   });
 
   it('panel 1 (بیمه‌گزار, نماینده, نماینده بیمه) is reached only through its own routes', () => {

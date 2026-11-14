@@ -17,6 +17,8 @@ export interface RequestContext {
   scopedClaimId?: string;
   /** Panel 3: every claim the looked-up کد ملی covers (the person, and the dependents of a main insured). */
   scopedClaimIds?: string[];
+  scopedNidHash?: string; // panel 3 password login: the کد ملی it was for (to change its password)
+  scopedSelfInsurerId?: string; // panel 3 without a case: the insurer whose «اعلام خسارت» let this کد ملی in
   /** For the public inquiry: the requester's OTP-verified phone (encrypted), for «پاسخگوی آنلاین». */
   scopedPhone?: string;
   /** For the customer realm: the customer's blind-index key to match their own cases. */

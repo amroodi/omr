@@ -140,6 +140,10 @@ function InquiryForm() {
   const [step, setStep] = useState<'id' | 'otp'>('id');
   const [nid, setNid] = useState('');
   const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('');
+  // Super Admin's switch: کد ملی + mobile (OTP), or کد ملی + password (the phone field hidden).
+  const [byPhone, setByPhone] = useState(true);
+  useEffect(() => { inquiryApi.loginConfig().then((c) => setByPhone(c.phone)).catch(() => {}); }, []);
   const [code, setCode] = useState('');
   const [msg, setMsg] = useState('');
   const [error, setError] = useState('');
@@ -162,6 +166,7 @@ function InquiryForm() {
     setMsg(r.message); setStep('otp'); start(120);
   });
   const verify = () => run(async () => { const r = await inquiryApi.verifyOtp(nid, phone, code); goResult(await inquiryApi.getCase(r.token), r.token); });
+  const login = () => run(async () => { const r = await inquiryApi.passwordLogin(nid, password); goResult(await inquiryApi.getCase(r.token), r.token); });
 
   return (
     <div className="space-y-3.5" style={{ maxWidth: 300, width: '100%', margin: '0 auto' }}>
@@ -169,8 +174,17 @@ function InquiryForm() {
         {step === 'id' && (
           <>
             <input className="input" style={{ textAlign: 'center' }} value={nid} onChange={(e) => setNid(e.target.value)} inputMode="numeric" placeholder="کد ملی ۱۰ رقمی متوفی" />
-            <input className="input" style={{ textAlign: 'center' }} value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="numeric" placeholder="شماره موبایل شما (استعلام‌کننده)" onKeyDown={(e) => e.key === 'Enter' && nid && phone && request()} />
-            <button onClick={request} disabled={loading || !nid || !phone} className="btn btn-primary w-full" style={{ padding: '0.8rem' }}>{loading ? 'در حال ارسال…' : 'دریافت کد تایید'}</button>
+            {byPhone ? (
+              <>
+                <input className="input" style={{ textAlign: 'center' }} value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="numeric" placeholder="شماره موبایل شما (استعلام‌کننده)" onKeyDown={(e) => e.key === 'Enter' && nid && phone && request()} />
+                <button onClick={request} disabled={loading || !nid || !phone} className="btn btn-primary w-full" style={{ padding: '0.8rem' }}>{loading ? 'در حال ارسال…' : 'دریافت کد تایید'}</button>
+              </>
+            ) : (
+              <>
+                <input className="input" style={{ textAlign: 'center' }} type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="رمز عبور" autoComplete="current-password" onKeyDown={(e) => e.key === 'Enter' && nid && password && login()} />
+                <button onClick={login} disabled={loading || !nid || !password} className="btn btn-primary w-full" style={{ padding: '0.8rem' }}>{loading ? 'در حال ورود…' : 'ورود'}</button>
+              </>
+            )}
             <button type="button" disabled className="w-full text-sm font-semibold" style={{ background: 'var(--surface-2)', color: 'var(--muted)', cursor: 'default', borderRadius: 999, padding: '0.5rem', border: '1px solid var(--border)' }}>آموزش نحوه ورود به سامانه</button>
             <p className="text-sm font-bold text-center pt-1">امور مشتریان کارگزاری دامون: <span dir="ltr" style={{ unicodeBidi: 'isolate' }}>۰۲۱-۵۷۳۸۹۰۰۰</span></p>
           </>

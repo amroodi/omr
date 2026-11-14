@@ -19,8 +19,11 @@ function Chat({ token }: { token: string }) {
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
   const [sending, setSending] = useState(false);
   const [expired, setExpired] = useState(false);
+  // A password login has no verified mobile: the one answers are texted to (kept for this visit).
+  const [phone, setPhone] = useState(() => { try { return sessionStorage.getItem('inquiryPhone') ?? ''; } catch { return ''; } });
+  const okPhone = /^(\+?98|0)?9\d{9}$/.test(phone.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))));
 
-  const load = useCallback(() => inquiryApi.thread(token, pickedClaim()).then(setT).catch((e) => { setExpired(true); setNote({ ok: false, text: expiredText(e) }); }), [token]);
+  const load = useCallback(() => inquiryApi.thread(token, pickedClaim(), okPhone ? phone : undefined).then(setT).catch((e) => { setExpired(true); setNote({ ok: false, text: expiredText(e) }); }), [token, okPhone, phone]);
   useEffect(() => {
     load();
     const i = setInterval(() => { if (!document.hidden) load(); }, REFRESH_MS);
@@ -29,7 +32,11 @@ function Chat({ token }: { token: string }) {
 
   const send = async () => {
     setSending(true); setNote(null);
-    try { const res = await inquiryApi.message(token, msg.trim(), pickedClaim()); setNote({ ok: true, text: res.message }); setMsg(''); load(); }
+    try {
+      const res = await inquiryApi.message(token, msg.trim(), pickedClaim(), t?.askPhone ? phone : undefined);
+      if (t?.askPhone) { try { sessionStorage.setItem('inquiryPhone', phone); } catch { /* ignore */ } }
+      setNote({ ok: true, text: res.message }); setMsg(''); load();
+    }
     catch (e: any) { setNote({ ok: false, text: expiredText(e) }); }
     finally { setSending(false); }
   };
@@ -52,8 +59,9 @@ function Chat({ token }: { token: string }) {
       <Flash id={note} text={note?.text} ok={!!note && note.ok} />
       {expired ? <Link href="/" className="est-btn inline-flex">برای ادامهٔ گفتگو دوباره استعلام کنید</Link> : (
         <>
+          {t?.askPhone && <input className="input" inputMode="numeric" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="شماره موبایل شما" />}
           <textarea className="input" rows={4} value={msg} onChange={(e) => setMsg(e.target.value)} maxLength={2000} placeholder="متن پیام…" />
-          <button onClick={send} disabled={sending || msg.trim().length < 3} className="est-btn">{sending ? 'در حال ارسال…' : 'ارسال پیام'}</button>
+          <button onClick={send} disabled={sending || msg.trim().length < 3 || (!!t?.askPhone && !okPhone)} className="est-btn">{sending ? 'در حال ارسال…' : 'ارسال پیام'}</button>
         </>
       )}
     </div>
