@@ -1,6 +1,6 @@
 'use client';
 import { ProcessTimeline, ResultBox } from '../../components/ProcessTimeline';
-import { EstelamFrame, SIDE_MENU, SubHead } from '../shared';
+import { EstelamFrame, PANELS, SubHead } from '../shared';
 
 /** The inquiry result in the shape the بیمه‌گزار panel's «فرایند رسیدگی پرونده» reads. */
 function asClaim(r: any) {
@@ -16,7 +16,7 @@ function asClaim(r: any) {
 
 /** «فرایند رسیدگی پرونده» — the same timeline the بیمه‌گزار sees in its panel: filing, every hand-off, payment. */
 export default function EstelamProcess() {
-  const menu = SIDE_MENU[2];
+  const menu = PANELS[0];
   return (
     <EstelamFrame>
       {(r) => (

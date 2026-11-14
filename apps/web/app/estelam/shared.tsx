@@ -178,7 +178,11 @@ export function EstelamSide({ r }: { r: any }) {
 export function EstelamFrame({ children }: { children: (r: any, token: string | null) => ReactNode }) {
   const { r, token, ready, cases, pick } = useInquiry();
   const exit = useExit();
+  const path = usePathname();
   const [showTop, setShowTop] = useState(false);
+  // Sinad's side menu: open on wide screens, an icon strip otherwise (the toggle switches it).
+  const [open, setOpen] = useState(false);
+  useEffect(() => { setOpen(window.innerWidth >= 1100); }, []);
   const box = useRef<HTMLDivElement>(null); // the page scrolls inside this full-window layer
   useEffect(() => {
     const el = box.current; if (!el) return;
@@ -186,23 +190,47 @@ export function EstelamFrame({ children }: { children: (r: any, token: string | 
     on(); el.addEventListener('scroll', on, { passive: true });
     return () => el.removeEventListener('scroll', on);
   }, []);
+  const noCase = !!r?.selfEntry;
+  const items = [
+    { href: '/estelam', label: 'مشخصات پرونده', icon: 'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM14 2v6h6', off: false },
+    { href: NOTICE.href, label: NOTICE.label, icon: NOTICE.icon, off: !r?.selfFiling },
+    ...PANELS.map((p) => ({ href: p.href as string, label: p.label as string, icon: p.icon as string, off: noCase })),
+    { href: CONTACT.href, label: CONTACT.label, icon: CONTACT.icon, off: false },
+    ...(passwordLogin(token) ? [{ href: '/estelam/password', label: 'تغییر رمز عبور', icon: 'M5 11h14v10H5zM8 11V7a4 4 0 018 0v4', off: false }] : []),
+  ];
 
   return (
-    <div className="est" ref={box}>
-      <header className="est-top">
-        <Link href="/" className="est-brand" aria-label="دامون">
-          <BrandMark size={34} />
-          <span>دامون</span>
-        </Link>
-        <nav className="est-links">
-          {r && <Link href={CONTACT.href}><Icon path={CONTACT.icon} /> {CONTACT.label}</Link>}
-          {r && passwordLogin(token) && <Link href="/estelam/password"><Icon path="M5 11h14v10H5zM8 11V7a4 4 0 018 0v4" /> تغییر رمز عبور</Link>}
-          <button type="button" onClick={exit}><Icon path={EXIT_ICON} /> خروج</button>
-        </nav>
+    <div className={`est est-sn${open ? ' is-open' : ''}`} ref={box}>
+      <aside className="sn-side" aria-label="منوی پنل">
+        <div className="sn-side-head">
+          <Link href="/" className="sn-logo" aria-label="دامون"><BrandMark size={open ? 64 : 34} /></Link>
+          {open && (
+            <div className="sn-side-org">
+              <span>کارگزاری رسمی بیمه مستقیم برخط آتیه اندیشان دامون</span>
+              {r?.deceasedName && <b>{r.deceasedName}</b>}
+              {(r?.claimNumber || r?.caseNumber) && <span className="sn-side-no"><CaseNo n={r.claimNumber || r.caseNumber} /></span>}
+            </div>
+          )}
+        </div>
+        <button type="button" className="sn-toggle" onClick={() => setOpen(!open)}>
+          <Icon path={open ? 'M9 18l6-6-6-6' : 'M15 18l-6-6 6-6'} />{open && <span>بستن منو</span>}
+        </button>
+        {r && (
+          <nav className="sn-nav">
+            {items.map((m) => (m.off
+              ? <span key={m.href} className="is-off" title={m.label}><Icon path={m.icon} />{open && <span>{m.label}</span>}</span>
+              : <Link key={m.href} href={m.href} title={m.label} className={path === m.href ? 'is-active' : undefined}><Icon path={m.icon} />{open && <span>{m.label}</span>}</Link>))}
+          </nav>
+        )}
+        <button type="button" className="sn-exit" onClick={exit} title="خروج"><Icon path={EXIT_ICON} />{open && <span>خروج</span>}</button>
+      </aside>
+
+      <header className="sn-head">
+        <h1>مشاهده و پیگیری پرونده خسارت</h1>
+        {r && <Link href={CONTACT.href} className="sn-head-btn">{CONTACT.label}</Link>}
       </header>
 
-      <div>
-      <main className="est-main">
+      <main className="est-main sn-main">
         {!ready ? (
           <div className="flex justify-center p-16"><Spinner /></div>
         ) : !r ? (
@@ -216,10 +244,8 @@ export function EstelamFrame({ children }: { children: (r: any, token: string | 
             {children(r, token)}
           </>
         )}
-
-        <div className="est-card est-footer">کارگزاری رسمی بیمه مستقیم برخط آتیه اندیشان دامون</div>
+        <div className="sn-foot">امور مشتریان کارگزاری دامون: <bdi>۰۲۱-۵۷۳۸۹۰۰۰</bdi></div>
       </main>
-      </div>
 
       {showTop && (
         <button type="button" className="est-totop" aria-label="بازگشت به بالا" onClick={() => box.current?.scrollTo({ top: 0, behavior: 'smooth' })}>
@@ -273,10 +299,10 @@ export function InfoRow({ label, value }: { label: string; value: ReactNode }) {
 }
 
 /** Info column: dark header with the orange dot, white body. */
-export function InfoCol({ title, children }: { title: string; children: ReactNode }) {
+export function InfoCol({ title, icon, children }: { title: string; icon?: string; children: ReactNode }) {
   return (
     <section className="est-col">
-      <h3 className="est-col-h"><span className="est-dot" />{title}</h3>
+      <h3 className="est-col-h"><span className="est-dot" />{title}{icon && <span className="sn-card-ico"><Icon path={icon} /></span>}</h3>
       <div className="est-col-b">{children}</div>
     </section>
   );

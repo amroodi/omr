@@ -2799,3 +2799,65 @@ a.cu-card.is-link:hover { transform: translateY(-2px); box-shadow: 0 0 0 2px var
 .pdf-r-notes-h { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #d5d5d5; padding-bottom: 4px; }
 .pdf-r-notes-h b { border-inline-start: 5px solid #f7941d; padding-inline-start: 8px; font-size: 16px; }
 .pdf-r-notes p { line-height: 2.1; margin-top: 10px; text-align: justify; }
+
+/* ── Panel 3 (استعلام) in Sinad's look: slate side menu on the right, white top bar with the green title,
+      white boxes with 30px corners; always light, like Sinad. «فرایند رسیدگی پرونده» keeps its own style. ── */
+.est.est-sn, :root.dark .est.est-sn { --sn-side: 52px; --est-bg: #f3f5f8; --est-card: #fff; --est-line: #e4e8ee; --text: #1f2933; --muted: #6b7684; --surface: #fff; --surface-2: #f5f7fa; --bg: #f3f5f8; --border: #e4e8ee; --brand: #00bd9c; --brand-soft: #e3f7f3; color-scheme: light; background: var(--est-bg); color: #1f2933; font-size: 14px; }
+.est.est-sn.is-open, :root.dark .est.est-sn.is-open { --sn-side: 275px; }
+.est-sn .est-hero > .est-exit:not(.est-exit-ghost) { display: none; }
+.sn-side { position: fixed; top: 0; bottom: 0; right: 0; width: var(--sn-side); background: #2f4358; color: #e8eef4; z-index: 40; display: flex; flex-direction: column; transition: width .2s linear; overflow-x: hidden; overflow-y: auto; }
+.sn-side-head { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 12px 8px; text-align: center; }
+.sn-logo { display: inline-flex; }
+.sn-side-org { display: flex; flex-direction: column; gap: 4px; font-size: 12px; line-height: 1.7; color: #dfe7ef; }
+.sn-side-org b { font-size: 13.5px; color: #fff; }
+.sn-side-no { font-size: 12px; opacity: .85; }
+.sn-toggle { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 10px; background: #26384a; color: #cfd9e4; font-size: 12.5px; border: 0; cursor: pointer; }
+.sn-toggle svg { width: 18px; height: 18px; }
+.sn-nav { display: flex; flex-direction: column; padding: 6px 0; }
+.sn-nav a, .sn-nav span.is-off { display: flex; align-items: center; gap: 10px; padding: 12px 14px; color: #e6ecf2; font-size: 13.5px; white-space: nowrap; border-bottom: 1px solid #1e2c3a; }
+.est-sn:not(.is-open) .sn-nav a, .est-sn:not(.is-open) .sn-nav span.is-off, .est-sn:not(.is-open) .sn-exit { justify-content: center; padding-inline: 0; }
+.sn-nav svg, .sn-exit svg { width: 20px; height: 20px; flex-shrink: 0; }
+.sn-nav a:hover { background: #3a5068; }
+.sn-nav a.is-active { background: #00bd9c; color: #fff; }
+.sn-nav span.is-off { color: #7f91a3; cursor: not-allowed; }
+.sn-exit { margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 14px; background: none; border: 0; border-top: 1px solid #1e2c3a; color: #ff9a8f; font-size: 13.5px; cursor: pointer; }
+.sn-head { position: fixed; top: 0; left: 0; right: var(--sn-side); height: 55px; z-index: 30; background: #fff; border-bottom: 1px solid #d2dae3; display: flex; align-items: center; justify-content: space-between; padding: 0 18px; transition: right .2s linear; }
+.sn-head h1 { color: #00bd9c; font-size: 21px; font-weight: 600; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sn-head-btn { background: #00bd9c; color: #fff; border-radius: 6px; padding: 7px 16px; font-size: 13.5px; white-space: nowrap; }
+.sn-head-btn:hover { background: #00a487; }
+.est.est-sn .sn-main { max-width: none; margin: 0; margin-right: var(--sn-side); padding: 75px 18px 30px; gap: 20px; transition: margin-right .2s linear; }
+.sn-foot { text-align: center; font-weight: 700; padding: 6px 0 4px; color: #1f2933; }
+.est-sn .est-totop { background: #00bd9c; }
+/* Boxes */
+.est-sn .est-hero, .est-sn .est-col, .est-sn .est-tiles, .est-sn .est-card, .est-sn .cs-table { background: #fff; border: 0; border-radius: 30px; box-shadow: 0 3px 6px rgba(0, 0, 0, .16); color: #1f2933; }
+.est-sn .est-hero { padding: 20px 24px; }
+.est-sn .est-hero-title { color: #1f2933; font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+.est-sn .est-hero-title::after { content: ''; flex: 1; border-top: 1px solid #d5dbe2; min-width: 40px; }
+.est-sn .est-hero-ico { display: none; }
+.est-sn .est-hero-sub { color: #1f2933; font-size: 14px; font-weight: 500; }
+.est-sn .est-date-l { color: #6b7684; }
+.est-sn .est-date-v svg { color: #00bd9c; }
+.est-sn .est-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; background: none; border: 0; box-shadow: none; padding: 0; }
+.est-sn .est-col { padding: 20px 22px; }
+.est-sn .est-col-h { color: #111; font-size: 15px; font-weight: 700; justify-content: flex-start; border: 0; padding: 0 0 10px; display: flex; align-items: center; }
+.sn-card-ico { margin-inline-start: auto; width: 46px; height: 46px; border-radius: 50%; background: #eef0fb; color: #3f4fb5; display: inline-flex; align-items: center; justify-content: center; }
+.sn-card-ico svg { width: 26px; height: 26px; }
+.est-sn .est-row { display: grid; grid-template-columns: 150px minmax(0, 1fr); padding: 8px 0; border-bottom: 1px dashed #e8ecf1; background: none !important; }
+.est-sn .est-row:last-child { border-bottom: 0; }
+.est-sn .est-row-l { font-weight: 700; color: #4b5563; }
+.est-sn .est-row-v { font-weight: 600; color: #111; }
+.est-sn .est-tiles { padding: 20px 12px; }
+.est-sn .est-tile-t { color: #1b82bc; font-size: 14px; }
+.est-sn .est-tile:not(.is-off):hover { background: #f5f5f5; transform: none; }
+.est-sn .est-exit-ghost { color: #00bd9c; box-shadow: inset 0 0 0 1.5px #00bd9c; }
+.est-sn .est-btn { background: #00bd9c; }
+.sn-banner { background: #9bcced; border-radius: 20px; padding: 14px 18px; text-align: center; font-weight: 700; line-height: 1.9; color: #12324a; }
+.sn-banner.tone-ok { background: #bfe6cb; color: #14532d; }
+.sn-banner.tone-bad { background: #f6c7c7; color: #7f1d1d; }
+@media (max-width: 1099px) {
+  .est.est-sn .sn-main, .est-sn .sn-head { margin-right: 52px; }
+  .est-sn .sn-head { right: 52px; margin-right: 0; }
+  .est-sn.is-open .sn-side { box-shadow: -8px 0 24px rgba(0, 0, 0, .25); }
+}
+@media (max-width: 900px) { .est-sn .est-cols { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 560px) { .sn-head h1 { font-size: 15px; } .sn-head-btn { padding: 6px 10px; font-size: 12px; } .est-sn .est-row { grid-template-columns: 120px minmax(0, 1fr); } }
