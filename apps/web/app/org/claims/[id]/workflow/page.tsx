@@ -7,9 +7,9 @@ import { Shell, Icon } from '../../../../components/Shell';
 import { ErrorBox, FancyLoader } from '../../../../components/ui';
 import { ORG_NAV } from '../../../nav';
 import { caseTitle } from '../../../../../lib/caseTitle';
-import { downloadPdf } from '../../../../../lib/pdf';
-import { CaseHero, ICONS, PersonCards, phaseText, StatusHistoryButton, useCase } from '../../../../components/case-ui';
-import { ProcessTimeline, ResultBox } from '../../../../components/ProcessTimeline';
+import { downloadBrandedPdf } from '../../../../../lib/pdf';
+import { CaseHero, ICONS, PersonCards, phaseText, STATUS_FA, StatusHistoryButton, useCase } from '../../../../components/case-ui';
+import { ProcessTimeline, ResultBox, StatusReportBody } from '../../../../components/ProcessTimeline';
 
 
 /**
@@ -20,12 +20,14 @@ export default function CaseWorkflowPage() {
   const { id } = useParams<{ id: string }>();
   const { claim, fv, error, setError } = useCase(id);
   const sheet = useRef<HTMLDivElement>(null);
+  const report = useRef<HTMLDivElement>(null); // «گزارش وضعیت پرونده خسارت», drawn off screen for the PDF
   const [saving, setSaving] = useState(false);
 
   const pdf = async () => {
-    if (!sheet.current || !claim) return;
+    if (!report.current || !claim) return;
     setSaving(true);
-    try { await downloadPdf(sheet.current, `workflow-${claim.policyNumber || claim.claimNumber}`); }
+    const finalStatus = claim.story?.manual ? (claim.story.caseStage || STATUS_FA[claim.status] || claim.status) : (STATUS_FA[claim.status] ?? claim.status);
+    try { await downloadBrandedPdf(report.current, `workflow-${claim.policyNumber || claim.claimNumber}`, { title: 'گزارش وضعیت پرونده خسارت', meta: [{ label: 'وضعیت نهایی', value: finalStatus }] }); }
     catch (e: any) { setError(e?.message || 'ساخت فایل PDF ممکن نشد'); } finally { setSaving(false); }
   };
 
@@ -43,6 +45,7 @@ export default function CaseWorkflowPage() {
             <ResultBox c={claim as any} />
             <ProcessTimeline c={claim as any} fv={fv} />
           </div>
+          <div className="pdf-offscreen" aria-hidden="true"><div ref={report}><StatusReportBody c={claim} fv={fv} notes={fv.case_notes || phaseText(claim)} /></div></div>
           <div className="cs-actions no-print">
             <button type="button" className="cs-act" onClick={pdf} disabled={saving}><Icon path={ICONS.pdf} /> {saving ? 'در حال ساخت PDF…' : 'دانلود PDF'}</button>
             <Link href={`/org/claims/${id}/documents`} className="cs-act is-alt"><Icon path={ICONS.doc} /> بررسی وضعیت مدارک</Link>

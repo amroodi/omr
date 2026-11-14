@@ -9,7 +9,7 @@ import { ErrorBox, FancyLoader } from '../../../../components/ui';
 import { ACTION_FA, LossNoticeEntry, STATE_FA, withLossNotice } from '../../../../components/WorkflowPanel';
 import { ORG_NAV } from '../../../nav';
 import { caseTitle } from '../../../../../lib/caseTitle';
-import { downloadPdf } from '../../../../../lib/pdf';
+import { downloadBrandedPdf } from '../../../../../lib/pdf';
 import { AI_QUEUED_FA, aiVerdict, CaseHero, ClaimDoc, ICONS, NotesPill, PersonCards, phaseText, useCase } from '../../../../components/case-ui';
 import { OnProgress, UploadButton } from '../../../../components/upload';
 import { Flash } from '../../../../components/Toaster';
@@ -66,7 +66,7 @@ export default function CaseDocumentsPage() {
   const pdf = async () => {
     if (!sheet.current || !claim) return;
     setSaving(true);
-    try { await downloadPdf(sheet.current, `documents-${claim.policyNumber || claim.claimNumber}`); }
+    try { await downloadBrandedPdf(sheet.current, `documents-${claim.policyNumber || claim.claimNumber}`, { title: 'گزارش وضعیت مدارک پرونده' }); }
     catch (e: any) { setError(e?.message || 'ساخت فایل PDF ممکن نشد'); } finally { setSaving(false); }
   };
 

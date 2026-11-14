@@ -2782,4 +2782,20 @@ a.cu-card.is-link:hover { transform: translateY(-2px); box-shadow: 0 0 0 2px var
 .est-tile.is-off .est-tile-ico svg { color: #a9b4c6; }
 .est-tile.is-off .est-tile-t { color: #9fb3cf; }
 .est-tile.is-off .est-tile-s { color: #b9bdc4; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .est-tiles { background: var(--surface); } }
+.dark .est-tiles { background: var(--surface); }
+
+/* ── «گزارش وضعیت پرونده خسارت» (PDF body on the letterhead) ── */
+.pdf-offscreen { position: fixed; left: -20000px; top: 0; width: 720px; pointer-events: none; }
+.pdf-r { background: #fff; color: #111; direction: rtl; padding: 4px 6px 10px; font-size: 15px; }
+.pdf-r-info { display: grid; grid-template-columns: 1.4fr 1fr; row-gap: 14px; column-gap: 24px; margin: 6px 0 24px; font-size: 16px; }
+.pdf-r-info b { font-weight: 800; color: #012454; }
+.pdf-r-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.pdf-r-table th { background: #012454; color: #fff; font-weight: 500; font-size: 16px; padding: 12px 8px; border-inline-start: 1px solid #fff; }
+.pdf-r-table th:first-child { border-inline-start: 0; }
+.pdf-r-table th:nth-child(1), .pdf-r-table th:nth-child(2), .pdf-r-table th:nth-child(3) { width: 19%; }
+.pdf-r-table td { border: 1px solid #d5d5d5; padding: 10px 8px; height: 44px; vertical-align: middle; text-align: center; font-size: 13.5px; }
+.pdf-r-table td:last-child { text-align: right; }
+.pdf-r-notes { margin-top: 30px; }
+.pdf-r-notes-h { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #d5d5d5; padding-bottom: 4px; }
+.pdf-r-notes-h b { border-inline-start: 5px solid #f7941d; padding-inline-start: 8px; font-size: 16px; }
+.pdf-r-notes p { line-height: 2.1; margin-top: 10px; text-align: justify; }

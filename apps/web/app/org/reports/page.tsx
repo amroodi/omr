@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { client, getToken, hasPerm } from '../../../lib/client';
-import { downloadPdf } from '../../../lib/pdf';
+import { downloadBrandedPdf } from '../../../lib/pdf';
 import { Shell, Icon } from '../../components/Shell';
 import { ErrorBox, FancyLoader } from '../../components/ui';
 import { JalaliDatePicker } from '../../components/JalaliDatePicker';
@@ -213,7 +213,7 @@ export default function ReportsPage() {
   const exportPdf = async () => {
     if (!sheet.current) return;
     setBusy('pdf'); setError('');
-    try { await downloadPdf(sheet.current, 'report'); } catch (e: any) { setError(e?.message || 'ساخت PDF ممکن نشد'); } finally { setBusy(''); }
+    try { await downloadBrandedPdf(sheet.current, 'report', { title: 'گزارش' }); } catch (e: any) { setError(e?.message || 'ساخت PDF ممکن نشد'); } finally { setBusy(''); }
   };
 
   const saveDef = () => {
