@@ -202,6 +202,12 @@ export class CoverageService implements OnModuleInit, OnModuleDestroy {
     return { ...base, ...r, blocked: r.status !== 'VALID' && cfg.onUncovered === 'BLOCK', message: coverageMessage(r) };
   }
 
+  /** فن‌آوران is set up and on for this insurer. */
+  async isOn(insurerId: string): Promise<boolean> {
+    const cfg = await this.config(insurerId);
+    return cfg.enabled && !!cfg.url;
+  }
+
   /** The check on the filing form: null when this insurer has it off. */
   async lookup(insurerId: string, nationalCode: string, eventDate?: Date | null): Promise<CoverageAnswer | null> {
     const cfg = await this.config(insurerId);

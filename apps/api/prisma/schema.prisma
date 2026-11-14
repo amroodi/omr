@@ -138,6 +138,9 @@ model PlatformConfig {
   // Master switch for OTP on login/inquiry/signup. When false, users proceed without a code
   // (no SMS sent, no code checked). Super-admin toggle — a deliberate security downgrade.
   otpEnabled         Boolean  @default(true)
+  // Panel 3 (استعلام) login: on = کد ملی + the requester's mobile (with the code when OTP is on); off = کد ملی + password
+  // (the default password of a کد ملی is the کد ملی itself; see InquiryPassword).
+  inquiryPhoneLogin  Boolean  @default(true)
   // «شاهکار»: check that a نماینده's کد ملی and mobile belong to the same person (signup and when an org
   // defines one). Off = no check, the operator's approval alone is enough. Super-admin only.
   shahkarEnabled     Boolean  @default(false)
@@ -267,6 +270,13 @@ model PolicyholderContract {
 
 // «پاسخگوی آنلاین» — a question from someone who looked a claim up via استعلام. The requester's phone
 // (verified by OTP) is how the بیمه‌گزار / کارگزاری gets back to them.
+// Panel 3 password of a کد ملی, once its holder changed it (none = the کد ملی itself).
+model InquiryPassword {
+  nidHash      String   @id // blind index of the 10-digit کد ملی
+  passwordHash String
+  updatedAt    DateTime @updatedAt
+}
+
 model InquiryMessage {
   id         String    @id @default(uuid())
   claimId    String
@@ -660,6 +670,9 @@ model OtpChallenge {
   insuredId    String?
   caseId       String? // legacy Case this challenge unlocks (inquiry purpose)
   claimId      String? // new-model Claim this challenge unlocks (self-service بیمه‌گزار inquiry)
+  // panel 3 without a case (اعلام خسارت on, کد ملی registered at فن‌آوران): the insurer and the کد ملی it is for
+  selfInsurerId String?
+  nidHash       String?
   codeHash     String // salted hash of the OTP, never plaintext
   attempts     Int      @default(0)
   maxAttempts  Int      @default(5)

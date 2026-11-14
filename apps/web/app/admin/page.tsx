@@ -311,6 +311,7 @@ function PlatformSms() {
   const test = async () => { setMsg(null); try { await client.post('/platform/sms-config/test', { phone: testPhone }, 'super'); setMsg({ t: 'ok', m: 'پیام آزمایشی ارسال شد' }); } catch (e: any) { setMsg({ t: 'err', m: e.message }); } };
   const setPlatform = async (id: string, enabled: boolean) => { try { await client.post(`/platform/tenants/${id}/sms-platform`, { enabled }, 'super'); load(); } catch (e: any) { setMsg({ t: 'err', m: e.message }); } };
   const setInquiry = async (enabled: boolean) => { setMsg(null); try { await client.put('/platform/inquiry-sms', { enabled }, 'super'); setC({ ...c, inquiryUsePlatform: enabled }); } catch (e: any) { setMsg({ t: 'err', m: e.message }); } };
+  const setPhoneLogin = async (enabled: boolean) => { setMsg(null); try { await client.put('/platform/inquiry-phone-login', { enabled }, 'super'); setC({ ...c, inquiryPhoneLogin: enabled }); } catch (e: any) { setMsg({ t: 'err', m: e.message }); } };
   const setOtp = async (enabled: boolean) => { setMsg(null); try { await client.put('/platform/otp-enabled', { enabled }, 'super'); setC({ ...c, otpEnabled: enabled }); } catch (e: any) { setMsg({ t: 'err', m: e.message }); } };
   if (!c) return null;
   const fields = DFIELDS[f.driver] || [];
@@ -342,6 +343,13 @@ function PlatformSms() {
           <span>کد تایید «استعلام سریع پرونده» از همین درگاه پیامک سکو ارسال شود</span>
         </label>
         <p className="text-xs mt-1" style={{ color: 'var(--muted)' }}>اگر خاموش باشد، استعلام سریع از درگاه اختصاصی همان سازمان استفاده می‌کند.</p>
+      </div>
+      <div className="pt-3 mt-2" style={{ borderTop: '1px solid var(--border)' }}>
+        <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <input type="checkbox" checked={c.inquiryPhoneLogin ?? true} onChange={(e) => setPhoneLogin(e.target.checked)} />
+          <span>ورود پنل استعلام (پنل ۳) با شماره موبایل و کد تایید</span>
+        </label>
+        <p className="text-xs mt-1" style={{ color: 'var(--muted)' }}>خاموش: ورود با کد ملی و رمز عبور (رمز پیش‌فرض: همان کد ملی).</p>
       </div>
       <div className="pt-3 mt-2" style={{ borderTop: '1px solid var(--border)' }}>
         <label className="flex items-center gap-2 text-sm cursor-pointer">

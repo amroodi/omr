@@ -1,22 +1,34 @@
 'use client';
-import Link from 'next/link';
 import { StatusBadge } from '../components/ui';
 import { Icon } from '../components/Shell';
 import { LogoTile } from '../components/LogoTile';
 import { blankVal } from '../components/case-ui';
 import { personTitle } from '../components/claim-wording';
 import { API_BASE } from '../../lib/api';
-import { DEATH_TYPES, EstelamFrame, InfoCol, InfoRow, PANELS, fmtAmt, phaseText, phaseTone, useExit } from './shared';
+import { DEATH_TYPES, EstelamFrame, EstelamTiles, InfoCol, InfoRow, fmtAmt, phaseText, phaseTone, useExit } from './shared';
 
 const CAL = 'M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z';
 
-/** مشاهده سریع و استعلام پرونده — the inquiry result: header card, three info columns, then the five actions. */
+/** مشاهده سریع و استعلام پرونده — the inquiry result: header card, three info columns, then the action tiles. */
 export default function EstelamResult() {
   return <EstelamFrame>{(r) => <Result r={r} />}</EstelamFrame>;
 }
 
 function Result({ r }: { r: any }) {
   const exit = useExit();
+  // Panel 3 with no case yet (a کد ملی registered at فن‌آوران, «اعلام خسارت» on): only the tiles.
+  if (r.selfEntry) return (
+    <>
+      <div className="est-hero">
+        <div className="est-hero-main">
+          <div className="est-hero-title"><span className="est-hero-ico"><Icon path="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8z" /></span>پنل بیمه‌شده</div>
+          {r.insurerName && <div className="est-hero-sub">{r.insurerName}</div>}
+        </div>
+        <button type="button" onClick={exit} className="est-exit"><Icon path="M15 3H5a2 2 0 00-2 2v14a2 2 0 002 2h10M17 16l4-4-4-4M21 12H9" /> خروج</button>
+      </div>
+      <EstelamTiles r={r} />
+    </>
+  );
   const isDeath = DEATH_TYPES.has(r.claimType);
   const co = r.company;
   const coLogo = co?.hasLogo ? `${API_BASE}/policyholder-companies/${co.id}/logo` : null;
@@ -71,12 +83,7 @@ function Result({ r }: { r: any }) {
         </InfoCol>
       </div>
 
-      {/* The five actions, each its own page */}
-      <div className="est-actions">
-        {PANELS.map((p) => (
-          <Link key={p.href} href={p.href} className="est-btn"><Icon path={p.icon} /> {p.label}</Link>
-        ))}
-      </div>
+      <EstelamTiles r={r} />
     </>
   );
 }

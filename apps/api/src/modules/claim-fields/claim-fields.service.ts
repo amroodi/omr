@@ -57,6 +57,8 @@ export interface OcrDraftField {
   confidence: number;
 }
 
+import { coverageFrom } from '../model-view/coverage.service';
+
 /** تاریخ شروع بیمه‌نامه from فن‌آوران, as a field value (Jalali, ASCII digits); null when it gave none. */
 const insurerPolicyStart = (claim: { insurerPolicyStart?: Date | null }) =>
   claim.insurerPolicyStart ? toJalali(claim.insurerPolicyStart, false).replace(/[۰-۹]/g, (x) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(x))) : null;
@@ -432,6 +434,13 @@ export class ClaimFieldsService {
       : key === 'cause_of_death' ? { causeOfDeath: v }
       : null;
     if (data) await this.db().claim.update({ where: { id: claimId }, data });
+    // A new کد ملی or date: فن‌آوران (when on for the insurer) is asked again by its re-check, within a minute.
+    if (key === 'national_code' || key === 'death_date') {
+      const c = await this.prisma.unscoped().claim.findUnique({ where: { id: claimId }, select: { insurerTenantId: true } });
+      const t = c ? await this.prisma.unscoped().tenant.findUnique({ where: { id: c.insurerTenantId }, select: { coverageConfig: true } }) : null;
+      const cfg = coverageFrom(t?.coverageConfig);
+      if (cfg.enabled && cfg.url) await this.prisma.unscoped().claim.update({ where: { id: claimId }, data: { coverageStatus: 'NOT_CHECKED', coverageCheckedAt: null, ...(key === 'national_code' ? { insurerPolicyStart: null } : {}) } });
+    }
   }
 
   /**

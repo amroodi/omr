@@ -20,7 +20,7 @@ interface Model {
   stages: Record<Stage, { label: string; reviewDocs: boolean }>;
   byType: Record<string, Partial<Record<RuleKey, boolean>>>;
   panels: { COMPANY: Rights; REPRESENTATIVE: Rights };
-  insured: { enabled: boolean; docCodes: string[]; linkDays: number };
+  insured: { enabled: boolean; docCodes: string[]; linkDays: number; selfFiling?: boolean };
   entry: { way: 'BROKER' | 'BRANCH' | 'ASK' | 'CHANNEL' };
   sinad?: { enabled: boolean; batchSize: number; returnGroups: { label: string; items: string[] }[] };
   form: { eventLabel: string; birthDate: Mode; cause: Mode; causeLists: { DEATH: string[]; ACCIDENT: string[] }; causeNotes?: Record<string, string>; lines: Record<Line, LineForm>; caseTypes: CaseType[]; groups: CompanyGroup[]; dependents: boolean; docsNote: string };
@@ -476,6 +476,7 @@ export default function ModelView() {
                     </div>
                   </>
                 )}
+                <Toggle on={!!m.insured.selfFiling} onChange={(v) => setM({ ...m, insured: { ...m.insured, selfFiling: v } })} hint="با اتصال فن‌آوران روشن: کد ملی ثبت‌شده در فن‌آوران وارد پنل ۳ می‌شود.">اعلام خسارت توسط بیمه‌شده در پنل ۳</Toggle>
               </Card>
               {saveBar}
             </>

@@ -4,7 +4,7 @@ import JSZip from 'jszip';
 import { randomInt, randomUUID } from 'crypto';
 import { uploadName } from '../../common/validation/upload-name';
 import { NoticeRule, NoticeSource, NoticeTarget, SOURCE_FA, TARGET_FA, TARGETS_OF, combine, rulesFor } from './claim-notice';
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { AuditAction, ClaimStatus, Prisma, SalesChannel } from '@prisma/client';
 import { AuditService } from '../../common/audit/audit.service';
 import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
@@ -507,6 +507,11 @@ export class ClaimsService {
     // period — defined there? If not, the case isn't filed (or only warned about, as set). The form asks
     // first; this repeats it, since the form's answer can't be trusted. The answer is kept on the case.
     const coverage = nid ? await this.coverage.gate(insurerTenantId, nid, eventDate) : null;
+    // A dependent's case: the main insured must be there too.
+    if (mainNid) {
+      try { await this.coverage.gate(insurerTenantId, mainNid, eventDate); }
+      catch (e: any) { if (e instanceof BadRequestException || e instanceof ServiceUnavailableException) throw new (e.constructor as any)(`بیمه‌شدهٔ اصلی: ${e.message}`); throw e; }
+    }
     // The same case twice (two operators, not knowing of each other): refused before it gets a number.
     await this.assertNotDuplicate(insurerTenantId, input.claimType ?? 'DEATH_ILLNESS', nid, eventDate);
     // Numbering must see every case with this policy number (other brokerages' too), or it could pick a
@@ -1709,10 +1714,17 @@ export class ClaimsService {
     }
     if (input.description !== undefined) { data.description = input.description.trim() || null; changed.push('description'); }
     if (input.insuredGender !== undefined) { data.insuredGender = input.insuredGender || null; changed.push('gender'); }
-    // A new کد ملی or date: the insurer's system (فن‌آوران) is asked again.
-    if (claim.coverageStatus && (changed.includes('nationalCode') || changed.includes('eventDate'))) data.coverageStatus = 'NOT_CHECKED';
+    // A new کد ملی or date: the insurer's system (فن‌آوران) is asked again, as at filing.
+    let recheck: Awaited<ReturnType<CoverageService['gate']>> = null;
+    if (changed.includes('nationalCode') || changed.includes('eventDate')) {
+      const nidNow = input.deceasedNationalCode?.trim() || (claim.deceasedNationalCode ? this.crypto.decrypt(claim.deceasedNationalCode) : null);
+      recheck = nidNow ? await this.coverage.gate(claim.insurerTenantId, nidNow, event) : null;
+      if (!recheck && claim.coverageStatus) data.coverageStatus = 'NOT_CHECKED';
+      if (changed.includes('nationalCode')) data.insurerPolicyStart = null;
+    }
     if (!changed.length) return this.get(claimId);
     await db.claim.update({ where: { id: claimId }, data });
+    if (recheck) await this.coverage.record(claimId, recheck);
     await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { filing: changed } });
     return this.get(claimId);
   }

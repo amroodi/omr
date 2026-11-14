@@ -35,7 +35,7 @@ async function rawGet<T>(path: string, token: string): Promise<T> {
 export const API_BASE = BASE;
 
 /** «گفتگو» of the looked-up case: the requester's questions and the کارگزاری's answers. */
-export interface InquiryThread { brokerName: string; messages: { id: string; fromStaff: boolean; message: string; at: string; answered: boolean }[] }
+export interface InquiryThread { brokerName: string; messages: { id: string; fromStaff: boolean; message: string; at: string; answered: boolean }[]; askPhone?: boolean }
 
 export interface CompanyHit { id: string; name: string; hasLogo: boolean }
 
@@ -62,9 +62,18 @@ export const inquiryApi = {
   // Direct claim view when OTP is disabled platform-wide (no code).
   directClaim: (nationalCode: string, phone: string) =>
     post<{ token: string; expiresIn: string }>('/inquiry/claim-direct', { nationalCode, phone }),
+  // Panel 3 login: کد ملی + mobile (OTP), or کد ملی + password (Super Admin's switch).
+  loginConfig: async (): Promise<{ phone: boolean; otp: boolean }> => {
+    const res = await fetch(`${BASE}/inquiry/login-config`, { headers: { 'x-tenant-slug': TENANT } });
+    return res.ok ? res.json() : { phone: true, otp: true };
+  },
+  passwordLogin: (nationalCode: string, password: string) =>
+    post<{ token: string; expiresIn: string }>('/inquiry/password-login', { nationalCode, password }),
+  changePassword: (token: string, current: string, next: string) => post<{ ok: boolean }>('/inquiry/password', { current, next }, token),
   getCase: (token: string, claimId?: string | null) => get<any>(`/inquiry/case${pick(claimId)}`, token),
   listCases: (token: string) => get<InquiryCase[]>('/inquiry/cases', token),
   // «پاسخگوی آنلاین» — leave a question on the looked-up claim (record token from the inquiry).
-  message: (token: string, message: string, claimId?: string | null) => post<{ ok: boolean; message: string }>('/inquiry/message', { message, ...(claimId ? { claimId } : {}) }, token),
-  thread: (token: string, claimId?: string | null) => get<InquiryThread>(`/inquiry/messages${pick(claimId)}`, token),
+  message: (token: string, message: string, claimId?: string | null, phone?: string) => post<{ ok: boolean; message: string }>('/inquiry/message', { message, ...(claimId ? { claimId } : {}), ...(phone ? { phone } : {}) }, token),
+  thread: (token: string, claimId?: string | null, phone?: string) =>
+    get<InquiryThread>(`/inquiry/messages${pick(claimId)}${phone ? `${claimId ? '&' : '?'}phone=${encodeURIComponent(phone)}` : ''}`, token),
 };
