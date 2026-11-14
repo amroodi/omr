@@ -41,7 +41,7 @@ export function PaymentBox({ claimId, info, finalizedAmount, closed, onDone }: {
           <div>برای: {a.grantee} — صادرکننده: {a.grantedBy ?? 'مدیریت ستاد'}{a.byCouncil ? ' (به دستور شورای فنی)' : ''} — {a.at}</div>
           <div>وضعیت: {a.statusLabel}{a.closedAt ? ` (${a.closedAt})` : ''}</div>
         </div>
-      )) : <div className="text-xs" style={{ color: 'var(--muted)' }}>مجوز سرپرستی هنوز صادر نشده است؛ مدیریت ستاد آن را همراه دستور پرداخت برای کارشناس شعبه صادر می‌کند و پس از پرداخت باطل می‌شود.</div>}
+      )) : <div className="text-xs" style={{ color: 'var(--muted)' }}>مجوز سرپرستی صادر نشده است.</div>}
       {(info.concessions ?? []).length > 0 && (
         <div className="pay-cons">
           <b>فرم ارفاقی</b>

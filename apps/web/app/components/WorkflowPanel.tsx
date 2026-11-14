@@ -57,7 +57,7 @@ function phase(w: Workflow): string {
 // The yes / no question of a confirm-first action — each says what «بله» actually does.
 const CONFIRM_DEFAULT = { q: 'آیا از انجام این اقدام مطمئن هستید؟', yes: 'بله، انجام شود' };
 function confirmText(key: string): { q: string; yes: string } {
-  if (key === 'MARK_PAID') return { q: 'آیا مطمئن هستید که پرداخت این پرونده به ذینفع ثبت شود؟ پس از ثبت، مجوز سرپرستی باطل می‌شود و این کار برگشت‌پذیر نیست.', yes: 'بله، پرداخت ثبت شود' };
+  if (key === 'MARK_PAID') return { q: 'آیا مطمئن هستید که پرداخت این پرونده به ذینفع ثبت شود؟', yes: 'بله، پرداخت ثبت شود' };
   if (key === 'APPROVE_AMOUNT') return { q: 'آیا مبلغ خسارت پیشنهادی شعبه تایید شود؟', yes: 'بله، تایید شود' };
   if (key === 'RETURN_DIRECT') return { q: 'آیا مطمئن هستید که این پرونده را به بیمه‌گزار برمی‌گردانید؟', yes: 'بله، برگشت داده شود' };
   return CONFIRM_DEFAULT;
