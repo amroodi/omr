@@ -10,6 +10,8 @@ const HOME_ORG = process.env.NEXT_PUBLIC_TENANT_SLUG || 'damuon';
 
 const DAMUON: HubVariant = {
   key: 'damuon',
+  heading: 'کارگزاری بیمه مستقیم برخط دامون',
+  support: { label: 'امور مشتریان کارگزاری دامون', phone: '۰۲۱-۵۷۳۸۹۰۰۰' },
   entryTitle: 'ورود بیمه گزار',
   panel1: entryLogin(HOME_ORG),
   panel2: `/org/login?org=${encodeURIComponent(HOME_ORG)}`,

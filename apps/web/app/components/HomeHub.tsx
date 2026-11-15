@@ -17,6 +17,8 @@ export interface HubVariant {
   panel2: string;
   rightLogo: React.ReactNode;
   leftLogo: React.ReactNode;
+  heading: string;
+  support: { label: string; phone: string };
 }
 
 export function HomeHub({ variant }: { variant: HubVariant }) {
@@ -74,9 +76,9 @@ function AuthHub({ v }: { v: HubVariant }) {
               <div className="flex justify-center mb-3">
                 {v.rightLogo}
               </div>
-              <h2 className="font-extrabold text-lg" style={{ color: 'var(--brand)' }}>کارگزاری بیمه مستقیم برخط دامون</h2>
+              <h2 className="font-extrabold text-lg" style={{ color: 'var(--brand)' }}>{v.heading}</h2>
               <p className="font-bold text-sm mt-1 mb-5">مشاهده سریع و استعلام پرونده</p>
-              <InquiryForm />
+              <InquiryForm support={v.support} />
             </div>
 
             {/* LEFT: grouped entry buttons (each primary opens its own login panel) */}
@@ -139,7 +141,7 @@ function ResendRow({ left, onResend, loading, onBack }: { left: number; onResend
 /* ─────────────────────── استعلام سریع (inquiry) ─────────────────────── */
 
 /** استعلام: the deceased's کد ملی + the requester's mobile (OTP). Any company's case can be looked up. */
-function InquiryForm() {
+function InquiryForm({ support }: { support: HubVariant['support'] }) {
   const router = useRouter();
   const [step, setStep] = useState<'id' | 'otp'>('id');
   const [nid, setNid] = useState('');
@@ -190,7 +192,7 @@ function InquiryForm() {
               </>
             )}
             <button type="button" disabled className="w-full text-sm font-semibold" style={{ background: 'var(--surface-2)', color: 'var(--muted)', cursor: 'default', borderRadius: 999, padding: '0.5rem', border: '1px solid var(--border)' }}>آموزش نحوه ورود به سامانه</button>
-            <p className="text-sm font-bold text-center pt-1">امور مشتریان کارگزاری دامون: <span dir="ltr" style={{ unicodeBidi: 'isolate' }}>۰۲۱-۵۷۳۸۹۰۰۰</span></p>
+            <p className="text-sm font-bold text-center pt-1">{support.label}: <span dir="ltr" style={{ unicodeBidi: 'isolate' }}>{support.phone}</span></p>
           </>
         )}
         {step === 'otp' && (
