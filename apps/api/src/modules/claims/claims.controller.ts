@@ -330,6 +330,15 @@ export class ClaimsController {
     return this.claims.editFiling(id, dto);
   }
 
+  /** «تاریخ اعلام فوت» from a کارگزاری's panel 1, on its own cases (checked in the service). */
+  @EntryOnly()
+  @Permissions(PERMISSIONS.CLAIM_READ)
+  @Put(':id/death-notice-date')
+  async deathNoticeDate(@Param('id', ParseUUIDPipe) id: string, @Body() body: { value?: string }) {
+    await this.fields.setValue(id, 'death_notice_date', typeof body?.value === 'string' ? body.value.slice(0, 20) : '');
+    return { ok: true };
+  }
+
   /** کاربر ثبت removes the case they registered, until panel 2 starts on it (checked in the service). */
   @EntryOnly()
   @Permissions(PERMISSIONS.CLAIM_READ)

@@ -34,7 +34,7 @@ export interface PhysicalView {
   events: { id: string; stageLabel: string; action: string; note: string | null; trackingNo: string | null; at: string; by: string | null; letters: TimelineStep['letters'] }[];
 }
 
-const PHYSICAL_EVENT_FA: Record<string, string> = { REQUEST: 'درخواست اصل مدارک', RELAY: 'ارسال درخواست به سطح پایین‌تر', SEND: 'ارسال اصل مدارک', RECEIVE: 'تایید دریافت اصل مدارک', RETURN: 'بازگرداندن اصل مدارک به شعبه' };
+const PHYSICAL_EVENT_FA: Record<string, string> = { REQUEST: 'درخواست اصل مدارک', RELAY: 'ارسال درخواست', SEND: 'ارسال اصل مدارک', RECEIVE: 'تایید دریافت اصل مدارک', RETURN: 'بازگرداندن اصل مدارک به شعبه' };
 
 const TONE: Record<string, string> = { primary: 'btn btn-solid btn-sm', warning: 'btn btn-ghost btn-sm', danger: 'btn btn-ghost btn-sm', ghost: 'btn btn-ghost btn-sm' };
 const TONE_COLOR: Record<string, string | undefined> = { warning: 'var(--warning)', danger: 'var(--danger)' };
@@ -348,9 +348,23 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact, ac
 export const ACTION_FA: Record<string, string> = {
   LOSS_NOTICE: 'ثبت اعلام خسارت',
   SUBMIT: 'ارسال', FORWARD: 'تایید و ارسال', REFER_COUNCIL: 'ارجاع به شورای فنی', PAY_ORDER: 'دستور پرداخت',
-  RETURN: 'عودت برای رفع نقص', RETURN_DIRECT: 'برگشت از سرپرستی به بیمه‌گزار', DOWN_FORWARD: 'ارسال به سطح پایین‌تر', FIX_HERE: 'رفع نقص و ادامهٔ بررسی',
+  RETURN: 'عودت برای رفع نقص', RETURN_DIRECT: 'برگشت از سرپرستی به بیمه‌گزار', DOWN_FORWARD: 'ارسال به مرحلهٔ بعد', FIX_HERE: 'رفع نقص و ادامهٔ بررسی',
   DOWN_DIRECT: 'ارسال مستقیم به بیمه‌گزار (اختیار مدیریت)', MARK_PAID: 'ثبت پرداخت', REJECT_FINAL: 'رد نهایی',
 };
+/**
+ * What a step did, in words. A hand-off down the chain names both desks — «ارسال از مدیریت ستاد به شعبه کرمان» —
+ * read from the step after it.
+ */
+export function stepActionFa(s: TimelineStep, all: TimelineStep[]): string {
+  if (s.action === 'DOWN_FORWARD') {
+    const next = all.filter((x) => x.order > s.order).sort((a, b) => a.order - b.order)[0];
+    const from = s.branchName || s.stageLabel;
+    const to = next ? next.branchName || next.stageLabel : null;
+    if (from && to) return `ارسال از ${from} به ${to}`;
+  }
+  return ACTION_FA[s.action || ''] || STATE_FA[s.state] || s.state;
+}
+
 /** Older steps (before workflow v2) carry only a state, no action. */
 export const STATE_FA: Record<string, string> = {
   PENDING: 'در دست بررسی', FORWARDED: 'تایید و ارسال', ESCALATED: 'ارجاع به سطح بالاتر', APPROVED: 'تایید شد',
@@ -389,7 +403,7 @@ export function WorkflowTimeline({ claimId, steps, realm }: { claimId: string; s
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <span className="font-semibold">{s.stageLabel || s.holderName || '—'}{s.branchName ? ` — ${s.branchName}` : ''}</span>
                 <span className="badge" style={{ background: 'var(--surface-2)', color }}>
-                  {pending ? (s.direction === 'DOWN' ? (s.purpose === 'PAYMENT' ? 'در دست بررسی (دستور پرداخت)' : 'در دست بررسی (عودت)') : 'در دست بررسی') : (ACTION_FA[s.action || ''] || STATE_FA[s.state] || s.state)}
+                  {pending ? (s.direction === 'DOWN' ? (s.purpose === 'PAYMENT' ? 'در دست بررسی (دستور پرداخت)' : 'در دست بررسی (عودت)') : 'در دست بررسی') : stepActionFa(s, steps ?? [])}
                 </span>
               </div>
               {/* Operator names stay inside the organizations; outside parties see the desk and time only. */}

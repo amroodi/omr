@@ -18,6 +18,22 @@ export const CONCESSION_GATE: Partial<Record<string, { status: string; keys: Act
   COUNCIL: { status: 'SIGNED', keys: ['PAY_ORDER'] },
 };
 
+/**
+ * شعبه's check of a case before it goes on: the four ways عمر / حوادث claims go wrong. Each point is marked «مورد
+ * ندارد» or «مشکوک»; a suspect point is the عودت's reason (`reason`).
+ */
+export const FRAUD_ITEMS = [
+  { key: 'PRE_EXISTING', label: 'بیماری پیش از شروع بیمه‌نامه (کتمان سابقه)', reason: 'سابقهٔ بیماری پیش از شروع بیمه‌نامه' },
+  { key: 'CAUSE', label: 'تطابق علت فوت با مدارک پزشکی (بیماری به‌جای حادثه)', reason: 'مغایرت علت فوت با مدارک پزشکی' },
+  { key: 'WAITING', label: 'فوت در دوره انتظار', reason: 'فوت در دوره انتظار' },
+  { key: 'PAPERS', label: 'اصالت مدارک وراثت و ذینفعان', reason: 'تردید در اصالت مدارک وراثت یا ذینفعان' },
+] as const;
+
+/** A حوادث case (by its نوع بیمه‌نامه, else its نوع پرونده): سرمایه حادثه applies; otherwise عمر and سرمایه فوت. */
+export function isAccidentKind(line: string | null | undefined, claimType: string | null | undefined): boolean {
+  return doctorFormOf({ line, claimType }) === 'ACCIDENT';
+}
+
 /** «فرم اظهار نظر پزشک معتمد»: the حوادث form for accident kinds and cases, the عمر form otherwise. */
 export function doctorFormOf(c: { line?: string | null; claimType?: string | null }): 'LIFE' | 'ACCIDENT' {
   if (c.line === 'ACCIDENT' || c.line === 'ACCIDENT_INDIVIDUAL') return 'ACCIDENT';

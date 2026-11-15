@@ -976,7 +976,8 @@ model Claim {
   amountApprovedById String?
   doctorState    String? // REFER = در انتظار اظهار نظر پزشک معتمد, EXAM = دعوت به معاینه
   doctorNote     String? // the last «اظهار نظر پزشک معتمد»
-  fraudCheck     String? // CLEAN = «بررسی کردم، تقلب نیست», FRAUD = «تقلب است، عودت شود»
+  fraudCheck     String? // CLEAN = every point of the check is clear, FRAUD = a point is suspect (عودت)
+  fraudItems     Json? // { PRE_EXISTING | CAUSE | WAITING | PAPERS: OK | SUSPECT } — شعبه's four-point check
 
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt

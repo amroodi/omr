@@ -177,6 +177,9 @@ export function EstelamSide({ r }: { r: any }) {
 /** White top bar, page body, footer line and the back-to-top button shared by every inquiry page. */
 export interface FrameCtx { cases: InquiryCase[]; pick: (id: string) => void }
 
+const ICON_ACCOUNT = 'M4 3h16a1 1 0 011 1v16a1 1 0 01-1 1H4a1 1 0 01-1-1V4a1 1 0 011-1zM12 12a3 3 0 100-6 3 3 0 000 6zM7 18c.6-2.4 2.6-4 5-4s4.4 1.6 5 4';
+const ICON_CASE = 'M3 7h18v13H3zM8 7V4h8v3M12 11v6M9 14h6';
+
 /** The title in the top bar for each page (Sinad shows the current view's name there). */
 const TITLES: Record<string, string> = {
   '/estelam': 'مشاهده و پیگیری پرونده خسارت', '/estelam/notice': 'اعلام خسارت', '/estelam/contact': 'تماس و ارتباط', '/estelam/password': 'تغییر رمز عبور',
@@ -204,29 +207,47 @@ export function EstelamFrame({ children }: { children: (r: any, token: string | 
     return () => { if (dark) root.classList.add('dark'); };
   }, []);
   const noCase = !!r?.selfEntry;
-  const items = [
-    { href: '/estelam', label: 'مشخصات پرونده', icon: 'M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1V9.5z', off: false },
-    { href: NOTICE.href, label: NOTICE.label, icon: NOTICE.icon, off: !r?.selfFiling },
-    ...PANELS.map((p) => ({ href: p.href as string, label: p.label as string, icon: p.icon as string, off: noCase })),
-    { href: CONTACT.href, label: CONTACT.label, icon: CONTACT.icon, off: false },
-    ...(passwordLogin(token) ? [{ href: '/estelam/password', label: 'تغییر رمز عبور', icon: 'M5 11h14v10H5zM8 11V7a4 4 0 018 0v4', off: false }] : []),
+  // Sinad's menu: three rows — حساب کاربری (تغییر کلمه عبور), پرونده خسارت (every page of the case), خروج.
+  const caseItems = [
+    { href: NOTICE.href, label: NOTICE.label, off: !r?.selfFiling },
+    ...PANELS.map((p) => ({ href: p.href as string, label: p.label as string, off: noCase })),
+    { href: CONTACT.href, label: CONTACT.label, off: false },
   ];
+  const groups = [
+    { key: 'account', label: 'حساب کاربری', icon: ICON_ACCOUNT, items: [{ href: '/estelam/password', label: 'تغییر کلمه عبور', off: !passwordLogin(token) }] },
+    { key: 'case', label: 'پرونده خسارت', icon: ICON_CASE, items: caseItems },
+  ];
+  const [unfold, setUnfold] = useState<string | null>('case');
   const title = TITLES[path] ?? PANELS.find((p) => p.href === path)?.label ?? TITLES['/estelam'];
 
   return (
     <div className={`est est-sn${open ? ' is-open' : ''}`} ref={box}>
       <div className="sn-side" aria-label="منوی پنل">
         <div className="sn-side-head">
-          <Link href="/" className="sn-logo" aria-label="دامون"><BrandMark size={open ? 70 : 36} bare /></Link>
+          <Link href="/estelam" className={`sn-logo${open ? ' is-big' : ''}`} aria-label="مشخصات پرونده"><BrandMark size={open ? 150 : 36} bare /></Link>
           {open && <div className="sn-side-org">کارگزاری رسمی بیمه مستقیم برخط آتیه اندیشان دامون</div>}
         </div>
         <button type="button" className="sn-toggle" onClick={() => setOpen(!open)} aria-label={open ? 'بستن منو' : 'باز کردن منو'}>
           <Icon path={open ? 'M9 18l6-6-6-6' : 'M15 18l-6-6 6-6'} />{open && <span>بستن منو</span>}
         </button>
-        {r && items.map((m) => (m.off
-          ? <span key={m.href} className="sn-row is-off" title={m.label}><Icon path={m.icon} />{open && <span>{m.label}</span>}</span>
-          : <Link key={m.href} href={m.href} title={m.label} className={`sn-row${path === m.href ? ' is-active' : ''}`}><Icon path={m.icon} />{open && <span>{m.label}</span>}</Link>))}
-        <button type="button" className="sn-row sn-exit" onClick={exit} title="خروج"><Icon path={EXIT_ICON} />{open && <span>خروج</span>}</button>
+        {r && groups.map((g) => (
+          <div key={g.key} className={`sn-group${open && unfold === g.key ? ' is-unfolded' : ''}`}>
+            <button type="button" className={`sn-row${g.items.some((m) => m.href === path) ? ' is-active' : ''}`} onClick={() => (open ? setUnfold(unfold === g.key ? null : g.key) : setOpen(true))}>
+              <Icon path={g.icon} /><span className="sn-row-l">{g.label}</span>
+            </button>
+            {/* open: under the row; closed: beside the strip on hover (Sinad's flyout) */}
+            <div className="sn-sub">
+              <div className="sn-sub-h">{g.label}</div>
+              {g.items.map((m) => (m.off
+                ? <span key={m.href} className="is-off">{m.label}</span>
+                : <Link key={m.href} href={m.href} className={path === m.href ? 'is-active' : undefined}>{m.label}</Link>))}
+            </div>
+          </div>
+        ))}
+        <div className="sn-group">
+          <button type="button" className="sn-row sn-exit" onClick={exit}><Icon path={EXIT_ICON} /><span className="sn-row-l">خروج</span></button>
+          <div className="sn-sub is-label"><div className="sn-sub-h">خروج</div></div>
+        </div>
       </div>
       {open && <div className="sn-scrim" onClick={() => setOpen(false)} />}
 

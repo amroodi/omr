@@ -2815,8 +2815,6 @@ a.cu-card.is-link:hover { transform: translateY(-2px); box-shadow: 0 0 0 2px var
 .sn-row svg { width: 22px; height: 22px; flex-shrink: 0; }
 .sn-row:hover { background: #3a5269; }
 .sn-row.is-active { background: #1e2c3a; box-shadow: inset -3px 0 0 #00bd9c; }
-.sn-row.is-off { color: #6f8396; cursor: not-allowed; }
-.sn-row.is-off:hover { background: none; }
 .sn-exit { margin-top: auto; border-top: 1px solid #1e2c3a; }
 .sn-scrim { position: fixed; inset: 0; z-index: 45; background: rgba(0, 0, 0, .25); }
 .sn-head { position: fixed; top: 0; right: var(--sn-w); left: 0; height: 55px; z-index: 40; background: #fff; border-bottom: 1px solid #d2dae3; display: flex; align-items: center; justify-content: space-between; padding: 0 15px 0 10px; }
@@ -2826,13 +2824,11 @@ a.cu-card.is-link:hover { transform: translateY(-2px); box-shadow: 0 0 0 2px var
 .sn-box { background: #fff; border-radius: 30px; box-shadow: 0 0 4px 0 #d1d4d7; margin: 10px; padding: 20px; position: relative; color: #000; }
 .sn-boxhead { display: flex; align-items: center; gap: 12px; }
 .sn-boxhead h3 { margin: 0; font-size: 16.38px; font-weight: 700; white-space: nowrap; }
-.sn-boxhead hr { flex: 1; border: 0; border-top: 2px solid #ddd; margin: 0; }
+.sn-boxhead hr { flex: 1; border: 0; border-top: 2px solid #283593; margin: 0; }
 .sn-back { color: #1b82bc; font-size: 13px; white-space: nowrap; }
 .sn-boxbody { margin-top: 14px; display: flex; flex-direction: column; gap: 14px; line-height: 1.7; }
 .sn-policy { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: center; }
 .sn-policy-sel { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.sn-policy-sel > svg { width: 30px; height: 30px; color: #3b4aa6; flex-shrink: 0; }
-.sn-policy-sel select, .sn-sel { flex: 1; min-width: 0; height: 38px; border: 1px solid #ccc; border-radius: 4px; background: #fff; padding: 0 10px; font: inherit; color: #000; display: flex; align-items: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sn-status { display: flex; justify-content: space-evenly; flex-wrap: wrap; gap: 10px; }
 .sn-status > div { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .sn-ic svg { width: 22px; height: 22px; }
@@ -2879,3 +2875,75 @@ a.cu-card.is-link:hover { transform: translateY(-2px); box-shadow: 0 0 0 2px var
   .sn-page { padding-inline: 4px; }
   .est-sn .est-tile { min-width: 140px; margin: 0 6px 10px; }
 }
+
+/* «فرم‌های شعبه» on the ارزیابی window: the insurer's own forms, front and centre for the شعبه operator */
+.ev-forms { border: 2px solid #f59e0b; background: #fffbeb; }
+.ev-form-row { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px dashed #f3d48a; }
+.ev-form-row:first-of-type { border-top: 0; }
+.ev-form-l { flex: 1; font-weight: 700; font-size: 13px; color: #92400e; }
+.ev-form-row.is-done .ev-form-l { color: #15803d; }
+
+/* Search panel of panel 2: equal columns, so both rows line up (closed: 10 fields = 2 × 5; advanced: 2 × 3). */
+.sn-fields.is-main { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.sn-fields.is-adv { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.sn-fields > * { min-width: 0; }
+@media (max-width: 1199px) { .sn-fields.is-main, .sn-fields.is-adv { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .sn-fields.is-main, .sn-fields.is-adv { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 460px) { .sn-fields.is-main, .sn-fields.is-adv { grid-template-columns: minmax(0, 1fr); } }
+
+/* A collapsed side menu (icon rail): hovering an item shows its name beside the rail, as Sinad does. Fixed
+   positioning keeps the label out of the rail's clipping; it sits at the item's own height. */
+@media (min-width: 861px) {
+  .psidebar.is-rail .pnav-item:hover { background: var(--sidebar-hover); }
+  .psidebar.is-rail .pnav-item:hover .lbl {
+    display: flex; align-items: center; position: fixed; right: var(--rail-w); height: 46px; min-width: 210px; padding: 0 18px;
+    background: var(--sidebar-hover); color: #fff; font-weight: 700; font-size: 0.9rem; white-space: nowrap; z-index: 80;
+    box-shadow: -6px 4px 14px rgba(0, 0, 0, .18); border-radius: 0 0 0 0;
+  }
+}
+
+/* Panel 3 side menu in Sinad's three rows; a row's items open under it (menu open) or beside the strip on hover. */
+.sn-group { position: relative; }
+.sn-row-l { display: none; }
+.est-sn.is-open .sn-row-l { display: inline; font-weight: 700; }
+.sn-row { font-size: 14px; }
+.sn-sub { display: none; }
+.est-sn.is-open .sn-group.is-unfolded .sn-sub { display: flex; flex-direction: column; background: #3a5269; text-align: right; }
+.est-sn.is-open .sn-sub-h { display: none; }
+.sn-sub a, .sn-sub span.is-off { display: block; padding: 9px 22px; color: #fff; font-size: 13.5px; white-space: nowrap; }
+.sn-sub a:hover { background: #46607a; }
+.sn-sub a.is-active { box-shadow: inset -3px 0 0 #00bd9c; background: #2f4358; }
+.sn-sub span.is-off { color: #8ea2b6; cursor: not-allowed; }
+.est-sn:not(.is-open) .sn-group:hover > .sn-row { background: #4a627b; }
+.est-sn:not(.is-open) .sn-group:hover .sn-sub {
+  display: flex; flex-direction: column; position: fixed; right: var(--sn-w); min-width: 270px; margin-top: -50px;
+  background: #3a5269; box-shadow: -6px 6px 16px rgba(0, 0, 0, .25); z-index: 60; text-align: right;
+}
+.sn-sub-h { display: flex; align-items: center; height: 50px; padding: 0 18px; background: #4a627b; color: #fff; font-weight: 700; font-size: 15px; }
+.sn-sub.is-label .sn-sub-h { min-width: 270px; }
+.est-sn.is-open .sn-sub.is-label { display: none !important; }
+.sn-logo.is-big { background: #fff; border-radius: 50%; padding: 18px; margin: 10px 0 4px; }
+/* «مشخصات بیمه‌نامه»: the two rounded pickers with their icons */
+.sn-policy-sel { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.sn-pick-ico { color: #3a3d9f; display: inline-flex; flex-shrink: 0; }
+.sn-pick-ico svg { width: 30px; height: 30px; stroke-width: 1.5; }
+.sn-pick-ico.is-solid svg { fill: currentColor; stroke-width: 1; }
+.sn-pill { flex: 1; min-width: 0; height: 56px; border: 1px solid #c8ccd2; border-radius: 30px; background: #fff; display: flex; align-items: center; padding: 0 20px; overflow: hidden; }
+.sn-pill select { flex: 1; min-width: 0; height: 100%; border: 0; background: transparent; font: inherit; color: #000; outline: none; cursor: pointer; }
+.sn-pill > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #333; }
+.sn-policy-sel.is-kind { margin-top: 4px; }
+.sn-policy-sel.is-kind .sn-pill > span, .sn-policy-sel.is-kind .sn-pill select { color: #555; }
+/* Sinad's card glyphs: indigo, heavier lines; the speech bubble filled */
+.sn-card-ico { color: #3a3d9f; }
+.sn-card-ico svg { width: 58px; height: 58px; stroke-width: 1.7; }
+.sn-card-ico.is-fill svg { fill: currentColor; stroke-width: 1; }
+
+/* شعبه's four-point check (in the risk box of the ارزیابی window) */
+.ev-fraud { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.ev-fraud-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; border-radius: 8px; background: rgba(255, 255, 255, .55); font-size: 12.5px; }
+.ev-fraud-row.is-ok { background: #e7f6ec; }
+.ev-fraud-row.is-bad { background: #fde2e2; }
+.ev-fraud-btns { display: inline-flex; gap: 4px; flex-shrink: 0; }
+.ev-fraud-btns button { border: 1px solid #b7c3cf; background: #fff; border-radius: 6px; padding: 2px 8px; font-size: 12px; color: #334; }
+.ev-fraud-btns button.is-on { background: #16a34a; border-color: #16a34a; color: #fff; }
+.ev-fraud-btns button.is-red.is-on { background: #dc2626; border-color: #dc2626; }

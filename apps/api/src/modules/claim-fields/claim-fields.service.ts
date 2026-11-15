@@ -121,7 +121,9 @@ export class ClaimFieldsService {
   noticeEditable(claim: { brokerTenantId: string | null; currentStage?: string | null; handlingBranchId?: string | null; status?: string }): boolean {
     const ctx = getContext();
     if (ctx?.actorType === 'SUPER_ADMIN') return true;
-    if (ctx?.actorType !== 'ORG_USER' || ctx.panelMode === 'ENTRY' || claim.status === 'PAID') return false;
+    if (ctx?.actorType !== 'ORG_USER' || claim.status === 'PAID') return false;
+    // A کارگزاری's panel 1 gives it on its own cases (no other panel 1 does).
+    if (ctx.panelMode === 'ENTRY') return !!claim.brokerTenantId && ctx.tenantId === claim.brokerTenantId;
     if (claim.brokerTenantId) return ctx.tenantId === claim.brokerTenantId;
     if (!(ctx.permissions ?? []).includes('claim:process')) return false;
     const s = claim.currentStage;

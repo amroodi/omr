@@ -1,6 +1,6 @@
 'use client';
 import { claimTypeLabel } from './ui';
-import { ACTION_FA, LossNoticeEntry, STATE_FA, TimelineStep, withLossNotice } from './WorkflowPanel';
+import { LossNoticeEntry, stepActionFa, TimelineStep, withLossNotice } from './WorkflowPanel';
 import { blankVal, CaseClaim, CaseNo, DEATH_TYPES, fmtAmount, STATUS_FA, StatusHistoryButton, WF_STEPS } from './case-ui';
 
 const faD = (s: string) => s.replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[+d]);
@@ -73,7 +73,7 @@ export function ProcessTimeline({ c, fv, splitNumber = false }: { c: CaseClaim &
           return (
             <li key={s.order} className={pending ? 'is-wait' : back ? 'is-back' : 'is-done'}>
               <div className="cu-node-t">{s.stageLabel || s.holderName || 'مرحله'}{s.branchName ? ` — ${s.branchName}` : ''} :</div>
-              <div className="cu-kv"><b>وضعیت :</b><span>{pending ? 'در حال بررسی' : ACTION_FA[s.action || ''] || STATE_FA[s.state] || s.state}</span></div>
+              <div className="cu-kv"><b>وضعیت :</b><span>{pending ? 'در حال بررسی' : stepActionFa(s, steps)}</span></div>
               {s.decidedAt && <div className="cu-kv"><b>تاریخ :</b><span>{s.decidedAt}</span></div>}
               {s.note && <div className="cu-kv"><b>توضیحات :</b><span>{s.note}</span></div>}
               {(s.letters ?? []).map((l) => (
@@ -115,7 +115,7 @@ export function processRows(c: CaseClaim & { steps?: TimelineStep[]; lossNotice?
       const pending = s.state === 'PENDING';
       rows.push({
         stage: `${s.stageLabel || s.holderName || 'مرحله'}${s.branchName ? ` — ${s.branchName}` : ''}`,
-        status: pending ? 'در حال بررسی' : ACTION_FA[s.action || ''] || STATE_FA[s.state] || s.state,
+        status: pending ? 'در حال بررسی' : stepActionFa(s, steps),
         date: s.decidedAt ?? '',
         note: [s.note, ...(s.letters ?? []).map((l) => `نامه ${l.number ?? ''}${l.date ? ` (${l.date})` : ''}`)].filter(Boolean).join(' — '),
       });

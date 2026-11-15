@@ -1,4 +1,5 @@
 'use client';
+import { DeathNoticeDate } from './DeathNoticeDate';
 import { useEffect, useState } from 'react';
 import { toGregorian } from 'jalaali-js';
 import Link from 'next/link';
@@ -298,7 +299,8 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
                 <div><div className="cu-card-t">بیمه‌شده (متوفی)</div><div className="cu-card-v">{personTitle(claim.deceasedName, { death: !!claim.claimTypeDeath, gender: claim.insuredGender }) || '—'}</div>
                   {claim.deceasedNationalCode && <div className="cu-card-s">کد ملی: <bdi>{claim.deceasedNationalCode}</bdi></div>}
                   <div className="cu-card-s">{claim.claimTypeDeath === false ? 'تاریخ حادثه' : 'تاریخ فوت'}: {claim.eventDate || '—'}</div>
-                  {claim.causeOfDeath && <div className="cu-card-s">علت: {claim.causeOfDeath}{claim.causeDetail ? ` — ${claim.causeDetail}` : ''}</div>}</div>
+                  {claim.causeOfDeath && <div className="cu-card-s">علت: {claim.causeOfDeath}{claim.causeDetail ? ` — ${claim.causeDetail}` : ''}</div>}
+                  {org && claim.claimTypeDeath && <DeathNoticeDate claimId={id} entry className="cu-card-s" />}</div>
                 <span className="cu-card-ico"><BigIcon path={IC.user} size={34} /></span>
               </div>
               <div className="pcard cu-card">

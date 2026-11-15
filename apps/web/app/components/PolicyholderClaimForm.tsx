@@ -17,6 +17,7 @@ import { SearchPick } from './SearchPick';
 const toAscii = (s: string) => s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
 // Death claims ask for the date of death; accident disability / medical claims for the accident date.
 const DEATH_TYPES = new Set(['DEATH_ILLNESS', 'DEATH_ACCIDENT']);
+const ACCIDENT_TYPES = new Set(['DEATH_ACCIDENT', 'DISABILITY_ACCIDENT', 'MEDICAL_ACCIDENT', 'DAILY_GENERAL', 'DAILY_HOSPITAL']);
 
 /** Whole years between two ISO dates (age at death); null when either is missing or implausible. */
 function ageBetween(birthIso: string | null, atIso: string | null): number | null {
@@ -107,7 +108,7 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
   const [brokerFor, setBrokerFor] = useState<{ id: string; name: string } | null | undefined>(undefined);
   const [isBroker, setIsBroker] = useState(false);
   // The typed / picked fields survive a page refresh (lib/draft); the company comes back from ?company=.
-  const [f, setF, clearF] = useDraft('claim', { claimType: 'DEATH_ILLNESS', eventDate: '', birthDate: '', deceasedFullName: '', deceasedNationalCode: '', relation: '', mainName: '', mainCode: '', causeOfDeath: '', causeDetail: '', gender: '', description: '', startStage: '', deathCapital: '', accidentCapital: '', claimedAmount: '' });
+  const [f, setF, clearF] = useDraft('claim', { claimType: 'DEATH_ILLNESS', eventDate: '', birthDate: '', deceasedFullName: '', deceasedNationalCode: '', relation: '', mainName: '', mainCode: '', causeOfDeath: '', causeDetail: '', gender: '', description: '', startStage: '', deathCapital: '', accidentCapital: '', claimedAmount: '', deathNoticeDate: '' });
   // «اعلام خسارت»: is filing allowed from this login, and to which desks?
   const [notice, setNotice] = useState<{ enabled: boolean; targets: string[]; default: string; labels: Record<string, string> } | null>(null);
   useEffect(() => { client.get<any>(org ? '/claims/notice-options' : '/customer/notice-options', realm).then(setNotice).catch(() => setNotice(null)); }, []);
@@ -289,9 +290,10 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
       if (f.gender) payload.insuredGender = f.gender;
       if (f.startStage || (notice?.enabled && notice.targets.length > 1)) payload.startStage = f.startStage || startDefault;
       if (f.description.trim()) payload.description = f.description.trim();
-      if (!agent && f.claimedAmount) payload.claimedAmount = f.claimedAmount;
-      if (!agent && f.deathCapital) payload.deathCapital = f.deathCapital;
-      if (!agent && f.accidentCapital) payload.accidentCapital = f.accidentCapital;
+      if (!agent && estimate && estimate !== '0') payload.claimedAmount = estimate;
+      if (!agent && !accidentKind && f.deathCapital) payload.deathCapital = f.deathCapital;
+      if (!agent && accidentKind && f.accidentCapital) payload.accidentCapital = f.accidentCapital;
+      if (org && f.deathNoticeDate) payload.deathNoticeDate = f.deathNoticeDate;
       if (org) {
         // Panel 1: filed for the picked company, through the brokerage's own endpoint.
         if (!brokerFor) throw new Error('بیمه‌گزار را انتخاب کنید');
@@ -311,6 +313,14 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
   // Filed for a بیمه‌گزار by its brokerage, a case starts at the بیمه‌گزار's desk unless chosen otherwise (as the server does).
   const startDefault = notice ? (org && notice.targets.includes('POLICYHOLDER') ? 'POLICYHOLDER' : notice.default) : '';
   const isDeath = caseType?.death ?? DEATH_TYPES.has(f.claimType);
+  // عمر or حوادث: by the نوع بیمه‌نامه panel 1 works in, else by the نوع پرونده. سرمایه فوت is عمر's, سرمایه حادثه حوادث's.
+  const kindLine = getLine();
+  const accidentKind = kindLine ? kindLine === 'ACCIDENT' || kindLine === 'ACCIDENT_INDIVIDUAL'
+    : (caseType?.causeGroup ?? orgTypes[f.claimType]?.causeGroup) === 'ACCIDENT' || ACCIDENT_TYPES.has(f.claimType);
+  const capitalKey = accidentKind ? 'accidentCapital' : 'deathCapital';
+  // A death: مبلغ برآورد خسارت = the سرمایه (فوت + حادثه); other cases (هزینه، غرامت، نقص عضو) are estimated by hand.
+  const estimateFromCapital = isDeath;
+  const estimate = estimateFromCapital ? String(Number(f.deathCapital || 0) * (accidentKind ? 0 : 1) + Number(f.accidentCapital || 0) * (accidentKind ? 1 : 0) || '') : f.claimedAmount;
   const age = ageBetween(f.birthDate ? jalaliToIso(f.birthDate) : null, f.eventDate ? jalaliToIso(f.eventDate) : null);
 
   return (
@@ -432,12 +442,21 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
             <input className="input" readOnly value={age != null ? `${age.toLocaleString('fa-IR')} سال` : ''} placeholder="(پس از ورود تاریخ‌ها)" style={{ background: 'var(--surface-2)' }} />
           </PField>
           {/* Optional: not every operator knows them, but they help the review (and cap مبلغ قابل پرداخت). */}
-          {!agent && ([['claimedAmount', 'مبلغ برآورد خسارت'], ['deathCapital', 'سرمایه فوت'], ['accidentCapital', 'سرمایه حادثه']] as const).map(([k, l]) => (
+          {!agent && ([[capitalKey, accidentKind ? 'سرمایه حادثه' : 'سرمایه فوت'], ['claimedAmount', 'مبلغ برآورد خسارت']] as const).map(([k, l]) => k === 'claimedAmount' && estimateFromCapital ? (
+            <PField key={k} label={`${l} (ریال)`} help={accidentKind ? 'برابر سرمایه حادثه.' : 'برابر سرمایه فوت.'}>
+              <input className="input" readOnly value={estimate ? Number(estimate).toLocaleString('fa-IR') : ''} placeholder="(از روی سرمایه)" style={{ direction: 'ltr', textAlign: 'right', background: 'var(--surface-2)' }} />
+            </PField>
+          ) : (
             <PField key={k} label={`${l} (ریال)`} help={k === 'claimedAmount' ? 'اختیاری؛ مبلغ خسارتی که برآورد می‌کنید. مبلغ قطعی پس از ارزیابی ثبت می‌شود.' : 'اختیاری؛ اگر می‌دانید وارد کنید.'}>
               <input className="input" inputMode="numeric" value={f[k] ? Number(f[k]).toLocaleString('fa-IR') : ''} placeholder="اختیاری"
                 onChange={(e) => setF((s) => ({ ...s, [k]: toAscii(e.target.value).replace(/[^\d]/g, '').slice(0, 18) }))} style={{ direction: 'ltr', textAlign: 'right' }} />
             </PField>
           ))}
+          {org && isDeath && (
+            <PField label="تاریخ اعلام فوت" help="تاریخ رسیدن نامهٔ اعلام فوت.">
+              <JalaliDatePicker value={f.deathNoticeDate} onChange={(v: string) => setF((s) => ({ ...s, deathNoticeDate: v }))} placeholder="۱۴۰۵/۰۸/۰۱" />
+            </PField>
+          )}
 
           {form?.cause !== 'hidden' && (
           <div className="md:col-span-2 lg:col-span-3"><PField label={`${causeLabel}${form?.cause === 'required' ? ' *' : ''}`} help={causeOptions.length ? 'بخشی از علت را تایپ کنید یا از فهرست انتخاب کنید.' : 'علت را همان‌طور که می‌دانید بنویسید؛ مثلاً «ایست قلبی»، «تصادف رانندگی» یا «سقوط از ارتفاع».'}>

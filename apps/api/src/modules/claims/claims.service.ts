@@ -1,5 +1,5 @@
 import { ARCHIVE_FA, assertNotPaid, closedCase } from './archived';
-import { CONCESSION_GATE, CONCESSION_KEYS, CONCESSION_STATUS, COST_TYPE, doctorFormOf } from './forms';
+import { CONCESSION_GATE, CONCESSION_KEYS, CONCESSION_STATUS, COST_TYPE, doctorFormOf, FRAUD_ITEMS, isAccidentKind } from './forms';
 import JSZip from 'jszip';
 import { randomInt, randomUUID } from 'crypto';
 import { uploadName } from '../../common/validation/upload-name';
@@ -106,6 +106,8 @@ interface FileClaimInput {
   /** سرمایه فوت / سرمایه حادثه (rials), when the filer knows them — kept as the case's fields. */
   deathCapital?: string;
   accidentCapital?: string;
+  /** «تاریخ اعلام فوت» typed by a کارگزاری's panel 1 at filing (Jalali). */
+  deathNoticeDate?: string;
 }
 
 /** The caller's seat in the claim chain (see myDesk). */
@@ -513,7 +515,7 @@ export class ClaimsService {
       catch (e: any) { if (e instanceof BadRequestException || e instanceof ServiceUnavailableException) throw new (e.constructor as any)(`بیمه‌شدهٔ اصلی: ${e.message}`); throw e; }
     }
     // The same case twice (two operators, not knowing of each other): refused before it gets a number.
-    await this.assertNotDuplicate(insurerTenantId, input.claimType ?? 'DEATH_ILLNESS', nid, eventDate);
+    await this.assertNotDuplicate(insurerTenantId, input.claimType ?? 'DEATH_ILLNESS', nid, eventDate, undefined, line);
     // Numbering must see every case with this policy number (other brokerages' too), or it could pick a
     // number already taken: the unrestricted client, which returns only numbers.
     const claimNumber = await nextClaimNumber(this.prisma.unscoped() as any, input.policyNumber); // «سال/شماره بیمه‌نامه/n»
@@ -579,8 +581,15 @@ export class ClaimsService {
       include: { steps: true },
     });
     // سرمایه فوت / سرمایه حادثه typed on the form: the case's own fields (as an import fills them).
-    const capitals = ([['death_capital', input.deathCapital], ['accident_capital', input.accidentCapital]] as const)
+    // سرمایه فوت belongs to عمر, سرمایه حادثه to حوادث: the other one is not kept on the case.
+    const accidentKind = isAccidentKind(line, input.claimType ?? 'DEATH_ILLNESS');
+    const capitals = ([['death_capital', accidentKind ? undefined : input.deathCapital], ['accident_capital', accidentKind ? input.accidentCapital : undefined]] as const)
       .map(([key, v]) => [key, String(v ?? '').replace(/[^\d]/g, '')] as const).filter(([, v]) => v && Number(v) > 0);
+    // «تاریخ اعلام فوت»: a کارگزاری's panel 1 may give it at filing.
+    const noticeDay = input.onBehalf && input.deathNoticeDate ? toAsciiDigits(input.deathNoticeDate).trim() : '';
+    if (/^\d{4}\/\d{1,2}\/\d{1,2}$/.test(noticeDay)) {
+      await db.claimFieldValue.create({ data: { claimId: claim.id, key: 'death_notice_date', value: noticeDay, source: 'MANUAL' as any, confirmedAt: new Date() } });
+    }
     if (capitals.length) {
       await db.claimFieldValue.createMany({ data: capitals.map(([key, value]) => ({ claimId: claim.id, key, value, source: 'MANUAL' as any, confirmedAt: new Date() })), skipDuplicates: true });
     }
@@ -1623,24 +1632,33 @@ export class ClaimsService {
 
   /** Panel 1 corrects what it filed (name, کد ملی, dates, cause, description) until panel 2 starts on it. */
   /**
-   * One case per event. A death happens once: a national code with a death case (any نوع پرونده that is a
-   * death, at any insurer, not deleted) can't get another. Other cases (حوادث, غرامت…) may be many for one
-   * person, but not the same incident twice: the same نوع پرونده on the same تاریخ وقوع is refused.
+   * One case per event, and each نوع بیمه‌نامه is assessed on its own: a person with عمر and حوادث cover who dies
+   * in an accident gets one عمر case and one حوادث case (related by the کد ملی). عمر: one case per person (in
+   * each عمر بیمه‌نامه). حوادث: one death case; its other cases (هزینه، غرامت، نقص عضو) may be many, but not the
+   * same incident twice — the same نوع پرونده on the same تاریخ وقوع is refused.
    */
-  private async assertNotDuplicate(insurerTenantId: string, claimType: string, nid: string | null | undefined, eventDate: Date | null, exceptId?: string) {
+  private async assertNotDuplicate(insurerTenantId: string, claimType: string, nid: string | null | undefined, eventDate: Date | null, exceptId?: string, line?: string | null) {
     const hash = nid ? this.crypto.blindIndex(nid.trim()) : null;
     if (!hash) return;
     const u = this.prisma.unscoped();
     const others = await u.claim.findMany({
       where: { deceasedNationalCodeHash: hash, deletedAt: null, ...(exceptId ? { id: { not: exceptId } } : {}) },
-      select: { id: true, claimNumber: true, claimType: true, insurerTenantId: true, eventDate: true },
+      select: { id: true, claimNumber: true, claimType: true, insurerTenantId: true, eventDate: true, line: true },
     });
     if (!others.length) return;
     const isDeath = async (tenantId: string, type: string) => caseTypeOf(await this.modelOf(tenantId), type)?.death ?? false;
     const day = (d: Date | null) => (d ? toJalali(d, false) : null);
+    // Cases from before نوع بیمه‌نامه was kept (no line) count against every kind.
+    const sameKind = (o: { line: string | null }) => !line || !o.line || o.line === line;
+    // عمر: one case per person in each عمر بیمه‌نامه (whatever its نوع پرونده). حوادث may have many, on different dates.
+    if (!isAccidentKind(line, claimType)) {
+      const prev = others.find((o) => sameKind(o) && !isAccidentKind(o.line, o.claimType));
+      if (prev) throw new ConflictException(`برای این کد ملی پیش‌تر پروندهٔ عمر${prev.line ? ` (${kindLabel(prev.line)})` : ''} با شمارهٔ ${prev.claimNumber} ثبت شده است؛ برای هر بیمه‌شده تنها یک پروندهٔ عمر ثبت می‌شود.`);
+      return;
+    }
     if (await isDeath(insurerTenantId, claimType)) {
       for (const o of others) {
-        if (await isDeath(o.insurerTenantId, o.claimType)) throw new ConflictException(`برای این کد ملی پیش‌تر پروندهٔ فوت (شمارهٔ ${o.claimNumber}) ثبت شده است؛ برای هر بیمه‌شده تنها یک پروندهٔ فوت ثبت می‌شود.`);
+        if (sameKind(o) && (await isDeath(o.insurerTenantId, o.claimType))) throw new ConflictException(`برای این کد ملی پیش‌تر پروندهٔ فوت${o.line ? ` ${kindLabel(o.line)}` : ''} (شمارهٔ ${o.claimNumber}) ثبت شده است؛ برای هر بیمه‌شده در هر نوع بیمه‌نامه تنها یک پروندهٔ فوت ثبت می‌شود.`);
       }
       return;
     }
@@ -1686,7 +1704,7 @@ export class ClaimsService {
     if (input.eventDate !== undefined || input.deceasedNationalCode !== undefined) {
       // A new national code or date must not make it a copy of another case.
       const nidNow = input.deceasedNationalCode?.trim() || (claim.deceasedNationalCode ? this.crypto.decrypt(claim.deceasedNationalCode) : null);
-      await this.assertNotDuplicate(claim.insurerTenantId, claim.claimType, nidNow, input.eventDate !== undefined ? new Date(input.eventDate) : claim.eventDate, claim.id);
+      await this.assertNotDuplicate(claim.insurerTenantId, claim.claimType, nidNow, input.eventDate !== undefined ? new Date(input.eventDate) : claim.eventDate, claim.id, claim.line);
     }
     if (input.eventDate !== undefined) {
       event = new Date(input.eventDate);
@@ -1995,7 +2013,8 @@ export class ClaimsService {
     const entryList = await this.entryRequired(claim, reqs.map((r) => r.code));
     const xc = getContext();
     const insurerDesk = xc?.actorType === 'SUPER_ADMIN' || (xc?.actorType === 'ORG_USER' && xc.panelMode !== 'ENTRY' && xc.tenantId === claim.insurerTenantId);
-    const items = [...reqs, ...kept].map((r) => {
+    const formUploader = await this.insurerFormUploader(claim);
+    const items = [...reqs, ...kept].filter((r) => !insurerOnlyDoc(r.code) || insurerDesk).map((r) => {
       const group = byCode.get(r.code) ?? [];
       const latest = group[0];
       return {
@@ -2005,6 +2024,7 @@ export class ClaimsService {
         // The insurer's own forms are required only of its panel-2 desks (شعبه uploads them); optional elsewhere.
         required: kept.includes(r) || (insurerOnlyDoc(r.code) && !insurerDesk) ? false : entryList ? entryList.required.has(r.code) || (entryList.accident.has(r.code) && this.isCrash(claim)) : docRequired(r, claim),
         insurerOnly: insurerOnlyDoc(r.code),
+        canUpload: !insurerOnlyDoc(r.code) || formUploader, // the insurer's own forms: only the شعبه operator holding the case
         accidentOnly: !!entryList?.accident.has(r.code), // «در صورت وقوع سانحه تصادف» (not greyed)
         uploaded: !!latest && latest.aiStatus !== 'MISMATCH', // a refused newest file leaves the slot to fix
         aiRefused: latest?.aiStatus === 'MISMATCH',
@@ -2167,6 +2187,17 @@ export class ClaimsService {
     await db.document.update({ where: { id: docId }, data: { verificationStatus: status } });
   }
   /** Upload a document to a claim, tagged with the required-document code it satisfies. */
+  /**
+   * The insurer's own forms («فرم تکمیل شده تعیین وضعیت پوشش…», دوره انتظار) are uploaded only by the شعبه
+   * operator who holds the case (or an admin there); no other panel gets a slot for them.
+   */
+  private async insurerFormUploader(claim: any): Promise<boolean> {
+    const ctx = getContext();
+    if (ctx?.actorType === 'SUPER_ADMIN') return true;
+    if (ctx?.actorType !== 'ORG_USER' || ctx.panelMode === 'ENTRY' || ctx.tenantId !== claim.insurerTenantId || claim.currentStage !== 'BRANCH') return false;
+    return this.holdsDesk(claim, await this.myDesk());
+  }
+
   async uploadDocument(claimId: string, file: Express.Multer.File, docCode: string, extra = false) {
     if (!file?.buffer?.length) throw new BadRequestException('فایلی دریافت نشد');
     const excelOk = docCode?.trim() === BENEFICIARY_FILE_CODE && EXCEL_MIME.has(file.mimetype);
@@ -2184,6 +2215,7 @@ export class ClaimsService {
       // An assessor without claim:file uploads only while the case is on their own desk.
       if (!(ctx.permissions ?? []).includes(PERMISSIONS.CLAIM_PROCESS) || !this.holdsDesk(claim, await this.myDesk())) throw new ForbiddenException('بارگذاری مدرک فقط وقتی پرونده نزد شماست ممکن است');
     }
+    if (insurerOnlyDoc(docCode ?? '') && !(await this.insurerFormUploader(claim))) throw new ForbiddenException('این مدرک را کارشناس شعبه‌ای که پرونده در اختیار اوست بارگذاری می‌کند');
     return this.storeDocument(claim, file, docCode, getContext()?.actorId ?? null, () => this.uploaderPhone(claim), extra && !!docCode?.trim());
   }
 
@@ -2205,6 +2237,7 @@ export class ClaimsService {
     const u = this.prisma.unscoped();
     const doc = await u.document.findFirst({ where: { id: docId, claimId }, select: { id: true, docCode: true, extra: true, storageKey: true, verificationStatus: true, reviews: { select: { state: true } } } });
     if (!doc) throw new NotFoundException('مدرک یافت نشد');
+    if (insurerOnlyDoc(doc.docCode ?? '') && !(await this.insurerFormUploader(claim))) throw new ForbiddenException('این مدرک را کارشناس شعبه‌ای که پرونده در اختیار اوست مدیریت می‌کند');
     if (doc.verificationStatus !== 'PENDING' || doc.reviews.some((r) => r.state !== 'PENDING')) {
       throw new BadRequestException('این مدرک بررسی شده است و دیگر حذف نمی‌شود؛ در صورت نیاز نسخهٔ جدید بارگذاری کنید.');
     }
@@ -2650,7 +2683,7 @@ export class ClaimsService {
       'stage-hq': { label: 'در دست بررسی مدیریت ستاد', where: up('HQ'), desk: ['HQ'] },
       'stage-council': { label: 'در دست بررسی شورای فنی', where: up('COUNCIL'), desk: ['COUNCIL'] },
       'approve-amount': { label: 'در انتظار تایید پرونده خسارت', where: { ...up('HQ'), finalizedAmount: { not: null }, amountApprovedAt: null }, desk: ['BRANCH', 'HQ', 'COUNCIL'] },
-      'returning': { label: 'عودت‌شده — در انتظار ارسال به سطح پایین‌تر', where: { flowDirection: 'DOWN', flowPurpose: 'DEFICIENCY', currentStage: { not: 'POLICYHOLDER' } }, desk: ['BROKER', 'BRANCH', 'HQ'] },
+      'returning': { label: 'عودت‌شده — در انتظار ارسال برای رفع نقص', where: { flowDirection: 'DOWN', flowPurpose: 'DEFICIENCY', currentStage: { not: 'POLICYHOLDER' } }, desk: ['BROKER', 'BRANCH', 'HQ'] },
       'to-pay': { label: 'دستور پرداخت — در انتظار پرداخت', where: { flowPurpose: 'PAYMENT', status: ClaimStatus.APPROVED }, desk: ['BRANCH', 'HQ'] },
       'physical': { label: 'اصل مدارک — درخواست‌های باز', where: { physicalRequests: { some: { status: { in: ['REQUESTED', 'SENT'] } } } }, desk: ['BRANCH', 'HQ', 'COUNCIL'] },
       'paid': { label: 'پرداخت‌شده', where: { status: ClaimStatus.PAID } },
@@ -2891,6 +2924,7 @@ export class ClaimsService {
       later: claim.evaluatorLater,
       doctor: { state: claim.doctorState, note: claim.doctorNote },
       fraudCheck: claim.fraudCheck,
+      fraudItems: FRAUD_ITEMS.map((x) => ({ ...x, value: ((claim.fraudItems ?? {}) as Record<string, string>)[x.key] ?? null })),
       risk: { level, reasons },
       canEvaluate: this.holdsDesk(claim, desk) && claim.currentStage === 'BRANCH' && claim.flowDirection === 'UP' && getContext()?.panelMode !== 'ENTRY',
       admin: !!desk.insurerAdmin,
@@ -3200,6 +3234,18 @@ export class ClaimsService {
         await db.claim.update({ where: { id: claimId }, data: { fraudCheck: op === 'fraud-clean' ? 'CLEAN' : 'FRAUD' } });
         await event(op === 'fraud-clean' ? 'FRAUD_CLEAN' : 'FRAUD_FLAG');
         break;
+      case 'fraud-item': { // one point of the four-point check: «مورد ندارد» / «مشکوک»
+        need(atBranch && holds, 'پرونده در اختیار شما نیست');
+        const item = input.request?.item ?? ''; const value = input.request?.value ?? '';
+        need(FRAUD_ITEMS.some((x) => x.key === item) && (value === 'OK' || value === 'SUSPECT' || value === ''), 'مورد نامعتبر است');
+        const items = { ...((claim.fraudItems ?? {}) as Record<string, string>) };
+        if (value) items[item] = value; else delete items[item];
+        // Every point clear → «بررسی شد»; any suspect point → the case goes to عودت with that point as its reason.
+        const fraudCheck = Object.values(items).includes('SUSPECT') ? 'FRAUD' : FRAUD_ITEMS.every((x) => items[x.key] === 'OK') ? 'CLEAN' : null;
+        await db.claim.update({ where: { id: claimId }, data: { fraudItems: items, fraudCheck } });
+        await event(value === 'SUSPECT' ? 'FRAUD_FLAG' : 'FRAUD_CLEAN', FRAUD_ITEMS.find((x) => x.key === item)!.label);
+        break;
+      }
       case 'note': // «یادداشت ارزیاب»
         need(!!note, 'متن یادداشت را بنویسید');
         await event('NOTE');
