@@ -1,4 +1,4 @@
-import { INSURED_RELATIONS, InsuredRelation } from '../claims/workflow';
+import { FILING_RELATIONS, InsuredRelation } from '../claims/workflow';
 
 import { Type } from 'class-transformer';
 import { ArrayMaxSize, IsArray, IsEnum, IsIn, IsISO8601, IsOptional, IsString, IsUUID, Length, Matches, ValidateNested } from 'class-validator';
@@ -112,7 +112,7 @@ export class CustomerFileClaimDto {
 
   // نوع بیمه‌شده: the subject above is the main insured, or a dependent of the main insured named here.
   @IsOptional()
-  @IsIn(INSURED_RELATIONS as unknown as string[])
+  @IsIn(FILING_RELATIONS)
   insuredRelation?: InsuredRelation;
 
   @IsOptional()

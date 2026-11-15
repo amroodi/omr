@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger, OnModuleDestroy, OnModuleInit,
 import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
 import { fromJalali, toAsciiDigits } from '../../common/jalali/jalali.util';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { isAccidentKind } from '../claims/forms';
 
 /**
  * Coverage inquiry from the insurer's issuing system (فن‌آوران, behind Sinad). One connection per insurer,
@@ -23,6 +24,8 @@ export interface CoverageFields {
   policyNumber: string; // their بیمه‌نامه number (empty = not in the reply)
   policyStart: string;
   policyEnd: string;
+  deathCapital: string; // «سرمایه فوت» (empty = not in the reply)
+  accidentCapital: string; // «سرمایه حادثه»
 }
 export interface CoverageConfig {
   enabled: boolean;
@@ -48,12 +51,13 @@ export interface CoverageResult {
   status: Exclude<CoverageStatus, 'NOT_CHECKED'>;
   person: { firstName: string | null; lastName: string | null; insuredCode: string | null; birthYear: string | null } | null;
   policy: { number: string | null; start: string | null; end: string | null } | null; // ISO dates
+  capital?: { death: string | null; accident: string | null }; // rials, digits only
   reason?: 'OUT_OF_PERIOD';
 }
 
 export const DEFAULT_FIELDS: CoverageFields = {
   valid: 'معتبر', firstName: 'نام', lastName: 'نام خانوادگی', insuredCode: 'کد رایانه', birthYear: 'سال تولد',
-  nationalCode: 'کد ملی', policyNumber: '', policyStart: '', policyEnd: '',
+  nationalCode: 'کد ملی', policyNumber: '', policyStart: '', policyEnd: '', deathCapital: '', accidentCapital: '',
 };
 export const DEFAULT_COVERAGE: CoverageConfig = {
   enabled: false, url: '', method: 'GET', nationalCodeParam: 'nationalCode', extraParams: '', authHeader: 'Authorization', secret: null,
@@ -107,7 +111,10 @@ export function readCoverage(body: unknown, cfg: CoverageConfig = DEFAULT_COVERA
   if (!row.has(norm(f.valid))) throw new Error(`پاسخ سرویس ستون «${f.valid}» ندارد`);
   const yes = new Set(cfg.validValues.split(',').map((x) => x.trim().toLowerCase()).filter(Boolean));
   const number = str(f.policyNumber); const start = dateOf(str(f.policyStart)); const end = dateOf(str(f.policyEnd));
+  const amount = (k: string) => { const v = toAsciiDigits(str(k) ?? '').replace(/[^\d]/g, ''); return v && Number(v) > 0 ? v : null; };
+  const capital = { death: amount(f.deathCapital), accident: amount(f.accidentCapital) };
   return {
+    ...(capital.death || capital.accident ? { capital } : {}),
     status: yes.has(String(row.get(norm(f.valid))).trim().toLowerCase()) ? 'VALID' : 'INVALID',
     person: { firstName: str(f.firstName), lastName: str(f.lastName), insuredCode: str(f.insuredCode), birthYear: str(f.birthYear) },
     policy: number || start || end ? { number, start, end } : null,
@@ -132,13 +139,14 @@ export function coverageMessage(r: { status: CoverageStatus; reason?: string }):
   return 'پوشش بیمه‌ای معتبر است';
 }
 
-export interface CoverageRecord { status: CoverageStatus; policyStart: string | null } // policyStart: ISO
+export interface CoverageRecord { status: CoverageStatus; policyStart: string | null; capital?: { death: string | null; accident: string | null } } // policyStart: ISO
 
 /** What the filing form gets back (and the server enforces again on «ثبت پرونده»). */
 export interface CoverageAnswer {
   status: CoverageStatus;
   person: CoverageResult['person'];
   policy: CoverageResult['policy'];
+  capital?: CoverageResult['capital'];
   reason?: string;
   blocked: boolean; // this answer stops the case from being filed
   message: string;
@@ -230,15 +238,21 @@ export class CoverageService implements OnModuleInit, OnModuleDestroy {
       if (a.status === 'NOT_CHECKED') throw new ServiceUnavailableException(`${a.message} و تا پاسخ آن پرونده ثبت نمی‌شود؛ کمی بعد دوباره تلاش کنید.`);
       throw new BadRequestException(`${a.message}؛ پرونده برای پرداخت خسارت ثبت نمی‌شود.`);
     }
-    return { status: a.status, policyStart: a.policy?.start ?? null };
+    return { status: a.status, policyStart: a.policy?.start ?? null, capital: a.capital };
   }
 
-  /** The answer kept on the case: its status, and the بیمه‌نامه start date when the reply gives one. */
-  async record(claimId: string, r: CoverageRecord) {
-    await this.prisma.unscoped().claim.update({
+  /** The answer kept on the case: its status, and the بیمه‌نامه start date and سرمایه when the reply gives them (these win over what was typed). */
+  async record(claimId: string, r: CoverageRecord, accidentKind?: boolean) {
+    const db = this.prisma.unscoped();
+    await db.claim.update({
       where: { id: claimId },
       data: { coverageStatus: r.status, coverageCheckedAt: r.status === 'NOT_CHECKED' ? null : new Date(), ...(r.policyStart ? { insurerPolicyStart: new Date(r.policyStart) } : {}) },
     });
+    // سرمایه فوت belongs to عمر, سرمایه حادثه to حوادث (the case keeps only its own kind's).
+    const caps = ([['death_capital', accidentKind === true ? null : r.capital?.death], ['accident_capital', accidentKind === false ? null : r.capital?.accident]] as const).filter(([, v]) => !!v) as [string, string][];
+    for (const [key, value] of caps) {
+      await db.claimFieldValue.upsert({ where: { claimId_key: { claimId, key } }, update: { value, source: 'MANUAL', confirmedAt: new Date() }, create: { claimId, key, value, source: 'MANUAL', confirmedAt: new Date() } });
+    }
   }
 
   /** Cases still NOT_CHECKED: as soon as the service answers they are filled in, at its rate limit. */
@@ -252,11 +266,11 @@ export class CoverageService implements OnModuleInit, OnModuleDestroy {
       for (const t of insurers) {
         const cfg = coverageFrom(t.coverageConfig);
         if (!cfg.enabled || !cfg.url) continue;
-        const due = await db.claim.findMany({ where: { insurerTenantId: t.id, coverageStatus: 'NOT_CHECKED', deletedAt: null }, orderBy: { createdAt: 'asc' }, take: Math.max(1, cfg.perMinute), select: { id: true, deceasedNationalCode: true, eventDate: true } });
+        const due = await db.claim.findMany({ where: { insurerTenantId: t.id, coverageStatus: 'NOT_CHECKED', deletedAt: null }, orderBy: { createdAt: 'asc' }, take: Math.max(1, cfg.perMinute), select: { id: true, deceasedNationalCode: true, eventDate: true, line: true, claimType: true } });
         for (const c of due) {
           const nid = c.deceasedNationalCode ? this.crypto.decrypt(c.deceasedNationalCode) : null;
           if (!nid) continue;
-          try { const r = judgeCoverage(await this.ask(cfg, nid), cfg, c.eventDate); await this.record(c.id, { status: r.status, policyStart: r.policy?.start ?? null }); checked++; } catch { break; } // still down: try again next minute
+          try { const r = judgeCoverage(await this.ask(cfg, nid), cfg, c.eventDate); await this.record(c.id, { status: r.status, policyStart: r.policy?.start ?? null, capital: r.capital }, isAccidentKind(c.line, c.claimType)); checked++; } catch { break; } // still down: try again next minute
         }
       }
     } finally { this.busy = false; }

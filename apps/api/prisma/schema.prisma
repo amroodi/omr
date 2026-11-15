@@ -145,6 +145,9 @@ model PlatformConfig {
   // defines one). Off = no check, the operator's approval alone is enough. Super-admin only.
   shahkarEnabled     Boolean  @default(false)
   shahkarConfig      String? // ENCRYPTED json: provider + endpoint + credentials (see auth/shahkar.service.ts)
+  // «تطابق شبا و کد ملی» of a case's ذینفعان (model-view/iban-match.service.ts): off until Super Admin sets it up.
+  ibanMatchEnabled   Boolean  @default(false)
+  ibanMatchConfig    String? // ENCRYPTED json: endpoint, field names, where the yes/no is, token
   // «بررسی هوشمند مدارک»: an AI model (via AvalAI) checks that each uploaded file is the document of the
   // slot it was uploaded to. Off = every file is accepted as before. Super-admin only.
   aiReviewEnabled    Boolean  @default(false)

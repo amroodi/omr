@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { CoverageAdminController } from './coverage-admin.controller';
 import { CoverageService } from './coverage.service';
+import { IbanMatchService } from './iban-match.service';
 import { ModelStore } from './model-store.service';
 import { ModelViewController } from './model-view.controller';
 import { KindsService } from './kinds.service';
@@ -10,7 +11,7 @@ import { KindsAdminController, KindsPublicController } from './kinds.controller'
 @Global()
 @Module({
   controllers: [ModelViewController, CoverageAdminController, KindsAdminController, KindsPublicController],
-  providers: [ModelStore, CoverageService, KindsService],
-  exports: [ModelStore, CoverageService, KindsService],
+  providers: [ModelStore, CoverageService, KindsService, IbanMatchService],
+  exports: [ModelStore, CoverageService, KindsService, IbanMatchService],
 })
 export class ModelViewModule {}

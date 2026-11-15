@@ -3,6 +3,7 @@ import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { assistInfo, client, getToken, hasPerm, orgMode } from '../../../lib/client';
+import { lastPanel } from '../../../lib/panel';
 import { useKinds } from '../../../lib/line';
 import { Shell, Icon } from '../../components/Shell';
 import { ORG_NAV } from '../nav';
@@ -66,6 +67,8 @@ function WorkDesk() {
   // an SSR/client hydration mismatch.
   const [canFile, setCanFile] = useState(false);
   const [entry, setEntry] = useState(false);
+  const [brokerDesk, setBrokerDesk] = useState(false); // کارگزاری's panel 2: «بررسی مدارک»
+  useEffect(() => { setBrokerDesk(lastPanel('org') === 'BROKER'); }, []);
   useEffect(() => { const e = orgMode() === 'ENTRY'; setEntry(e); setCanFile((e || !!assistInfo('org')) && hasPerm('org', 'claim:file')); }, []);
 
   useEffect(() => {
@@ -387,7 +390,7 @@ function WorkDesk() {
                                     <button className="sn-act is-ghost" disabled={busyOp} onClick={() => sinadOp(r.id, 'release')} title="پرونده به پرونده‌های تخصیص‌نیافتهٔ شعبه برمی‌گردد">خارج کردن از کارتابل</button>
                                   )}
                                 </>
-                              ) : !entry && <a href={`/org/claims/${r.id}/evaluate`} target="_blank" rel="noopener" className="sn-act" title="باز شدن در زبانهٔ جدید">ارزیابی</a>}
+                              ) : !entry && <a href={`/org/claims/${r.id}/evaluate`} target="_blank" rel="noopener" className="sn-act" title="باز شدن در زبانهٔ جدید">{brokerDesk ? 'بررسی مدارک' : 'ارزیابی'}</a>}
                               <a href={`/org/claims/${r.id}`} target="_blank" rel="noopener" className="sn-act is-ghost" title="باز شدن در زبانهٔ جدید">مشاهده</a>
                             </span>
                           </td>

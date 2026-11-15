@@ -96,6 +96,28 @@ export const RETIRED_DOC_CODES = ['social_security_history', 'beneficiary_iban',
 /** Every document about who receives the money (ذینفع form, حصر وراثت, their IDs and شبا), in the default and Alborz lists. */
 export const BENEFICIARY_DOC_CODES = ['beneficiary_form', 'inheritance_cert', 'no_beneficiary_form_letter', 'heirs_id_national_card', 'iban_printout',
   'li_beneficiary_form', 'li_heirs_id', 'li_heirs_iban', 'da_crash_beneficiary_form', 'da_crash_heirs_id', 'da_crash_heirs_iban'];
+/**
+ * «تصویر مدارک ذینفع/ذینفعان»: on a case whose list asks for any document about who receives the money, these
+ * replace them — one slot (5th in the list) whose documents follow the case's choice (`beneficiaryType`):
+ * «ذینفع های منتخب» (the form), «حصر وراثت» (the certificate), or «بیمه گزار» (nothing to upload).
+ */
+export const BENEFICIARY_GROUP_LABEL = 'تصویر مدارک ذینفع/ذینفعان';
+export const BENEFICIARY_GROUP_AT = 4; // 5th row
+export const BENEFICIARY_GROUP: Record<string, { code: string; label: string }[]> = {
+  'ذینفع قانونی': [
+    { code: 'beneficiary_form', label: 'اصل فرم تعیین ذینفع که توسط بیمه شده تکمیل و ممهور به مهر بیمه گذار باشد' },
+    { code: 'beneficiary_ids', label: 'تصویر کارت ملی و شناسنامه ذینفعان ( ممهور به مهر برابر با اصل )' },
+    { code: 'beneficiary_ibans', label: 'پرینت بانکی شماره شبای ذینفعان ( شامل نام صاحب حساب نام بانک و شماره شبا )' },
+  ],
+  'وراث قانونی': [
+    { code: 'inheritance_cert', label: 'گواهی حصر وراثت که در آن سهم الارث هر یک از وراث قانونی مشخص شده باشد (با ارزش قانونی نا محدود )' },
+    { code: 'heirs_id_national_card', label: 'تصویر کارت ملی و شناسنامه وراث قانونی ( ممهور به مهر برابر با اصل )' },
+    { code: 'heirs_ibans', label: 'پرینت بانکی شماره شبای وراث قانونی ( شامل نام صاحب حساب نام بانک و شماره شبا )' },
+  ],
+  'بیمه گزار': [],
+};
+export const BENEFICIARY_GROUP_CODES = [...new Set(Object.values(BENEFICIARY_GROUP).flat().map((x) => x.code))];
+
 export function beneficiaryHiddenDocs(beneficiaryType: string | null | undefined): string[] {
   if (beneficiaryType === 'ذینفع قانونی') return ['inheritance_cert', 'no_beneficiary_form_letter'];
   if (beneficiaryType === 'وراث قانونی') return ['beneficiary_form'];

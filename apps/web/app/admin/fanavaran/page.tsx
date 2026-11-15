@@ -9,7 +9,7 @@ import { JalaliDatePicker } from '../../components/JalaliDatePicker';
 import { Flash } from '../../components/Toaster';
 import { PasswordInput } from '../../components/PasswordInput';
 
-interface Fields { valid: string; firstName: string; lastName: string; insuredCode: string; birthYear: string; nationalCode: string; policyNumber: string; policyStart: string; policyEnd: string }
+interface Fields { valid: string; firstName: string; lastName: string; insuredCode: string; birthYear: string; nationalCode: string; policyNumber: string; policyStart: string; policyEnd: string; deathCapital: string; accidentCapital: string }
 interface Config {
   enabled: boolean; url: string; method: 'GET' | 'POST'; nationalCodeParam: string; extraParams: string; authHeader: string; hasSecret: boolean;
   timeoutSec: number; perMinute: number; rowsPath: string; fields: Fields; validValues: string;
@@ -40,6 +40,8 @@ const FIELD_FA: [keyof Fields, string, string][] = [
   ['policyNumber', 'ستون شماره بیمه‌نامه', 'خالی = پاسخ شماره بیمه‌نامه ندارد'],
   ['policyStart', 'ستون شروع بیمه‌نامه', 'شمسی (۱۴۰۵/۰۵/۰۱) یا میلادی'],
   ['policyEnd', 'ستون پایان بیمه‌نامه', ''],
+  ['deathCapital', 'ستون سرمایه فوت', 'ریال؛ خالی = پاسخ ندارد'],
+  ['accidentCapital', 'ستون سرمایه حادثه', 'ریال؛ خالی = پاسخ ندارد'],
 ];
 
 function Section({ title, children, hint }: { title: string; children: ReactNode; hint?: string }) {

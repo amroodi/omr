@@ -15,7 +15,8 @@ import { WorkflowPanel } from './WorkflowPanel';
 import { caseTitle } from '../../lib/caseTitle';
 import { AI_QUEUED_FA, aiVerdict, ChecklistItem, ClaimDoc, dateOnly, STATUS_FA, useCase } from './case-ui';
 import { DocUploadTile, OnProgress, UploadButton } from './upload';
-import { BENEFICIARY_FORM, BeneficiaryChoice, INHERITANCE_CERT, NO_FORM_LETTER } from './heirs';
+import { BEN_FA, BeneficiaryGroup } from './heirs';
+import { RequiredDocsButton } from './RequiredDocsPdf';
 import { JalaliDatePicker } from './JalaliDatePicker';
 import { causeDetailFor, filerText, GENDERS, personTitle } from './claim-wording';
 import { Flash } from './Toaster';
@@ -197,7 +198,7 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
       throw e;
     }
   };
-  const [heirsMissing, setHeirsMissing] = useState(false);
+  const [benOpen, setBenOpen] = useState(false); // «تصویر مدارک ذینفع/ذینفعان» opened
   const viewDoc = (docId: string) => client.view(`${api}/documents/${docId}/file`, realm).catch((e) => setError(e.message));
   /** «حذف»: a file uploaded by mistake, while no desk has decided on it (the server checks again). */
   const removable = (p: ClaimDoc) => claim?.status !== 'PAID' && p.status === 'PENDING' && !(p.reviews ?? []).some((r) => r.state !== 'PENDING');
@@ -229,7 +230,7 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
     };
     const fail = (reason: string, items: string[] = []) => show({ ok: false, reason, items });
     if (uploading) return fail('بارگذاری یک یا چند مدرک هنوز تمام نشده است؛ پس از پایان بارگذاری دوباره «ثبت نهایی» را بزنید.');
-    if (heirsMissing) return fail('نام، کد ملی و شماره شبای ذینفعان را بنویسید و «ذخیرهٔ ذینفعان» را بزنید.');
+    if (checklist.beneficiary && !checklist.beneficiary.type) { setBenOpen(true); return fail(`در «${checklist.beneficiary.label}» یکی از ذینفع های منتخب، حصر وراثت یا بیمه گزار را انتخاب کنید.`); }
     if (missing.length) return fail('مدارک الزامی زیر هنوز بارگذاری نشده‌اند؛ پس از بارگذاری آن‌ها دوباره «ثبت نهایی» را بزنید:', missing);
     if (rejected.length) return fail('مدارک زیر رد شده‌اند و باید مدرک صحیح جایگزین شود:', rejected);
     if (submitAction?.disabled) return fail(submitAction.disabled);
@@ -252,8 +253,82 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
     : claim.workflow?.currentStage ? `مدارک ثبت نهایی شده و پرونده نزد «${claim.workflow.currentStageLabel}» است.`
     : `پرونده بسته شده است (${STATUS_FA[claim.status] ?? claim.status}).`;
 
+  /** One document of the list: its status, its pages, the upload tile and its review trail. */
+  const docRow = (it: ChecklistItem, no: string) => {
+    if (!checklist || !claim) return null;
+    const greyed = !!checklist.entryList && !it.required && !it.uploaded && !it.accidentOnly;
+    const story = docStory(it, !!claim.story?.manual);
+    const st = up[it.code];
+    const d = it.documents[0] as ClaimDoc | undefined;
+    const older = it.documents.slice(1);
+    const pages = [...(d ? [d] : []), ...(it.extras ?? [])]; // the current file, then the pages added with «+»
+    const chip = !d ? (it.required ? 'بارگذاری نشده' : 'برحسب نیاز') : story.tone === 'ok' ? 'تایید شده' : story.tone === 'bad' ? 'رد شده' : 'در انتظار بررسی';
+    return (
+      <div key={it.code} role="row" className={`sdoc tone-${story.tone}${greyed ? ' is-optional' : ''}`}>
+        <div className="sdoc-main">
+          <span className="sdoc-n" role="cell">{no}</span>
+          <div className="sdoc-t" role="cell">
+            <div className="sdoc-label">{it.label}{(it.required || it.accidentOnly) && <span className="sdoc-req"> *</span>}</div>
+            {it.accidentOnly && <div className="text-xs font-bold" style={{ color: 'var(--danger)' }}>در صورت وقوع سانحه تصادف{it.required ? '' : ' (برای این پرونده الزامی نیست)'}</div>}
+            <div className="sdoc-story">{story.text}</div>
+          </div>
+          <span role="cell" className="sdoc-st-w"><span className={`sdoc-st is-${story.tone}`}>{chip}</span></span>
+          <div className="sdoc-files" role="cell">
+            {pages.map((p, i) => {
+              const bad = (p.reviews ?? []).some((r) => r.state === 'REJECTED') || p.ai?.status === 'MISMATCH';
+              return (
+                <span key={p.id} className="sdoc-page-w">
+                  <button type="button" className={`sdoc-page${bad ? ' is-bad' : ''}`} onClick={() => viewDoc(p.id)} title={`${p.fileName}${p.uploadedAt ? ` — ${p.uploadedAt}` : ''}`}>
+                    <svg viewBox="0 0 24 24" aria-hidden><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6" /></svg>
+                    <span>{pages.length > 1 ? `صفحهٔ ${(i + 1).toLocaleString('fa-IR')}` : 'مشاهده'}</span>
+                  </button>
+                  {removable(p) && <button type="button" className="sdoc-rm" onClick={() => removeDoc(p, pages.length > 1 ? `${it.label} — صفحهٔ ${(i + 1).toLocaleString('fa-IR')}` : it.label)} title="حذف این فایل" aria-label="حذف این فایل">×</button>}
+                </span>
+              );
+            })}
+            {claim.status !== 'PAID' && (
+              <DocUploadTile compact label={it.label} required={!!it.required} uploaded={it.uploaded} rejected={story.tone === 'bad' || !!it.aiRefused}
+                cameraOnly onUpload={(f, onP) => upload(it.code, f, onP)} onExtra={(f, onP) => upload(it.code, f, onP, true)} />
+            )}
+          </div>
+        </div>
+        {st && 'error' in st && <div className="cu-err">بارگذاری انجام نشد: {st.error}</div>}
+
+        {/* Precise trail of the current file: when it was uploaded, then each desk's decision */}
+        {d && (
+          <div className="cu-trail sdoc-trail">
+            <span className="cu-step is-ok"><Icon path={OK} />بارگذاری{d.uploadedAt ? ` — ${d.uploadedAt}` : ''}{d.version > 1 ? ` (نسخهٔ ${d.version.toLocaleString('fa-IR')})` : ''}{(it.extras ?? []).length ? ` + ${(it.extras ?? []).length.toLocaleString('fa-IR')} صفحهٔ دیگر` : ''}</span>
+            {(() => { const v = aiVerdict(d.ai); return v && <span className={`cu-step is-${v.tone}`}><Icon path={v.tone === 'ok' ? OK : v.tone === 'no' ? NO : 'M12 22a10 10 0 100-20 10 10 0 000 20zM12 7v5l3 2'} />{v.text}</span>; })()}
+            {(claim.story?.manual ? [] : d.reviews ?? []).map((r) => (
+              <span key={r.stage} className={`cu-step is-${r.state === 'APPROVED' ? 'ok' : r.state === 'REJECTED' ? 'no' : 'wait'}`} title={r.note ? `دلیل: ${r.note}` : undefined}>
+                <Icon path={r.state === 'APPROVED' ? OK : r.state === 'REJECTED' ? NO : 'M12 22a10 10 0 100-20 10 10 0 000 20zM12 7v5l3 2'} />
+                {DESK_FA[r.stage] || r.stage}: {r.state === 'APPROVED' ? 'تایید شد' : r.state === 'REJECTED' ? 'رد شد' : 'در دست بررسی'}{r.changedAt && r.state !== 'PENDING' ? ` — ${r.changedAt}` : ''}
+              </span>
+            ))}
+            {d.ai?.status === 'MISMATCH' && <div className="cu-reason">{aiVerdict(d.ai)?.why}</div>}
+            {[d, ...(it.extras ?? [])].flatMap((p) => (p.reviews ?? []).filter((r) => r.state === 'REJECTED' && r.note).map((r) => (
+              <div key={`n-${p.id}-${r.stage}`} className="cu-reason">دلیل رد ({DESK_FA[r.stage]}): {r.note}</div>
+            )))}
+          </div>
+        )}
+        {older.length > 0 && (
+          <details className="cu-older">
+            <summary>نسخه‌های قبلی ({older.length.toLocaleString('fa-IR')})</summary>
+            {older.map((o) => (
+              <div key={o.id} className="flex items-center justify-between gap-2 py-1">
+                <span className="text-xs" style={{ color: 'var(--muted)' }}>نسخهٔ {o.version.toLocaleString('fa-IR')} — {o.uploadedAt} — {o.statusLabel}</span>
+                <span className="flex gap-1.5"><button type="button" className="cu-view" onClick={() => viewDoc(o.id)}>مشاهده</button>
+                  {removable(o) && <button type="button" className="cu-view is-danger" onClick={() => removeDoc(o, `${it.label} — نسخهٔ ${o.version.toLocaleString('fa-IR')}`)}>حذف</button>}</span>
+              </div>
+            ))}
+          </details>
+        )}
+      </div>
+    );
+  };
+
   return (
-    <Shell title="جزئیات پرونده" breadcrumb="جزئیات پرونده" sectionLabel="خسارت عمر و حادثه" nav={org ? ORG_NAV : CUSTOMER_NAV} realm={realm}
+    <Shell title="تشکیل پرونده (بارگذاری مدارک)" breadcrumb="تشکیل پرونده (بارگذاری مدارک)" sectionLabel="خسارت عمر و حادثه" nav={org ? ORG_NAV : CUSTOMER_NAV} realm={realm}
       action={claim ? (
         <>
           <Link href={`${page}/workflow`} className="cu-intro-btn text-center">مرحله بعد</Link>
@@ -337,92 +412,58 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
               <h2 className="cu-spec-h">
                 <span>مدارک مورد نیاز</span>
                 {checklist && <span className={`badge ${checklist.complete ? 'badge-success' : 'badge-warning'}`}>{checklist.complete ? 'کامل' : 'ناقص'}</span>}
+                {checklist && <RequiredDocsButton checklist={checklist} title={claimTypeLabel(claim)} kind={claim.lineLabel ?? null} insurer={insurerName ?? null} />}
               </h2>
               <p className="text-xs mb-3" style={{ color: 'var(--muted)' }}>مدارک ستاره‌دار (*) الزامی است؛ بقیه را برحسب مورد بارگذاری کنید.{checklist?.note ? ` ${checklist.note}` : ''}</p>
               <Flash text={aiNote ? AI_QUEUED_FA : null} ok />
               {/* Sinad-style document table: ردیف · عنوان مدرک · وضعیت · تصاویر مدارک (each page a thumbnail; «+» adds pages) */}
-              {/* فرم تعیین ذینفع: دارد / ندارد / بیمه گزار — decides which documents the list asks for */}
-              {claim.claimTypeDeath && <div className="sdocs-benef"><BeneficiaryChoice claimId={id} realm={realm} onChosen={reload} onMissing={setHeirsMissing} /></div>}
               <div className="sdocs" role="table" aria-label="مدارک مورد نیاز">
                 <div className="sdocs-head" role="row"><span role="columnheader">ردیف</span><span role="columnheader">عنوان مدرک</span><span role="columnheader">وضعیت</span><span role="columnheader">تصاویر مدارک</span></div>
-                {(() => { let n = 0; return checklist?.items.map((it) => {
-                  // دارد / ندارد not answered yet: one row asks; the answer decides which document stays.
-                  const unchosen = checklist.items.some((x) => x.code === BENEFICIARY_FORM) && checklist.items.some((x) => x.code === INHERITANCE_CERT);
-                  const isBeneficiary = it.code === BENEFICIARY_FORM || it.code === INHERITANCE_CERT;
-                  if (unchosen && (it.code === INHERITANCE_CERT || it.code === NO_FORM_LETTER)) return null;
-                  // The کارگزاری's own panel-1 list: what it doesn't require shows greyed (still uploadable).
-                  const greyed = !!checklist.entryList && !it.required && !it.uploaded && !it.accidentOnly;
-                  const no = ++n; // number in the list (rows hidden above don't count)
-                  const story = docStory(it, !!claim.story?.manual);
-                  const st = up[it.code];
-                  const d = it.documents[0] as ClaimDoc | undefined;
-                  const older = it.documents.slice(1);
-                  const pages = [...(d ? [d] : []), ...(it.extras ?? [])]; // the current file, then the pages added with «+»
-                  const chip = !d ? (it.required ? 'بارگذاری نشده' : 'برحسب نیاز') : story.tone === 'ok' ? 'تایید شده' : story.tone === 'bad' ? 'رد شده' : 'در انتظار بررسی';
-                  return (
-                    <div key={it.code} role="row" className={`sdoc tone-${story.tone}${greyed ? ' is-optional' : ''}`}>
-                      <div className="sdoc-main">
-                        <span className="sdoc-n" role="cell">{no.toLocaleString('fa-IR')}</span>
-                        <div className="sdoc-t" role="cell">
-                          <div className="sdoc-label">{it.label}{(it.required || it.accidentOnly) && <span className="sdoc-req"> *</span>}</div>
-                          {it.accidentOnly && <div className="text-xs font-bold" style={{ color: 'var(--danger)' }}>در صورت وقوع سانحه تصادف{it.required ? '' : ' (برای این پرونده الزامی نیست)'}</div>}
-                          <div className="sdoc-story">{story.text}</div>
+                {(() => {
+                  // «تصویر مدارک ذینفع/ذینفعان»: one row at its place in the list; its documents follow the choice inside it.
+                  const ben = checklist?.beneficiary ?? null;
+                  const plain = (checklist?.items ?? []).filter((it) => it.group !== 'BENEFICIARY');
+                  const group = (checklist?.items ?? []).filter((it) => it.group === 'BENEFICIARY');
+                  const out: React.ReactNode[] = [];
+                  let n = 0;
+                  const benRow = () => {
+                    const no = (++n).toLocaleString('fa-IR');
+                    const stories = group.map((it) => docStory(it, !!claim.story?.manual));
+                    const tone = !ben!.type ? 'none' : stories.some((x) => x.tone === 'bad') ? 'bad' : group.every((it) => it.uploaded) ? (stories.every((x) => x.tone === 'ok') ? 'ok' : 'wait') : 'none';
+                    const chip = !ben!.type ? 'انتخاب نشده' : tone === 'ok' ? 'تایید شده' : tone === 'bad' ? 'رد شده' : tone === 'wait' ? (group.length ? 'در انتظار بررسی' : 'کامل') : 'بارگذاری نشده';
+                    return (
+                      <div key="_ben" role="row" className={`sdoc sdoc-group tone-${tone}${benOpen ? ' is-open' : ''}`}>
+                        <div className="sdoc-main">
+                          <span className="sdoc-n" role="cell">{no}</span>
+                          <div className="sdoc-t" role="cell">
+                            <button type="button" className="sdoc-group-t" onClick={() => setBenOpen((v) => !v)} aria-expanded={benOpen}>
+                              <span className="sdoc-label">{ben!.label}<span className="sdoc-req"> *</span></span>
+                            </button>
+                            {ben!.type && <div className="sdoc-story">{BEN_FA[ben!.type] ?? ben!.type}</div>}
+                          </div>
+                          <span role="cell" className="sdoc-st-w"><span className={`sdoc-st is-${tone}`}>{chip}</span></span>
+                          <div className="sdoc-files" role="cell">
+                            <button type="button" className="sdoc-group-btn" onClick={() => setBenOpen((v) => !v)} aria-expanded={benOpen}>
+                              <Icon path={benOpen ? 'M18 15l-6-6-6 6' : 'M6 9l6 6 6-6'} />{benOpen ? 'بستن' : 'باز کردن'}
+                            </button>
+                          </div>
                         </div>
-                        <span role="cell" className="sdoc-st-w"><span className={`sdoc-st is-${story.tone}`}>{chip}</span></span>
-                        <div className="sdoc-files" role="cell">
-                          {pages.map((p, i) => {
-                            const bad = (p.reviews ?? []).some((r) => r.state === 'REJECTED') || p.ai?.status === 'MISMATCH';
-                            return (
-                              <span key={p.id} className="sdoc-page-w">
-                                <button type="button" className={`sdoc-page${bad ? ' is-bad' : ''}`} onClick={() => viewDoc(p.id)} title={`${p.fileName}${p.uploadedAt ? ` — ${p.uploadedAt}` : ''}`}>
-                                  <svg viewBox="0 0 24 24" aria-hidden><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6" /></svg>
-                                  <span>{pages.length > 1 ? `صفحهٔ ${(i + 1).toLocaleString('fa-IR')}` : 'مشاهده'}</span>
-                                </button>
-                                {removable(p) && <button type="button" className="sdoc-rm" onClick={() => removeDoc(p, pages.length > 1 ? `${it.label} — صفحهٔ ${(i + 1).toLocaleString('fa-IR')}` : it.label)} title="حذف این فایل" aria-label="حذف این فایل">×</button>}
-                              </span>
-                            );
-                          })}
-                          {claim.status !== 'PAID' && !(unchosen && isBeneficiary) && (
-                            <DocUploadTile compact label={it.label} required={!!it.required} {...(it.code === INHERITANCE_CERT ? { addText: 'بارگزاری فرم انحصار وراثت' } : {})} uploaded={it.uploaded} rejected={story.tone === 'bad' || !!it.aiRefused}
-                              cameraOnly onUpload={(f, onP) => upload(it.code, f, onP)} onExtra={(f, onP) => upload(it.code, f, onP, true)} />
-                          )}
-                        </div>
+                        {benOpen && (
+                          <div className="sdoc-group-body">
+                            <BeneficiaryGroup claimId={id} realm={realm} onChosen={reload} />
+                            {group.map((it, i) => docRow(it, `${no}-${(i + 1).toLocaleString('fa-IR')}`))}
+                          </div>
+                        )}
                       </div>
-                      {isBeneficiary && !claim.claimTypeDeath && <BeneficiaryChoice claimId={id} realm={realm} onChosen={reload} onMissing={setHeirsMissing} />}
-                      {st && 'error' in st && <div className="cu-err">بارگذاری انجام نشد: {st.error}</div>}
-
-                      {/* Precise trail of the current file: when it was uploaded, then each desk's decision */}
-                      {d && (
-                        <div className="cu-trail sdoc-trail">
-                          <span className="cu-step is-ok"><Icon path={OK} />بارگذاری{d.uploadedAt ? ` — ${d.uploadedAt}` : ''}{d.version > 1 ? ` (نسخهٔ ${d.version.toLocaleString('fa-IR')})` : ''}{(it.extras ?? []).length ? ` + ${(it.extras ?? []).length.toLocaleString('fa-IR')} صفحهٔ دیگر` : ''}</span>
-                          {(() => { const v = aiVerdict(d.ai); return v && <span className={`cu-step is-${v.tone}`}><Icon path={v.tone === 'ok' ? OK : v.tone === 'no' ? NO : 'M12 22a10 10 0 100-20 10 10 0 000 20zM12 7v5l3 2'} />{v.text}</span>; })()}
-                          {(claim.story?.manual ? [] : d.reviews ?? []).map((r) => (
-                            <span key={r.stage} className={`cu-step is-${r.state === 'APPROVED' ? 'ok' : r.state === 'REJECTED' ? 'no' : 'wait'}`} title={r.note ? `دلیل: ${r.note}` : undefined}>
-                              <Icon path={r.state === 'APPROVED' ? OK : r.state === 'REJECTED' ? NO : 'M12 22a10 10 0 100-20 10 10 0 000 20zM12 7v5l3 2'} />
-                              {DESK_FA[r.stage] || r.stage}: {r.state === 'APPROVED' ? 'تایید شد' : r.state === 'REJECTED' ? 'رد شد' : 'در دست بررسی'}{r.changedAt && r.state !== 'PENDING' ? ` — ${r.changedAt}` : ''}
-                            </span>
-                          ))}
-                          {d.ai?.status === 'MISMATCH' && <div className="cu-reason">{aiVerdict(d.ai)?.why}</div>}
-                          {[d, ...(it.extras ?? [])].flatMap((p) => (p.reviews ?? []).filter((r) => r.state === 'REJECTED' && r.note).map((r) => (
-                            <div key={`n-${p.id}-${r.stage}`} className="cu-reason">دلیل رد ({DESK_FA[r.stage]}): {r.note}</div>
-                          )))}
-                        </div>
-                      )}
-                      {older.length > 0 && (
-                        <details className="cu-older">
-                          <summary>نسخه‌های قبلی ({older.length.toLocaleString('fa-IR')})</summary>
-                          {older.map((o) => (
-                            <div key={o.id} className="flex items-center justify-between gap-2 py-1">
-                              <span className="text-xs" style={{ color: 'var(--muted)' }}>نسخهٔ {o.version.toLocaleString('fa-IR')} — {o.uploadedAt} — {o.statusLabel}</span>
-                              <span className="flex gap-1.5"><button type="button" className="cu-view" onClick={() => viewDoc(o.id)}>مشاهده</button>
-                                {removable(o) && <button type="button" className="cu-view is-danger" onClick={() => removeDoc(o, `${it.label} — نسخهٔ ${o.version.toLocaleString('fa-IR')}`)}>حذف</button>}</span>
-                            </div>
-                          ))}
-                        </details>
-                      )}
-                    </div>
-                  );
-                }); })()}
+                    );
+                  };
+                  plain.forEach((it, i) => {
+                    if (ben && i === ben.at) out.push(benRow());
+                    out.push(docRow(it, (++n).toLocaleString('fa-IR')));
+                  });
+                  if (ben && plain.length <= ben.at) out.push(benRow());
+                  return out;
+                })()}
               </div>
             </section>
 

@@ -238,6 +238,7 @@ export default function AdminDashboard() {
         </div>
         <PlatformSms />
         <ShahkarCard />
+        <IbanMatchCard />
         <div className="card p-5 space-y-3 mt-5">
           <h3 className="font-semibold">ورود دومرحله‌ای مدیر سامانه</h3>
           <MfaSetup realm="super" />
@@ -285,6 +286,79 @@ function ShahkarCard() {
         <Field label={`توکن دسترسی${c.hasToken ? ' (تنظیم‌شده)' : ''}`}><PasswordInput className="input" value={f.token} onChange={(e) => setF({ ...f, token: e.target.value })} placeholder={c.hasToken ? '••••••' : ''} style={{ direction: 'ltr', textAlign: 'left' }} /></Field>
       </div>
       <button onClick={() => save()} className="btn btn-primary btn-sm">ذخیرهٔ تنظیمات شاهکار</button>
+    </div>
+  );
+}
+
+/**
+ * «استعلام تطابق شبا و کد ملی» of a case's ذینفعان: Super Admin sets up the provider's call and turns it on.
+ * Operators of panel 1 and 2 then get the check on each ذینفع row.
+ */
+const IBAN_PRESET: Record<string, Record<string, string>> = {
+  shenasar: { url: 'https://api.shenasar.ir/inquiry/match_national_iban', method: 'POST', authHeader: 'Authorization', authPrefix: 'Bearer ', nationalCodeField: 'national_code', ibanField: 'iban', birthDateField: '', birthDateFormat: 'JALALI', matchPath: 'data.result', matchValues: 'yes,true,1' },
+};
+function IbanMatchCard() {
+  const [c, setC] = useState<any>(null);
+  const [f, setF] = useState<Record<string, string>>({});
+  const [token, setToken] = useState('');
+  const [test, setTest] = useState({ nationalCode: '', iban: '', birthDate: '' });
+  const [out, setOut] = useState<string>('');
+  const [msg, setMsg] = useState<{ t: 'ok' | 'err'; m: string } | null>(null);
+  const fill = (d: any) => { setC(d); setF({ provider: d.provider, url: d.url, method: d.method, authHeader: d.authHeader, authPrefix: d.authPrefix, nationalCodeField: d.nationalCodeField, ibanField: d.ibanField, birthDateField: d.birthDateField, birthDateFormat: d.birthDateFormat, extraParams: d.extraParams, matchPath: d.matchPath, matchValues: d.matchValues, timeoutSec: String(d.timeoutSec) }); };
+  useEffect(() => { client.get<any>('/platform/iban-match', 'super').then(fill).catch((e) => setMsg({ t: 'err', m: e.message })); }, []);
+  const save = async (enabled?: boolean) => {
+    setMsg(null);
+    try {
+      const d = await client.put<any>('/platform/iban-match', { ...f, timeoutSec: Number(f.timeoutSec) || 15, ...(enabled !== undefined ? { enabled } : {}), ...(token ? { token } : {}) }, 'super');
+      fill(d); setToken(''); setMsg({ t: 'ok', m: 'ذخیره شد' });
+    } catch (e: any) { setMsg({ t: 'err', m: e.message }); }
+  };
+  const runTest = async () => {
+    setOut('');
+    try { const r = await client.post<any>('/platform/iban-match/test', { nationalCode: test.nationalCode, iban: test.iban, ...(test.birthDate ? { birthDate: test.birthDate } : {}) }, 'super'); setOut(`${r.matched ? 'مطابقت دارد' : 'مطابقت ندارد'}\n${JSON.stringify(r.raw, null, 2)}`); }
+    catch (e: any) { setOut(e.message); }
+  };
+  if (!c) return null;
+  const ltr = { direction: 'ltr', textAlign: 'left' } as const;
+  const inp = (k: string, label: string, ph = '') => <Field label={label}><input className="input" value={f[k] ?? ''} onChange={(e) => setF({ ...f, [k]: e.target.value })} placeholder={ph} style={ltr} /></Field>;
+  return (
+    <div className="card p-5 space-y-3 mt-5">
+      <h3 className="font-semibold">استعلام تطابق شبا و کد ملی ذینفعان</h3>
+      <Flash id={msg} text={msg?.m} ok={!!msg && msg.t === 'ok'} />
+      <label className="flex items-center gap-2 text-sm cursor-pointer">
+        <input type="checkbox" checked={!!c.enabled} onChange={(e) => save(e.target.checked)} />
+        <span className="font-semibold">فعال باشد</span>
+        {!c.url || !c.hasToken ? <span className="badge badge-danger">تنظیم نشده</span> : null}
+      </label>
+      <div className="grid sm:grid-cols-3 gap-3">
+        <Field label="ارائه‌دهنده">
+          <select className="input" value={f.provider} onChange={(e) => setF({ ...f, provider: e.target.value, ...(IBAN_PRESET[e.target.value] ?? {}) })}>
+            <option value="shenasar">شناسا (Shenasar)</option>
+            <option value="generic">سرویس دیگر (زحل، یو-آیدی، …)</option>
+          </select>
+        </Field>
+        <div className="sm:col-span-2">{inp('url', 'نشانی سرویس (https://…)')}</div>
+        <Field label="روش"><select className="input" value={f.method} onChange={(e) => setF({ ...f, method: e.target.value })}><option value="POST">POST (JSON)</option><option value="GET">GET</option></select></Field>
+        {inp('authHeader', 'سرآیند احراز هویت', 'Authorization')}
+        {inp('authPrefix', 'پیشوند توکن', 'Bearer ')}
+        <Field label={`توکن${c.hasToken ? ' (تنظیم‌شده)' : ''}`}><PasswordInput className="input" value={token} onChange={(e) => setToken(e.target.value)} placeholder={c.hasToken ? '••••••' : ''} style={ltr} /></Field>
+        {inp('nationalCodeField', 'نام فیلد کد ملی', 'national_code')}
+        {inp('ibanField', 'نام فیلد شبا', 'iban')}
+        {inp('birthDateField', 'نام فیلد تاریخ تولد (خالی = ندارد)')}
+        <Field label="قالب تاریخ تولد"><select className="input" value={f.birthDateFormat} onChange={(e) => setF({ ...f, birthDateFormat: e.target.value })}><option value="JALALI">شمسی ۱۳۶۵/۰۱/۳۱</option><option value="GREGORIAN">میلادی 1986-04-20</option></select></Field>
+        {inp('matchPath', 'مسیر نتیجه در پاسخ', 'data.result')}
+        {inp('matchValues', 'مقادیر «مطابقت دارد»', 'yes,true,1')}
+        {inp('timeoutSec', 'مهلت پاسخ (ثانیه)', '15')}
+        <div className="sm:col-span-3"><Field label="پارامترهای ثابت (هر خط name=value)"><textarea className="input" rows={2} value={f.extraParams ?? ''} onChange={(e) => setF({ ...f, extraParams: e.target.value })} style={ltr} /></Field></div>
+      </div>
+      <button onClick={() => save()} className="btn btn-primary btn-sm">ذخیرهٔ تنظیمات</button>
+      <div className="grid sm:grid-cols-4 gap-2 items-end pt-2" style={{ borderTop: '1px solid var(--border)' }}>
+        <Field label="کد ملی آزمایشی"><input className="input" value={test.nationalCode} onChange={(e) => setTest({ ...test, nationalCode: e.target.value })} style={ltr} /></Field>
+        <Field label="شبا"><input className="input" value={test.iban} onChange={(e) => setTest({ ...test, iban: e.target.value })} placeholder="IR…" style={ltr} /></Field>
+        <Field label="تاریخ تولد"><input className="input" value={test.birthDate} onChange={(e) => setTest({ ...test, birthDate: e.target.value })} placeholder="۱۳۶۵/۰۱/۳۱" style={ltr} /></Field>
+        <button className="btn btn-ghost btn-sm" onClick={runTest} disabled={!test.nationalCode || !test.iban}>آزمایش اتصال</button>
+      </div>
+      {out && <pre className="text-xs p-2 rounded overflow-auto" style={{ background: 'var(--surface-2)', direction: 'ltr', maxHeight: 220 }}>{out}</pre>}
     </div>
   );
 }

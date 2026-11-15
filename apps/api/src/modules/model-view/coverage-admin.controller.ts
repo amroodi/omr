@@ -20,6 +20,8 @@ class FieldsDto {
   @IsString() @Length(0, 80) @Matches(NAME) policyNumber!: string;
   @IsString() @Length(0, 80) @Matches(NAME) policyStart!: string;
   @IsString() @Length(0, 80) @Matches(NAME) policyEnd!: string;
+  @IsOptional() @IsString() @Length(0, 80) @Matches(NAME) deathCapital?: string;
+  @IsOptional() @IsString() @Length(0, 80) @Matches(NAME) accidentCapital?: string;
 }
 class CoverageDto {
   @IsBoolean() enabled!: boolean;
@@ -90,7 +92,7 @@ export class CoverageAdminController {
     if (dto.enabled && !url) throw new BadRequestException('پیش از فعال‌سازی، نشانی سرویس را وارد کنید');
     if (url) this.coverage.assertUrl(url);
     const { secret, clearSecret, ...rest } = dto;
-    const next: CoverageConfig = { ...rest, url, extraParams: dto.extraParams.trim(), rowsPath: dto.rowsPath.trim(), secret: clearSecret ? null : secret ? this.crypto.encrypt(secret) : cur.secret };
+    const next: CoverageConfig = { ...rest, fields: { ...rest.fields, deathCapital: rest.fields.deathCapital ?? '', accidentCapital: rest.fields.accidentCapital ?? '' }, url, extraParams: dto.extraParams.trim(), rowsPath: dto.rowsPath.trim(), secret: clearSecret ? null : secret ? this.crypto.encrypt(secret) : cur.secret };
     await this.prisma.unscoped().tenant.update({ where: { id: insurerId }, data: { coverageConfig: next as unknown as Prisma.InputJsonValue } });
     const { secret: _s, ...logged } = next;
     await this.audit.record({ action: AuditAction.EDIT, tenantId: insurerId, targetType: 'CoverageConfig', targetId: insurerId, metadata: { ...logged, secretChanged: !!secret || !!clearSecret } as any });

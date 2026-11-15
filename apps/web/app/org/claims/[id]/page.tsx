@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { client, hasPerm, orgMode } from '../../../../lib/client';
+import { lastPanel } from '../../../../lib/panel';
 import { Shell } from '../../../components/Shell';
 import { ErrorBox, FancyLoader } from '../../../components/ui';
 import { ORG_NAV } from '../../nav';
@@ -11,7 +12,6 @@ import { WorkflowPanel, WorkflowTimeline } from '../../../components/WorkflowPan
 import { caseTitle } from '../../../../lib/caseTitle';
 import { ArchivedNotice, CaseSummary, ClaimDoc, DEATH_TYPES, STATUS_FA, useCase } from '../../../components/case-ui';
 import { filerText, INSURED_RELATIONS, personTitle } from '../../../components/claim-wording';
-import { CaseEditForm } from './case-edit';
 import { HeirsCard } from '../../../components/heirs';
 import { PaymentBox, PaymentInfo } from '../../../components/PaymentBox';
 import { PolicyholderCase } from '../../../components/PolicyholderCase';
@@ -41,7 +41,9 @@ function ClaimDetail() {
   const router = useRouter();
   const { claim, fv, checklist, error, setError, reload } = useCase(id);
   const [busy, setBusy] = useState(false);
-  const [mode, setMode] = useState<'preview' | 'edit'>('preview');
+  // کارگزاری's panel 2 calls the evaluation window «بررسی مدارک»; an insurer's keeps «ارزیابی» and has ذینفعان inside it.
+  const [brokerDesk, setBrokerDesk] = useState(true);
+  useEffect(() => { setBrokerDesk(lastPanel('org') === 'BROKER'); }, []);
   const [tab, setTab] = useState<Tab>('info');
   const [perms, setPerms] = useState({ del: false, exp: false, file: false, process: false });
   useEffect(() => { setPerms({ del: hasPerm('org', 'claim:delete'), exp: hasPerm('org', 'export:list'), file: hasPerm('org', 'claim:file'), process: hasPerm('org', 'claim:process') }); }, []);
@@ -83,12 +85,9 @@ function ClaimDetail() {
             <span className="cv-title-main">پرونده {caseTitle(claim)}<span className="cv-title-sub">{name}</span></span>
             <span className={`cv-status is-${claim.status.toLowerCase()}`}>{STATUS_FA[claim.status] ?? claim.status}</span>
             <span className="cv-title-btns no-print">
-              <button className={`cv-tbtn${mode === 'preview' ? ' is-on' : ''}`} onClick={() => setMode('preview')}>مشاهده</button>
-              {claim.status !== 'PAID' && <button className={`cv-tbtn${mode === 'edit' ? ' is-on' : ''}`} onClick={() => setMode('edit')}>ویرایش</button>}
-              <Link href={`/org/claims/${id}/evaluate`} className="cv-tbtn is-strong">ارزیابی</Link>
+              <Link href={`/org/claims/${id}/evaluate`} className="cv-tbtn is-strong">{brokerDesk ? 'بررسی مدارک' : 'ارزیابی'}</Link>
               <Link href={`/org/claims/${id}/documents`} className="cv-tbtn">مدارک</Link>
               <a href={`/org/reminders?claim=${id}&n=${encodeURIComponent(claim.claimNumber)}`} target="_blank" rel="noopener" className="cv-tbtn" title="یادآوری پیگیری این پرونده برای خودتان یا همکار">یادآور</a>
-              {perms.exp && <button className="cv-tbtn" onClick={() => client.download(`/exports/claim/${id}.xlsx`, 'org', `claim-${claim.policyNumber || claim.claimNumber}.xlsx`)}>اکسل</button>}
               {perms.del && claim.status !== 'PAID' && <button className="cv-tbtn is-danger" onClick={removeClaim} disabled={busy} title="انتقال به سطل بازیافت (۱۴ روز قابل بازیابی)">حذف</button>}
             </span>
           </div>
@@ -113,9 +112,7 @@ function ClaimDetail() {
 
           {claim.status === 'PAID' && <ArchivedNotice />}
 
-          {mode === 'edit' && claim.status !== 'PAID' ? (
-            <CaseEditForm claimId={id} title={editTitle} onSaved={() => { reload(); setMode('preview'); }} />
-          ) : (
+          {(
             <>
               {/* ── Where the case is ── */}
               {w && !claim.story?.manual && (
@@ -154,7 +151,7 @@ function ClaimDetail() {
 
               {/* ── Tabs ── */}
               <div className="ev-tabs cv-tabs no-print">
-                {([['info', 'مشخصات پرونده'], ['docs', `مدارک (${uploadedCount.toLocaleString('fa-IR')} از ${docRows.length.toLocaleString('fa-IR')})`], ['heirs', 'ذینفعان'], ['flow', 'گردش کار'], ['defs', `سوابق نقص${openDefs ? ` (${openDefs.toLocaleString('fa-IR')} باز)` : ''}`]] as [Tab, string][]).map(([k, l]) => (
+                {([['info', 'مشخصات پرونده'], ['docs', `مدارک (${uploadedCount.toLocaleString('fa-IR')} از ${docRows.length.toLocaleString('fa-IR')})`], ...(brokerDesk ? [['heirs', 'ذینفعان']] : []), ['flow', 'گردش کار'], ['defs', `سوابق نقص${openDefs ? ` (${openDefs.toLocaleString('fa-IR')} باز)` : ''}`]] as [Tab, string][]).map(([k, l]) => (
                   <button key={k} className={tab === k ? 'is-on' : ''} onClick={() => setTab(k)}>{l}</button>
                 ))}
               </div>
@@ -196,7 +193,7 @@ function ClaimDetail() {
                     <WorkflowTimeline claimId={id} steps={claim.steps} realm="org" />
                   </div>
                 )}
-                {tab === 'heirs' && <HeirsCard claimId={id} realm="org" className="" />}
+                {tab === 'heirs' && brokerDesk && <HeirsCard claimId={id} realm="org" className="" />}
                 {tab === 'defs' && (
                   (claim.deficiencies ?? []).length === 0 ? <div className="text-sm" style={{ color: 'var(--muted)' }}>این پرونده تاکنون عودت نشده است.</div> : (
                     <table className="table sn-table">

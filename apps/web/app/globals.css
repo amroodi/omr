@@ -2351,8 +2351,8 @@ a.cu-card.is-link:hover { transform: translateY(-2px); box-shadow: 0 0 0 2px var
 .ev-strip .ltr { direction: ltr; }
 .ev-strip-red { flex-basis: 100%; color: #c0172f; font-weight: 800; }
 .ev-body { flex: 1; min-height: 0; display: flex; gap: 8px; padding: 8px; }
-.ev-form { width: 42%; min-width: 360px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
-.ev-docs { flex: 1; min-width: 0; display: flex; flex-direction: column; background: #525659; border-radius: 6px; overflow: hidden; }
+.ev-form { flex: 1 1 0; min-width: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; } /* the scans take exactly the other half */
+.ev-docs { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; background: #525659; border-radius: 6px; overflow: hidden; }
 .ev-docs-bar { display: flex; align-items: center; gap: 6px; padding: 6px 8px; background: #323639; color: #fff; font-size: 12px; }
 .ev-docs-pick { max-width: 280px; height: 30px; font-size: 12px; }
 .ev-docs-stage { flex: 1; overflow: auto; padding: 8px; }
@@ -2951,3 +2951,62 @@ a.cu-card.is-link:hover { transform: translateY(-2px); box-shadow: 0 0 0 2px var
 .ev-fraud-btns button { border: 1px solid #b7c3cf; background: #fff; border-radius: 6px; padding: 2px 8px; font-size: 12px; color: #334; }
 .ev-fraud-btns button.is-on { background: #16a34a; border-color: #16a34a; color: #fff; }
 .ev-fraud-btns button.is-red.is-on { background: #dc2626; border-color: #dc2626; }
+
+/* «دانلود فهرست مدارک»: the printable list (always light: it goes on paper) */
+.rq-sheet { background: #fff; color: #1f2937; padding: 8px 4px; font-size: 14px; }
+.rq-sheet table { width: 100%; border-collapse: collapse; }
+.rq-sheet th { background: #1e2a4a; color: #fff; font-weight: 700; padding: 8px; text-align: center; }
+.rq-sheet td { border: 1px solid #d6dbe4; padding: 8px 10px; vertical-align: top; line-height: 1.8; }
+.rq-sheet td:first-child, .rq-sheet td:last-child { text-align: center; }
+.rq-sheet tr:nth-child(even) td { background: #f6f8fb; }
+.rq-sub { margin-top: 6px; font-size: 13px; }
+.rq-sub ul { margin: 2px 18px 0 0; list-style: disc; }
+
+/* panel 1 «تصویر مدارک ذینفع/ذینفعان»: one row that opens to its choice and documents */
+.sdoc-group-t { background: none; border: 0; padding: 0; text-align: right; cursor: pointer; color: inherit; font: inherit; }
+.sdoc-group-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); font-size: 13px; font-weight: 700; color: var(--brand); cursor: pointer; }
+.sdoc-group-btn svg { width: 16px; height: 16px; }
+.sdoc-group-body { margin: 10px 0 4px; padding: 12px; border-radius: 12px; background: var(--surface-2); border: 1px dashed var(--border); display: flex; flex-direction: column; gap: 10px; }
+.sdoc-group-body .sdoc { background: var(--surface); border-radius: 10px; }
+.sdoc-ben-choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.sdoc-ben-btn { padding: 10px 8px; border-radius: 12px; border: 1.5px solid var(--border); background: var(--surface); font-weight: 800; font-size: 14px; cursor: pointer; color: var(--text); }
+.sdoc-ben-btn.is-on { border-color: var(--brand); background: var(--brand-soft); color: var(--brand-700); }
+.sdoc-ben-btn:disabled { cursor: default; opacity: .7; }
+
+/* panel 2 «تطابق مشخصات هویتی»: four fields in a row, the rest in a drawer */
+.ce-match { display: flex; flex-direction: column; gap: 8px; }
+.ce-match-head { display: flex; align-items: center; justify-content: space-between; width: 100%; background: none; border: 0; padding: 0; cursor: pointer; color: inherit; font: inherit; }
+.ce-match-head svg { width: 18px; height: 18px; color: var(--muted); }
+.ce-match-row, .ce-match-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.ce-match-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.ce-match .ce-field { margin: 0; min-width: 0; }
+.ce-match .ce-label { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ce-match .ce-hint { display: none; }
+.ce-match-more { display: flex; flex-direction: column; gap: 8px; padding-top: 6px; border-top: 1px dashed var(--border); }
+.ce-match .ce-btns { margin-top: 4px; }
+@media (max-width: 900px) { .ce-match-row, .ce-match-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Alborz شعبه: «رد پرونده» box, the exclusions to pick from, and «تطابق ذینفعان» */
+.ev-fraud-why { color: #b91c1c; font-weight: 700; }
+.ev-fraud-btns button.is-green { color: #15803d; border-color: #86c79a; }
+.ev-fraud-btns button.is-red { color: #b91c1c; border-color: #f1a5a5; }
+.ev-fraud-btns button.is-on { color: #fff; }
+.ev-rejectcase { display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 8px; border: 1.5px solid #f1a5a5; background: #fff5f5; }
+:root.dark .ev-rejectcase { background: rgba(220, 38, 38, .12); }
+.ev-open { display: flex; align-items: center; justify-content: space-between; width: 100%; cursor: pointer; text-align: right; font: inherit; color: inherit; }
+.ev-open svg { width: 18px; height: 18px; color: var(--muted); }
+.ev-open:hover { border-color: var(--brand); }
+.ev-excl { display: flex; flex-direction: column; gap: 6px; max-height: 62vh; overflow-y: auto; }
+.ev-excl-row { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); cursor: pointer; line-height: 1.9; }
+.ev-excl-row.is-on { border-color: #dc2626; background: #fff5f5; }
+:root.dark .ev-excl-row.is-on { background: rgba(220, 38, 38, .12); }
+.ev-excl-row input { margin-top: 7px; }
+.ev-excl-note { font-size: 12.5px; color: var(--muted); padding: 4px 2px; line-height: 1.9; }
+/* the drawers read as Sinad's grey-headed boxes */
+.ce-match { gap: 0; }
+.ce-match-head, .ev-open { padding: 6px 8px; background: #eef0f3; color: #1f2733; }
+.ce-match.is-open .ce-match-head { border-bottom: 1px solid var(--border); }
+.ce-match-row, .ce-match-more { padding: 8px; }
+.ce-match-more { border-top: 1px dashed var(--border); }
+.ce-match > .ce-btns { padding: 0 8px 8px; }
+:root.dark .ce-match-head, :root.dark .ev-open { background: var(--surface-2); color: var(--text); }

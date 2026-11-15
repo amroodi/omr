@@ -34,7 +34,15 @@ const faD = (s: string) => s.replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[+d]);
 const toAsciiNum = (s: string) => s.replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d))).replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d))).replace(/[^\d]/g, '');
 const groupFa = (raw: string) => { const a = toAsciiNum(raw); return a ? faD(a.replace(/\B(?=(\d{3})+(?!\d))/g, ',')) : ''; };
 
-export function CaseEditForm({ claimId, title, onSaved, base = `/claims/${claimId}` }: { claimId: string; title: string; onSaved: () => void; base?: string }) {
+/** The four fields «تطابق مشخصات هویتی» always shows (the rest open below it). */
+const MATCH_KEYS = ['national_code', 'full_name', 'birth_date', 'death_date'];
+
+/**
+ * `match`: «تطابق مشخصات هویتی» in panel 2's evaluation window — closed to four fields in a row (Sinad's
+ * strip); the arrow opens the rest of the case's data, and «ذخیره» appears once something changed.
+ */
+export function CaseEditForm({ claimId, title, onSaved, base = `/claims/${claimId}`, match = false }: { claimId: string; title: string; onSaved: () => void; base?: string; match?: boolean }) {
+  const [more, setMore] = useState(false);
   const [data, setData] = useState<FieldsData | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -134,6 +142,40 @@ export function CaseEditForm({ claimId, title, onSaved, base = `/claims/${claimI
       </div>
     );
   };
+
+  if (match) {
+    const firstRow = MATCH_KEYS.filter((k) => byKey[k]);
+    const typed = all.some((f) => f.canEdit && (drafts[f.key] ?? '') !== (f.value ?? '')); // something the operator changed
+    return (
+      <div className={`ev-item ce-match${more ? ' is-open' : ''}`}>
+        <button type="button" className="ce-match-head" onClick={() => setMore((v) => !v)} aria-expanded={more}>
+          <b>تطابق مشخصات هویتی</b>
+          <Icon path={more ? 'M18 15l-6-6-6 6' : 'M6 9l6 6 6-6'} />
+        </button>
+        <div className="ce-match-row">{firstRow.map(cell)}</div>
+        {more && (
+          <div className="ce-match-more">
+            {COLUMNS.map((col) => (
+              <div key={col.title}>
+                <div className="ce-head">{col.title}</div>
+                <div className="ce-match-grid">{col.keys.filter((k) => !MATCH_KEYS.includes(k)).map(cell)}</div>
+              </div>
+            ))}
+            <div className="ce-head">مراحل اجرایی</div>
+            <div className="ce-match-grid">{STEPS.map(cell)}</div>
+            {others.length > 0 && (<><div className="ce-head">سایر فیلدها</div><div className="ce-match-grid">{others.map((f) => cell(f.key))}</div></>)}
+          </div>
+        )}
+        <Flash id={msg} text={msg?.text} ok={!!msg && msg.ok} />
+        {typed && (
+          <div className="ce-btns">
+            <button type="button" className="ce-save" onClick={save} disabled={busy}>{busy ? 'در حال ذخیره…' : 'ذخیره'}</button>
+            <button type="button" className="ce-cancel" onClick={cancel} disabled={busy}>انصراف</button>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="ce-wrap">
