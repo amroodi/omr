@@ -60,12 +60,12 @@ export function DeficiencyBox({ claimId, claim, checklist, realm, canUpload, onC
         </span>
         <span className="dfx-ops">
           {it.documents[0] && realm === 'org' && <button type="button" className="dfx-btn is-ghost" onClick={() => client.view(`/claims/${claimId}/documents/${it.documents[0].id}/file`, 'org')}>مشاهده</button>}
-          {canUpload && (
+          {canUpload && it.canUpload !== false && (
             <UploadButton className="dfx-btn" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" maxMB={15} camera title={it.documents[0] ? 'جایگزینی فایل' : 'بارگذاری فایل'} subtitle={it.label} onUpload={(f, onP) => upload(it.code, f, onP)}>
               {it.documents[0] && (done || kind === 'rejected') ? 'جایگزینی فایل' : 'بارگذاری فایل'}
             </UploadButton>
           )}
-          {canUpload && done && (
+          {canUpload && done && it.canUpload !== false && (
             <UploadButton className="dfx-btn is-ghost" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" maxMB={15} camera multiple title="افزودن صفحه یا مدرک تکمیلی" subtitle={it.label}
               note="هر فایل به‌عنوان صفحهٔ دیگری از همین مدرک ذخیره می‌شود و فایل قبلی سر جایش می‌ماند." onUpload={(f, onP) => upload(it.code, f, onP, true)}>
               + صفحهٔ دیگر

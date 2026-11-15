@@ -11,7 +11,7 @@ const KEY = 'death_notice_date';
  * at filing; panel 2 sets it wherever it sees the case. The server decides who may: on a کارگزاری's case only
  * that کارگزاری's panel 2, on the insurer's own case the operator who holds it on their desk. Others see it.
  */
-export function DeathNoticeDate({ claimId, className = '' }: { claimId: string; className?: string }) {
+export function DeathNoticeDate({ claimId, className = '', entry }: { claimId: string; className?: string; entry?: boolean }) {
   const [row, setRow] = useState<FieldRow | null>(null);
   const [v, setV] = useState('');
   const [editing, setEditing] = useState(false);
@@ -27,7 +27,8 @@ export function DeathNoticeDate({ claimId, className = '' }: { claimId: string; 
   if (!row) return null;
   const save = async () => {
     setBusy(true); setErr('');
-    try { await client.put(`/claims/${claimId}/fields/${KEY}`, { value: v }, 'org'); setEditing(false); await load(); }
+    // A کارگزاری's panel 1 has its own route for it (its staff don't edit case fields otherwise).
+    try { await client.put(entry ? `/claims/${claimId}/death-notice-date` : `/claims/${claimId}/fields/${KEY}`, { value: v }, 'org'); setEditing(false); await load(); }
     catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   };
   return (

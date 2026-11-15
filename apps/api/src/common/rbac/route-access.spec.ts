@@ -46,7 +46,7 @@ describe('A/B/C route access', () => {
     expect(list(routes.filter((r) => r.entry === 'allowed'))).toEqual(['DELETE /claims/:id/documents/:docId', 'POST /claims/:id/documents', 'POST /claims/:id/physical', 'POST /exports/table.xlsx', 'PUT /claims/:id/heirs']);
     // rectify: panel 1's «ثبت نهایی» after رفع نقص; coverage-check: the panel-1 filing forms' فن‌آوران lookup;
     // filing: panel 1 corrects its case until panel 2 starts on it
-    expect(list(routes.filter((r) => r.entry === 'only' && !r.path.startsWith('/spare')))).toEqual(['DELETE /claims/:id/filing', 'POST /claims', 'POST /claims/:id/rectify', 'POST /claims/coverage-check', 'POST /claims/on-behalf', 'POST /claims/on-behalf/coverage-check', 'POST /import/commit', 'POST /import/preview', 'PUT /claims/:id/filing']);
+    expect(list(routes.filter((r) => r.entry === 'only' && !r.path.startsWith('/spare')))).toEqual(['DELETE /claims/:id/filing', 'POST /claims', 'POST /claims/:id/rectify', 'POST /claims/coverage-check', 'POST /claims/on-behalf', 'POST /claims/on-behalf/coverage-check', 'POST /import/commit', 'POST /import/preview', 'PUT /claims/:id/death-notice-date', 'PUT /claims/:id/filing']);
   });
 
   it('C: the inquiry token reads its case, leaves a question, and signs out — nothing else', () => {

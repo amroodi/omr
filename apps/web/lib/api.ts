@@ -40,7 +40,7 @@ export interface InquiryThread { brokerName: string; messages: { id: string; fro
 export interface CompanyHit { id: string; name: string; hasLogo: boolean }
 
 /** One case the looked-up کد ملی covers (panel 3 lists them when there is more than one). */
-export interface InquiryCase { id: string; claimNumber: string; status: string; name: string | null; relation: string; line: string | null; claimType: string; insurerName: string | null; eventDate: string | null }
+export interface InquiryCase { id: string; claimNumber: string; status: string; name: string | null; relation: string; line: string | null; claimType: string; insurerName: string | null; eventDate: string | null; payable?: string | null }
 
 /** The case picked on the result page (several when a main insured's family has cases); null = the newest. */
 export function pickedClaim(): string | null {

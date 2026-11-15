@@ -234,7 +234,7 @@ function WorkDesk() {
 
       {/* ── Search panel ── (queue tiles attach flush underneath) */}
       <div className="pcard p-5 pform sn-search">
-        <div className="sn-fields">
+        <div className="sn-fields is-main">
           <input className="input" placeholder="شماره بیمه‌نامه" value={f.policyNumber} onChange={upd('policyNumber')} style={{ direction: 'ltr', textAlign: 'right' }} />
           <input className="input" placeholder="کد پذیرش" value={f.receiptCode} onChange={upd('receiptCode')} inputMode="numeric" maxLength={8} style={{ direction: 'ltr', textAlign: 'right' }} title="کدی که پس از ثبت پرونده داده شد" />
           <input className="input" placeholder="کد ملی بیمه‌شده اصلی" value={f.mainNationalCode} onChange={upd('mainNationalCode')} inputMode="numeric" title="پرونده‌های بیمه‌شدهٔ اصلی و زیرمجموعهٔ او" />
@@ -253,15 +253,13 @@ function WorkDesk() {
             <option value="">— بیمه‌گر —</option>
             {insurers.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
           </select>
-          <div className="grid grid-cols-2 gap-2">
-            <JalaliDatePicker value={f.eventFrom} onChange={(v) => setF({ ...f, eventFrom: v })} placeholder="وقوع از تاریخ" />
-            <JalaliDatePicker value={f.eventTo} onChange={(v) => setF({ ...f, eventTo: v })} placeholder="وقوع تا تاریخ" />
-          </div>
+          <JalaliDatePicker value={f.eventFrom} onChange={(v) => setF({ ...f, eventFrom: v })} placeholder="وقوع از تاریخ" />
+          <JalaliDatePicker value={f.eventTo} onChange={(v) => setF({ ...f, eventTo: v })} placeholder="وقوع تا تاریخ" />
         </div>
 
         {/* Advanced fields (جستجوی پیشرفته) */}
         {adv && (
-          <div className="sn-fields mt-2 pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
+          <div className="sn-fields is-adv mt-2 pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
             <select className="input" value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}>
               <option value="">— وضعیت پرونده —</option>
               {STATUS_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -271,10 +269,8 @@ function WorkDesk() {
               <option value="BROKER">کارگزاری (معرف)</option>
               <option value="DIRECT">مستقیم (شعبه)</option>
             </select>
-            <div className="grid grid-cols-2 gap-2">
-              <JalaliDatePicker value={f.createdFrom} onChange={(v) => setF({ ...f, createdFrom: v })} placeholder="ثبت از تاریخ" />
-              <JalaliDatePicker value={f.createdTo} onChange={(v) => setF({ ...f, createdTo: v })} placeholder="ثبت تا تاریخ" />
-            </div>
+            <JalaliDatePicker value={f.createdFrom} onChange={(v) => setF({ ...f, createdFrom: v })} placeholder="ثبت از تاریخ" />
+            <JalaliDatePicker value={f.createdTo} onChange={(v) => setF({ ...f, createdTo: v })} placeholder="ثبت تا تاریخ" />
             <select className="input" value={f.beneficiaryType} onChange={(e) => setF({ ...f, beneficiaryType: e.target.value })}>
               <option value="">— نوع ذینفع —</option>
               {BENEFICIARY_TYPES.map((b) => <option key={b} value={b}>{b}</option>)}

@@ -354,6 +354,8 @@ export class InquiryService {
         claimType: caseTypeOf(m, c.claimType)?.label ?? c.claimType,
         insurerName: iName.get(c.insurerTenantId) ?? null,
         eventDate: c.eventDate ? toJalali(c.eventDate, false) : null,
+        // مبلغ قابل پرداخت (approved, else paid on its estimate) — panel 3 adds up a person's عمر and حوادث cases
+        payable: (c.finalizedAmount ?? (c.status === 'PAID' ? c.claimedAmount : null))?.toString() ?? null,
       };
     });
   }

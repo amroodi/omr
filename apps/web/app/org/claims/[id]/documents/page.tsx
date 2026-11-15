@@ -6,7 +6,7 @@ import { useParams } from 'next/navigation';
 import { client, hasPerm } from '../../../../../lib/client';
 import { Shell, Icon } from '../../../../components/Shell';
 import { ErrorBox, FancyLoader } from '../../../../components/ui';
-import { ACTION_FA, LossNoticeEntry, STATE_FA, withLossNotice } from '../../../../components/WorkflowPanel';
+import { LossNoticeEntry, stepActionFa, withLossNotice } from '../../../../components/WorkflowPanel';
 import { ORG_NAV } from '../../../nav';
 import { caseTitle } from '../../../../../lib/caseTitle';
 import { downloadBrandedPdf } from '../../../../../lib/pdf';
@@ -78,7 +78,7 @@ export default function CaseDocumentsPage() {
   };
 
   const rows = [
-    ...(checklist?.items ?? []).map((it) => ({ key: it.code, code: it.code, label: it.label, doc: it.documents[0] as ClaimDoc | undefined, extras: it.extras ?? [] })),
+    ...(checklist?.items ?? []).map((it) => ({ key: it.code, code: it.code, label: it.label, doc: it.documents[0] as ClaimDoc | undefined, extras: it.extras ?? [], canUpload: it.canUpload !== false })),
     ...(checklist?.otherDocuments ?? []).filter((d) => d.isLatest).map((d) => ({ key: d.id, code: '', label: `سایر مدارک — ${d.fileName}`, doc: d as ClaimDoc | undefined, extras: [] as ClaimDoc[] })),
   ];
 
@@ -108,7 +108,7 @@ export default function CaseDocumentsPage() {
                     <span className="cs-td-up">
                       <Mark state={r.doc && r.doc.ai?.status !== 'MISMATCH' ? 'ok' : 'no'} title={r.doc ? `بارگذاری شده — ${r.doc.uploadedAt ?? ''}${r.doc.ai?.status === 'MISMATCH' ? ' (رد در بررسی هوشمند)' : ''}` : 'بارگذاری نشده'} />
                       {r.doc && <button type="button" className="cs-mini no-pdf" title="مشاهدهٔ فایل" onClick={() => client.view(`/claims/${id}/documents/${r.doc!.id}/file`, 'org').catch((e) => setError(e.message))}><Icon path="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8zM12 15a3 3 0 100-6 3 3 0 000 6z" /></button>}
-                      {canFile && claim.status !== 'PAID' && r.code && (
+                      {canFile && claim.status !== 'PAID' && r.code && (r as { canUpload?: boolean }).canUpload !== false && (
                         // This page keeps its own design (Group 875): the small orange «بارگذاری فایل» button —
                         // it opens the same upload window (progress, PDF / Word / images).
                         <UploadButton className="cs-upload no-pdf" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" maxMB={15} camera
@@ -120,7 +120,7 @@ export default function CaseDocumentsPage() {
                       {r.extras.map((x, k) => (
                         <button key={x.id} type="button" className="cs-mini no-pdf" title={`صفحهٔ ${faN(k + 2)} — ${x.uploadedAt ?? ''}`} onClick={() => client.view(`/claims/${id}/documents/${x.id}/file`, 'org').catch((e) => setError(e.message))}>{faN(k + 2)}</button>
                       ))}
-                      {canFile && claim.status !== 'PAID' && r.code && r.doc && (
+                      {canFile && claim.status !== 'PAID' && r.code && r.doc && (r as { canUpload?: boolean }).canUpload !== false && (
                         <UploadButton className="cs-mini no-pdf" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" maxMB={15} camera multiple
                           title="افزودن صفحه یا مدرک تکمیلی" subtitle={r.label} note="هر فایل به‌عنوان صفحهٔ دیگری از همین مدرک ذخیره می‌شود و فایل قبلی سر جایش می‌ماند." onUpload={(f, onP) => upload(r.code, f, onP, true)}>+</UploadButton>
                       )}
@@ -179,10 +179,10 @@ export default function CaseDocumentsPage() {
                 <span>تاریخ</span>
               </div>
               <div className="cs-table-b">
-                {withLossNotice(claim.steps, (claim as { lossNotice?: LossNoticeEntry | null }).lossNotice).map((s) => {
+                {withLossNotice(claim.steps, (claim as { lossNotice?: LossNoticeEntry | null }).lossNotice).map((s, _i, all) => {
                   const pending = s.state === 'PENDING';
                   const back = s.action === 'RETURN' || s.action === 'RETURN_DIRECT' || s.state === 'REJECTED' || s.state === 'RETURNED_INCOMPLETE';
-                  const text = pending ? 'در دست بررسی' : ACTION_FA[s.action || ''] || STATE_FA[s.state] || s.state;
+                  const text = pending ? 'در دست بررسی' : stepActionFa(s, all);
                   return (
                     <div key={s.order} className="cs-tr cs-grid-route">
                       <span className="cs-td-main">{Number.isInteger(s.order) ? `${faN(s.order)}. ` : '• '}{s.stageLabel || s.holderName || '—'}{s.branchName ? ` — ${s.branchName}` : ''}</span>

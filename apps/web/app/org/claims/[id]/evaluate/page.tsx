@@ -21,7 +21,7 @@ import { PaperModal, Values } from '../../../../components/paper/Paper';
  */
 interface DocReview { stage: string; state: string; canEdit: boolean; note?: string | null }
 interface ClaimDoc { id: string; fileName: string; isLatest: boolean; reviews?: DocReview[] }
-interface Checklist { complete: boolean; items: { code: string; label: string; documents: ClaimDoc[]; extras?: ClaimDoc[] }[]; otherDocuments?: ClaimDoc[] }
+interface Checklist { complete: boolean; items: { code: string; label: string; documents: ClaimDoc[]; extras?: ClaimDoc[]; insurerOnly?: boolean; canUpload?: boolean; required?: boolean }[]; otherDocuments?: ClaimDoc[] }
 interface DocMeta { id: string; fileName: string }
 interface Claim {
   id: string; claimNumber: string; status: string; claimType: string; line?: string | null; policyholderCompany?: { name: string } | null; claimTypeLabel?: string; lineLabel?: string | null; deceasedName: string | null; insuredGender?: string | null; filedBy?: Filer | null; claimTypeDeath?: boolean; deceasedNationalCode?: string | null;
@@ -34,7 +34,7 @@ interface Claim {
 interface Referral { id: string; kind: string; status: string; doctor: string | null; by: string | null; request: Record<string, string>; answer: Record<string, string> | null; at: string; answeredAt: string | null }
 interface Sinad {
   enabled: boolean; evaluator: { id: string; name: string; at: string | null; me: boolean } | null; later: boolean;
-  doctor: { state: string | null; note: string | null }; fraudCheck: string | null; risk: { level: 'LOW' | 'MEDIUM' | 'HIGH'; reasons: string[] };
+  doctor: { state: string | null; note: string | null }; fraudCheck: string | null; fraudItems?: { key: string; label: string; reason: string; value: 'OK' | 'SUSPECT' | null }[]; risk: { level: 'LOW' | 'MEDIUM' | 'HIGH'; reasons: string[] };
   canEvaluate: boolean; admin: boolean; returnGroups: { label: string; items: string[] }[];
   history: { kind: string; label: string; note: string | null; by: string; at: string }[];
   related: { id: string; claimNumber: string; claimTypeLabel: string; status: string; name: string | null; relation: string | null; line: string | null; amount: string; createdAt: string }[];
@@ -95,7 +95,7 @@ export default function EvaluatePage() {
   useEffect(() => { if (!getToken('org')) { router.push('/org/login'); return; } load(); /* eslint-disable-next-line */ }, [id]);
 
   const run = async (fn: () => Promise<any>) => { setError(''); setMsg(''); setBusy(true); try { await fn(); } catch (e: any) { setError(e.message); } finally { setBusy(false); } };
-  const op = (name: string, body: Record<string, string> = {}) => client.post<Sinad>(`/claims/${id}/sinad/${name}`, body, 'org').then(setSinad);
+  const op = (name: string, body: Record<string, unknown> = {}) => client.post<Sinad>(`/claims/${id}/sinad/${name}`, body, 'org').then(setSinad);
   const close = () => router.push('/org/work-desk');
 
   // Latest document of each item, with this desk's ✓/✕.
@@ -109,7 +109,10 @@ export default function EvaluatePage() {
     checklist?.otherDocuments?.filter((d) => d.isLatest).forEach((d) => out.push({ label: d.fileName, d }));
     return out;
   }, [checklist]);
-  const missing = checklist?.items.filter((it) => !it.documents.length).map((it) => ({ code: it.code, label: it.label, required: !!(it as { required?: boolean }).required })) ?? [];
+  // The insurer's own forms (فرم تعیین وضعیت پوشش …) have their own box for the شعبه operator holding the case.
+  const missing = checklist?.items.filter((it) => !it.documents.length && !it.insurerOnly).map((it) => ({ code: it.code, label: it.label, required: !!it.required })) ?? [];
+  const insurerForms = checklist?.items.filter((it) => it.insurerOnly) ?? [];
+  const canUploadCode = (code?: string) => !code || checklist?.items.find((it) => it.code === code)?.canUpload !== false;
   const branchReview = (d: ClaimDoc) => d.reviews?.find((r) => r.stage === 'BRANCH');
   // This desk's ✓/✕ on a document: شعبه in «روند سیناد», otherwise whichever desk the viewer may review now.
   const deskReview = (d: ClaimDoc) => (sinad?.canEvaluate ? branchReview(d) : d.reviews?.find((r) => r.canEdit) ?? d.reviews?.find((r) => r.stage === claim?.currentStage));
@@ -141,7 +144,7 @@ export default function EvaluatePage() {
         <div className={`ev-doc${doc?.id === d.id ? ' is-on' : ''}`}>
           <button className="ev-doc-name" onClick={() => { const i = docs.findIndex((x) => x.id === d.id); if (i >= 0) setDocIdx(i); }} title="نمایش در تصویر">{label}</button>
           {/* A new version of the document (e.g. a clearer scan), uploaded by this desk itself */}
-          {code && !closedNow && <UploadButton className="ev-up" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" maxMB={15} camera title="بارگذاری دوبارهٔ مدرک" subtitle={label} onUpload={(f, onP) => uploadDoc(f, onP, code)}>بارگذاری</UploadButton>}
+          {code && !closedNow && canUploadCode(code) && <UploadButton className="ev-up" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" maxMB={15} camera title="بارگذاری دوبارهٔ مدرک" subtitle={label} onUpload={(f, onP) => uploadDoc(f, onP, code)}>بارگذاری</UploadButton>}
           {r && <ReviewButtons state={r.state} editable={r.canEdit && !closedNow} busy={busy} label={stageLabel} onSet={(st) => setReview(d, st)} />}
         </div>
         {r?.state === 'REJECTED' && r.note && <div className="ev-doc-why">دلیل رد: {r.note}</div>}
@@ -159,8 +162,8 @@ export default function EvaluatePage() {
 
   /** «تایید و ذخیره»: amount, every document ✓ at شعبه, اعلام خسارت, then on to ستاد (or ask for the originals first). */
   const approveAndSave = () => run(async () => {
-    if (!sinad?.fraudCheck) throw new Error('ابتدا در کادر ریسک، نتیجهٔ بررسی تقلب را انتخاب کنید');
-    if (sinad.fraudCheck === 'FRAUD') throw new Error('پرونده «تقلب است» علامت خورده؛ از برگهٔ «عودت» استفاده کنید');
+    if (!sinad?.fraudCheck) throw new Error('ابتدا هر چهار مورد بررسی را در کادر ریسک مشخص کنید');
+    if (sinad.fraudCheck === 'FRAUD') throw new Error('موردی مشکوک علامت خورده است؛ از برگهٔ «عودت» استفاده کنید');
     if (!approved) throw new Error('مبلغ تایید شده را وارد کنید');
     if (String(approved) !== String(Number(claim?.finalizedAmount ?? 0))) await client.put(`/claims/${id}/finalized-amount`, { amount: String(approved) }, 'org');
     for (const { d } of rows) {
@@ -190,7 +193,7 @@ export default function EvaluatePage() {
   const returnAndSave = () => run(async () => {
     const ret = action('RETURN');
     if (!ret) throw new Error('عودت در این مرحله ممکن نیست');
-    const items = [...(sinad?.fraudCheck === 'FRAUD' ? ['هزینه تقلبی است'] : []), ...picked, ...(returnNote.trim() ? [returnNote.trim()] : [])];
+    const items = [...(sinad?.fraudItems ?? []).filter((x) => x.value === 'SUSPECT').map((x) => x.reason), ...picked, ...(returnNote.trim() ? [returnNote.trim()] : [])];
     if (!items.length) throw new Error('حداقل یک علت عودت را انتخاب کنید یا بنویسید');
     await client.post(`/claims/${id}/action`, { action: 'RETURN', deficiencyNotes: items }, 'org');
     router.push('/org/work-desk');
@@ -261,7 +264,7 @@ export default function EvaluatePage() {
         <div><span>تاریخ وقوع</span><b>{claim.eventDate || '—'}</b></div>
         <div><span>نوع پرونده</span><b>{claim.claimTypeLabel || claim.claimType}</b></div>
         {claim.filedBy && <div><span>ثبت‌کننده</span><b>{filerText(claim.filedBy)}</b></div>}
-        {fraudRed && <div className="ev-strip-red">{sinad.fraudCheck === 'FRAUD' ? 'این پرونده توسط ارزیاب «تقلب است» علامت خورده است' : `ریسک زیاد: ${sinad.risk.reasons.join('، ')}`}</div>}
+        {fraudRed && <div className="ev-strip-red">{sinad.fraudCheck === 'FRAUD' ? `مشکوک: ${(sinad.fraudItems ?? []).filter((x) => x.value === 'SUSPECT').map((x) => x.reason).join('، ')}` : `ریسک زیاد: ${sinad.risk.reasons.join('، ')}`}</div>}
       </div>
 
       <div className="ev-body">
@@ -277,10 +280,19 @@ export default function EvaluatePage() {
               <button className="ev-link" onClick={() => setModal('family')}>مقایسه با پرونده‌های مرتبط ({sinad.related.length.toLocaleString('fa-IR')})</button>
             </div>
             {sinad.risk.reasons.length > 0 ? <ul className="ev-risk-list">{sinad.risk.reasons.map((r) => <li key={r}>{r}</li>)}</ul> : <div className="text-xs">نشانه‌ای از ریسک یافت نشد.</div>}
-            {branchEval && !closed && (
-              <div className="ev-risk-choice">
-                <label><input type="radio" name="fraud" checked={sinad.fraudCheck === 'CLEAN'} disabled={busy} onChange={() => run(() => op('fraud-clean'))} /> بررسی کردم، تقلب نیست</label>
-                <label className="is-red"><input type="radio" name="fraud" checked={sinad.fraudCheck === 'FRAUD'} disabled={busy} onChange={() => run(async () => { await op('fraud-flag'); setTab('return'); })} /> تقلب است، عودت شود</label>
+            {(sinad.fraudItems ?? []).length > 0 && (
+              <div className="ev-fraud">
+                {(sinad.fraudItems ?? []).map((x) => (
+                  <div key={x.key} className={`ev-fraud-row${x.value === 'SUSPECT' ? ' is-bad' : x.value === 'OK' ? ' is-ok' : ''}`}>
+                    <span>{x.label}</span>
+                    {branchEval && !closed ? (
+                      <span className="ev-fraud-btns">
+                        <button type="button" className={x.value === 'OK' ? 'is-on' : ''} disabled={busy} onClick={() => run(() => op('fraud-item', { request: { item: x.key, value: x.value === 'OK' ? '' : 'OK' } }))}>مورد ندارد</button>
+                        <button type="button" className={`is-red${x.value === 'SUSPECT' ? ' is-on' : ''}`} disabled={busy} onClick={() => run(async () => { await op('fraud-item', { request: { item: x.key, value: x.value === 'SUSPECT' ? '' : 'SUSPECT' } }); if (x.value !== 'SUSPECT') setTab('return'); })}>مشکوک</button>
+                      </span>
+                    ) : <b>{x.value === 'OK' ? 'مورد ندارد' : x.value === 'SUSPECT' ? 'مشکوک' : '—'}</b>}
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -320,6 +332,22 @@ export default function EvaluatePage() {
                   </div>
                   {claim.description && <div className="ev-insured-note"><b>توضیحات بیمه‌گزار:</b> {claim.description}</div>}
                   {claim.coverageStatus && <div className="ev-yellow">{COVER_FA[claim.coverageStatus] ?? claim.coverageStatus}{claim.lateNotice ? ' — اعلام پس از مهلت مقرر' : ''}</div>}
+
+                  {insurerForms.some((it) => it.canUpload) && !closed && (
+                    <div className="ev-item ev-forms">
+                      <div className="ev-item-head"><b>فرم‌های شعبه</b></div>
+                      {insurerForms.map((it) => {
+                        const d = it.documents.find((x) => x.isLatest) ?? it.documents[0];
+                        return (
+                          <div key={it.code} className={`ev-form-row${d ? ' is-done' : ''}`}>
+                            <span className="ev-form-l">{d ? '✓ ' : ''}{it.label}{it.required ? ' *' : ''}</span>
+                            {d && <button type="button" className="ev-btn" onClick={() => { const i = docs.findIndex((x) => x.id === d.id); if (i >= 0) setDocIdx(i); }}>نمایش</button>}
+                            {it.canUpload && <UploadButton className="ev-btn is-main" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" maxMB={15} camera title={d ? 'بارگذاری دوباره' : 'بارگذاری'} subtitle={it.label} onUpload={(f, onP) => uploadDoc(f, onP, it.code)}>{d ? 'بارگذاری دوباره' : 'بارگذاری'}</UploadButton>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
 
                   <div className="ev-item">
                     <div className="ev-item-head"><b>مدارک پرونده</b><span>{checklist?.complete ? 'کامل' : 'ناقص'}</span></div>
@@ -366,9 +394,6 @@ export default function EvaluatePage() {
                       {returns.length === 0 && <tr><td colSpan={3} className="sk-none">عودتی ثبت نشده است.</td></tr>}
                     </tbody>
                   </table>
-                  <label className="ev-check is-red">
-                    <input type="checkbox" checked={sinad.fraudCheck === 'FRAUD'} disabled={busy || closed} onChange={(e) => run(() => op(e.target.checked ? 'fraud-flag' : 'fraud-clean'))} /> هزینه تقلبی است
-                  </label>
                   <label className="label" htmlFor="ev-rn">علت عودت</label>
                   <textarea id="ev-rn" className="input" rows={2} maxLength={500} value={returnNote} onChange={(e) => setReturnNote(e.target.value)} placeholder="شرح علت عودت (برای بیمه‌گزار نمایش داده می‌شود)" />
                   <div className="ev-groups">
