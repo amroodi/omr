@@ -49,7 +49,7 @@ export function AppHeader() {
           ) : (
             <BrandMark bare size={40} />
           )}
-          <span className="font-extrabold text-lg truncate">{orgBranded && brand ? brand.name : 'دامون'}</span>
+          <span className="font-extrabold text-lg truncate">{orgBranded && brand ? brand.name : 'صفحه ورود'}</span>
           {inCustomer && <span className="text-xs shrink-0 px-2 py-0.5 rounded-lg" style={{ background: 'var(--surface-2)', color: 'var(--muted)' }}>پورتال بیمه‌گزار</span>}
         </a>
         {!orgBranded && (
