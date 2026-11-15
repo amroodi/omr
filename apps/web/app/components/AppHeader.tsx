@@ -19,6 +19,7 @@ export function AppHeader() {
   // Authenticated panels render their own top bar via <Shell> (the Sinad-style chrome),
   // so the global header would double up — suppress it there. The استعلام result page also
   // has its own navy top bar. Keep the header on the landing page and all login pages.
+  const alborzHome = path === '/alborz';
   const inPanel = inOrg || inCustomer || inAdmin || path.startsWith('/estelam');
 
   const [brand, setBrand] = useState<{ name: string; hasLogo: boolean; slug: string } | null>(null);
@@ -35,7 +36,7 @@ export function AppHeader() {
   if (inPanel) return null;
 
   const logoUrl = brand?.hasLogo ? `${client.base}/tenant/assets/logo?tenant=${brand.slug}` : null;
-  const homeHref = inCustomer ? '/customer' : inOrg ? '/org' : '/';
+  const homeHref = inCustomer ? '/customer' : inOrg ? '/org' : alborzHome ? '/alborz' : '/';
 
   return (
     <header
@@ -46,18 +47,20 @@ export function AppHeader() {
           {orgBranded && logoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={logoUrl} alt="" style={{ height: 32, width: 'auto', maxWidth: 120, borderRadius: 6, objectFit: 'contain' }} />
+          ) : alborzHome ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src="/brand/alborz-mark.webp" alt="" style={{ height: 38, width: 38 }} />
           ) : (
             <BrandMark bare size={40} />
           )}
           <span className="font-extrabold text-lg truncate">{orgBranded && brand ? brand.name : 'صفحه ورود'}</span>
           {inCustomer && <span className="text-xs shrink-0 px-2 py-0.5 rounded-lg" style={{ background: 'var(--surface-2)', color: 'var(--muted)' }}>پورتال بیمه‌گزار</span>}
         </a>
-        {!orgBranded && (
+        {!orgBranded && !alborzHome && (
           // Super-admin («مدیر سکو») is intentionally NOT linked here — it's reached only via the
           // direct /admin/login URL, so ordinary users (and attackers scanning the UI) don't see it.
           <nav className="hidden sm:flex gap-1 text-sm mr-auto">
-            <a href="/customer/login" className="px-3 py-1.5 rounded-lg hover:bg-[var(--surface-2)] transition">بیمه‌گزار</a>
-            <a href="/org/login" className="px-3 py-1.5 rounded-lg hover:bg-[var(--surface-2)] transition">پورتال سازمان</a>
+            <a href="/alborz" className="px-3 py-1.5 rounded-lg hover:bg-[var(--surface-2)] transition">پنل ورود البرز</a>
           </nav>
         )}
         <div className={orgBranded ? 'mr-auto' : 'sm:mr-0 mr-auto'}>

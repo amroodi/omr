@@ -343,6 +343,10 @@ h1, h2, h3 {
   opacity: 0.3;
   animation: drift3 26s ease-in-out infinite alternate;
 }
+/* Alborz's home page: its greens in place of the orange glow */
+.aurora.is-alborz::before { background: radial-gradient(circle at 30% 30%, #00bd9c, transparent 62%); }
+.aurora.is-alborz::after { background: radial-gradient(circle at 50% 50%, #0a8c1e, transparent 60%); }
+.aurora.is-alborz > span { background: radial-gradient(circle at 50% 50%, #2f4358, transparent 60%); }
 :root:not(.dark) .aurora::before { opacity: 0.4; }
 :root:not(.dark) .aurora::after { opacity: 0.28; }
 :root:not(.dark) .aurora > span { opacity: 0.22; }

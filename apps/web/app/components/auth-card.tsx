@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ReactNode, useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import { BrandLogo } from './brand';
 import { LoginBgSet, RotatingBg } from './RotatingBg';
 
@@ -18,10 +18,13 @@ const LOGINS = [
  */
 export function LoginNav({ onDark, org }: { onDark?: boolean; org?: 'BROKER' | 'INSURER' }) {
   const path = usePathname() || '';
+  // Alborz's login pages lead back to Alborz's own home page.
+  const [home, setHome] = useState('/');
+  useEffect(() => { setHome(new URLSearchParams(window.location.search).get('org') === 'alborz' ? '/alborz' : '/'); }, [path]);
   const style = onDark ? { color: '#fff', borderColor: 'rgba(255,255,255,0.45)', background: 'rgba(255,255,255,0.12)' } : undefined;
   return (
     <nav className="login-nav" aria-label="ناوبری">
-      <Link href="/" className="login-nav-btn" style={style}>
+      <Link href={home} className="login-nav-btn" style={style}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 18l6-6-6-6" /></svg>
         صفحهٔ اصلی
       </Link>

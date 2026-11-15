@@ -13,7 +13,7 @@ export function ThemeApplier() {
   const path = usePathname() || '/';
   const themed = (path.startsWith('/org') && path !== '/org/login') || (path.startsWith('/customer') && path !== '/customer/login');
   useEffect(() => {
-    if (path === '/org/login') return;
+    if (path === '/org/login' || path === '/alborz') return; // Alborz's home page themes itself
     if (!themed) { applyTheme(null); return; }
     let active = true;
     // This panel's own look (پنل کارگزاری / بیمه‌گزار / نماینده / شعبه / ستاد / شورای فنی), over the org's.
