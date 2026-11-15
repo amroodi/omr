@@ -17,6 +17,9 @@ const HAS_FORM = 'ذینفع قانونی'; const NO_FORM = 'وراث قانون
 export const TO_POLICYHOLDER = 'بیمه گزار';
 export const BENEFICIARY_KINDS = [HAS_FORM, NO_FORM, TO_POLICYHOLDER];
 const CHOICES: [string, string][] = [[HAS_FORM, 'دارد'], [NO_FORM, 'ندارد'], [TO_POLICYHOLDER, 'بیمه گزار']];
+/** «تصویر مدارک ذینفع/ذینفعان»: the three choices as panel 1 names them. */
+export const BEN_CHOICES: [string, string][] = [[HAS_FORM, 'ذینفع های منتخب'], [NO_FORM, 'حصر وراثت'], [TO_POLICYHOLDER, 'بیمه گزار']];
+export const BEN_FA: Record<string, string> = Object.fromEntries(BEN_CHOICES);
 const FORM_ACCEPT = '.pdf,.jpg,.jpeg,.png,.doc,.docx';
 
 export interface HeirRow { fullName: string; relation: string; nationalCode: string; iban: string; share: string; fatherName: string; birthCertNo: string }
@@ -59,7 +62,6 @@ const filled = (rows: HeirRow[]) => rows.filter((h) => h.fullName.trim() || h.ib
 function rowsProblem(rows: HeirRow[]): string | null {
   for (const h of rows) {
     if (h.fullName.trim().length < 2) return 'نام و نام خانوادگی هر ذینفع را بنویسید.';
-    if (!h.relation.trim()) return `نسبت «${h.fullName.trim()}» با بیمه‌شدهٔ اصلی را انتخاب کنید.`;
     if (h.nationalCode.trim() && !nationalCodeOk(h.nationalCode)) return `کد ملی «${h.fullName.trim()}» نامعتبر است (یا خالی بگذارید).`;
     if (h.iban.trim() && !ibanOk(h.iban)) return `شماره شبای «${h.fullName.trim()}» نامعتبر است (IR و ۲۴ رقم، یا خالی بگذارید).`;
     if (!shareOk(h.share)) return `سهم «${h.fullName.trim()}» باید عددی بین ۰ تا ۱۰۰ باشد (یا خالی بگذارید).`;
@@ -78,7 +80,7 @@ const toRow = (h: { fullName: string; relation?: string; nationalCode: string; i
   ({ fullName: h.fullName, relation: h.relation ?? '', nationalCode: h.nationalCode, iban: h.iban, share: h.sharePercent != null ? String(h.sharePercent) : '', fatherName: h.fatherName ?? '', birthCertNo: h.birthCertNo ?? '' });
 
 /** Name, نسبت, کد ملی (optional), سهم ٪ (optional) + شبا rows with add / remove. */
-function HeirRows({ rows, onChange, disabled }: { rows: HeirRow[]; onChange: (rows: HeirRow[]) => void; disabled?: boolean }) {
+function HeirRows({ rows, onChange, disabled, check }: { rows: HeirRow[]; onChange: (rows: HeirRow[]) => void; disabled?: boolean; check?: IbanCheck | null }) {
   const set = (i: number, k: keyof HeirRow, x: string) => onChange(rows.map((h, j) => (j === i ? { ...h, [k]: x } : h)));
   return (
     <div className="space-y-2">
@@ -95,17 +97,17 @@ function HeirRows({ rows, onChange, disabled }: { rows: HeirRow[]; onChange: (ro
               {[...new Set([...RELATIONS, ...(h.relation ? [h.relation] : [])])].map((r) => <option key={r} value={r}>{r}</option>)}
             </select>
             <div>
-              <input className="input latin-digits" value={h.nationalCode} disabled={disabled} onChange={(e) => set(i, 'nationalCode', e.target.value)} placeholder="کد ملی (اختیاری)" inputMode="numeric" maxLength={10}
+              <input className="input latin-digits" value={h.nationalCode} disabled={disabled} onChange={(e) => set(i, 'nationalCode', e.target.value)} placeholder="کد ملی" inputMode="numeric" maxLength={10}
                 style={{ ...ltr, ...(badCode ? { borderColor: 'var(--danger)' } : {}) }} />
               {badCode && <div className="text-xs mt-1" style={{ color: 'var(--danger)' }}>کد ملی نامعتبر است</div>}
             </div>
             <div>
-              <input className="input latin-digits" value={h.share} disabled={disabled} onChange={(e) => set(i, 'share', e.target.value)} placeholder="سهم ٪ (اختیاری)" inputMode="decimal" maxLength={6}
+              <input className="input latin-digits" value={h.share} disabled={disabled} onChange={(e) => set(i, 'share', e.target.value)} placeholder="سهم ٪" inputMode="decimal" maxLength={6}
                 aria-label="سهم (درصد)" title="سهم این ذینفع طبق فرم (درصد)؛ اگر در فرم نیامده خالی بگذارید" style={{ ...ltr, ...(badShare ? { borderColor: 'var(--danger)' } : {}) }} />
               {badShare && <div className="text-xs mt-1" style={{ color: 'var(--danger)' }}>۰ تا ۱۰۰</div>}
             </div>
             <div>
-              <input className="input latin-digits" value={h.iban} disabled={disabled} onChange={(e) => set(i, 'iban', e.target.value)} placeholder="شماره شبا (اختیاری): IR000000000000000000000000" maxLength={34}
+              <input className="input latin-digits" value={h.iban} disabled={disabled} onChange={(e) => set(i, 'iban', e.target.value)} placeholder="شماره شبا: IR000000000000000000000000" maxLength={34}
                 style={{ ...ltr, ...(badIban ? { borderColor: 'var(--danger)' } : {}) }} />
               {badIban && <div className="text-xs mt-1" style={{ color: 'var(--danger)' }}>شماره شبا نامعتبر است</div>}
             </div>
@@ -114,11 +116,44 @@ function HeirRows({ rows, onChange, disabled }: { rows: HeirRow[]; onChange: (ro
             <div className="md:col-span-6 grid gap-2 grid-cols-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,2.8fr)]">
               <input className="input" value={h.fatherName} disabled={disabled} onChange={(e) => set(i, 'fatherName', e.target.value)} placeholder="نام پدر" maxLength={60} />
               <input className="input latin-digits" value={h.birthCertNo} disabled={disabled} onChange={(e) => set(i, 'birthCertNo', e.target.value)} placeholder="شماره شناسنامه" inputMode="numeric" maxLength={12} style={ltr} />
+              {check && <IbanCheckCell check={check} nationalCode={h.nationalCode} iban={h.iban} />}
             </div>
           </div>
         );
       })}
       <button type="button" className="btn btn-ghost btn-sm" disabled={disabled || rows.length >= 30} onClick={() => onChange([...rows, { ...EMPTY_ROW }])}>+ افزودن ذینفع</button>
+    </div>
+  );
+}
+
+/** «استعلام تطابق شبا و کد ملی»: operators only, while Super Admin has it on. */
+export interface IbanCheck { claimId: string; needsBirthDate: boolean }
+/** Operators' realm only: null when the check is off (or for the بیمه‌گزار). */
+export function useIbanCheck(claimId: string, realm: Realm): IbanCheck | null {
+  const [c, setC] = useState<IbanCheck | null>(null);
+  useEffect(() => {
+    if (realm !== 'org') return;
+    client.get<{ enabled: boolean; needsBirthDate: boolean }>(`/claims/${claimId}/heirs/iban-check`, 'org').then((r) => setC(r.enabled ? { claimId, needsBirthDate: r.needsBirthDate } : null)).catch(() => setC(null));
+  }, [claimId, realm]);
+  return c;
+}
+function IbanCheckCell({ check, nationalCode, iban }: { check: IbanCheck; nationalCode: string; iban: string }) {
+  const [birth, setBirth] = useState('');
+  const [r, setR] = useState<{ ok: boolean; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const ready = nationalCodeOk(nationalCode) && ibanOk(iban) && (!check.needsBirthDate || /^[\d۰-۹]{4}\/[\d۰-۹]{1,2}\/[\d۰-۹]{1,2}$/.test(birth.trim()));
+  const run = async () => {
+    setBusy(true); setR(null);
+    try {
+      const x = await client.post<{ matched: boolean }>(`/claims/${check.claimId}/heirs/iban-check`, { nationalCode: toAscii(nationalCode).trim(), iban: normIban(iban), ...(check.needsBirthDate ? { birthDate: toAscii(birth).trim() } : {}) }, 'org');
+      setR(x.matched ? { ok: true, text: 'شبا متعلق به همین کد ملی است' } : { ok: false, text: 'شبا متعلق به این کد ملی نیست' });
+    } catch (e: any) { setR({ ok: false, text: e.message }); } finally { setBusy(false); }
+  };
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      {check.needsBirthDate && <input className="input latin-digits" style={{ maxWidth: 130, direction: 'ltr', textAlign: 'right' }} value={birth} onChange={(e) => setBirth(e.target.value)} placeholder="تاریخ تولد ۱۳۶۵/۰۱/۳۱" aria-label="تاریخ تولد ذینفع" />}
+      <button type="button" className="btn btn-ghost btn-sm" disabled={busy || !ready} onClick={run}>{busy ? '…' : 'استعلام شبا'}</button>
+      {r && <span className="text-xs font-bold" style={{ color: r.ok ? '#0f7a55' : 'var(--danger)' }}>{r.text}</span>}
     </div>
   );
 }
@@ -185,9 +220,61 @@ export function BeneficiaryChoice({ claimId, realm, onChosen, onMissing }: { cla
   );
 }
 
+/**
+ * «تصویر مدارک ذینفع/ذینفعان» on panel 1: ذینفع های منتخب / حصر وراثت / بیمه گزار. The choice decides the
+ * documents of the group (the checklist lists them); with ذینفع های منتخب their details can be written too.
+ */
+export function BeneficiaryGroup({ claimId, realm, onChosen }: { claimId: string; realm: Realm; onChosen: () => void }) {
+  const base = `${realm === 'customer' ? '/customer/claims' : '/claims'}/${claimId}`;
+  const check = useIbanCheck(claimId, realm);
+  const [d, setD] = useState<HeirsData | null>(null);
+  const [rows, setRows] = useState<HeirRow[]>([{ ...EMPTY_ROW }]);
+  const [dirty, setDirty] = useState(false);
+  const [error, setError] = useState('');
+  const [ok, setOk] = useState('');
+  const [busy, setBusy] = useState(false);
+  const show = (x: HeirsData) => { setD(x); setDirty(false); setRows(x.heirs.length ? x.heirs.map(toRow) : [{ ...EMPTY_ROW }]); };
+  useEffect(() => { client.get<HeirsData>(`${base}/heirs`, realm).then(show).catch(() => setD(null)); /* eslint-disable-next-line */ }, [claimId]);
+  if (!d) return null;
+  const put = async (beneficiaryType: string, list: HeirRow[]) => {
+    setBusy(true); setError(''); setOk('');
+    try { show(await client.put<HeirsData>(`${base}/heirs`, { beneficiaryType, heirs: rowsBody(list) }, realm)); onChosen(); return true; } catch (e: any) { setError(e.message); return false; } finally { setBusy(false); }
+  };
+  const choose = (kind: string) => {
+    if (kind === d.beneficiaryType) return;
+    if (kind !== HAS_FORM && d.heirs.length && !window.confirm('مشخصات ذینفعان ثبت‌شده حذف می‌شود. ادامه می‌دهید؟')) return;
+    put(kind, kind === HAS_FORM ? filled(rows).filter((h) => !rowsProblem([h])) : []);
+  };
+  const save = async () => {
+    const list = filled(rows);
+    const problem = rowsProblem(list);
+    if (problem) return setError(problem);
+    if (await put(HAS_FORM, list)) setOk('ذخیره شد');
+  };
+  return (
+    <div className="sdoc-ben space-y-3 text-sm">
+      <Flash text={error} ok={false} />
+      <div className="sdoc-ben-choices" role="group" aria-label="نوع ذینفع">
+        {BEN_CHOICES.map(([k, l]) => (
+          <button key={k} type="button" disabled={busy || !d.canEdit} onClick={() => choose(k)} className={`sdoc-ben-btn${d.beneficiaryType === k ? ' is-on' : ''}`} aria-pressed={d.beneficiaryType === k}>{l}</button>
+        ))}
+      </div>
+      {d.beneficiaryType === HAS_FORM && (
+        <div className="space-y-2">
+          <div className="font-bold">مشخصات ذینفعان</div>
+          <HeirRows rows={rows} onChange={(r) => { setRows(r); setDirty(true); setOk(''); }} disabled={busy || !d.canEdit} check={check} />
+          {d.canEdit && <button type="button" className="btn btn-primary btn-sm" onClick={save} disabled={busy || !dirty}>{busy ? '…' : 'ذخیرهٔ ذینفعان'}</button>}
+          {ok && <span className="text-xs font-bold mr-2" style={{ color: '#0f7a55' }}>{ok}</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** On the case: kind, the form and the people; edit + re-upload for whoever may change them. */
 export function HeirsCard({ claimId, realm, className = 'card p-4' }: { claimId: string; realm: Realm; className?: string }) {
   const base = `${realm === 'customer' ? '/customer/claims' : '/claims'}/${claimId}`;
+  const check = useIbanCheck(claimId, realm);
   const [d, setD] = useState<HeirsData | null>(null);
   const [edit, setEdit] = useState<{ beneficiaryType: string; heirs: HeirRow[] } | null>(null);
   const [error, setError] = useState('');
@@ -211,7 +298,7 @@ export function HeirsCard({ claimId, realm, className = 'card p-4' }: { claimId:
   return (
     <div className={className}>
       <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
-        <h3 className="font-extrabold">ذینفع / وراث قانونی{d.beneficiaryType ? <span className="badge badge-info mr-2">{d.beneficiaryType}</span> : null}</h3>
+        <h3 className="font-extrabold">ذینفع / وراث قانونی{d.beneficiaryType ? <span className="badge badge-info mr-2">{BEN_FA[d.beneficiaryType] ?? d.beneficiaryType}</span> : null}</h3>
         {d.canEdit && !edit && (
           <div className="flex gap-2 no-print">
             <UploadButton accept={FORM_ACCEPT} maxMB={15} title="فرم تعیین ذینفع / وراث" camera cameraOnly={realm === 'customer'}
@@ -236,10 +323,10 @@ export function HeirsCard({ claimId, realm, className = 'card p-4' }: { claimId:
             <label className="label">نوع ذینفع</label>
             <select className="input" value={edit.beneficiaryType} onChange={(e) => setEdit({ ...edit, beneficiaryType: e.target.value })}>
               <option value="">— تعیین نشده —</option>
-              {[...new Set([...BENEFICIARY_KINDS, ...(edit.beneficiaryType ? [edit.beneficiaryType] : [])])].map((k) => <option key={k} value={k}>{k}</option>)}
+              {[...new Set([...BENEFICIARY_KINDS, ...(edit.beneficiaryType ? [edit.beneficiaryType] : [])])].map((k) => <option key={k} value={k}>{BEN_FA[k] ?? k}</option>)}
             </select>
           </div>
-          {edit.beneficiaryType !== TO_POLICYHOLDER && <HeirRows rows={edit.heirs} onChange={(heirs) => setEdit({ ...edit, heirs })} disabled={busy} />}
+          {edit.beneficiaryType !== TO_POLICYHOLDER && <HeirRows rows={edit.heirs} onChange={(heirs) => setEdit({ ...edit, heirs })} disabled={busy} check={check} />}
           <div className="flex gap-2">
             <button type="button" className="btn btn-primary btn-sm" onClick={save} disabled={busy}>{busy ? '…' : 'ذخیره'}</button>
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEdit(null)} disabled={busy}>انصراف</button>

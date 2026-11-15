@@ -125,6 +125,8 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
   // فن‌آوران coverage inquiry on the insured's کد ملی (the form's first field); null while Super Admin has it
   // off for this insurer, 'checking' while it asks. `blocked` = this person can't be filed (as Super Admin set).
   const [coverage, setCoverage] = useState<Coverage | 'checking' | null>(null);
+  // سرمایه فوت / حادثه given by فن‌آوران: filled in and not typed over (the server keeps its values too).
+  const [capLock, setCapLock] = useState<{ deathCapital: boolean; accidentCapital: boolean }>({ deathCapital: false, accidentCapital: false });
   const asked = useRef(0);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -241,7 +243,10 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
     const body = { nationalCode: code, ...(agent ? {} : { contractId: policyId }), ...(iso ? { eventDate: iso } : {}) };
     const r = await client.post<any>(org ? '/claims/on-behalf/coverage-check' : '/customer/coverage-check', body, realm).catch((e) => ({ enabled: true, status: 'ERROR', blocked: false, message: e.message }));
     if (n !== asked.current) return; // a newer check is on its way
-    if (!r?.enabled) { setCoverage(null); return; }
+    if (!r?.enabled) { setCoverage(null); setCapLock({ deathCapital: false, accidentCapital: false }); return; }
+    const cap = { deathCapital: r.capital?.death ? String(r.capital.death) : '', accidentCapital: r.capital?.accident ? String(r.capital.accident) : '' };
+    setCapLock({ deathCapital: !!cap.deathCapital, accidentCapital: !!cap.accidentCapital });
+    if (cap.deathCapital || cap.accidentCapital) setF((cur) => ({ ...cur, ...(cap.deathCapital ? { deathCapital: cap.deathCapital } : {}), ...(cap.accidentCapital ? { accidentCapital: cap.accidentCapital } : {}) }));
     const name = [r.person?.firstName, r.person?.lastName].filter(Boolean).join(' ');
     setCoverage({ status: r.status, name, message: r.message, blocked: !!r.blocked, policy: r.policy ?? null });
     if (r.autoFill && name) setF((cur) => (cur.deceasedFullName.trim() ? cur : { ...cur, deceasedFullName: name }));
@@ -378,7 +383,7 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
             <PField label="نوع بیمه‌شده *" help="هر پرونده برای یک نفر است؛ برای هر فرزند پروندهٔ جداگانه ثبت کنید.">
               <select className="input" value={f.relation} onChange={(e) => setF({ ...f, relation: e.target.value })}>
                 <option value="">انتخاب کنید…</option>
-                {Object.entries(INSURED_RELATIONS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                {['MAIN', 'SPOUSE', 'CHILD'].map((k) => <option key={k} value={k}>{INSURED_RELATIONS[k]}</option>)}
               </select>
             </PField>
           )}
@@ -448,8 +453,8 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
             </PField>
           ) : (
             <PField key={k} label={`${l} (ریال)`} help={k === 'claimedAmount' ? 'اختیاری؛ مبلغ خسارتی که برآورد می‌کنید. مبلغ قطعی پس از ارزیابی ثبت می‌شود.' : 'اختیاری؛ اگر می‌دانید وارد کنید.'}>
-              <input className="input" inputMode="numeric" value={f[k] ? Number(f[k]).toLocaleString('fa-IR') : ''} placeholder="اختیاری"
-                onChange={(e) => setF((s) => ({ ...s, [k]: toAscii(e.target.value).replace(/[^\d]/g, '').slice(0, 18) }))} style={{ direction: 'ltr', textAlign: 'right' }} />
+              <input className="input" inputMode="numeric" value={f[k] ? Number(f[k]).toLocaleString('fa-IR') : ''} placeholder="اختیاری" readOnly={k !== 'claimedAmount' && capLock[k]}
+                onChange={(e) => setF((s) => ({ ...s, [k]: toAscii(e.target.value).replace(/[^\d]/g, '').slice(0, 18) }))} style={{ direction: 'ltr', textAlign: 'right', ...(k !== 'claimedAmount' && capLock[k] ? { background: 'var(--surface-2)' } : {}) }} />
             </PField>
           ))}
           {org && isDeath && (

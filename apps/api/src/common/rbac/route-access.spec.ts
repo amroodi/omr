@@ -43,7 +43,7 @@ describe('A/B/C route access', () => {
 
   it('A/B: the panel markers are exactly these (panel 1 default-denies every other staff write)', () => {
     // heirs and the original documents: panel 1 only while the case sits at the بیمه‌گزار's desk (checked in the service)
-    expect(list(routes.filter((r) => r.entry === 'allowed'))).toEqual(['DELETE /claims/:id/documents/:docId', 'POST /claims/:id/documents', 'POST /claims/:id/physical', 'POST /exports/table.xlsx', 'PUT /claims/:id/heirs']);
+    expect(list(routes.filter((r) => r.entry === 'allowed'))).toEqual(['DELETE /claims/:id/documents/:docId', 'POST /claims/:id/documents', 'POST /claims/:id/heirs/iban-check', 'POST /claims/:id/physical', 'POST /exports/table.xlsx', 'PUT /claims/:id/heirs']);
     // rectify: panel 1's «ثبت نهایی» after رفع نقص; coverage-check: the panel-1 filing forms' فن‌آوران lookup;
     // filing: panel 1 corrects its case until panel 2 starts on it
     expect(list(routes.filter((r) => r.entry === 'only' && !r.path.startsWith('/spare')))).toEqual(['DELETE /claims/:id/filing', 'POST /claims', 'POST /claims/:id/rectify', 'POST /claims/coverage-check', 'POST /claims/on-behalf', 'POST /claims/on-behalf/coverage-check', 'POST /import/commit', 'POST /import/preview', 'PUT /claims/:id/death-notice-date', 'PUT /claims/:id/filing']);

@@ -1,6 +1,8 @@
 import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
 import { IsBoolean, IsIn, IsOptional, IsString, Length } from 'class-validator';
 import { ShahkarService } from '../auth/shahkar.service';
+import { IbanMatchService } from '../model-view/iban-match.service';
+import { IsInt, Matches, Max, Min } from 'class-validator';
 import { SuperAdminOnly } from '../../common/rbac/decorators';
 import { SmsConfigDto, TestSmsDto } from '../branding/dto';
 import { PlatformService } from './platform.service';
@@ -13,6 +15,31 @@ class ShahkarDto {
   @IsOptional() @IsString() @Length(0, 2000) token?: string;
 }
 
+const FIELD = /^[\w\-.]*$/;
+class IbanMatchDto {
+  @IsOptional() @IsBoolean() enabled?: boolean;
+  @IsOptional() @IsString() @Length(0, 30) provider?: string;
+  @IsOptional() @IsString() @Length(0, 500) url?: string;
+  @IsOptional() @IsIn(['GET', 'POST']) method?: 'GET' | 'POST';
+  @IsOptional() @IsString() @Length(1, 60) @Matches(FIELD) authHeader?: string;
+  @IsOptional() @IsString() @Length(0, 30) authPrefix?: string;
+  @IsOptional() @IsString() @Length(0, 2000) token?: string;
+  @IsOptional() @IsBoolean() clearToken?: boolean;
+  @IsOptional() @IsString() @Length(1, 60) @Matches(FIELD) nationalCodeField?: string;
+  @IsOptional() @IsString() @Length(1, 60) @Matches(FIELD) ibanField?: string;
+  @IsOptional() @IsString() @Length(0, 60) @Matches(FIELD) birthDateField?: string;
+  @IsOptional() @IsIn(['JALALI', 'GREGORIAN']) birthDateFormat?: 'JALALI' | 'GREGORIAN';
+  @IsOptional() @IsString() @Length(0, 2000) extraParams?: string;
+  @IsOptional() @IsString() @Length(1, 120) @Matches(FIELD) matchPath?: string;
+  @IsOptional() @IsString() @Length(1, 200) matchValues?: string;
+  @IsOptional() @IsInt() @Min(2) @Max(60) timeoutSec?: number;
+}
+class IbanTestDto {
+  @IsString() @Matches(/^\d{10}$/) nationalCode!: string;
+  @IsString() @Length(24, 34) iban!: string;
+  @IsOptional() @IsString() @Length(0, 12) birthDate?: string;
+}
+
 class SetPlatformSmsDto {
   @IsBoolean()
   enabled!: boolean;
@@ -22,7 +49,24 @@ class SetPlatformSmsDto {
 @SuperAdminOnly()
 @Controller('platform')
 export class PlatformController {
-  constructor(private readonly platform: PlatformService, private readonly shahkarSvc: ShahkarService) {}
+  constructor(private readonly platform: PlatformService, private readonly shahkarSvc: ShahkarService, private readonly iban: IbanMatchService) {}
+
+  /** «استعلام تطابق شبا و کد ملی» of ذینفعان: on/off + the provider's call. */
+  @Get('iban-match')
+  ibanMatch() {
+    return this.iban.settings();
+  }
+
+  @Put('iban-match')
+  setIbanMatch(@Body() dto: IbanMatchDto) {
+    return this.iban.save(dto);
+  }
+
+  /** Try the saved settings with a real کد ملی / شبا (works while switched off; shows the raw reply). */
+  @Post('iban-match/test')
+  testIbanMatch(@Body() dto: IbanTestDto) {
+    return this.iban.check(dto.nationalCode, dto.iban, dto.birthDate, true);
+  }
 
   @Get('sms-config')
   getSmsConfig() {

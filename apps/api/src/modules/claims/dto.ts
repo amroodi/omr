@@ -1,4 +1,4 @@
-import { INSURED_RELATIONS, InsuredRelation } from './workflow';
+import { FILING_RELATIONS, InsuredRelation } from './workflow';
 import { SalesChannel } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
@@ -214,7 +214,7 @@ export class FileOnBehalfDto {
   contractId?: string;
 
   @IsOptional()
-  @IsIn(INSURED_RELATIONS as unknown as string[])
+  @IsIn(FILING_RELATIONS)
   insuredRelation?: InsuredRelation;
 
   @IsOptional()
@@ -345,6 +345,13 @@ export class ActionDto {
 }
 
 /** «روند سیناد» kartable operation on one case (see ClaimsService.sinadOp). */
+/** «تطابق شبا و کد ملی» of one ذینفع. */
+export class IbanCheckDto {
+  @IsString() @Matches(/^[\d۰-۹]{10}$/) nationalCode!: string;
+  @IsString() @Length(24, 40) iban!: string;
+  @IsOptional() @IsString() @Length(0, 12) birthDate?: string;
+}
+
 export class SinadOpDto {
   @IsOptional()
   @IsString()

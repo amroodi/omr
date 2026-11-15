@@ -13,6 +13,8 @@ import { PaymentBox, PaymentInfo } from '../../../../components/PaymentBox';
 import { HeirsCard } from '../../../../components/heirs';
 import { DoctorPaper, doctorFormOf } from '../../../../components/paper/DoctorPaper';
 import { PaperModal, Values } from '../../../../components/paper/Paper';
+import { CaseEditForm } from '../case-edit';
+import { lastPanel } from '../../../../../lib/panel';
 
 /**
  * «ارزیابی» window of «روند سیناد» (Alborz): full screen like Sinad's — grey case strip on top, the scans
@@ -34,7 +36,8 @@ interface Claim {
 interface Referral { id: string; kind: string; status: string; doctor: string | null; by: string | null; request: Record<string, string>; answer: Record<string, string> | null; at: string; answeredAt: string | null }
 interface Sinad {
   enabled: boolean; evaluator: { id: string; name: string; at: string | null; me: boolean } | null; later: boolean;
-  doctor: { state: string | null; note: string | null }; fraudCheck: string | null; fraudItems?: { key: string; label: string; reason: string; value: 'OK' | 'SUSPECT' | null }[]; risk: { level: 'LOW' | 'MEDIUM' | 'HIGH'; reasons: string[] };
+  doctor: { state: string | null; note: string | null }; fraudCheck: string | null; fraudItems?: { key: string; label: string; reason: string; no: string; why: string | null; value: 'OK' | 'SUSPECT' | null }[];
+  exclusions?: { key: string; text: string }[]; exclusionsNote?: string; risk: { level: 'LOW' | 'MEDIUM' | 'HIGH'; reasons: string[] };
   canEvaluate: boolean; admin: boolean; returnGroups: { label: string; items: string[] }[];
   history: { kind: string; label: string; note: string | null; by: string; at: string }[];
   related: { id: string; claimNumber: string; claimTypeLabel: string; status: string; name: string | null; relation: string | null; line: string | null; amount: string; createdAt: string }[];
@@ -64,7 +67,13 @@ export default function EvaluatePage() {
   const [returnNote, setReturnNote] = useState('');
   const [picked, setPicked] = useState<string[]>([]);
   const [openGroup, setOpenGroup] = useState<number | null>(0);
-  const [modal, setModal] = useState<null | 'history' | 'family' | 'note' | 'refer' | 'actions' | 'doctor' | 'heirs'>(null);
+  const [modal, setModal] = useState<null | 'history' | 'family' | 'note' | 'refer' | 'actions' | 'doctor' | 'heirs' | 'exclusion'>(null);
+  // «رد پرونده»: open with its reason (a point of «تطابق شرایط پرونده با بیمه نامه» not approved fills it in).
+  const [rejectCase, setRejectCase] = useState<string | null>(null);
+  const [exclusion, setExclusion] = useState('');
+  // کارگزاری's panel 2 calls this window «بررسی مدارک»; the insurer's keeps «ارزیابی».
+  const [brokerDesk, setBrokerDesk] = useState(false);
+  useEffect(() => { setBrokerDesk(lastPanel('org') === 'BROKER'); }, []);
   // «اظهار نظر پزشک معتمد»: which doctor, and شعبه's part of the form (the insurer's form will replace these fields)
   const [doctors, setDoctors] = useState<{ id: string; name: string }[] | null>(null);
   const [doctorId, setDoctorId] = useState('');
@@ -157,13 +166,15 @@ export default function EvaluatePage() {
   const closedNow = ['PAID', 'REJECTED'].includes(claim?.status ?? '');
   const action = (key: string) => w?.actions.find((a) => a.key === key);
   const branchEval = !!sinad?.canEvaluate;
+  // The insurer's شعبه (not the کارگزاری, ستاد or شورا): «تطابق شرایط پرونده با بیمه نامه» is theirs.
+  const insurerBranch = !brokerDesk && (branchEval || w?.myStage === 'BRANCH');
   const requested = Number(claim?.estimatedAmount ?? 0);
   const approved = num(amount);
 
   /** «تایید و ذخیره»: amount, every document ✓ at شعبه, اعلام خسارت, then on to ستاد (or ask for the originals first). */
   const approveAndSave = () => run(async () => {
-    if (!sinad?.fraudCheck) throw new Error('ابتدا هر چهار مورد بررسی را در کادر ریسک مشخص کنید');
-    if (sinad.fraudCheck === 'FRAUD') throw new Error('موردی مشکوک علامت خورده است؛ از برگهٔ «عودت» استفاده کنید');
+    if (!sinad?.fraudCheck) throw new Error('ابتدا موارد «تطابق شرایط پرونده با بیمه نامه» را مشخص کنید');
+    if (sinad.fraudCheck === 'FRAUD') throw new Error('موردی از «تطابق شرایط پرونده با بیمه نامه» تأیید نشده است؛ پرونده را رد کنید');
     if (!approved) throw new Error('مبلغ تایید شده را وارد کنید');
     if (String(approved) !== String(Number(claim?.finalizedAmount ?? 0))) await client.put(`/claims/${id}/finalized-amount`, { amount: String(approved) }, 'org');
     for (const { d } of rows) {
@@ -193,10 +204,25 @@ export default function EvaluatePage() {
   const returnAndSave = () => run(async () => {
     const ret = action('RETURN');
     if (!ret) throw new Error('عودت در این مرحله ممکن نیست');
-    const items = [...(sinad?.fraudItems ?? []).filter((x) => x.value === 'SUSPECT').map((x) => x.reason), ...picked, ...(returnNote.trim() ? [returnNote.trim()] : [])];
+    const items = [...picked, ...(returnNote.trim() ? [returnNote.trim()] : [])];
     if (!items.length) throw new Error('حداقل یک علت عودت را انتخاب کنید یا بنویسید');
     await client.post(`/claims/${id}/action`, { action: 'RETURN', deficiencyNotes: items }, 'org');
     router.push('/org/work-desk');
+  });
+
+  /** «رد پرونده» (رد نهایی) with its reason. */
+  const rejectNow = (note: string) => run(async () => {
+    if (!note.trim()) throw new Error('علت رد پرونده را بنویسید');
+    await client.post(`/claims/${id}/action`, { action: 'REJECT_FINAL', note: note.trim().slice(0, 1000) }, 'org');
+    router.push('/org/work-desk');
+  });
+  const notApprovedReasons = () => (sinad?.fraudItems ?? []).filter((x) => x.value === 'SUSPECT').map((x) => x.reason).join('\n');
+  /** A point of «تطابق شرایط پرونده با بیمه نامه»: approved, or not (the cause first asks which exclusion applies). */
+  const setPoint = (key: string, value: 'OK' | 'SUSPECT' | '', why?: string) => run(async () => {
+    const s = await client.post<Sinad>(`/claims/${id}/sinad/fraud-item`, { request: { item: key, value, ...(why ? { why } : {}) } }, 'org');
+    setSinad(s);
+    if (value === 'SUSPECT') setRejectCase((s.fraudItems ?? []).filter((x) => x.value === 'SUSPECT').map((x) => x.reason).join('\n'));
+    else if (!(s.fraudItems ?? []).some((x) => x.value === 'SUSPECT')) setRejectCase(null);
   });
 
   const openDoctor = (kind: 'doctor-refer' | 'doctor-exam') => {
@@ -240,12 +266,20 @@ export default function EvaluatePage() {
   const doc = docs[docIdx];
   const fraudRed = sinad.fraudCheck === 'FRAUD' || sinad.risk.level === 'HIGH';
   const returns = (claim.deficiencies ?? []).slice().reverse();
+  // «تطابق مشخصات هویتی»: the case's data (was «ویرایش» on مشاهده), four fields open, the rest in a drawer.
+  const identity = <CaseEditForm key={claim.id} claimId={id} title={claim.deceasedName ?? ''} onSaved={load} match />;
+  // «تطابق ذینفعان»: the insurer's panel 2 opens the case's ذینفعان from here (the کارگزاری from the icon bar).
+  const heirsItem = !brokerDesk && (
+    <button type="button" className="ev-item ev-open" onClick={() => setModal('heirs')}>
+      <b>تطابق ذینفعان</b><Icon path="M9 18l-6-6 6-6" />
+    </button>
+  );
 
   return (
     <div className="ev-full">
       {/* Title bar */}
       <div className="ev-title">
-        <span>{branchEval ? 'ارزیابی اولیه' : claim.currentStage === 'BRANCH' ? 'پرونده' : 'ارزیابی نهایی'} — پرونده {claim.claimNumber}</span>
+        <span>{brokerDesk ? 'بررسی مدارک' : branchEval ? 'ارزیابی اولیه' : claim.currentStage === 'BRANCH' ? 'پرونده' : 'ارزیابی نهایی'} — پرونده {claim.claimNumber}</span>
         {sinad.evaluator && <span className="ev-title-sub">ارزیاب: {sinad.evaluator.name}{sinad.evaluator.at ? ` (${sinad.evaluator.at})` : ''}</span>}
         <span className="sk-grow" />
         <StatusBadge status={claim.status} />
@@ -264,7 +298,7 @@ export default function EvaluatePage() {
         <div><span>تاریخ وقوع</span><b>{claim.eventDate || '—'}</b></div>
         <div><span>نوع پرونده</span><b>{claim.claimTypeLabel || claim.claimType}</b></div>
         {claim.filedBy && <div><span>ثبت‌کننده</span><b>{filerText(claim.filedBy)}</b></div>}
-        {fraudRed && <div className="ev-strip-red">{sinad.fraudCheck === 'FRAUD' ? `مشکوک: ${(sinad.fraudItems ?? []).filter((x) => x.value === 'SUSPECT').map((x) => x.reason).join('، ')}` : `ریسک زیاد: ${sinad.risk.reasons.join('، ')}`}</div>}
+        {fraudRed && insurerBranch && <div className="ev-strip-red">{sinad.fraudCheck === 'FRAUD' ? `تأیید نشده: ${(sinad.fraudItems ?? []).filter((x) => x.value === 'SUSPECT').map((x) => x.reason).join('، ')}` : `ریسک زیاد: ${sinad.risk.reasons.join('، ')}`}</div>}
       </div>
 
       <div className="ev-body">
@@ -273,29 +307,42 @@ export default function EvaluatePage() {
           <ErrorBox message={error} />
           {msg && <div className="alert-success text-sm">{msg}</div>}
 
-          {/* Risk box */}
-          <div className={`ev-risk is-${sinad.risk.level.toLowerCase()}`}>
-            <div className="ev-risk-head">
-              <span>سطح ریسک: <b>{RISK_FA[sinad.risk.level]}</b></span>
-              <button className="ev-link" onClick={() => setModal('family')}>مقایسه با پرونده‌های مرتبط ({sinad.related.length.toLocaleString('fa-IR')})</button>
-            </div>
-            {sinad.risk.reasons.length > 0 ? <ul className="ev-risk-list">{sinad.risk.reasons.map((r) => <li key={r}>{r}</li>)}</ul> : <div className="text-xs">نشانه‌ای از ریسک یافت نشد.</div>}
-            {(sinad.fraudItems ?? []).length > 0 && (
+          {/* «تطابق شرایط پرونده با بیمه نامه»: the insurer's شعبه only */}
+          {insurerBranch && (
+            <div className={`ev-risk is-${sinad.risk.level.toLowerCase()}`}>
+              <div className="ev-risk-head">
+                <b>تطابق شرایط پرونده با بیمه نامه</b>
+                <button className="ev-link" onClick={() => setModal('family')}>مقایسه با پرونده‌های مرتبط ({sinad.related.length.toLocaleString('fa-IR')})</button>
+              </div>
+              <div className="text-xs">سطح ریسک: <b>{RISK_FA[sinad.risk.level]}</b>{sinad.risk.reasons.length > 0 ? ` — ${sinad.risk.reasons.join('، ')}` : ''}</div>
               <div className="ev-fraud">
-                {(sinad.fraudItems ?? []).map((x) => (
+                {(sinad.fraudItems ?? []).map((x, i) => (
                   <div key={x.key} className={`ev-fraud-row${x.value === 'SUSPECT' ? ' is-bad' : x.value === 'OK' ? ' is-ok' : ''}`}>
-                    <span>{x.label}</span>
+                    <span>{(i + 1).toLocaleString('fa-IR')}. {x.label}{x.value === 'SUSPECT' && x.why ? <small className="ev-fraud-why"> — بند {x.why}</small> : null}</span>
                     {branchEval && !closed ? (
                       <span className="ev-fraud-btns">
-                        <button type="button" className={x.value === 'OK' ? 'is-on' : ''} disabled={busy} onClick={() => run(() => op('fraud-item', { request: { item: x.key, value: x.value === 'OK' ? '' : 'OK' } }))}>مورد ندارد</button>
-                        <button type="button" className={`is-red${x.value === 'SUSPECT' ? ' is-on' : ''}`} disabled={busy} onClick={() => run(async () => { await op('fraud-item', { request: { item: x.key, value: x.value === 'SUSPECT' ? '' : 'SUSPECT' } }); if (x.value !== 'SUSPECT') setTab('return'); })}>مشکوک</button>
+                        <button type="button" className={`is-green${x.value === 'OK' ? ' is-on' : ''}`} disabled={busy} onClick={() => setPoint(x.key, x.value === 'OK' ? '' : 'OK')}>مورد تأیید است</button>
+                        <button type="button" className={`is-red${x.value === 'SUSPECT' ? ' is-on' : ''}`} disabled={busy}
+                          onClick={() => (x.value === 'SUSPECT' ? setPoint(x.key, '') : x.key === 'CAUSE_POLICY' ? (setExclusion(''), setModal('exclusion')) : setPoint(x.key, 'SUSPECT'))}>{x.no}</button>
                       </span>
-                    ) : <b>{x.value === 'OK' ? 'مورد ندارد' : x.value === 'SUSPECT' ? 'مشکوک' : '—'}</b>}
+                    ) : <b>{x.value === 'OK' ? 'مورد تأیید است' : x.value === 'SUSPECT' ? x.no : '—'}</b>}
                   </div>
                 ))}
               </div>
-            )}
-          </div>
+            </div>
+          )}
+
+          {/* «رد پرونده»: a point above not approved, or the button below */}
+          {rejectCase !== null && branchEval && !closed && (
+            <div className="ev-rejectcase">
+              <div className="ev-item-head"><b>رد پرونده</b></div>
+              <textarea className="input" rows={3} maxLength={1000} value={rejectCase} onChange={(e) => setRejectCase(e.target.value)} placeholder="علت رد پرونده" />
+              <div className="flex gap-2">
+                <button className="ev-btn is-warn" disabled={busy || !rejectCase.trim() || !action('REJECT_FINAL')} onClick={() => rejectNow(rejectCase)}>ثبت رد پرونده</button>
+                <button className="ev-btn" disabled={busy} onClick={() => setRejectCase(null)}>انصراف</button>
+              </div>
+            </div>
+          )}
 
           {sinad.doctor.state && <div className="ev-yellow">پرونده {sinad.doctor.state === 'EXAM' ? 'در انتظار معاینه توسط پزشک معتمد' : 'در انتظار اظهار نظر پزشک معتمد'} است.</div>}
           {sinad.doctor.note && <div className="ev-yellow"><b>اظهار نظر پزشک معتمد:</b> {sinad.doctor.note}</div>}
@@ -333,6 +380,8 @@ export default function EvaluatePage() {
                   {claim.description && <div className="ev-insured-note"><b>توضیحات بیمه‌گزار:</b> {claim.description}</div>}
                   {claim.coverageStatus && <div className="ev-yellow">{COVER_FA[claim.coverageStatus] ?? claim.coverageStatus}{claim.lateNotice ? ' — اعلام پس از مهلت مقرر' : ''}</div>}
 
+                  {identity}
+
                   {insurerForms.some((it) => it.canUpload) && !closed && (
                     <div className="ev-item ev-forms">
                       <div className="ev-item-head"><b>فرم‌های شعبه</b></div>
@@ -350,7 +399,7 @@ export default function EvaluatePage() {
                   )}
 
                   <div className="ev-item">
-                    <div className="ev-item-head"><b>مدارک پرونده</b><span>{checklist?.complete ? 'کامل' : 'ناقص'}</span></div>
+                    <div className="ev-item-head"><b>{brokerDesk ? 'مدارک پرونده' : 'تطابق مدارک پرونده'}</b><span>{checklist?.complete ? 'کامل' : 'ناقص'}</span></div>
 <DeathNoticeDate claimId={id} className="is-ev" />
                     {docRows('شعبه')}
                     {!closed && rows.some(({ d }) => { const r = deskReview(d); return r?.canEdit && r.state !== 'APPROVED'; }) && (
@@ -358,6 +407,7 @@ export default function EvaluatePage() {
                     )}
                     {missingRows}
                   </div>
+                  {heirsItem}
 
                   <div className="ev-amount">
                     <label htmlFor="ev-amt">مبلغ تایید شده (مبلغ خسارت قطعی)</label>
@@ -373,13 +423,14 @@ export default function EvaluatePage() {
                   {!closed && (
                     <>
                       <div className="ev-actions">
-                        <button className="ev-btn" disabled={busy} onClick={() => { setReferTo(''); setModal('refer'); if (!evaluators) client.get<{ id: string; name: string }[]>('/claims/sinad/evaluators', 'org').then(setEvaluators).catch(() => setEvaluators([])); }}>ارجاع</button>
-                        <button className="ev-btn" disabled={busy} onClick={() => openDoctor('doctor-refer')}>اظهار نظر پزشک معتمد</button>
                         <button className="ev-btn" disabled={busy} onClick={() => openDoctor('doctor-exam')}>دعوت به معاینه</button>
+                        <button className="ev-btn" disabled={busy} onClick={() => openDoctor('doctor-refer')}>اظهار نظر پزشک معتمد</button>
+                        <button className="ev-btn" disabled={busy} onClick={() => run(async () => { await op('later'); router.push('/org/work-desk'); })}>بعدا بررسی میکنم</button>
                       </div>
                       <div className="ev-actions">
-                        <button className="ev-btn" disabled={busy} onClick={() => run(async () => { await op('later'); router.push('/org/work-desk'); })}>بعدا بررسی میکنم</button>
-                        <button className="ev-btn is-main" disabled={busy} onClick={approveAndSave}>{busy ? <Spinner size={16} /> : 'تایید و ذخیره'}</button>
+                        <button className="ev-btn" disabled={busy || !action('RETURN')} onClick={() => setTab('return')}>عودت</button>
+                        <button className="ev-btn is-warn" disabled={busy || !action('REJECT_FINAL')} onClick={() => setRejectCase(rejectCase ?? notApprovedReasons())}>رد پرونده</button>
+                        <button className="ev-btn is-main" disabled={busy} onClick={approveAndSave}>{busy ? <Spinner size={16} /> : 'تأیید و ذخیره'}</button>
                       </div>
                     </>
                   )}
@@ -428,8 +479,9 @@ export default function EvaluatePage() {
                 <div><span>درخواستی</span><b>{rial(requested)}</b></div>
                 <div><span>تایید اولیه (شعبه)</span><b>{rial(claim.finalizedAmount)}</b></div>
               </div>
+              {identity}
               <div className="ev-item">
-                <div className="ev-item-head"><b>مدارک پرونده</b><span>{checklist?.complete ? 'کامل' : 'ناقص'}</span></div>
+                <div className="ev-item-head"><b>{brokerDesk ? 'مدارک پرونده' : 'تطابق مدارک پرونده'}</b><span>{checklist?.complete ? 'کامل' : 'ناقص'}</span></div>
 <DeathNoticeDate claimId={id} className="is-ev" />
                 {docRows(w?.currentStageLabel ?? '')}
                 {rows.length === 0 && <div className="ev-doc is-missing"><span>مدرکی بارگذاری نشده است.</span></div>}
@@ -438,6 +490,7 @@ export default function EvaluatePage() {
                   <button className="ev-btn w-full mt-2" disabled={busy} onClick={approveAll}>تایید همهٔ مدارک در این مرحله</button>
                 )}
               </div>
+              {heirsItem}
               {w && <PaymentBox claimId={id} info={w} finalizedAmount={claim.finalizedAmount} closed={closed} onDone={load} />}
               {w && <WorkflowPanel claimId={id} workflow={w} realm="org" onDone={load} compact />}
               {!w?.holdsDesk && <div className="text-xs" style={{ color: 'var(--muted)' }}>این پرونده اکنون در «{w?.currentStageLabel || '—'}» است و اقدامی برای شما ندارد.</div>}
@@ -488,7 +541,8 @@ export default function EvaluatePage() {
         <span className="ev-icons-sep" />
         <button onClick={() => setModal('history')}><Icon path="M12 8v4l3 2M3 12a9 9 0 109-9 9 9 0 00-7 3.4M3 4v4h4" /><span>تاریخچه</span></button>
         <button onClick={() => setModal('family')}><Icon path="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" /><span>خسارت اعضای خانواده</span></button>
-        <button onClick={() => setModal('heirs')}><Icon path="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM19 8v6M22 11h-6" /><span>ذینفعان</span></button>
+        {brokerDesk && <button onClick={() => setModal('heirs')}><Icon path="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM19 8v6M22 11h-6" /><span>ذینفعان</span></button>}
+        {branchEval && !closed && <button onClick={() => { setReferTo(''); setModal('refer'); if (!evaluators) client.get<{ id: string; name: string }[]>('/claims/sinad/evaluators', 'org').then(setEvaluators).catch(() => setEvaluators([])); }}><Icon path="M5 12h14M13 6l6 6-6 6" /><span>ارجاع</span></button>}
         <button onClick={() => { setNoteText(''); setModal('note'); }}><Icon path="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.1 2.1 0 013 3L12 15l-4 1 1-4z" /><span>یادداشت ارزیاب</span></button>
         {!closed && <UploadButton className="ev-icon-btn" accept=".pdf,.jpg,.jpeg,.png" maxMB={15} camera title="افزودن پیوست" onUpload={uploadDoc}><Icon path="M21.4 11.1l-9.2 9.2a6 6 0 01-8.5-8.5l9.2-9.2a4 4 0 015.7 5.7l-9.2 9.2a2 2 0 01-2.8-2.8l8.5-8.5" /><span>افزودن پیوست</span></UploadButton>}
         <button onClick={() => window.open(`/org/claims/${id}`, '_blank')}><Icon path="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8zM14 2v6h6" /><span>پرونده کامل</span></button>
@@ -521,9 +575,9 @@ export default function EvaluatePage() {
       )}
       {modal && modal !== 'doctor' && (
         <Overlay onClose={() => setModal(null)}>
-          <div className="pmodal" style={{ maxWidth: modal === 'heirs' ? 1000 : modal === 'actions' || modal === 'family' || modal === 'history' ? 720 : 520 }} onClick={(e) => e.stopPropagation()}>
+          <div className="pmodal" style={{ maxWidth: modal === 'heirs' || modal === 'exclusion' ? 1000 : modal === 'actions' || modal === 'family' || modal === 'history' ? 720 : 520 }} onClick={(e) => e.stopPropagation()}>
             <div className="pmodal-head">
-              <span className="pmodal-title">{({ history: 'تاریخچه', family: 'خسارت اعضای خانواده و پرونده‌های مرتبط', note: 'یادداشت ارزیاب', refer: 'ارجاع به ارزیاب دیگر', actions: 'سایر اقدامات پرونده', heirs: 'ذینفعان / گیرندگان خسارت' } as Record<string, string>)[modal]}</span>
+              <span className="pmodal-title">{({ history: 'تاریخچه', family: 'خسارت اعضای خانواده و پرونده‌های مرتبط', note: 'یادداشت ارزیاب', refer: 'ارجاع به ارزیاب دیگر', actions: 'سایر اقدامات پرونده', heirs: brokerDesk ? 'ذینفعان / گیرندگان خسارت' : 'تطابق ذینفعان', exclusion: 'تطابق علت فوت با شرایط خصوصی بیمه نامه' } as Record<string, string>)[modal]}</span>
               <button className="pmodal-x" onClick={() => setModal(null)} aria-label="بستن">×</button>
             </div>
             <div className="pmodal-body text-sm space-y-2">
@@ -546,6 +600,19 @@ export default function EvaluatePage() {
                 </table>
               )}
               {modal === 'heirs' && <HeirsCard claimId={id} realm="org" className="" />}
+              {modal === 'exclusion' && (
+                <div className="ev-excl">
+                  {(sinad.exclusions ?? []).map((x) => (
+                    <div key={x.key}>
+                      {x.key === 'ل' && sinad.exclusionsNote && <p className="ev-excl-note">{sinad.exclusionsNote}</p>}
+                      <label className={`ev-excl-row${exclusion === x.key ? ' is-on' : ''}`}>
+                        <input type="radio" name="excl" checked={exclusion === x.key} onChange={() => setExclusion(x.key)} />
+                        <span><b>{x.key})</b> {x.text}</span>
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              )}
               {modal === 'note' && (
                 <textarea className="input" rows={4} maxLength={1000} value={noteText} onChange={(e) => setNoteText(e.target.value)} placeholder="یادداشت ارزیاب (فقط برای کارکنان بیمه‌گر)" />
               )}
@@ -559,6 +626,13 @@ export default function EvaluatePage() {
               )}
               {modal === 'actions' && w && <WorkflowPanel claimId={id} workflow={w} realm="org" onDone={() => { setModal(null); load(); }} compact />}
             </div>
+            {modal === 'exclusion' && (
+              <div className="flex border-t" style={{ borderColor: 'var(--border)' }}>
+                <button onClick={() => setModal(null)} className="flex-1 py-3 font-bold" style={{ color: 'var(--muted)', borderInlineEnd: '1px solid var(--border)' }}>انصراف</button>
+                <button disabled={busy || !exclusion} className="flex-1 py-3 font-bold" style={{ color: 'var(--danger)' }}
+                  onClick={() => { setModal(null); setPoint('CAUSE_POLICY', 'SUSPECT', exclusion); }}>ثبت و رد پرونده</button>
+              </div>
+            )}
             {(modal === 'note' || modal === 'refer') && (
               <div className="flex border-t" style={{ borderColor: 'var(--border)' }}>
                 <button onClick={() => setModal(null)} className="flex-1 py-3 font-bold" style={{ color: 'var(--muted)', borderInlineEnd: '1px solid var(--border)' }}>انصراف</button>

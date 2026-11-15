@@ -68,6 +68,8 @@ export interface LineForm { insuredLabel: string; claimTypes: string[]; causeLab
  */
 export const INSURED_RELATIONS = ['MAIN', 'SPOUSE', 'CHILD', 'FATHER', 'MOTHER', 'OTHER'] as const;
 export type InsuredRelation = (typeof INSURED_RELATIONS)[number];
+/** نوع بیمه‌شده a new case may be filed for (the others stay readable on older cases). */
+export const FILING_RELATIONS: InsuredRelation[] = ['MAIN', 'SPOUSE', 'CHILD'];
 export const DEPENDENT_RELATIONS: InsuredRelation[] = ['SPOUSE', 'CHILD', 'FATHER', 'MOTHER', 'OTHER'];
 export const RELATION_FA: Record<InsuredRelation, string> = { MAIN: 'اصلی', SPOUSE: 'همسر', CHILD: 'فرزند', FATHER: 'پدر', MOTHER: 'مادر', OTHER: 'سایر' };
 

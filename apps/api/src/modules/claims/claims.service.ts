@@ -1,5 +1,5 @@
 import { ARCHIVE_FA, assertNotPaid, closedCase } from './archived';
-import { CONCESSION_GATE, CONCESSION_KEYS, CONCESSION_STATUS, COST_TYPE, doctorFormOf, FRAUD_ITEMS, isAccidentKind } from './forms';
+import { CONCESSION_GATE, CONCESSION_KEYS, CONCESSION_STATUS, COST_TYPE, doctorFormOf, EXCLUSIONS, EXCLUSIONS_NOTE, FRAUD_ITEMS, isAccidentKind } from './forms';
 import JSZip from 'jszip';
 import { randomInt, randomUUID } from 'crypto';
 import { uploadName } from '../../common/validation/upload-name';
@@ -25,7 +25,7 @@ import { TooManyRequestsException } from '../inquiry/http-exceptions';
 import { PERMISSIONS } from '../../common/rbac/permissions';
 import { nextClaimNumber } from './claim-number';
 import { isValidIban, isValidNationalCode } from '../../common/validation/field-validation';
-import { beneficiaryHiddenDocs } from '../required-docs/defaults';
+import { BENEFICIARY_DOC_CODES, BENEFICIARY_GROUP, BENEFICIARY_GROUP_AT, BENEFICIARY_GROUP_CODES, BENEFICIARY_GROUP_LABEL, beneficiaryHiddenDocs } from '../required-docs/defaults';
 import { toAsciiDigits } from '../../common/jalali/jalali.util';
 import { ModelStore } from '../model-view/model-store.service';
 import { CoverageService } from '../model-view/coverage.service';
@@ -602,7 +602,7 @@ export class ClaimsService {
       await this.notifyPolicyHolder(claim.policyHolderId, 'ثبت پرونده خسارت', `پرونده ${claim.claimNumber} ثبت شد و در حال بررسی است.`);
     }
     // NOT_CHECKED (service down) is filled in by the coverage sweep as soon as the service answers.
-    if (coverage) await this.coverage.record(claim.id, coverage);
+    if (coverage) await this.coverage.record(claim.id, coverage, accidentKind);
     return this.present(claim);
   }
 
@@ -1742,7 +1742,7 @@ export class ClaimsService {
     }
     if (!changed.length) return this.get(claimId);
     await db.claim.update({ where: { id: claimId }, data });
-    if (recheck) await this.coverage.record(claimId, recheck);
+    if (recheck) await this.coverage.record(claimId, recheck, isAccidentKind(claim.line, claim.claimType));
     await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { filing: changed } });
     return this.get(claimId);
   }
@@ -1933,10 +1933,14 @@ export class ClaimsService {
     if (!claim) throw new NotFoundException('پرونده یافت نشد');
     this.assertParticipant(claim);
 
-    const allReqs = await db.requiredDocument.findMany({
-      where: { tenantId: claim.insurerTenantId, isActive: true, code: { notIn: beneficiaryHiddenDocs(claim.beneficiaryType) }, ...docKindWhere(claim.line) },
+    const catalog = await db.requiredDocument.findMany({
+      where: { tenantId: claim.insurerTenantId, isActive: true, ...docKindWhere(claim.line) },
       orderBy: { order: 'asc' },
     });
+    // «تصویر مدارک ذینفع/ذینفعان» takes the place of every document about who receives the money.
+    const benGroup = catalog.some((r) => BENEFICIARY_DOC_CODES.includes(r.code) && docApplies(r, claim));
+    const hidden = benGroup ? [...BENEFICIARY_DOC_CODES, ...BENEFICIARY_GROUP_CODES] : beneficiaryHiddenDocs(claim.beneficiaryType);
+    const allReqs = catalog.filter((r) => !hidden.includes(r.code));
     const reqs = allReqs.filter((r) => docApplies(r, claim));
     const docs = await db.document.findMany({
       where: { claimId },
@@ -2033,6 +2037,17 @@ export class ClaimsService {
         extras: present(extrasBy.get(r.code) ?? []),
       };
     });
+    // The ذینفع documents of the case's choice, as one group at its fixed place in the list.
+    const benDocs = benGroup ? BENEFICIARY_GROUP[claim.beneficiaryType ?? ''] ?? [] : [];
+    const benItems = benDocs.map((b) => {
+      const group = byCode.get(b.code) ?? [];
+      return {
+        code: b.code, label: b.label, appliesToTypes: [] as string[], required: true, insurerOnly: false, canUpload: true, accidentOnly: false,
+        uploaded: !!group[0] && group[0].aiStatus !== 'MISMATCH', aiRefused: group[0]?.aiStatus === 'MISMATCH', latestStatus: group[0]?.verificationStatus ?? null,
+        documents: present(group), extras: present(extrasBy.get(b.code) ?? []), group: 'BENEFICIARY',
+      };
+    });
+    (items as any[]).splice(Math.min(BENEFICIARY_GROUP_AT, items.length), 0, ...benItems);
     // نقص مدارک: a required document asked for again is due again; an operator's own line is a slot of its own.
     const defSlots = await this.deficiencySlots(claimId);
     for (const it of items as any[]) {
@@ -2052,11 +2067,18 @@ export class ClaimsService {
     }
     // what is asked in an open نقص first, then the insurer's own order
     items.sort((x: any, y: any) => Number(!!y.deficiency?.open) - Number(!!x.deficiency?.open));
-    const reqCodes = new Set([...reqs.map((r) => r.code), ...kept.map((r) => r.code), ...seenDef]);
+    const reqCodes = new Set([...reqs.map((r) => r.code), ...kept.map((r) => r.code), ...seenDef, ...benDocs.map((b) => b.code)]);
+    const benChosen = !benGroup || !!BENEFICIARY_GROUP[claim.beneficiaryType ?? ''];
     return {
       claimType: claim.claimType,
       archived: claim.status === 'PAID', // a paid case takes no more uploads or reviews
-      complete: items.length > 0 && items.every((i) => i.uploaded || !i.required),
+      complete: items.length > 0 && benChosen && items.every((i) => i.uploaded || !i.required),
+      // «تصویر مدارک ذینفع/ذینفعان»: where it sits in the list and what was chosen (null = not yet).
+      beneficiary: benGroup ? {
+        label: BENEFICIARY_GROUP_LABEL, at: BENEFICIARY_GROUP_AT, type: benChosen ? claim.beneficiaryType : null,
+        // Every choice with its documents (the printable list of required documents shows them all).
+        options: Object.entries(BENEFICIARY_GROUP).map(([type, docs]) => ({ type, docs: docs.map((x) => x.label) })),
+      } : null,
       entryList: !!entryList, // the کارگزاری's own panel-1 list decides what is required (the rest show greyed)
       note: (await this.modelOf(claim.insurerTenantId)).form.docsNote,
       items,
@@ -2924,7 +2946,13 @@ export class ClaimsService {
       later: claim.evaluatorLater,
       doctor: { state: claim.doctorState, note: claim.doctorNote },
       fraudCheck: claim.fraudCheck,
-      fraudItems: FRAUD_ITEMS.map((x) => ({ ...x, value: ((claim.fraudItems ?? {}) as Record<string, string>)[x.key] ?? null })),
+      fraudItems: FRAUD_ITEMS.map((x) => {
+        const v = (claim.fraudItems ?? {}) as Record<string, string>;
+        const ex = EXCLUSIONS.find((e) => e.key === v[`${x.key}:why`]);
+        // A point not approved: the rejection's reason, with the exclusion that applies.
+        return { ...x, value: v[x.key] ?? null, why: ex?.key ?? null, reason: ex ? `${x.reason} — بند ${ex.key}) ${ex.text}` : x.reason };
+      }),
+      exclusions: EXCLUSIONS, exclusionsNote: EXCLUSIONS_NOTE,
       risk: { level, reasons },
       canEvaluate: this.holdsDesk(claim, desk) && claim.currentStage === 'BRANCH' && claim.flowDirection === 'UP' && getContext()?.panelMode !== 'ENTRY',
       admin: !!desk.insurerAdmin,
@@ -3234,14 +3262,17 @@ export class ClaimsService {
         await db.claim.update({ where: { id: claimId }, data: { fraudCheck: op === 'fraud-clean' ? 'CLEAN' : 'FRAUD' } });
         await event(op === 'fraud-clean' ? 'FRAUD_CLEAN' : 'FRAUD_FLAG');
         break;
-      case 'fraud-item': { // one point of the four-point check: «مورد ندارد» / «مشکوک»
+      case 'fraud-item': { // one point of «تطابق شرایط پرونده با بیمه نامه»: «مورد تأیید است» / «… نمی باشد»
         need(atBranch && holds, 'پرونده در اختیار شما نیست');
-        const item = input.request?.item ?? ''; const value = input.request?.value ?? '';
+        const item = input.request?.item ?? ''; const value = input.request?.value ?? ''; const why = input.request?.why ?? '';
         need(FRAUD_ITEMS.some((x) => x.key === item) && (value === 'OK' || value === 'SUSPECT' || value === ''), 'مورد نامعتبر است');
-        const items = { ...((claim.fraudItems ?? {}) as Record<string, string>) };
+        need(!why || (item === 'CAUSE_POLICY' && value === 'SUSPECT' && EXCLUSIONS.some((x) => x.key === why)), 'بند نامعتبر است');
+        // Points of the earlier check (other keys) no longer count.
+        const items = Object.fromEntries(Object.entries((claim.fraudItems ?? {}) as Record<string, string>).filter(([k]) => FRAUD_ITEMS.some((x) => k === x.key || k === `${x.key}:why`)));
         if (value) items[item] = value; else delete items[item];
-        // Every point clear → «بررسی شد»; any suspect point → the case goes to عودت with that point as its reason.
-        const fraudCheck = Object.values(items).includes('SUSPECT') ? 'FRAUD' : FRAUD_ITEMS.every((x) => items[x.key] === 'OK') ? 'CLEAN' : null;
+        if (why) items[`${item}:why`] = why; else delete items[`${item}:why`];
+        // Every point approved → «بررسی شد»; a point not approved → the case is rejected for it.
+        const fraudCheck = FRAUD_ITEMS.some((x) => items[x.key] === 'SUSPECT') ? 'FRAUD' : FRAUD_ITEMS.every((x) => items[x.key] === 'OK') ? 'CLEAN' : null;
         await db.claim.update({ where: { id: claimId }, data: { fraudItems: items, fraudCheck } });
         await event(value === 'SUSPECT' ? 'FRAUD_FLAG' : 'FRAUD_CLEAN', FRAUD_ITEMS.find((x) => x.key === item)!.label);
         break;
