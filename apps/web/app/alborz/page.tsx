@@ -10,6 +10,8 @@ const ALBORZ_THEME = { brand: '#00bd9c', title: '#00a386' };
 
 const ALBORZ: HubVariant = {
   key: 'alborz',
+  heading: 'سامانه اعلام و پیگیری خسارت های عمر و حوادث',
+  support: { label: 'امور مشتریان بیمه البرز', phone: '۰۲۱-۱۵۷۴' },
   entryTitle: 'ورود بیمه گر',
   panel1: entryLogin('alborz'),
   panel2: '/insurer/login?org=alborz',
