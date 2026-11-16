@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from 'async_hooks';
 
 export interface RequestContext {
   tenantId?: string;
-  actorType: 'ORG_USER' | 'SUPER_ADMIN' | 'INSURED' | 'CUSTOMER' | 'SYSTEM' | 'API';
+  actorType: 'ORG_USER' | 'SUPER_ADMIN' | 'INSURED' | 'CUSTOMER' | 'DOCTOR' | 'SYSTEM' | 'API';
   actorId?: string;
   permissions: string[];
   ip?: string;

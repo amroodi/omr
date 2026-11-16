@@ -27,15 +27,15 @@ export default function DoctorCase() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   useEffect(() => {
-    if (!getToken('org')) { router.push('/doctor/login'); return; }
-    client.get<Referral>(`/doctor/referrals/${id}`, 'org').then((x) => { setR(x); setF(x.kind === 'EXAM' ? { mode: 'B' } : { mode: 'A' }); }).catch((e) => setError(e.message));
+    if (!getToken('doctor')) { router.push('/doctor/login'); return; }
+    client.get<Referral>(`/doctor/referrals/${id}`, 'doctor').then((x) => { setR(x); setF(x.kind === 'EXAM' ? { mode: 'B' } : { mode: 'A' }); }).catch((e) => setError(e.message));
   }, [id, router]);
-  const view = (docId: string) => client.view(`/doctor/referrals/${id}/documents/${docId}/file`, 'org').catch((e) => setError(e.message));
+  const view = (docId: string) => client.view(`/doctor/referrals/${id}/documents/${docId}/file`, 'doctor').catch((e) => setError(e.message));
   const submit = async () => {
     if (!window.confirm('نظر شما ثبت شود؟')) return;
     setBusy(true); setError('');
     const { opinion, ...rest } = f;
-    try { setR(await client.post<Referral>(`/doctor/referrals/${id}/answer`, { opinion: (opinion ?? '').trim(), fields: rest }, 'org')); }
+    try { setR(await client.post<Referral>(`/doctor/referrals/${id}/answer`, { opinion: (opinion ?? '').trim(), fields: rest }, 'doctor')); }
     catch (e: any) { setError(e.message); } finally { setBusy(false); }
   };
   const done = r?.status === 'DONE';
@@ -82,7 +82,7 @@ export default function DoctorCase() {
             {!done && <button className="btn btn-solid" disabled={busy || (f.opinion ?? '').trim().length < 2} onClick={submit}>{busy ? 'در حال ثبت…' : 'ثبت نظریه'}</button>}
             {/* The sheet filled on paper: its scan answers the referral too. */}
             <UploadButton className="btn" accept=".pdf,.jpg,.jpeg,.png" maxMB={15} camera title="بارگذاری تصویر فرم" subtitle={r.kindLabel}
-              onUpload={async (file, onP) => { const fd = new FormData(); fd.append('file', file); await client.upload(`/doctor/referrals/${id}/scan`, fd, 'org', onP); setR(await client.get<Referral>(`/doctor/referrals/${id}`, 'org')); }}>
+              onUpload={async (file, onP) => { const fd = new FormData(); fd.append('file', file); await client.upload(`/doctor/referrals/${id}/scan`, fd, 'doctor', onP); setR(await client.get<Referral>(`/doctor/referrals/${id}`, 'doctor')); }}>
               {r.answer?.scanDocId ? 'بارگذاری دوبارهٔ تصویر فرم' : 'بارگذاری تصویر فرم'}
             </UploadButton>
             {r.answer?.scanDocId && <button className="btn" onClick={() => view(r.answer!.scanDocId!)}>تصویر فرم</button>}

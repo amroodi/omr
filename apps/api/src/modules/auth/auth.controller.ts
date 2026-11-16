@@ -2,7 +2,7 @@ import { Body, Controller, Get, Post } from '@nestjs/common';
 import { CurrentActor, Public, Realms } from '../../common/rbac/decorators';
 import type { RequestContext } from '../../common/tenant/tenant-context';
 import { AuthService } from './auth.service';
-import { ChangePasswordDto, MfaCodeDto, MfaDisableDto, MfaSetupDto, OrgLoginDto, SuperAdminLoginDto } from './dto';
+import { ChangePasswordDto, MfaCodeDto, MfaDisableDto, MfaSetupDto, OrgLoginDto, DoctorLoginDto, SuperAdminLoginDto } from './dto';
 import { MfaService } from './mfa.service';
 
 @Controller('auth')
@@ -38,6 +38,13 @@ export class AuthController {
   @Post('org/login')
   orgLogin(@Body() dto: OrgLoginDto) {
     return this.auth.orgLogin(dto);
+  }
+
+  /** «ورود پزشک معتمد»: an account made in Super Admin › پزشکان معتمد. */
+  @Public()
+  @Post('doctor/login')
+  doctorLogin(@Body() dto: DoctorLoginDto) {
+    return this.auth.doctorLogin(dto);
   }
 
   @Public()

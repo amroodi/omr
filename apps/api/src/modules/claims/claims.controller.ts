@@ -15,7 +15,7 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
-import { EntryAllowed, EntryOnly, Permissions } from '../../common/rbac/decorators';
+import { EntryAllowed, EntryOnly, Permissions, Realms } from '../../common/rbac/decorators';
 import { PERMISSIONS } from '../../common/rbac/permissions';
 import { ClaimFieldsService } from '../claim-fields/claim-fields.service';
 import { CoverageService } from '../model-view/coverage.service';
@@ -573,19 +573,33 @@ export class ClaimsController {
 export class DoctorController {
   constructor(private readonly claims: ClaimsService) {}
 
-  @Permissions(PERMISSIONS.DOCTOR_OPINE)
+  /** The signed-in doctor (name for the top bar, the insurers they work with). */
+  @Realms('DOCTOR')
+  @Get('me')
+  me() {
+    return this.claims.doctorMe();
+  }
+
+  /** The doctor changes their own password. */
+  @Realms('DOCTOR')
+  @Post('password')
+  password(@Body() body: { current?: string; next?: string }) {
+    return this.claims.doctorPassword(body?.current ?? '', body?.next ?? '');
+  }
+
+  @Realms('DOCTOR')
   @Get('referrals')
   list() {
     return this.claims.doctorReferrals();
   }
 
-  @Permissions(PERMISSIONS.DOCTOR_OPINE)
+  @Realms('DOCTOR')
   @Get('referrals/:id')
   one(@Param('id', ParseUUIDPipe) id: string) {
     return this.claims.doctorReferral(id);
   }
 
-  @Permissions(PERMISSIONS.DOCTOR_OPINE)
+  @Realms('DOCTOR')
   @Get('referrals/:id/documents/:docId/file')
   async file(@Param('id', ParseUUIDPipe) id: string, @Param('docId', ParseUUIDPipe) docId: string, @Res() res: Response) {
     const { buffer, mimeType, fileName } = await this.claims.doctorFile(id, docId);
@@ -595,14 +609,14 @@ export class DoctorController {
   }
 
   /** The doctor's sheet as a scan, instead of (or besides) the online form. */
-  @Permissions(PERMISSIONS.DOCTOR_OPINE)
+  @Realms('DOCTOR')
   @Post('referrals/:id/scan')
   @UseInterceptors(FileInterceptor('file', { limits: docLimits }))
   scan(@Param('id', ParseUUIDPipe) id: string, @UploadedFile() file: Express.Multer.File) {
     return this.claims.referralScan(id, file, true);
   }
 
-  @Permissions(PERMISSIONS.DOCTOR_OPINE)
+  @Realms('DOCTOR')
   @Post('referrals/:id/answer')
   answer(@Param('id', ParseUUIDPipe) id: string, @Body() dto: DoctorAnswerDto) {
     return this.claims.doctorAnswer(id, dto);

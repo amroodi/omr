@@ -2,6 +2,7 @@ import { Global, Module } from '@nestjs/common';
 import { CoverageAdminController } from './coverage-admin.controller';
 import { CoverageService } from './coverage.service';
 import { IbanMatchService } from './iban-match.service';
+import { DoctorsAdminController } from './doctors-admin.controller';
 import { ModelStore } from './model-store.service';
 import { ModelViewController } from './model-view.controller';
 import { KindsService } from './kinds.service';
@@ -10,7 +11,7 @@ import { KindsAdminController, KindsPublicController } from './kinds.controller'
 /** Global: stage names, rules and the نوع بیمه‌نامه catalog are read across claims, inquiry and claim-fields. */
 @Global()
 @Module({
-  controllers: [ModelViewController, CoverageAdminController, KindsAdminController, KindsPublicController],
+  controllers: [ModelViewController, CoverageAdminController, KindsAdminController, KindsPublicController, DoctorsAdminController],
   providers: [ModelStore, CoverageService, KindsService, IbanMatchService],
   exports: [ModelStore, CoverageService, KindsService, IbanMatchService],
 })

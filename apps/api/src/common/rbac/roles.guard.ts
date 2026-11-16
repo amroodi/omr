@@ -12,6 +12,7 @@ export function realmOf(ctx: RequestContext): RealmKind | 'API' | 'NONE' {
     case 'SUPER_ADMIN': return 'SUPER';
     case 'CUSTOMER': return 'CUSTOMER';
     case 'INSURED': return ctx.insuredPhoneHash ? 'INSURED' : 'RECORD';
+    case 'DOCTOR': return 'DOCTOR';
     case 'API': return 'API';
     default: return 'NONE';
   }

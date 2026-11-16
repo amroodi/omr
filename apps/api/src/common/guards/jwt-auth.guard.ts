@@ -92,6 +92,13 @@ export class JwtAuthGuard implements CanActivate {
         const acc = await this.prisma.unscoped().customerAccount.findUnique({ where: { id: payload.sub }, select: { isActive: true, removedAt: true } });
         if (!acc?.isActive || acc.removedAt) throw new UnauthorizedException('حساب شما غیرفعال شده است');
       }
+    } else if (payload.kind === 'doctor') {
+      // پزشک معتمد: reaches only the doctor routes (@Realms('DOCTOR')); a deactivated account is out at once.
+      const d = await this.prisma.unscoped().doctor.findUnique({ where: { id: payload.sub }, select: { isActive: true } });
+      if (!d?.isActive) throw new UnauthorizedException('حساب شما غیرفعال شده است');
+      ctx.actorType = 'DOCTOR';
+      ctx.tenantId = undefined;
+      ctx.permissions = [];
     } else if (payload.kind === 'super') {
       ctx.actorType = 'SUPER_ADMIN';
       ctx.permissions = payload.permissions ?? [];
