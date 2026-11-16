@@ -1,5 +1,5 @@
 import { ARCHIVE_FA, assertNotPaid, closedCase } from './archived';
-import { CONCESSION_GATE, CONCESSION_KEYS, CONCESSION_STATUS, COST_TYPE, doctorFormOf, EXCLUSIONS, EXCLUSIONS_NOTE, FRAUD_ITEMS, isAccidentKind } from './forms';
+import { CONCESSION_GATE, CONCESSION_KEYS, CONCESSION_STATUS, COST_TYPE, doctorFormOf, EXAM_ITEMS, examAllowed, EXCLUSIONS, EXCLUSIONS_NOTE, FRAUD_ITEMS, isAccidentKind, NOT_RETURN_GROUPS, REJECT_REASONS } from './forms';
 import JSZip from 'jszip';
 import { randomInt, randomUUID } from 'crypto';
 import { uploadName } from '../../common/validation/upload-name';
@@ -108,6 +108,7 @@ interface FileClaimInput {
   accidentCapital?: string;
   /** «تاریخ اعلام فوت» typed by a کارگزاری's panel 1 at filing (Jalali). */
   deathNoticeDate?: string;
+  contactPhone?: string; // «شماره تماس قابل دسترس» (حوادث, نقص عضو): for «دعوت به معاینه»
 }
 
 /** The caller's seat in the claim chain (see myDesk). */
@@ -118,22 +119,43 @@ interface Desk {
   isAdmin: boolean; // claim:override — may skip desks on the way down (management discretion)
   /** An insurer's admin (claim:override in an insurer org) also sits at every insurer desk: شعبه, ستاد, شورای فنی. */
   insurerAdmin?: boolean;
+  /** The insurer's main branch (Alborz: کریمخان 1057): its work desk lists every branch's cases. */
+  mainBranch?: boolean;
 }
 
 const INSURER_DESKS: Stage[] = ['BRANCH', 'HQ', 'COUNCIL'];
 
 /** «روند سیناد» kartable events, as the evaluation window's history shows them. */
+/** A hand-off's name in the record of acts (steps decided before acts were recorded one by one). */
+const ACTION_FA: Record<string, string> = {
+  SUBMIT: 'ارسال پرونده', FORWARD: 'ارسال به مرحلهٔ بعد', REFER_COUNCIL: 'ارجاع به شورای فنی', PAY_ORDER: 'دستور پرداخت', RETURN: 'عودت برای رفع نقص',
+  RETURN_DIRECT: 'عودت مستقیم برای رفع نقص', DOWN_FORWARD: 'ارسال به مرحلهٔ بعد', DOWN_DIRECT: 'ارسال مستقیم', FIX_HERE: 'رفع نقص در همین مرحله',
+  MARK_PAID: 'ثبت پرداخت', REJECT_FINAL: 'رد پرونده', REQUEST_PHYSICAL: 'درخواست اصل مدارک', APPROVE_AMOUNT: 'تایید مبلغ خسارت', REJECT_AMOUNT: 'رد مبلغ خسارت', REOPEN: 'بررسی مجدد',
+};
+/** Labels of the «تصویر مدارک ذینفع/ذینفعان» documents (not in the insurer's catalog). */
+const BEN_TYPE_FA: Record<string, string> = { 'ذینفع قانونی': 'ذینفع های منتخب', 'وراث قانونی': 'حصر وراثت', 'بیمه گزار': 'بیمه گزار' };
+const BENEFICIARY_GROUP_LABELS = new Map(Object.values(BENEFICIARY_GROUP).flat().map((x) => [x.code, x.label]));
+
 const DESK_EVENT_FA: Record<string, string> = {
-  ALLOCATE: 'تخصیص به ارزیاب',
+  ALLOCATE: 'تخصیص به کارشناس',
   RELEASE: 'خارج کردن از کارتابل',
-  REFER: 'ارجاع به ارزیاب دیگر',
+  REFER: 'ارجاع به کارشناس دیگر',
   LATER: 'بعدا بررسی میکنم',
   DOCTOR_REFER: 'ارجاع به پزشک معتمد',
   DOCTOR_EXAM: 'دعوت به معاینه',
   DOCTOR_OPINION: 'اظهار نظر پزشک معتمد',
-  FRAUD_CLEAN: 'بررسی کردم، تقلب نیست',
-  FRAUD_FLAG: 'تقلب است، عودت شود',
-  NOTE: 'یادداشت ارزیاب',
+  DOCTOR_SCAN: 'بارگذاری فرم پزشک معتمد',
+  FRAUD_CLEAN: 'تطابق شرایط پرونده با بیمه نامه: مورد تأیید است',
+  FRAUD_FLAG: 'تطابق شرایط پرونده با بیمه نامه: مورد تأیید نیست',
+  NOTE: 'یادداشت کارشناس',
+  ACTION: 'اقدام در گردش کار',
+  DOC_REVIEW: 'بررسی مدرک',
+  UPLOAD: 'بارگذاری مدرک',
+  HEIRS: 'ویرایش ذینفعان',
+  HEIRS_MATCH: 'تطابق ذینفعان',
+  AMOUNT: 'ثبت مبلغ خسارت قطعی',
+  EDIT: 'ویرایش مشخصات پرونده',
+  REOPEN: 'بررسی مجدد',
   ASSIGN: 'تخصیص توسط مدیر',
   UNASSIGN: 'برگشت به پرونده‌های تخصیص‌نیافته توسط مدیر',
 };
@@ -587,6 +609,11 @@ export class ClaimsService {
       .map(([key, v]) => [key, String(v ?? '').replace(/[^\d]/g, '')] as const).filter(([, v]) => v && Number(v) > 0);
     // «تاریخ اعلام فوت»: a کارگزاری's panel 1 may give it at filing.
     const noticeDay = input.onBehalf && input.deathNoticeDate ? toAsciiDigits(input.deathNoticeDate).trim() : '';
+    // «شماره تماس قابل دسترس»: only a حوادث case of نقص عضو asks for it (for «دعوت به معاینه»).
+    const phone = toAsciiDigits(input.contactPhone ?? '').replace(/[^\d]/g, '');
+    if (phone.length >= 8 && examAllowed(line, input.claimType)) {
+      await db.claimFieldValue.create({ data: { claimId: claim.id, key: 'contact_phone', value: phone, source: 'MANUAL' as any, confirmedAt: new Date() } });
+    }
     if (/^\d{4}\/\d{1,2}\/\d{1,2}$/.test(noticeDay)) {
       await db.claimFieldValue.create({ data: { claimId: claim.id, key: 'death_notice_date', value: noticeDay, source: 'MANUAL' as any, confirmedAt: new Date() } });
     }
@@ -662,7 +689,8 @@ export class ClaimsService {
     else if (user?.desk === 'HQ' || user?.desk === 'COUNCIL' || user?.desk === 'BRANCH') stage = user.desk;
     else stage = branchId ? 'BRANCH' : 'HQ';
     const isAdmin = (ctx.permissions ?? []).includes(PERMISSIONS.CLAIM_OVERRIDE);
-    return { stage, tenantId: ctx.tenantId, branchId, isAdmin, insurerAdmin: isAdmin && tenant?.kind === 'INSURER' };
+    const mainBranch = branchId ? !!(await db.branch.findUnique({ where: { id: branchId }, select: { isMain: true } }))?.isMain : false;
+    return { stage, tenantId: ctx.tenantId, branchId, isAdmin, insurerAdmin: isAdmin && tenant?.kind === 'INSURER', mainBranch };
   }
 
   /** Does the caller hold the claim's current desk (right desk, right org, right branch)? */
@@ -780,6 +808,10 @@ export class ClaimsService {
     const amountApproved = s === 'HQ' && claim.flowDirection === 'UP' ? !!claim.amountApprovedAt : undefined;
     const authority = s === 'BRANCH' && claim.flowPurpose === 'PAYMENT' ? await this.myAuthority(claim, desk) : undefined;
     const actions = actionsFor({ claim, isAdmin: desk.isAdmin, hqCeiling: insurer?.hqCeiling ?? null, docs, branches, physical, model, submitBlocked, payeesMissing, amountApproved, authority });
+    // کارگزاری: «تطابق ذینفعان» first, then «ارسال به شعبه».
+    if (s === 'BROKER' && claim.flowDirection === 'UP' && !claim.heirsMatchedAt && (await this.beneficiaryApplies(claim))) {
+      for (const a of actions) if (a.key === 'FORWARD' && !a.disabled) a.disabled = 'ابتدا «تطابق ذینفعان» را انجام دهید';
+    }
     // «فرم ارفاقی»: the desk whose section is due registers it before the case moves on.
     const gate = CONCESSION_GATE[s];
     if (gate && (await this.prisma.unscoped().claimConcession.count({ where: { claimId: claim.id, status: gate.status } }))) {
@@ -1119,6 +1151,7 @@ export class ClaimsService {
         break;
       }
     }
+    await this.deskAct(claimId, 'ACTION', [a.label, note].filter(Boolean).join(' — '));
     await this.notifyAdminsActivity('اقدام در گردش کار', `${await this.actorLabel()} روی پروندهٔ ${claim.claimNumber}: «${a.label}».`, `/org/claims/${claimId}`);
     return this.get(claimId);
   }
@@ -1589,6 +1622,8 @@ export class ClaimsService {
     // «ویرایش» first: a hand-completed case tells its typed story; otherwise the hierarchy's.
     result.story = await this.fields.statusStory(claim);
     result.filedBy = await this.filerOf(claim); // «ثبت‌کننده»
+    // A کارگزاری's panel 1 (its staff, its بیمه‌گزار / نماینده) writes «شرح» as the details of what happened: shown under «علت خسارت».
+    result.descInCause = !!claim.brokerTenantId && (result.filedBy?.role === 'کارشناس کارگزاری' || ['POLICYHOLDER', 'REPRESENTATIVE'].includes(claim.filedByKind ?? ''));
     result.filingEdit = await this.filingEditState(claim); // panel 1 only (null elsewhere)
     if (result.story.manual) {
       // Hand-completed: the typed «وضعیت پرونده» and payment date, not the hierarchy's position / hand-off.
@@ -1800,7 +1835,30 @@ export class ClaimsService {
     if (ctx?.actorType === 'SUPER_ADMIN' || (perms.includes(PERMISSIONS.CLAIM_PROCESS) && perms.includes(PERMISSIONS.VIEW_PII))) return true;
     if (!perms.includes(PERMISSIONS.CLAIM_PROCESS)) return false;
     const desk = await this.myDesk();
-    return (desk.stage === 'BRANCH' || desk.stage === 'HQ') && this.holdsDesk(claim, desk);
+    return (desk.stage === 'BROKER' || desk.stage === 'BRANCH' || desk.stage === 'HQ') && this.holdsDesk(claim, desk);
+  }
+
+  /** The case's list asks for ذینفع documents (so «تصویر مدارک ذینفع/ذینفعان» and «تطابق ذینفعان» apply). */
+  private async beneficiaryApplies(claim: any): Promise<boolean> {
+    const rows = await this.prisma.unscoped().requiredDocument.findMany({
+      where: { tenantId: claim.insurerTenantId, isActive: true, code: { in: BENEFICIARY_DOC_CODES }, ...docKindWhere(claim.line) },
+      select: { code: true, appliesToTypes: true, requiredTypes: true, causes: true, requiredDetails: true },
+    });
+    return rows.some((r) => docApplies(r as any, claim));
+  }
+
+  /** «تطابق ذینفعان» by the کارگزاری holding the case: needed before «ارسال به شعبه». */
+  async matchHeirs(claimId: string) {
+    const db = this.db();
+    const claim = await db.claim.findUnique({ where: { id: claimId } });
+    if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
+    this.assertParticipant(claim);
+    const desk = await this.myDesk();
+    if (desk.stage !== 'BROKER' || !this.holdsDesk(claim, desk) || getContext()?.panelMode === 'ENTRY') throw new ForbiddenException('پرونده در اختیار شما نیست');
+    if (!claim.beneficiaryType) throw new BadRequestException('ابتدا یکی از ذینفع های منتخب، حصر وراثت یا بیمه گزار را انتخاب کنید');
+    await db.claim.update({ where: { id: claimId }, data: { heirsMatchedAt: new Date(), heirsMatchedById: getContext()?.actorId ?? null } });
+    await this.deskAct(claimId, 'HEIRS_MATCH', BEN_TYPE_FA[claim.beneficiaryType] ?? claim.beneficiaryType);
+    return this.heirs(claimId);
   }
 
   /**
@@ -1832,9 +1890,15 @@ export class ClaimsService {
     const full = canEdit || ctx?.actorType !== 'ORG_USER' || (ctx.permissions ?? []).includes(PERMISSIONS.VIEW_PII);
     // The deceased's form itself: the latest upload in the checklist's «فرم تعیین ذینفع» slot.
     const form = await this.db().document.findFirst({ where: { claimId, docCode: BENEFICIARY_FORM_CODE }, orderBy: { createdAt: 'desc' }, select: { id: true, fileName: true } });
+    // «تطابق ذینفعان»: the کارگزاری holding the case confirms them before «ارسال به شعبه».
+    const desk = await this.myDesk();
+    const brokerHolds = desk.stage === 'BROKER' && this.holdsDesk(claim, desk) && ctx?.panelMode !== 'ENTRY';
+    const by = claim.heirsMatchedById ? await this.prisma.unscoped().orgUser.findUnique({ where: { id: claim.heirsMatchedById }, select: { displayName: true, username: true, tenantId: true } }) : null;
     return {
       beneficiaryType: claim.beneficiaryType,
       canEdit,
+      match: claim.heirsMatchedAt ? { at: toJalali(claim.heirsMatchedAt), by: by && by.tenantId === ctx?.tenantId ? by.displayName || by.username : null } : null,
+      canMatch: brokerHolds && !!claim.beneficiaryType,
       payeesProblem: this.payeesProblem(claim, claim.heirs),
       form,
       heirs: claim.heirs.map((h) => {
@@ -1857,9 +1921,11 @@ export class ClaimsService {
     await db.$transaction([
       db.claimHeir.deleteMany({ where: { claimId } }),
       ...(heirs.length ? [db.claimHeir.createMany({ data: heirs.map((h, i) => ({ claimId, fullName: this.crypto.encrypt(h.fullName)!, iban: h.iban ? this.crypto.encrypt(h.iban) : null, nationalCode: h.nationalCode ? this.crypto.encrypt(h.nationalCode) : null, relation: h.relation ?? null, sharePercent: h.sharePercent ?? null, fatherName: h.fatherName ?? null, birthCertNo: h.birthCertNo ?? null, order: i })) })] : []),
-      db.claim.update({ where: { id: claimId }, data: { beneficiaryType: input.beneficiaryType || null } }),
+      // Changed ذینفعان need «تطابق ذینفعان» again.
+      db.claim.update({ where: { id: claimId }, data: { beneficiaryType: input.beneficiaryType || null, heirsMatchedAt: null, heirsMatchedById: null } }),
     ]);
     await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { heirs: heirs.length, beneficiaryType: input.beneficiaryType ?? null } });
+    await this.deskAct(claimId, 'HEIRS', input.beneficiaryType ? BEN_TYPE_FA[input.beneficiaryType] ?? input.beneficiaryType : null);
     return this.heirs(claimId);
   }
 
@@ -2775,6 +2841,8 @@ export class ClaimsService {
 
   /** At a «روند سیناد» شعبه a case allocated to one evaluator is out of the others' hands (admins excepted). */
   private allocatedElsewhere(claim: any, desk: Desk): boolean {
+    // Every operator of the branch may work on any of its cases at any time (no allocation since 2026-11-16).
+    if (claim) return false;
     if (desk.insurerAdmin || claim.currentStage !== 'BRANCH' || claim.flowDirection !== 'UP' || !claim.evaluatorId) return false;
     if (!this.store.get(claim.insurerTenantId).sinad.enabled) return false;
     return claim.evaluatorId !== getContext()?.actorId;
@@ -2797,12 +2865,14 @@ export class ClaimsService {
     const mine: Prisma.ClaimWhereInput = admin ? {} : { evaluatorId: me };
     const open: Prisma.ClaimWhereInput = { status: { notIn: [ClaimStatus.PAID, ClaimStatus.REJECTED] } };
     type T = { key: string; label: string; where: Prisma.ClaimWhereInput; seats: Stage[] };
+    // No «در انتظار دریافت مدارک»: a case reaches شعبه only once its documents are uploaded and sent on.
+    void mine; void open;
     const tabs: T[] = [
-      { key: 'receive', label: 'در انتظار دریافت مدارک', where: { AND: [open, { currentStage: 'BRANCH', physicalAt: null }, mine] }, seats: ['BRANCH'] },
-      { key: 'evaluate', label: 'در انتظار ارزیابی اولیه', where: { ...branchUp, doctorState: null, evaluatorLater: false, ...mine }, seats: ['BRANCH'] },
-      { key: 'later', label: 'در انتظار بررسی‌های من', where: { ...branchUp, doctorState: null, evaluatorLater: true, ...mine }, seats: ['BRANCH'] },
-      { key: 'doctor', label: 'در انتظار اظهار نظر پزشک معتمد', where: { currentStage: 'BRANCH', doctorState: 'REFER' }, seats: ['BRANCH'] },
+      { key: 'all', label: 'همه پرونده‌ها', where: {}, seats: ['BRANCH', 'HQ', 'COUNCIL'] },
+      // Every case sent up to شعبه (by a کارگزاری or the insurer's own panel 1) and not yet assessed — any operator may take it.
+      { key: 'evaluate', label: 'در انتظار ارزیابی اولیه', where: { ...branchUp, doctorState: null }, seats: ['BRANCH'] },
       { key: 'exam', label: 'دعوت به معاینه', where: { currentStage: 'BRANCH', doctorState: 'EXAM' }, seats: ['BRANCH'] },
+      { key: 'doctor', label: 'در انتظار اظهار نظر پزشک معتمد', where: { currentStage: 'BRANCH', doctorState: 'REFER' }, seats: ['BRANCH'] },
       { key: 'final', label: 'در انتظار ارزیابی نهایی', where: { currentStage: { in: ['HQ', 'COUNCIL'] }, flowDirection: 'UP' }, seats: ['BRANCH', 'HQ', 'COUNCIL'] },
       // شعبه's amount waiting for ستاد's approval (تایید / رد مبلغ خسارت)
       { key: 'approve', label: 'در انتظار تایید پرونده خسارت', where: { currentStage: 'HQ', flowDirection: 'UP', finalizedAmount: { not: null }, amountApprovedAt: null }, seats: ['BRANCH', 'HQ', 'COUNCIL'] },
@@ -2810,7 +2880,6 @@ export class ClaimsService {
       { key: 'pay', label: 'در انتظار پرداخت خسارت (واریز وجه)', where: { flowPurpose: 'PAYMENT', status: ClaimStatus.APPROVED }, seats: ['BRANCH', 'HQ', 'COUNCIL'] },
       { key: 'paid', label: 'پرداخت شده', where: { status: ClaimStatus.PAID }, seats: ['BRANCH', 'HQ', 'COUNCIL'] },
       { key: 'rejected', label: 'رد شده', where: { status: ClaimStatus.REJECTED }, seats: ['BRANCH', 'HQ', 'COUNCIL'] },
-      { key: 'all', label: 'همه پرونده‌ها', where: {}, seats: ['BRANCH', 'HQ', 'COUNCIL'] },
     ];
     return admin ? tabs : tabs.filter((t) => desk.stage && t.seats.includes(desk.stage));
   }
@@ -2818,7 +2887,8 @@ export class ClaimsService {
   /** The insurer's cases this caller follows: a شعبه user their branch's (or not yet assigned to a branch). */
   private sinadScope(desk: Desk, tenantId: string): Prisma.ClaimWhereInput {
     const w: Prisma.ClaimWhereInput = { insurerTenantId: tenantId, deletedAt: null, imported: false };
-    if (desk.stage === 'BRANCH' && !desk.insurerAdmin && desk.branchId) w.OR = [{ handlingBranchId: desk.branchId }, { handlingBranchId: null }];
+    // A branch sees the cases referred to it; the main branch sees every branch's.
+    if (desk.stage === 'BRANCH' && !desk.insurerAdmin && !desk.mainBranch && desk.branchId) w.handlingBranchId = desk.branchId;
     return w;
   }
 
@@ -2838,6 +2908,7 @@ export class ClaimsService {
       stage: s.desk.stage,
       stageLabel: s.desk.insurerAdmin ? 'مدیر بیمه‌گر (همهٔ مراحل)' : this.store.labels(s.tenantId)[s.desk.stage!],
       admin: !!s.desk.insurerAdmin,
+      allBranches: !!s.desk.insurerAdmin || !!s.desk.mainBranch, // the work desk shows each case's branch
       batchSize: me?.evalBatch ?? s.model.sinad.batchSize,
       paused: !!me?.evalPaused, // the admin paused this evaluator's allocation
       pool, // cases at شعبه not yet allocated to anyone
@@ -2877,7 +2948,6 @@ export class ClaimsService {
     if (!s) throw new ForbiddenException('کارتابل سیناد برای سازمان شما فعال نیست');
     const tab = this.sinadTabs(s.desk, s.me).find((t) => t.key === key);
     if (!tab) throw new BadRequestException('برگهٔ نامعتبر');
-    if (key === 'evaluate') await this.allocateBatch(s);
     const claims = await this.prisma.unscoped().claim.findMany({
       where: { AND: [this.sinadScope(s.desk, s.tenantId), tab.where] }, orderBy: { updatedAt: key === 'evaluate' ? 'asc' : 'desc' }, take: 300,
     });
@@ -2954,9 +3024,15 @@ export class ClaimsService {
       }),
       exclusions: EXCLUSIONS, exclusionsNote: EXCLUSIONS_NOTE,
       risk: { level, reasons },
+      // «دعوت به معاینه» (حوادث, نقص عضو only), with the number given at filing; «رد پرونده»'s reasons.
+      examAllowed: examAllowed(claim.line, claim.claimType),
+      examItems: EXAM_ITEMS,
+      contactPhone: (await unscoped.claimFieldValue.findUnique({ where: { claimId_key: { claimId, key: 'contact_phone' } }, select: { value: true } }))?.value ?? null,
+      rejectReasons: REJECT_REASONS,
+      lastActor: (await this.lastActorsOf([claimId])).get(claimId) ?? null,
       canEvaluate: this.holdsDesk(claim, desk) && claim.currentStage === 'BRANCH' && claim.flowDirection === 'UP' && getContext()?.panelMode !== 'ENTRY',
       admin: !!desk.insurerAdmin,
-      returnGroups: model.sinad.returnGroups,
+      returnGroups: model.sinad.returnGroups.filter((g) => !NOT_RETURN_GROUPS.includes(g.label)),
       history: events.map((e) => ({ kind: e.kind, label: DESK_EVENT_FA[e.kind] ?? e.kind, note: e.note, by: (e.actorId && nameOf.get(e.actorId)) || '—', at: toJalali(e.createdAt) })),
       related: related.map((r) => ({
         id: r.id, claimNumber: r.claimNumber, claimTypeLabel: caseTypeOf(model, r.claimType)?.label ?? r.claimType, status: r.status,
@@ -3184,6 +3260,59 @@ export class ClaimsService {
     return this.doctorReferral(id);
   }
 
+  /**
+   * «بارگذاری فرم پزشک معتمد»: the doctor's sheet as a scan, when it wasn't filled online — by the doctor, or by
+   * شعبه on their behalf. A referral still waiting is answered by it (the case returns to شعبه).
+   */
+  async referralScan(referralId: string, file: Express.Multer.File, asDoctor: boolean, claimId?: string) {
+    if (!file?.buffer?.length) throw new BadRequestException('فایلی دریافت نشد');
+    if (!claimDocOk(file)) throw new BadRequestException(CLAIM_DOC_TYPES_FA);
+    const u = this.prisma.unscoped();
+    const r = asDoctor ? await this.myReferral(referralId) : await u.doctorReferral.findUnique({ where: { id: referralId } });
+    if (!r || (claimId && r.claimId !== claimId) || r.status === 'CANCELLED') throw new NotFoundException('ارجاع یافت نشد');
+    const claim = await u.claim.findUnique({ where: { id: r.claimId } });
+    if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
+    if (!asDoctor) {
+      this.assertParticipant(claim);
+      const desk = await this.myDesk();
+      if (!(desk.stage === 'BRANCH' || desk.insurerAdmin) || getContext()?.tenantId !== claim.insurerTenantId || getContext()?.panelMode === 'ENTRY') throw new ForbiddenException('فرم پزشک معتمد را شعبه بارگذاری می‌کند');
+    }
+    const doc = await this.storeDocument(claim, file, 'doctor_form', getContext()?.actorId ?? null, async () => null);
+    const prev = (r.answer ?? {}) as Record<string, string>;
+    const answer = { ...prev, scanDocId: doc.id, ...(prev.opinion ? {} : { opinion: 'فرم پزشک معتمد به‌صورت تصویر بارگذاری شد' }) };
+    await u.doctorReferral.update({ where: { id: r.id }, data: { answer, ...(r.status === 'PENDING' ? { status: 'DONE', answeredAt: new Date() } : {}) } });
+    if (r.status === 'PENDING' && claim.doctorState) {
+      await u.claim.update({ where: { id: claim.id }, data: { doctorState: null, doctorNote: answer.opinion, evaluatorLater: false } });
+    }
+    await u.claimDeskEvent.create({ data: { claimId: claim.id, kind: 'DOCTOR_SCAN', note: r.kind === 'EXAM' ? 'دعوت به معاینه' : 'اظهار نظر پزشک معتمد', actorId: getContext()?.actorId ?? null } });
+    if (!asDoctor) await this.markActor(claim.id);
+    await this.audit.record({ action: AuditAction.UPLOAD, tenantId: claim.insurerTenantId, targetType: 'DoctorReferral', targetId: r.id, metadata: { claimId: claim.id, docId: doc.id } });
+    return { ok: true, docId: doc.id };
+  }
+
+  /**
+   * «بررسی مجدد»: a closed case (paid, rejected…) opened again at ستاد — e.g. a complaint about the درصد نقص
+   * عضو after دعوت به معاینه. Only ستاد of the insurer (panel 2); the reason is kept on the case's record.
+   */
+  async reopen(claimId: string, note: string) {
+    const db = this.db();
+    const claim = await db.claim.findUnique({ where: { id: claimId } });
+    if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
+    this.assertParticipant(claim);
+    const desk = await this.myDesk();
+    const ctx = getContext();
+    if (ctx?.panelMode === 'ENTRY' || ctx?.tenantId !== claim.insurerTenantId || !(desk.stage === 'HQ' || desk.insurerAdmin)) throw new ForbiddenException('بررسی مجدد پرونده با مدیریت ستاد است');
+    if (claim.currentStage || claim.imported) throw new BadRequestException('این پرونده بسته نشده است');
+    const why = (note ?? '').trim().slice(0, 1000);
+    if (why.length < 2) throw new BadRequestException('علت بررسی مجدد را بنویسید');
+    const last = await db.claimStep.findFirst({ where: { claimId }, orderBy: { order: 'desc' }, select: { order: true } });
+    await db.claimStep.create({ data: { claimId, order: (last?.order ?? 0) + 1, partyType: 'INSURER_LEVEL', holderTenantId: claim.insurerTenantId, stage: 'HQ', purpose: 'REVIEW', direction: 'UP', state: 'PENDING', note: `بررسی مجدد: ${why}` } as any });
+    await db.claim.update({ where: { id: claimId }, data: { status: ClaimStatus.UNDER_REVIEW, currentStage: 'HQ', flowDirection: 'UP', flowPurpose: 'REVIEW' } });
+    await this.deskAct(claimId, 'REOPEN', why);
+    await this.audit.record({ action: AuditAction.EDIT, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { reopen: true, from: claim.status } });
+    return this.get(claimId);
+  }
+
   /** Referrals of a case, for شعبه's ارزیابی window (the doctor's answer once registered). */
   async caseReferrals(claimId: string) {
     const u = this.prisma.unscoped();
@@ -3222,8 +3351,8 @@ export class ClaimsService {
         await db.claim.update({ where: { id: claimId }, data: { evaluatorId: null, evaluatorAt: null, evaluatorLater: false } });
         await event('RELEASE');
         break;
-      case 'refer': { // «ارجاع» to another evaluator of the branch
-        need(atBranch && holds, 'پرونده در اختیار شما نیست');
+      case 'refer': { // «ارجاع» to another کارشناس: no longer offered (every operator of the branch works on any case)
+        need(false, 'ارجاع پرونده به کارشناس دیگر در دسترس نیست');
         const to = input.userId ? await db.orgUser.findFirst({ where: { id: input.userId, tenantId: s.tenantId, isActive: true }, select: { id: true, displayName: true, username: true, branchId: true } }) : null;
         need(!!to && (!claim.handlingBranchId || to.branchId === claim.handlingBranchId), 'ارزیاب را از همین شعبه انتخاب کنید');
         await db.claim.update({ where: { id: claimId }, data: { evaluatorId: to!.id, evaluatorAt: new Date(), evaluatorLater: false } });
@@ -3239,6 +3368,7 @@ export class ClaimsService {
       case 'doctor-refer': // «ارجاع به پزشک معتمد»
       case 'doctor-exam': // «دعوت به معاینه»
         need(atBranch && claim.flowDirection === 'UP' && holds, 'پرونده در اختیار شما نیست');
+        need(op !== 'doctor-exam' || examAllowed(claim.line, claim.claimType), 'دعوت به معاینه فقط برای پرونده‌های نقص عضو حوادث است');
         // To one trusted doctor, with شعبه's part of the form: it shows on that doctor's کارتابل.
         if (input.doctorId) {
           need(!!(await this.doctorsOf(s.tenantId)).find((d) => d.id === input.doctorId), 'پزشک معتمد را از فهرست انتخاب کنید');
@@ -3428,6 +3558,84 @@ export class ClaimsService {
   }
 
   /** Case rows + their بیمه‌گزار and the period of their بیمه‌نامه (آغاز / پایان پوشش), for the lists. */
+  /** «آخرین اقدام کننده» of the caller's organization on each case (another organization's operators stay hidden). */
+  private async lastActorsOf(ids: string[]): Promise<Map<string, { name: string; at: string }>> {
+    const tid = getContext()?.tenantId;
+    const out = new Map<string, { name: string; at: string }>();
+    if (!tid || !ids.length) return out;
+    const db = this.prisma.unscoped();
+    const rows = await db.claim.findMany({ where: { id: { in: ids } }, select: { id: true, lastActors: true } });
+    const mine = rows.map((r) => [r.id, ((r.lastActors ?? {}) as Record<string, { id: string; at: string }>)[tid]] as const).filter(([, v]) => v?.id);
+    const users = mine.length ? await db.orgUser.findMany({ where: { id: { in: [...new Set(mine.map(([, v]) => v!.id))] } }, select: { id: true, displayName: true, username: true } }) : [];
+    const nameOf = new Map(users.map((u) => [u.id, u.displayName || u.username]));
+    for (const [id, v] of mine) out.set(id, { name: nameOf.get(v!.id) ?? '—', at: toJalali(new Date(v!.at)) });
+    return out;
+  }
+
+  /**
+   * One act of a panel-2 operator on a case: kept in the case's record (with who and when) and as the
+   * organization's «آخرین اقدام کننده». Panel 1, the بیمه‌گزار and Super Admin inside a panel aren't recorded here.
+   */
+  async deskAct(claimId: string, kind: string, note?: string | null) {
+    const ctx = getContext();
+    if (ctx?.actorType !== 'ORG_USER' || ctx.panelMode === 'ENTRY' || !ctx.actorId || !ctx.tenantId || ctx.assistBy) return;
+    const db = this.prisma.unscoped();
+    const c = await db.claim.findUnique({ where: { id: claimId }, select: { lastActors: true } });
+    if (!c) return;
+    await db.claimDeskEvent.create({ data: { claimId, kind, note: note ? note.slice(0, 1000) : null, actorId: ctx.actorId } });
+    await db.claim.update({ where: { id: claimId }, data: { lastActors: { ...((c.lastActors ?? {}) as Record<string, Prisma.InputJsonValue>), [ctx.tenantId]: { id: ctx.actorId, at: new Date().toISOString() } } } });
+  }
+
+  /** The same for an act on one document (its label in the note). */
+  async deskActDoc(claimId: string, docId: string | null | undefined, kind: string, note?: string | null) {
+    const ctx = getContext();
+    if (ctx?.actorType !== 'ORG_USER' || ctx.panelMode === 'ENTRY') return;
+    const db = this.prisma.unscoped();
+    const d = docId ? await db.document.findUnique({ where: { id: docId }, select: { docCode: true, fileName: true, tenantId: true } }) : null;
+    const label = d?.docCode ? (await db.requiredDocument.findFirst({ where: { tenantId: d.tenantId, code: d.docCode }, select: { label: true } }))?.label ?? BENEFICIARY_GROUP_LABELS.get(d.docCode) : null;
+    await this.deskAct(claimId, kind, [label ?? d?.fileName, note].filter(Boolean).join(' — '));
+  }
+
+  /** Only the «آخرین اقدام کننده» (acts the Sinad ops record themselves). */
+  async markActor(claimId: string) {
+    const ctx = getContext();
+    if (ctx?.actorType !== 'ORG_USER' || ctx.panelMode === 'ENTRY' || !ctx.actorId || !ctx.tenantId || ctx.assistBy) return;
+    const db = this.prisma.unscoped();
+    const c = await db.claim.findUnique({ where: { id: claimId }, select: { lastActors: true } });
+    if (c) await db.claim.update({ where: { id: claimId }, data: { lastActors: { ...((c.lastActors ?? {}) as Record<string, Prisma.InputJsonValue>), [ctx.tenantId]: { id: ctx.actorId, at: new Date().toISOString() } } } });
+  }
+
+  /**
+   * Every act of the caller's organization on a case — its operators' names, dates and times — for the
+   * case's workflow in panel 2. Another organization's operators are never listed.
+   */
+  async deskActs(claimId: string) {
+    const claim = await this.db().claim.findUnique({ where: { id: claimId } });
+    if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
+    this.assertParticipant(claim);
+    const tid = getContext()?.tenantId;
+    if (!tid || getContext()?.actorType !== 'ORG_USER') return { lastActor: null, acts: [] };
+    const db = this.prisma.unscoped();
+    const [events, steps] = await Promise.all([
+      db.claimDeskEvent.findMany({ where: { claimId }, orderBy: { createdAt: 'desc' }, take: 300 }),
+      db.claimStep.findMany({ where: { claimId, decidedAt: { not: null }, decidedById: { not: null } }, select: { action: true, note: true, decidedById: true, decidedAt: true, stage: true } }),
+    ]);
+    const ids = [...new Set([...events.map((e) => e.actorId), ...steps.map((s) => s.decidedById)].filter((x): x is string => !!x))];
+    const users = ids.length ? await db.orgUser.findMany({ where: { id: { in: ids }, tenantId: tid }, select: { id: true, displayName: true, username: true } }) : [];
+    const nameOf = new Map(users.map((u) => [u.id, u.displayName || u.username]));
+    const acts = events.filter((e) => e.actorId && nameOf.has(e.actorId)).map((e) => ({ label: DESK_EVENT_FA[e.kind] ?? e.kind, note: e.note, by: nameOf.get(e.actorId!)!, atMs: e.createdAt.getTime() }));
+    // Hand-offs decided before acts were recorded one by one.
+    for (const s of steps) {
+      if (!s.decidedById || !nameOf.has(s.decidedById) || !s.decidedAt) continue;
+      const t = s.decidedAt.getTime();
+      if (acts.some((a) => a.label === DESK_EVENT_FA.ACTION && a.by === nameOf.get(s.decidedById!) && Math.abs(a.atMs - t) < 15_000)) continue;
+      acts.push({ label: DESK_EVENT_FA.ACTION, note: [ACTION_FA[s.action ?? ''] ?? s.action, s.note].filter(Boolean).join(' — '), by: nameOf.get(s.decidedById)!, atMs: t });
+    }
+    acts.sort((a, b) => b.atMs - a.atMs);
+    const last = (await this.lastActorsOf([claimId])).get(claimId) ?? null;
+    return { lastActor: last, acts: acts.map(({ atMs, ...a }) => ({ ...a, at: toJalali(new Date(atMs)) })) };
+  }
+
   private async withPolicy<T extends object>(rows: T[]) {
     const list = rows as (T & { policyNumber?: string | null; policyholderCompanyId?: string | null })[];
     const companyIds = [...new Set(list.map((r) => r.policyholderCompanyId).filter((x): x is string => !!x))];
@@ -3440,10 +3648,12 @@ export class ClaimsService {
       : [[], []];
     const period = new Map(contracts.map((k) => [`${k.companyId}|${k.policyNumber}`, k]));
     const name = new Map(companies.map((co) => [co.id, co.name]));
+    const last = await this.lastActorsOf(list.map((r) => (r as { id?: string }).id).filter((x): x is string => !!x));
     return list.map((r) => {
       const k = period.get(`${r.policyholderCompanyId}|${r.policyNumber}`);
       return {
         ...r,
+        lastActor: last.get((r as { id?: string }).id ?? '') ?? null, // «آخرین اقدام کننده» of the viewer's own organization
         companyName: (r.policyholderCompanyId && name.get(r.policyholderCompanyId)) || null,
         policyStart: k?.startDate ? toJalali(k.startDate, false) : null,
         policyEnd: k?.endDate ? toJalali(k.endDate, false) : null,

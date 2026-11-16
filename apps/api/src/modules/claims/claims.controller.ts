@@ -293,8 +293,39 @@ export class ClaimsController {
   /** Kartable operations: take, release, refer, later, resume, doctor-refer, doctor-exam, doctor-opinion, fraud-clean, fraud-flag, note. */
   @Permissions(PERMISSIONS.CLAIM_PROCESS)
   @Post(':id/sinad/:op')
-  sinadOp(@Param('id', ParseUUIDPipe) id: string, @Param('op') op: string, @Body() dto: SinadOpDto) {
-    return this.claims.sinadOp(id, op, dto);
+  async sinadOp(@Param('id', ParseUUIDPipe) id: string, @Param('op') op: string, @Body() dto: SinadOpDto) {
+    const r = await this.claims.sinadOp(id, op, dto);
+    await this.claims.markActor(id); // the op recorded itself; it is the organization's «آخرین اقدام کننده» too
+    return r;
+  }
+
+  /** «تطابق ذینفعان» done by the کارگزاری holding the case (needed before «ارسال به شعبه»). */
+  @Permissions(PERMISSIONS.CLAIM_PROCESS)
+  @Post(':id/heirs/match')
+  matchHeirs(@Param('id', ParseUUIDPipe) id: string) {
+    return this.claims.matchHeirs(id);
+  }
+
+  /** «بررسی مجدد»: ستاد opens a closed case again (with its reason). */
+  @Permissions(PERMISSIONS.CLAIM_PROCESS)
+  @Post(':id/reopen')
+  reopen(@Param('id', ParseUUIDPipe) id: string, @Body() dto: RectifyDto) {
+    return this.claims.reopen(id, dto?.note ?? '');
+  }
+
+  /** «بارگذاری فرم پزشک معتمد» by شعبه for a referral (when the doctor didn't fill it online). */
+  @Permissions(PERMISSIONS.CLAIM_PROCESS)
+  @Post(':id/doctor-referrals/:rid/scan')
+  @UseInterceptors(FileInterceptor('file', { limits: docLimits }))
+  referralScan(@Param('id', ParseUUIDPipe) id: string, @Param('rid', ParseUUIDPipe) rid: string, @UploadedFile() file: Express.Multer.File) {
+    return this.claims.referralScan(rid, file, false, id);
+  }
+
+  /** Every act of the caller's organization on the case (its operators, dates and times) and its «آخرین اقدام کننده». */
+  @Permissions(PERMISSIONS.CLAIM_READ)
+  @Get(':id/desk-acts')
+  deskActs(@Param('id', ParseUUIDPipe) id: string) {
+    return this.claims.deskActs(id);
   }
 
   @Permissions(PERMISSIONS.CLAIM_READ)
@@ -337,7 +368,7 @@ export class ClaimsController {
   @EntryAllowed() // panel 1 fills them while the case is at the بیمه‌گزار's desk (see canEditHeirs)
   @Permissions(PERMISSIONS.CLAIM_PROCESS)
   @Put(':id/heirs')
-  setHeirs(@Param('id') id: string, @Body() dto: HeirsDto) {
+  async setHeirs(@Param('id') id: string, @Body() dto: HeirsDto) {
     return this.claims.setHeirs(id, dto);
   }
 
@@ -385,6 +416,7 @@ export class ClaimsController {
   async setField(@Param('id') id: string, @Param('key') key: string, @Body() body: { value: string }) {
     const saved = await this.fields.setValue(id, key, body?.value ?? '');
     await this.claims.applyManualOutcome(id, key, saved.value); // «تکمیل دستی»: the case follows the typed outcome
+    await this.claims.deskAct(id, 'EDIT', (saved as { label?: string }).label ?? key);
     return saved;
   }
 
@@ -434,8 +466,10 @@ export class ClaimsController {
   @Permissions(PERMISSIONS.CLAIM_READ)
   @Post(':id/documents')
   @UseInterceptors(FileInterceptor('file', { limits: docLimits }))
-  uploadDocument(@Param('id') id: string, @Query('docCode') docCode: string, @Query('extra') extra: string | undefined, @UploadedFile() file: Express.Multer.File) {
-    return this.claims.uploadDocument(id, file, docCode, extra === '1' || extra === 'true');
+  async uploadDocument(@Param('id') id: string, @Query('docCode') docCode: string, @Query('extra') extra: string | undefined, @UploadedFile() file: Express.Multer.File) {
+    const r = await this.claims.uploadDocument(id, file, docCode, extra === '1' || extra === 'true');
+    await this.claims.deskActDoc(id, (r as { id?: string })?.id, 'UPLOAD');
+    return r;
   }
 
   /** «حذف»: take back a file uploaded by mistake (not yet decided on by any desk). */
@@ -467,19 +501,23 @@ export class ClaimsController {
   /** Set a per-document approval at the caller's desk (کارگزاری/شعبه/ستاد/شورای فنی). */
   @Permissions(PERMISSIONS.DOC_VERIFY)
   @Post(':id/documents/:docId/review')
-  reviewDocument(
+  async reviewDocument(
     @Param('id') id: string,
     @Param('docId') docId: string,
     @Body() body: { stage: 'BROKER' | 'BRANCH' | 'HQ' | 'COUNCIL'; state: 'PENDING' | 'APPROVED' | 'REJECTED'; note?: string },
   ) {
-    return this.claims.reviewDocument(id, docId, body?.stage, body?.state, body?.note);
+    const r = await this.claims.reviewDocument(id, docId, body?.stage, body?.state, body?.note);
+    await this.claims.deskActDoc(id, docId, 'DOC_REVIEW', ({ APPROVED: 'تایید', REJECTED: 'رد', PENDING: 'لغو بررسی' } as Record<string, string>)[body?.state] ?? null);
+    return r;
   }
 
   /** Record the finalized damage amount (مبلغ خسارت قطعی) after assessment. */
   @Permissions(PERMISSIONS.CLAIM_PROCESS)
   @Put(':id/finalized-amount')
-  setFinalizedAmount(@Param('id') id: string, @Body() body: { amount: string }) {
-    return this.claims.setFinalizedAmount(id, body?.amount);
+  async setFinalizedAmount(@Param('id') id: string, @Body() body: { amount: string }) {
+    const r = await this.claims.setFinalizedAmount(id, body?.amount);
+    await this.claims.deskAct(id, 'AMOUNT', `${Number(String(body?.amount ?? '').replace(/[^\d]/g, '') || 0).toLocaleString('fa-IR')} ریال`);
+    return r;
   }
 
   /** Panel 1: send a case back after رفع نقص (the بیمه‌گزار's «ارسال», filed by the organization's staff). */
@@ -554,6 +592,14 @@ export class DoctorController {
     res.setHeader('Content-Type', mimeType);
     res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fileName)}"`);
     res.send(buffer);
+  }
+
+  /** The doctor's sheet as a scan, instead of (or besides) the online form. */
+  @Permissions(PERMISSIONS.DOCTOR_OPINE)
+  @Post('referrals/:id/scan')
+  @UseInterceptors(FileInterceptor('file', { limits: docLimits }))
+  scan(@Param('id', ParseUUIDPipe) id: string, @UploadedFile() file: Express.Multer.File) {
+    return this.claims.referralScan(id, file, true);
   }
 
   @Permissions(PERMISSIONS.DOCTOR_OPINE)

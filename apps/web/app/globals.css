@@ -3010,3 +3010,21 @@ a.cu-card.is-link:hover { transform: translateY(-2px); box-shadow: 0 0 0 2px var
 .ce-match-more { border-top: 1px dashed var(--border); }
 .ce-match > .ce-btns { padding: 0 8px 8px; }
 :root.dark .ce-match-head, :root.dark .ev-open { background: var(--surface-2); color: var(--text); }
+
+/* panel 2: every act of this organization's operators on the case */
+.wf-acts { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); }
+.wf-acts-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 14px; }
+.wf-acts-h span { font-size: 12.5px; color: var(--muted); }
+.wf-acts-h span b { color: var(--text); }
+
+.heirs-match { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding: 8px 10px; margin-bottom: 12px; border-radius: 8px; border: 1px solid #f5c26b; background: #fff8eb; font-size: 13px; font-weight: 700; }
+.heirs-match.is-done { border-color: #86c79a; background: #edf8f0; color: #0f7a55; }
+:root.dark .heirs-match { background: rgba(245, 158, 11, .1); }
+:root.dark .heirs-match.is-done { background: rgba(22, 163, 74, .12); }
+
+.ev-reject-reasons { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.ev-reject-reasons label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+.ev-exam-phone { font-size: 13px; }
+.ev-open-r { display: inline-flex; align-items: center; gap: 6px; }
+.ev-open.is-due small { color: #b45309; font-weight: 800; }
+.ev-open.is-done small { color: #0f7a55; font-weight: 800; }

@@ -334,6 +334,7 @@ export class CustomerController {
       policyNumber: dto.policyNumber, // an insurer's نماینده بیمه types it (no contract to take it from)
       deathCapital: dto.deathCapital,
       accidentCapital: dto.accidentCapital,
+      contactPhone: dto.contactPhone,
       claimedAmount: dto.claimedAmount || undefined,
     });
   }

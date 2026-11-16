@@ -6,16 +6,15 @@ import { useParams, useRouter } from 'next/navigation';
 import { client, hasPerm, orgMode } from '../../../../lib/client';
 import { lastPanel } from '../../../../lib/panel';
 import { Shell } from '../../../components/Shell';
-import { ErrorBox, FancyLoader } from '../../../components/ui';
+import { ErrorBox, FancyLoader, Overlay } from '../../../components/ui';
 import { ORG_NAV } from '../../nav';
-import { WorkflowPanel, WorkflowTimeline } from '../../../components/WorkflowPanel';
+import { WorkflowPanel } from '../../../components/WorkflowPanel';
 import { caseTitle } from '../../../../lib/caseTitle';
 import { ArchivedNotice, CaseSummary, ClaimDoc, DEATH_TYPES, STATUS_FA, useCase } from '../../../components/case-ui';
 import { filerText, INSURED_RELATIONS, personTitle } from '../../../components/claim-wording';
-import { HeirsCard } from '../../../components/heirs';
-import { PaymentBox, PaymentInfo } from '../../../components/PaymentBox';
 import { PolicyholderCase } from '../../../components/PolicyholderCase';
 import { DeficiencyBox } from '../../../components/DeficiencyBox';
+import { WorkflowStatus } from '../../../components/WorkflowStatus';
 
 /**
  * «مشاهده»: the case on one page, laid out like Sinad's case window — a title bar with the case's own
@@ -33,7 +32,7 @@ export default function ClaimPage() {
 
 const DESK_FA: Record<string, string> = { BROKER: 'کارگزاری', BRANCH: 'شعبه', HQ: 'ستاد', COUNCIL: 'شورای فنی' };
 const rial = (v?: string | null) => (v != null && v !== '' ? `${Number(v).toLocaleString('fa-IR')} ریال` : '—');
-type Tab = 'info' | 'docs' | 'flow' | 'heirs' | 'defs';
+type Tab = 'info' | 'docs' | 'defs';
 const openDefsAny = (c: { deficiencies?: { resolvedAt: string | null }[] } | null) => !!c?.deficiencies?.some((d) => !d.resolvedAt);
 
 function ClaimDetail() {
@@ -50,6 +49,15 @@ function ClaimDetail() {
   const [lateWarn, setLateWarn] = useState(true); // org's "show late-notice warning" setting
   useEffect(() => { client.get<{ lateNoticeWarning?: boolean }>('/tenant/branding', 'org').then((b) => setLateWarn(b.lateNoticeWarning !== false)).catch(() => {}); }, []);
 
+  // «بررسی مجدد»: ستاد of the insurer opens a closed case again.
+  const [reopening, setReopening] = useState(false);
+  const [reopenNote, setReopenNote] = useState('');
+  const reopen = async () => {
+    setError(''); setBusy(true);
+    try { await client.post(`/claims/${id}/reopen`, { note: reopenNote.trim() }, 'org'); setReopening(false); await reload(); }
+    catch (e: any) { setError(e.message); } finally { setBusy(false); }
+  };
+
   const removeClaim = async () => {
     if (!claim) return;
     if (!window.confirm(`حذف ${caseTitle(claim)}؟ پرونده به سطل بازیافت منتقل می‌شود و تا ۱۴ روز قابل بازیابی است؛ پس از آن برای همیشه حذف خواهد شد.`)) return;
@@ -63,6 +71,7 @@ function ClaimDetail() {
   const editTitle = claim && name !== '—' ? personTitle(name, { death: isDeath, gender: claim.insuredGender }) : name;
   const w = claim?.workflow;
   const closed = claim?.status === 'PAID' || claim?.status === 'REJECTED';
+  const canReopen = !!claim && !brokerDesk && !claim.workflow?.currentStage && !claim.imported && claim.workflow?.myStage === 'HQ' && perms.process;
   const docRows = [
     ...(checklist?.items ?? []).map((it) => ({ key: it.code, label: it.label, required: !!it.required, doc: it.documents[0] as ClaimDoc | undefined, extras: it.extras ?? [], def: it.deficiency })),
     ...(checklist?.otherDocuments ?? []).filter((d) => d.isLatest).map((d) => ({ key: d.id, label: `سایر مدارک — ${d.fileName}`, required: false, doc: d as ClaimDoc | undefined, extras: [] as ClaimDoc[], def: undefined })),
@@ -86,7 +95,7 @@ function ClaimDetail() {
             <span className={`cv-status is-${claim.status.toLowerCase()}`}>{STATUS_FA[claim.status] ?? claim.status}</span>
             <span className="cv-title-btns no-print">
               <Link href={`/org/claims/${id}/evaluate`} className="cv-tbtn is-strong">{brokerDesk ? 'بررسی مدارک' : 'ارزیابی'}</Link>
-              <Link href={`/org/claims/${id}/documents`} className="cv-tbtn">مدارک</Link>
+              {canReopen && <button className="cv-tbtn" onClick={() => { setReopenNote(''); setReopening(true); }}>بررسی مجدد</button>}
               <a href={`/org/reminders?claim=${id}&n=${encodeURIComponent(claim.claimNumber)}`} target="_blank" rel="noopener" className="cv-tbtn" title="یادآوری پیگیری این پرونده برای خودتان یا همکار">یادآور</a>
               {perms.del && claim.status !== 'PAID' && <button className="cv-tbtn is-danger" onClick={removeClaim} disabled={busy} title="انتقال به سطل بازیافت (۱۴ روز قابل بازیابی)">حذف</button>}
             </span>
@@ -151,7 +160,7 @@ function ClaimDetail() {
 
               {/* ── Tabs ── */}
               <div className="ev-tabs cv-tabs no-print">
-                {([['info', 'مشخصات پرونده'], ['docs', `مدارک (${uploadedCount.toLocaleString('fa-IR')} از ${docRows.length.toLocaleString('fa-IR')})`], ...(brokerDesk ? [['heirs', 'ذینفعان']] : []), ['flow', 'گردش کار'], ['defs', `سوابق نقص${openDefs ? ` (${openDefs.toLocaleString('fa-IR')} باز)` : ''}`]] as [Tab, string][]).map(([k, l]) => (
+                {([['info', 'مشخصات پرونده'], ['docs', `مدارک (${uploadedCount.toLocaleString('fa-IR')} از ${docRows.length.toLocaleString('fa-IR')})`], ['defs', `سوابق نقص${openDefs ? ` (${openDefs.toLocaleString('fa-IR')} باز)` : ''}`]] as [Tab, string][]).map(([k, l]) => (
                   <button key={k} className={tab === k ? 'is-on' : ''} onClick={() => setTab(k)}>{l}</button>
                 ))}
               </div>
@@ -160,7 +169,7 @@ function ClaimDetail() {
                   <div className="space-y-3">
                     <CaseSummary claim={claim} fv={fv} />
                     {claim.coverageStatus && <div className={claim.coverageStatus === 'VALID' ? 'alert-success' : 'alert-error'}>استعلام پوشش: {({ VALID: 'معتبر', INVALID: 'نامعتبر', NOT_FOUND: 'یافت نشد', NOT_CHECKED: 'بررسی‌نشده؛ به‌محض در دسترس بودن سامانهٔ بیمه‌گر خودکار بررسی می‌شود' } as Record<string, string>)[claim.coverageStatus] ?? claim.coverageStatus}</div>}
-                    {claim.description && <div className="cv-note"><b>توضیحات ثبت پرونده: </b>{claim.description}</div>}
+                    {claim.description && !claim.descInCause && <div className="cv-note"><b>توضیحات ثبت پرونده: </b>{claim.description}</div>}
                   </div>
                 )}
                 {tab === 'docs' && (
@@ -186,14 +195,6 @@ function ClaimDetail() {
                     <div className="mt-2 text-xs"><Link href={`/org/claims/${id}/documents`} className="ev-link">بارگذاری، تایید و رد مدارک در صفحهٔ «بررسی وضعیت مدارک»</Link></div>
                   </div>
                 )}
-                {tab === 'flow' && (
-                  <div className="space-y-3">
-                    {w && <WorkflowPanel claimId={id} workflow={{ ...w, actions: [] }} realm="org" onDone={reload} />}
-                    {w && <div className="ev-like"><PaymentBox claimId={id} info={w as PaymentInfo} finalizedAmount={claim.finalizedAmount} closed={closed} onDone={reload} /></div>}
-                    <WorkflowTimeline claimId={id} steps={claim.steps} realm="org" />
-                  </div>
-                )}
-                {tab === 'heirs' && brokerDesk && <HeirsCard claimId={id} realm="org" className="" />}
                 {tab === 'defs' && (
                   (claim.deficiencies ?? []).length === 0 ? <div className="text-sm" style={{ color: 'var(--muted)' }}>این پرونده تاکنون عودت نشده است.</div> : (
                     <table className="table sn-table">
@@ -213,9 +214,23 @@ function ClaimDetail() {
                   )
                 )}
               </div>
+              {/* «مراحل و وضعیت گردش کار» on the case's own page */}
+              <WorkflowStatus claim={claim as any} fv={fv} onError={setError} acts notice={false} />
             </>
           )}
         </div>
+      )}
+      {reopening && (
+        <Overlay onClose={() => setReopening(false)}>
+          <div className="pmodal" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
+            <div className="pmodal-head"><span className="pmodal-title">بررسی مجدد پرونده</span><button className="pmodal-x" onClick={() => setReopening(false)} aria-label="بستن">×</button></div>
+            <div className="pmodal-body"><textarea className="input" rows={4} maxLength={1000} autoFocus value={reopenNote} onChange={(e) => setReopenNote(e.target.value)} placeholder="علت بررسی مجدد" /></div>
+            <div className="flex border-t" style={{ borderColor: 'var(--border)' }}>
+              <button onClick={() => setReopening(false)} className="flex-1 py-3 font-bold" style={{ color: 'var(--muted)', borderInlineEnd: '1px solid var(--border)' }}>انصراف</button>
+              <button disabled={busy || reopenNote.trim().length < 2} className="flex-1 py-3 font-bold" style={{ color: 'var(--brand-700)' }} onClick={reopen}>ثبت</button>
+            </div>
+          </div>
+        </Overlay>
       )}
     </Shell>
   );
