@@ -341,21 +341,24 @@ export default function EvaluatePage() {
           )}
 
           {/* «رد پرونده»: a point above not approved, or the button below */}
+          {/* «رد پرونده»: a dialog in the middle of the screen (the button sits at the bottom of a long form) */}
           {rejectCase !== null && branchEval && !closed && (
-            <div className="ev-rejectcase">
-              <div className="ev-item-head"><b>رد پرونده</b></div>
+            <Overlay onClose={() => !busy && setRejectCase(null)}>
+            <div className="pmodal ev-rejectcase" style={{ maxWidth: 560 }} onClick={(e) => e.stopPropagation()}>
+              <div className="pmodal-head"><span className="pmodal-title">رد پرونده</span><button className="pmodal-x" onClick={() => setRejectCase(null)} aria-label="بستن">×</button></div>
               <div className="ev-reject-reasons">
                 {(sinad.rejectReasons ?? []).map((x) => {
                   const on = rejectCase.split('\n').includes(x);
                   return <label key={x}><input type="checkbox" checked={on} onChange={() => setRejectCase(on ? rejectCase.split('\n').filter((l) => l !== x).join('\n') : [rejectCase.trim(), x].filter(Boolean).join('\n'))} /> {x}</label>;
                 })}
               </div>
-              <textarea className="input" rows={3} maxLength={1000} value={rejectCase} onChange={(e) => setRejectCase(e.target.value)} placeholder="علت رد پرونده" />
+              <textarea className="input" rows={4} maxLength={1000} autoFocus value={rejectCase} onChange={(e) => setRejectCase(e.target.value)} placeholder="علت رد پرونده" />
               <div className="flex gap-2">
                 <button className="ev-btn is-warn" disabled={busy || !rejectCase.trim() || !action('REJECT_FINAL')} onClick={() => rejectNow(rejectCase)}>ثبت رد پرونده</button>
                 <button className="ev-btn" disabled={busy} onClick={() => setRejectCase(null)}>انصراف</button>
               </div>
             </div>
+            </Overlay>
           )}
 
           {sinad.doctor.state && <div className="ev-yellow">پرونده {sinad.doctor.state === 'EXAM' ? 'در انتظار معاینه توسط پزشک معتمد' : 'در انتظار اظهار نظر پزشک معتمد'} است.</div>}

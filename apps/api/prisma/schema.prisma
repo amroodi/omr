@@ -1088,11 +1088,37 @@ model ClaimConcession {
 
 // «اظهار نظر پزشک معتمد»: شعبه fills its part and refers the case to one of the insurer's trusted doctors, who
 // signs in to the doctor panel, fills the rest and registers it; the case then goes back to its evaluator.
+// «پزشک معتمد»: an account of its own (not an insurer's user), made in Super Admin and linked to the
+// insurers the doctor works with. Signs in at /doctor/login and sees only the cases referred to them.
+model Doctor {
+  id           String          @id @default(uuid())
+  fullName     String
+  username     String          @unique
+  passwordHash String // argon2id
+  phone        String?
+  medicalCode  String? // شماره نظام پزشکی
+  specialty    String?
+  isActive     Boolean         @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime        @default(now())
+  insurers     DoctorInsurer[]
+}
+
+model DoctorInsurer {
+  doctorId        String
+  doctor          Doctor   @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  insurerTenantId String
+  createdAt       DateTime @default(now())
+
+  @@id([doctorId, insurerTenantId])
+  @@index([insurerTenantId])
+}
+
 model DoctorReferral {
   id          String    @id @default(uuid())
   claimId     String
   tenantId    String // the INSURER
-  doctorId    String // OrgUser with doctor:opine
+  doctorId    String // Doctor (Super Admin › پزشکان معتمد); referrals before 2026-11-16 point to an OrgUser
   kind        String // REFER (اظهار نظر) | EXAM (دعوت به معاینه)
   request     Json // شعبه's part of the form
   answer      Json? // the doctor's part

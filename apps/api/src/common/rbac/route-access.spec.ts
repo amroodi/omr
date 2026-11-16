@@ -25,7 +25,7 @@ describe('A/B/C route access', () => {
 
   it('public changes are only sign-in, sign-up, the inquiry and the document re-upload link', () => {
     expect(list(routes.filter((r) => r.isPublic && r.method !== 'GET'))).toEqual([
-      'POST /auth/org/login', 'POST /auth/super/login',
+      'POST /auth/doctor/login', 'POST /auth/org/login', 'POST /auth/super/login',
       'POST /customer/login/company', 'POST /customer/login/direct', 'POST /customer/login/representative', 'POST /customer/login/request-otp', 'POST /customer/login/verify-otp',
       'POST /customer/signup/direct', 'POST /customer/signup/request-otp', 'POST /customer/signup/verify-otp',
       'POST /inquiry/claim-direct', 'POST /inquiry/direct', 'POST /inquiry/password-login', 'POST /inquiry/request-claim', 'POST /inquiry/request-otp', 'POST /inquiry/verify-otp',
@@ -63,6 +63,11 @@ describe('A/B/C route access', () => {
   it('پنل بیمه‌شده is reached only through its own routes', () => {
     const outside = routes.filter((r) => r.realms.includes('INSURED') && !r.path.startsWith('/insured/') && r.path !== '/security/logout');
     expect(list(outside)).toEqual([]);
+  });
+
+  it('پنل پزشک معتمد is reached only through its own routes, and they serve no other sign-in', () => {
+    expect(list(routes.filter((r) => r.realms.includes('DOCTOR') && !r.path.startsWith('/doctor/')))).toEqual([]);
+    expect(list(routes.filter((r) => r.path.startsWith('/doctor/') && (r.isPublic || r.permissions.length || r.realms.join() !== 'DOCTOR')))).toEqual([]);
   });
 
   it('org routes (@Permissions) are staff-only by construction', () => {

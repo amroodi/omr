@@ -27,6 +27,12 @@ export class OrgLoginDto {
   totp?: string;
 }
 
+/** «ورود پزشک معتمد» */
+export class DoctorLoginDto {
+  @IsString() @Length(3, 60) username!: string;
+  @IsString() @Length(6, 128) password!: string;
+}
+
 export class SuperAdminLoginDto {
   @IsEmail()
   email!: string;

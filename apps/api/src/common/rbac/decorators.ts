@@ -32,7 +32,7 @@ export const EntryAllowed = () => SetMetadata(ENTRY_KEY, 'allowed');
  * ORG (organization staff), SUPER (Super Admin), CUSTOMER (بیمه‌گزار, نماینده, نماینده بیمه — panel 1),
  * RECORD (panel 3: the public inquiry's code-scoped token), INSURED (پنل بیمه‌شده). Any other token gets 403.
  */
-export type RealmKind = 'ORG' | 'SUPER' | 'CUSTOMER' | 'RECORD' | 'INSURED';
+export type RealmKind = 'ORG' | 'SUPER' | 'CUSTOMER' | 'RECORD' | 'INSURED' | 'DOCTOR'; // DOCTOR: پنل پزشک معتمد
 export const REALMS_KEY = 'realms';
 export const Realms = (...realms: RealmKind[]) => SetMetadata(REALMS_KEY, realms);
 

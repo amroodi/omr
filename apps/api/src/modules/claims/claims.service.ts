@@ -7,6 +7,7 @@ import { NoticeRule, NoticeSource, NoticeTarget, SOURCE_FA, TARGET_FA, TARGETS_O
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { AuditAction, ClaimStatus, Prisma, SalesChannel } from '@prisma/client';
 import { AuditService } from '../../common/audit/audit.service';
+import { HashService } from '../../common/crypto/hash.service';
 import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { StorageService } from '../../common/storage/storage.service';
@@ -200,6 +201,7 @@ export class ClaimsService {
     private readonly rateLimit: RateLimitService,
     private readonly store: ModelStore,
     private readonly coverage: CoverageService,
+    private readonly hash: HashService,
   ) {}
 
   // ── Notification helpers (in-panel + SMS via the relevant org's gateway) ──
@@ -2997,9 +2999,7 @@ export class ClaimsService {
         orderBy: { createdAt: 'desc' }, take: 20,
       }),
     ]);
-    const actorIds = [...new Set([...events.map((e) => e.actorId), claim.evaluatorId].filter((x): x is string => !!x))];
-    const users = await unscoped.orgUser.findMany({ where: { id: { in: actorIds } }, select: { id: true, displayName: true, username: true } });
-    const nameOf = new Map(users.map((u) => [u.id, u.displayName || u.username]));
+    const nameOf = await this.peopleNames([...events.map((e) => e.actorId ?? ''), claim.evaluatorId ?? '']);
     // Risk: simple signals for life / accident cases (Sinad's health score has no meaning here).
     const reasons: string[] = [];
     if (claim.lateNotice) reasons.push('اعلام خسارت پس از مهلت مقرر');
@@ -3164,10 +3164,44 @@ export class ClaimsService {
     return users.filter((u) => u.id !== s.me && (u.desk == null || u.desk === 'BRANCH')).map((u) => ({ id: u.id, name: u.displayName || u.username }));
   }
 
-  /** The insurer's trusted doctors (users whose role has doctor:opine). */
+  /** The insurer's پزشکان معتمد: active doctors Super Admin linked to this insurer (Super Admin › پزشکان معتمد). */
   private async doctorsOf(tenantId: string) {
-    const users = await this.prisma.unscoped().orgUser.findMany({ where: { tenantId, isActive: true, role: { permissions: { has: PERMISSIONS.DOCTOR_OPINE } } }, orderBy: { displayName: 'asc' }, select: { id: true, displayName: true, username: true } });
-    return users.map((u) => ({ id: u.id, name: u.displayName || u.username }));
+    const rows = await this.prisma.unscoped().doctor.findMany({ where: { isActive: true, insurers: { some: { insurerTenantId: tenantId } } }, orderBy: { fullName: 'asc' }, select: { id: true, fullName: true, specialty: true } });
+    return rows.map((d) => ({ id: d.id, name: d.specialty ? `${d.fullName} (${d.specialty})` : d.fullName }));
+  }
+
+  /** Names of doctors (new accounts) and of operators (older referrals, desk events) by id. */
+  private async peopleNames(ids: string[]): Promise<Map<string, string>> {
+    const u = this.prisma.unscoped();
+    const list = [...new Set(ids.filter(Boolean))];
+    if (!list.length) return new Map();
+    const [users, doctors] = await Promise.all([
+      u.orgUser.findMany({ where: { id: { in: list } }, select: { id: true, displayName: true, username: true } }),
+      u.doctor.findMany({ where: { id: { in: list } }, select: { id: true, fullName: true } }),
+    ]);
+    return new Map([...users.map((x) => [x.id, x.displayName || x.username] as const), ...doctors.map((x) => [x.id, `دکتر ${x.fullName}`] as const)]);
+  }
+
+  /** The signed-in doctor and the insurers they work with. */
+  async doctorMe() {
+    const me = this.doctorId();
+    const u = this.prisma.unscoped();
+    const d = await u.doctor.findUnique({ where: { id: me }, include: { insurers: true } });
+    if (!d) throw new NotFoundException('حساب یافت نشد');
+    const ins = await u.tenant.findMany({ where: { id: { in: d.insurers.map((x) => x.insurerTenantId) } }, select: { name: true } });
+    return { fullName: d.fullName, specialty: d.specialty, insurers: ins.map((t) => t.name) };
+  }
+
+  /** The doctor changes their own password (the current one first). */
+  async doctorPassword(current: string, next: string) {
+    const me = this.doctorId();
+    if (next.length < 8 || next.length > 128) throw new BadRequestException('رمز عبور جدید دست‌کم ۸ نویسه باشد');
+    const u = this.prisma.unscoped();
+    const d = await u.doctor.findUnique({ where: { id: me } });
+    if (!d || !(await this.hash.verifyPassword(d.passwordHash, current))) throw new BadRequestException('رمز عبور فعلی نادرست است');
+    await u.doctor.update({ where: { id: me }, data: { passwordHash: await this.hash.hashPassword(next) } });
+    await this.audit.record({ action: AuditAction.EDIT, actorType: 'DOCTOR', actorId: me, targetType: 'Doctor', targetId: me, metadata: { passwordChanged: true } });
+    return { ok: true };
   }
 
   /** «ارجاع به پزشک معتمد»: the doctors شعبه may pick. */
@@ -3180,7 +3214,7 @@ export class ClaimsService {
   // ─────────────────────────── پنل پزشک معتمد ───────────────────────────
   private doctorId(): string {
     const ctx = getContext();
-    if (ctx?.actorType !== 'ORG_USER' || !(ctx.permissions ?? []).includes(PERMISSIONS.DOCTOR_OPINE) || !ctx.actorId) throw new ForbiddenException('این بخش فقط برای پزشک معتمد است');
+    if (ctx?.actorType !== 'DOCTOR' || !ctx.actorId) throw new ForbiddenException('این بخش فقط برای پزشک معتمد است');
     return ctx.actorId;
   }
 
@@ -3197,13 +3231,15 @@ export class ClaimsService {
     const rows = await u.doctorReferral.findMany({ where: { doctorId: me, status: { not: 'CANCELLED' } }, orderBy: [{ status: 'desc' }, { createdAt: 'desc' }], take: 300 });
     const claims = await u.claim.findMany({ where: { id: { in: rows.map((r) => r.claimId) } }, select: { id: true, claimNumber: true, claimType: true, insurerTenantId: true, deceasedFullName: true, eventDate: true, causeOfDeath: true, deletedAt: true } });
     const byId = new Map(claims.map((c) => [c.id, c]));
+    // A doctor may work with several insurers: each row names its own.
+    const insurerName = new Map((await u.tenant.findMany({ where: { id: { in: [...new Set(claims.map((c) => c.insurerTenantId))] } }, select: { id: true, name: true } })).map((t) => [t.id, t.name]));
     return rows.filter((r) => byId.get(r.claimId) && !byId.get(r.claimId)!.deletedAt).map((r) => {
       const c = byId.get(r.claimId)!;
       return {
         id: r.id, kind: r.kind, kindLabel: r.kind === 'EXAM' ? 'دعوت به معاینه' : 'اظهار نظر پزشک معتمد', status: r.status, statusLabel: r.status === 'DONE' ? 'ثبت شده' : 'در انتظار اظهار نظر',
         createdAt: toJalali(r.createdAt), answeredAt: r.answeredAt ? toJalali(r.answeredAt) : null,
         claimNumber: c.claimNumber, name: this.crypto.decrypt(c.deceasedFullName), claimTypeLabel: caseTypeOf(this.store.get(c.insurerTenantId), c.claimType)?.label ?? c.claimType,
-        eventDate: c.eventDate ? toJalali(c.eventDate, false) : null, cause: c.causeOfDeath,
+        eventDate: c.eventDate ? toJalali(c.eventDate, false) : null, cause: c.causeOfDeath, insurer: insurerName.get(c.insurerTenantId) ?? null,
       };
     });
   }
@@ -3218,7 +3254,9 @@ export class ClaimsService {
     const labels = new Map((await u.requiredDocument.findMany({ where: { tenantId: c.insurerTenantId }, select: { code: true, label: true } })).map((x) => [x.code, x.label]));
     const seen = new Set<string>();
     const latest = docs.filter((d) => { if (!d.docCode || d.docCode === 'OTHER') return true; if (seen.has(d.docCode)) return false; seen.add(d.docCode); return true; });
-    const [by, doctor] = await Promise.all([r.createdById, r.doctorId].map((x) => (x ? u.orgUser.findUnique({ where: { id: x }, select: { displayName: true, username: true } }) : null)));
+    const names = await this.peopleNames([r.createdById ?? '', r.doctorId]);
+    const by = r.createdById && names.has(r.createdById) ? { displayName: names.get(r.createdById)!, username: '' } : null;
+    const doctor = names.has(r.doctorId) ? { displayName: names.get(r.doctorId)!, username: '' } : null;
     return {
       id: r.id, kind: r.kind, kindLabel: r.kind === 'EXAM' ? 'دعوت به معاینه' : 'اظهار نظر پزشک معتمد', status: r.status, request: r.request, answer: r.answer,
       createdAt: toJalali(r.createdAt), answeredAt: r.answeredAt ? toJalali(r.answeredAt) : null, referredBy: by ? by.displayName || by.username : null,
@@ -3317,9 +3355,8 @@ export class ClaimsService {
   async caseReferrals(claimId: string) {
     const u = this.prisma.unscoped();
     const rows = await u.doctorReferral.findMany({ where: { claimId, status: { not: 'CANCELLED' } }, orderBy: { createdAt: 'desc' } });
-    const ids = [...new Set(rows.flatMap((r) => [r.doctorId, r.createdById]).filter((x): x is string => !!x))];
-    const users = await u.orgUser.findMany({ where: { id: { in: ids } }, select: { id: true, displayName: true, username: true } });
-    const who = (x: string | null) => { const y = users.find((z) => z.id === x); return y ? y.displayName || y.username : null; };
+    const names = await this.peopleNames(rows.flatMap((r) => [r.doctorId, r.createdById ?? '']));
+    const who = (x: string | null) => (x ? names.get(x) ?? null : null);
     return rows.map((r) => ({ id: r.id, kind: r.kind, status: r.status, doctor: who(r.doctorId), by: who(r.createdById), request: r.request, answer: r.answer, at: toJalali(r.createdAt), answeredAt: r.answeredAt ? toJalali(r.answeredAt) : null }));
   }
 

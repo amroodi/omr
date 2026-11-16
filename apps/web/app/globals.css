@@ -3028,3 +3028,11 @@ a.cu-card.is-link:hover { transform: translateY(-2px); box-shadow: 0 0 0 2px var
 .ev-open-r { display: inline-flex; align-items: center; gap: 6px; }
 .ev-open.is-due small { color: #b45309; font-weight: 800; }
 .ev-open.is-done small { color: #0f7a55; font-weight: 800; }
+
+/* «رد پرونده» as a dialog: padded, red-edged */
+.pmodal.ev-rejectcase { padding: 0 0 14px; gap: 10px; }
+.pmodal.ev-rejectcase > :not(.pmodal-head) { margin: 0 14px; }
+.pmodal.ev-rejectcase .pmodal-title { color: #b91c1c; }
+
+.doc-pw { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; max-width: 900px; margin: 12px auto 0; }
+.doc-pw .input { max-width: 240px; }

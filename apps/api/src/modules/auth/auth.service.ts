@@ -9,7 +9,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { RateLimitService } from '../../common/rate-limit/rate-limit.service';
 import { getContext } from '../../common/tenant/tenant-context';
 import { TooManyRequestsException } from '../inquiry/http-exceptions';
-import { OrgLoginDto, SuperAdminLoginDto } from './dto';
+import { OrgLoginDto, DoctorLoginDto, SuperAdminLoginDto } from './dto';
 import { MfaService } from './mfa.service';
 import { SessionsService } from '../security/sessions.service';
 import { ENTRY_PERMISSIONS } from '../../common/rbac/permissions';
@@ -189,6 +189,28 @@ export class AuthService {
     });
 
     return { token, expiresIn, actor: { id: admin!.id, displayName: admin!.email, permissions } };
+  }
+
+  /** «ورود پزشک معتمد»: username + password of a Doctor account (Super Admin makes them). */
+  async doctorLogin(dto: DoctorLoginDto): Promise<TokenResult> {
+    const ip = getContext()?.ip ?? 'unknown';
+    const db = this.prisma.unscoped();
+    const username = dto.username.trim().toLowerCase();
+    if (!(await this.rateLimit.hit(`doctorlogin:ip:${ip}`, 10, 900)) || !(await this.rateLimit.hit(`doctorlogin:u:${username}`, 10, 900))) {
+      throw new TooManyRequestsException('Too many login attempts');
+    }
+    const d = await db.doctor.findUnique({ where: { username } });
+    const ok = d && d.isActive && (await this.hash.verifyPassword(d.passwordHash, dto.password));
+    if (!ok) {
+      await this.audit.record({ action: AuditAction.LOGIN_FAILED, actorType: 'DOCTOR', metadata: { username } });
+      throw new UnauthorizedException('اطلاعات ورود نادرست است');
+    }
+    const expiresIn = this.config.get<string>('JWT_SESSION_TTL', '8h');
+    const sid = await this.sessions.start({ realm: 'DOCTOR', actorId: d!.id, actorLabel: `پزشک معتمد (${d!.fullName})` });
+    const token = await this.jwt.signAsync({ kind: 'doctor', sub: d!.id, sid }, { expiresIn: jwtTtl(expiresIn) });
+    await db.doctor.update({ where: { id: d!.id }, data: { lastLoginAt: new Date() } });
+    await this.audit.record({ action: AuditAction.LOGIN, actorType: 'DOCTOR', actorId: d!.id });
+    return { token, expiresIn, actor: { id: d!.id, displayName: d!.fullName, permissions: [] } };
   }
 
   /** Change the signed-in actor's own password (super-admin or org user). */
