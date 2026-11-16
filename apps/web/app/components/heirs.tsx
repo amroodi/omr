@@ -158,7 +158,7 @@ function IbanCheckCell({ check, nationalCode, iban }: { check: IbanCheck; nation
   );
 }
 
-interface HeirsData { beneficiaryType: string | null; canEdit: boolean; payeesProblem?: string | null; form: { id: string; fileName: string } | null; heirs: { id: string; fullName: string; relation?: string; nationalCode: string; iban: string; sharePercent?: number | null; fatherName?: string; birthCertNo?: string }[] }
+interface HeirsData { beneficiaryType: string | null; canEdit: boolean; match?: { at: string; by: string | null } | null; canMatch?: boolean; payeesProblem?: string | null; form: { id: string; fileName: string } | null; heirs: { id: string; fullName: string; relation?: string; nationalCode: string; iban: string; sharePercent?: number | null; fatherName?: string; birthCertNo?: string }[] }
 
 /**
  * In the checklist's beneficiary row: asks دارد / ندارد; on دارد also takes each ذینفع.
@@ -272,7 +272,7 @@ export function BeneficiaryGroup({ claimId, realm, onChosen }: { claimId: string
 }
 
 /** On the case: kind, the form and the people; edit + re-upload for whoever may change them. */
-export function HeirsCard({ claimId, realm, className = 'card p-4' }: { claimId: string; realm: Realm; className?: string }) {
+export function HeirsCard({ claimId, realm, className = 'card p-4', onChanged }: { claimId: string; realm: Realm; className?: string; onChanged?: () => void }) {
   const base = `${realm === 'customer' ? '/customer/claims' : '/claims'}/${claimId}`;
   const check = useIbanCheck(claimId, realm);
   const [d, setD] = useState<HeirsData | null>(null);
@@ -292,6 +292,7 @@ export function HeirsCard({ claimId, realm, className = 'card p-4' }: { claimId:
     try {
       setD(await client.put<HeirsData>(`${base}/heirs`, { beneficiaryType: edit.beneficiaryType || undefined, heirs: rowsBody(rows) }, realm));
       setEdit(null);
+      onChanged?.(); // the case's document list follows the kind (ذینفع های منتخب / حصر وراثت / بیمه گزار)
     } catch (e: any) { setError(e.message); } finally { setBusy(false); }
   };
 
@@ -302,7 +303,7 @@ export function HeirsCard({ claimId, realm, className = 'card p-4' }: { claimId:
         {d.canEdit && !edit && (
           <div className="flex gap-2 no-print">
             <UploadButton accept={FORM_ACCEPT} maxMB={15} title="فرم تعیین ذینفع / وراث" camera cameraOnly={realm === 'customer'}
-              onUpload={async (file, onP) => { const fd = new FormData(); fd.append('file', file); await client.upload(`${base}/documents?docCode=${BENEFICIARY_FORM}`, fd, realm, onP); await load(); }}>
+              onUpload={async (file, onP) => { const fd = new FormData(); fd.append('file', file); await client.upload(`${base}/documents?docCode=${BENEFICIARY_FORM}`, fd, realm, onP); await load(); onChanged?.(); }}>
               {d.form ? 'بارگذاری دوبارهٔ فرم' : 'بارگذاری فرم'}
             </UploadButton>
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setError(''); setEdit({ beneficiaryType: d.beneficiaryType ?? '', heirs: d.heirs.length ? d.heirs.map(toRow) : [{ ...EMPTY_ROW }] }); }}>ویرایش ذینفعان</button>
@@ -311,6 +312,18 @@ export function HeirsCard({ claimId, realm, className = 'card p-4' }: { claimId:
       </div>
       <Flash text={error} ok={false} />
       {d.payeesProblem && <div className="alert-warning text-xs mb-3">پیش از دستور پرداخت: {d.payeesProblem}.</div>}
+      {/* «تطابق ذینفعان»: the کارگزاری confirms them before «ارسال به شعبه» */}
+      {(d.match || d.canMatch) && !edit && (
+        <div className={`heirs-match${d.match ? ' is-done' : ''}`}>
+          {d.match ? <span>✓ تطابق ذینفعان انجام شد — {d.match.by ? `${d.match.by}، ` : ''}{d.match.at}</span> : <span>تطابق ذینفعان انجام نشده است</span>}
+          {d.canMatch && !d.match && (
+            <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={async () => {
+              setBusy(true); setError('');
+              try { setD(await client.post<HeirsData>(`${base}/heirs/match`, {}, realm)); onChanged?.(); } catch (e: any) { setError(e.message); } finally { setBusy(false); }
+            }}>تطابق ذینفعان انجام شد</button>
+          )}
+        </div>
+      )}
       <div className="text-sm mb-3 flex items-center gap-2 flex-wrap">
         <b>فرم تعیین ذینفع / وراث:</b>
         {d.form

@@ -208,6 +208,8 @@ model Branch {
   tenant    Tenant   @relation(fields: [tenantId], references: [id])
   name      String
   code      String
+  // The main branch (Alborz: کریمخان, 1057) sees every branch's cases on its work desk.
+  isMain    Boolean  @default(false)
   createdAt DateTime @default(now())
 
   orgUsers OrgUser[]
@@ -981,6 +983,11 @@ model Claim {
   doctorNote     String? // the last «اظهار نظر پزشک معتمد»
   fraudCheck     String? // CLEAN = every point of the check is clear, FRAUD = a point is suspect (عودت)
   fraudItems     Json? // { PRE_EXISTING | CAUSE | WAITING | PAPERS: OK | SUSPECT } — شعبه's four-point check
+  // «آخرین اقدام کننده» per organization: { [tenantId]: { id: OrgUser id, at: ISO } } — each org sees only its own operator.
+  lastActors     Json?
+  // «تطابق ذینفعان» done by the کارگزاری (panel 2) — required before «ارسال به شعبه»; cleared when the ذینفعان change.
+  heirsMatchedAt   DateTime?
+  heirsMatchedById String?
 
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt

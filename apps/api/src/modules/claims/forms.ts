@@ -45,6 +45,20 @@ export const EXCLUSIONS: { key: string; text: string }[] = [
   { key: 'م', text: 'بيمه‌گر مي‌تواند با ارسال اخطار كتبي ۱۰ روزه پوشش بيمه‌اي موضوع بند مذكور را لغو نمايد.' },
   { key: 'ن', text: 'حوادث ناشي از رانندگي توسط شخص بيمه‌شده در صورتي كه داراي گواهينامه معتبر و متناسب با نوع وسيله نقليه مورد استفاده نباشد.' },
 ];
+/** «رد پرونده»: the reasons شعبه may pick (formerly «غیر قابل پرداخت» under عودت). */
+export const REJECT_REASONS = ['حادثه خارج از مدت اعتبار بیمه‌نامه رخ داده است', 'علت خسارت از استثنائات بیمه‌نامه است'];
+/** «دعوت به معاینه»: what شعبه asks the پزشک معتمد (formerly a group under عودت). */
+export const EXAM_ITEMS = ['نیاز به معاینهٔ بیمه‌شده توسط پزشک معتمد', 'تعیین درصد نقص عضو توسط پزشک معتمد'];
+/** Groups of «عودت» that are no longer reasons for a return (they moved to «رد پرونده» and «دعوت به معاینه»). */
+export const NOT_RETURN_GROUPS = ['غیر قابل پرداخت', 'دعوت به معاینه'];
+/**
+ * «دعوت به معاینه»: only for a حوادث case of نقص عضو (the insured is examined in person, reached through the
+ * «شماره تماس قابل دسترس» given at filing).
+ */
+export function examAllowed(line: string | null | undefined, claimType: string | null | undefined): boolean {
+  return claimType === 'DISABILITY_ACCIDENT' && isAccidentKind(line, claimType);
+}
+
 /** «تبصره ۱»: printed between ك and ل on the policy. */
 export const EXCLUSIONS_NOTE = 'تبصره ۱– خطرات مندرج دربندهاي ط، ي و ك با موافقت كتبي ‌بيمه‌گر و اخذ ‌حق‌بيمه مربوطه قابل پوشش است و براي پوشش بند ط رعايت موارد زير ضروري است:';
 

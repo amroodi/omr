@@ -35,7 +35,7 @@ function jalaliDate(v?: string | null): Date | undefined {
 import { NotificationsService } from '../notifications/notifications.service';
 import { ClaimFieldsService } from '../claim-fields/claim-fields.service';
 import { PolicyholdersService } from '../policyholders/policyholders.service';
-import { beneficiaryHiddenDocs } from '../required-docs/defaults';
+import { BENEFICIARY_DOC_CODES, BENEFICIARY_GROUP, BENEFICIARY_GROUP_AT, BENEFICIARY_GROUP_CODES, beneficiaryHiddenDocs } from '../required-docs/defaults';
 import { docKindWhere, kindLabel } from '../../common/kinds';
 
 /**
@@ -632,10 +632,15 @@ export class InquiryService {
   private async documentStatus(c: { id: string; insurerTenantId: string; claimType: any; causeOfDeath?: string | null; beneficiaryType?: string | null; line?: string | null }, manual: boolean) {
     const db = this.prisma.unscoped();
     const [all, docs] = await Promise.all([
-      db.requiredDocument.findMany({ where: { tenantId: c.insurerTenantId, isActive: true, appliesToTypes: { has: c.claimType }, code: { notIn: beneficiaryHiddenDocs(c.beneficiaryType) }, ...docKindWhere(c.line) }, orderBy: { order: 'asc' } }),
+      db.requiredDocument.findMany({ where: { tenantId: c.insurerTenantId, isActive: true, appliesToTypes: { has: c.claimType }, ...docKindWhere(c.line) }, orderBy: { order: 'asc' } }),
       db.document.findMany({ where: { claimId: c.id }, orderBy: { createdAt: 'desc' }, select: { id: true, docCode: true, createdAt: true, verificationStatus: true } }),
     ]);
-    const reqs = all.filter((r) => docApplies(r, c)); // the case's «علت» narrows some lists
+    const applying = all.filter((r) => docApplies(r, c)); // the case's «علت» narrows some lists
+    // «تصویر مدارک ذینفع/ذینفعان»: the documents of the case's choice in place of every ذینفع document (as panel 1 lists them).
+    const benGroup = applying.some((r) => BENEFICIARY_DOC_CODES.includes(r.code));
+    const hidden = benGroup ? [...BENEFICIARY_DOC_CODES, ...BENEFICIARY_GROUP_CODES] : beneficiaryHiddenDocs(c.beneficiaryType);
+    const reqs: { code: string; label: string }[] = applying.filter((r) => !hidden.includes(r.code));
+    if (benGroup) reqs.splice(Math.min(BENEFICIARY_GROUP_AT, reqs.length), 0, ...(BENEFICIARY_GROUP[c.beneficiaryType ?? ''] ?? []));
     const reviews = docs.length && !manual ? await db.documentReview.findMany({ where: { documentId: { in: docs.map((d) => d.id) } } }) : [];
     const latest = new Map<string, (typeof docs)[number]>();
     for (const d of docs) if (d.docCode && !latest.has(d.docCode)) latest.set(d.docCode, d);

@@ -1,6 +1,8 @@
 'use client';
 import { DeathNoticeDate } from '../../../../components/DeathNoticeDate';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { orgMode } from '../../../../../lib/client';
+import { DeskActs } from '../../../../components/WorkflowStatus';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { Shell, Icon } from '../../../../components/Shell';
@@ -22,6 +24,8 @@ export default function CaseWorkflowPage() {
   const sheet = useRef<HTMLDivElement>(null);
   const report = useRef<HTMLDivElement>(null); // «گزارش وضعیت پرونده خسارت», drawn off screen for the PDF
   const [saving, setSaving] = useState(false);
+  const [entry, setEntry] = useState(true); // panel 1 («روند پرونده») keeps its links; panel 2 has only «دانلود PDF»
+  useEffect(() => { setEntry(orgMode() === 'ENTRY'); }, []);
 
   const pdf = async () => {
     if (!report.current || !claim) return;
@@ -44,12 +48,13 @@ export default function CaseWorkflowPage() {
             <DeathNoticeDate claimId={id} />
             <ResultBox c={claim as any} />
             <ProcessTimeline c={claim as any} fv={fv} />
+            {!entry && <DeskActs claimId={id} />}
           </div>
           <div className="pdf-offscreen" aria-hidden="true"><div ref={report}><StatusReportBody c={claim} fv={fv} notes={fv.case_notes || phaseText(claim)} /></div></div>
           <div className="cs-actions no-print">
             <button type="button" className="cs-act" onClick={pdf} disabled={saving}><Icon path={ICONS.pdf} /> {saving ? 'در حال ساخت PDF…' : 'دانلود PDF'}</button>
-            <Link href={`/org/claims/${id}/documents`} className="cs-act is-alt"><Icon path={ICONS.doc} /> بررسی وضعیت مدارک</Link>
-            <StatusHistoryButton story={claim.story} className="cs-act is-alt" />
+            {entry && <Link href={`/org/claims/${id}/documents`} className="cs-act is-alt"><Icon path={ICONS.doc} /> بررسی وضعیت مدارک</Link>}
+            {entry && <StatusHistoryButton story={claim.story} className="cs-act is-alt" />}
           </div>
         </>
       )}

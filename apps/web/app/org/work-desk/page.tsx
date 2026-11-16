@@ -16,7 +16,7 @@ import { INSURED_RELATIONS } from '../../components/claim-wording';
 
 interface Tile { key: string; label: string; count: number; actionable: boolean; href?: string }
 interface WorkDesk { userName: string | null; role: string; roleLabel: string; tiles: Tile[]; sinad?: boolean; summary: { pendingActions: number; queues: number } }
-interface QueueRow { id: string; claimNumber: string; policyNumber?: string | null; deceasedNationalCode?: string | null; status: string; claimType: string; deceasedName: string | null; claimedAmount: string; payableAmount?: string; finalizedAmount?: string | null; insurerTenantId?: string; claimTypeLabel?: string | null; lineLabel?: string | null; insuredRelation?: string | null; mainInsuredName?: string | null; mainInsuredNationalCode?: string | null; companyName?: string | null; policyStart?: string | null; policyEnd?: string | null; needsAction?: boolean; evaluatorName?: string | null; doctorNote?: string | null }
+interface QueueRow { id: string; claimNumber: string; policyNumber?: string | null; deceasedNationalCode?: string | null; status: string; claimType: string; deceasedName: string | null; claimedAmount: string; payableAmount?: string; finalizedAmount?: string | null; insurerTenantId?: string; claimTypeLabel?: string | null; lineLabel?: string | null; insuredRelation?: string | null; mainInsuredName?: string | null; mainInsuredNationalCode?: string | null; companyName?: string | null; policyStart?: string | null; policyEnd?: string | null; needsAction?: boolean; evaluatorName?: string | null; doctorNote?: string | null; lastActor?: { name: string; at: string } | null; branchName?: string | null }
 
 const fa = (n: number) => n.toLocaleString('fa-IR');
 const EMPTY = {
@@ -95,11 +95,12 @@ function WorkDesk() {
   }, []);
 
   // «روند سیناد»: tiles come from the kartable; keys are `sinad:<tab>`.
-  const [sinadPaused, setSinadPaused] = useState(false);
-  const loadSinadTiles = (base?: WorkDesk) => client.get<{ enabled: boolean; paused?: boolean; tabs?: { key: string; label: string; count: number }[] }>('/claims/sinad/kartable', 'org')
+  // The main branch (and the insurer's admin) sees every branch's cases: each row names its branch.
+  const [allBranches, setAllBranches] = useState(false);
+  const loadSinadTiles = (base?: WorkDesk) => client.get<{ enabled: boolean; allBranches?: boolean; tabs?: { key: string; label: string; count: number }[] }>('/claims/sinad/kartable', 'org')
     .then((k) => {
       if (!k.enabled || !k.tabs) return;
-      setSinadPaused(!!k.paused);
+      setAllBranches(!!k.allBranches);
       const tiles: Tile[] = k.tabs.map((t) => ({ key: `sinad:${t.key}`, label: t.label, count: t.count, actionable: true }));
       setData((cur) => { const d = base ?? cur; return d ? { ...d, tiles } : d; });
       setActive((a) => (a && a.key.startsWith('sinad:') ? { ...a, count: tiles.find((t) => t.key === a.key)?.count ?? a.count } : a));
@@ -112,13 +113,6 @@ function WorkDesk() {
     if (!active) return;
     setError(''); setBusyOp(true);
     try { await client.post(`/claims/${id}/sinad/${op}`, body, 'org'); openQueue(active); loadSinadTiles(); }
-    catch (e: any) { setError(e.message); } finally { setBusyOp(false); }
-  };
-
-  const releaseBatch = async () => {
-    if (!active) return;
-    setError(''); setBusyOp(true);
-    try { await client.post('/claims/sinad/release-batch', {}, 'org'); openQueue(active); }
     catch (e: any) { setError(e.message); } finally { setBusyOp(false); }
   };
 
@@ -178,15 +172,11 @@ function WorkDesk() {
 
   const openQueue = (t: Tile) => {
     setRevealed((r) => (r.includes(t.key) ? r : [...r, t.key])); // reveal this tile's count
-    // «در انتظار ارزیابی اولیه» opens even when empty: opening it hands this evaluator the next batch.
-    if (t.count === 0 && t.key !== 'sinad:evaluate') { setNotice('موردی برای این صف وجود ندارد.'); return; }
+    if (t.count === 0) { setNotice('موردی برای این صف وجود ندارد.'); return; }
     setActive(t); setRows([]); setQLoading(true);
     const url = t.key.startsWith('sinad:') ? `/claims/sinad/kartable/${t.key.slice(6)}` : `/claims/work-desk/queue?key=${encodeURIComponent(t.key)}`;
     client.get<QueueRow[]>(url, 'org')
-      .then((r) => {
-        setRows(r);
-        if (t.key === 'sinad:evaluate') { loadSinadTiles(); if (!r.length) setNotice(sinadPaused ? 'تخصیص پرونده به شما توسط مدیر متوقف شده است.' : 'پرونده‌ای در کارتابل شما نیست و پرونده‌ای هم در انتظار تخصیص نیست.'); }
-      })
+      .then((r) => setRows(r))
       .catch((e) => setError(e.message)).finally(() => setQLoading(false));
   };
 
@@ -222,9 +212,6 @@ function WorkDesk() {
       action={
         <span className="flex items-center gap-2">
           {data?.roleLabel && <span className="badge badge-neutral whitespace-nowrap">نقش: {data.roleLabel}</span>}
-          {data?.sinad && hasPerm('org', 'claim:override') && (
-            <Link href="/org/allocation" className="btn btn-ghost btn-sm" title="تخصیص پرونده‌های شعبه به ارزیابان">تخصیص پرونده‌ها</Link>
-          )}
           {canFile && (
             <Link href="/org/claims/new" className="btn btn-solid btn-sm" title="ثبت پرونده خسارت جدید">
               <Icon path="M12 5v14M5 12h14" />
@@ -349,12 +336,6 @@ function WorkDesk() {
                   <button onClick={() => setActive(null)} className="btn btn-ghost btn-sm">بستن</button>
                 </span>
               </div>
-              {sinadTab === 'evaluate' && !qLoading && rows.some((r) => r.evaluatorName) && (
-                <div className="sn-alloc">
-                  پرونده‌های موجود در لیست زیر به شما تخصیص داده شده است و برای هیچ ارزیاب دیگری قابل مشاهده نیست؛ تا زمانی که بررسی این لیست به پایان نرسد، پروندهٔ جدید دیگری به شما تخصیص داده نخواهد شد.
-                  <br />در صورتی که تمایل دارید پرونده‌های زیر از کارتابل شما خارج شود و پرونده‌های جدید دیگری دریافت کنید <button className="sn-alloc-link" disabled={busyOp} onClick={releaseBatch}>اینجا</button> را کلیک کنید.
-                </div>
-              )}
               {qLoading ? (
                 <div className="p-12 flex justify-center"><FancyLoader label="در حال دریافت صف…" /></div>
               ) : rows.length === 0 ? (
@@ -367,12 +348,12 @@ function WorkDesk() {
                         <input type="checkbox" aria-label="انتخاب همهٔ ردیف‌های این صفحه" checked={pageRows.length > 0 && pageRows.every((r) => picked.has(r.id))}
                           onChange={(e) => setPicked((cur) => { const n = new Set(cur); pageRows.forEach((r) => (e.target.checked ? n.add(r.id) : n.delete(r.id))); return n; })} />
                       </th>
-                      {['#', 'عملیات', 'نام و نام خانوادگی', 'کد ملی', 'نسبت', 'بیمه‌گزار', 'شماره بیمه‌نامه', 'نوع بیمه‌نامه', 'نوع پرونده', 'آغاز پوشش', 'پایان پوشش', 'مبلغ (ریال)', 'وضعیت', ...(sinadTab ? ['ارزیاب'] : []), ...(sinadTab === 'doctor' || sinadTab === 'exam' ? ['اظهار نظر پزشک معتمد'] : [])].map((h) => <th key={h}>{h}</th>)}
+                      {['#', 'عملیات', 'نام و نام خانوادگی', 'کد ملی', 'نسبت', 'بیمه‌گزار', 'شماره بیمه‌نامه', 'نوع بیمه‌نامه', 'نوع پرونده', 'آغاز پوشش', 'پایان پوشش', 'مبلغ (ریال)', 'وضعیت', ...(sinadTab && allBranches ? ['شعبه'] : []), ...(!entry ? ['آخرین اقدام کننده'] : []), ...(sinadTab === 'doctor' || sinadTab === 'exam' ? ['اظهار نظر پزشک معتمد'] : [])].map((h) => <th key={h}>{h}</th>)}
                     </tr></thead>
                     <tbody>
                       {/* Rows don't open on click (too many mis-clicks) — only the «مشاهده» / «ارزیابی» buttons do. */}
                       {pageRows.map((r, i) => (
-                        <tr key={r.id} className={picked.has(r.id) ? 'is-picked' : sinadTab === 'evaluate' && r.evaluatorName ? 'is-alloc' : undefined}>
+                        <tr key={r.id} className={picked.has(r.id) ? 'is-picked' : undefined}>
                           <td><input type="checkbox" aria-label={`انتخاب ردیف ${fa((page - 1) * pageSize + i + 1)}`} checked={picked.has(r.id)}
                             onChange={() => setPicked((cur) => { const n = new Set(cur); if (n.has(r.id)) n.delete(r.id); else n.add(r.id); return n; })} /></td>
                           <td>{fa((page - 1) * pageSize + i + 1)}</td>
@@ -380,14 +361,11 @@ function WorkDesk() {
                             <span className="flex items-center gap-1">
                               {sinadTab ? (
                                 <>
-                                  {r.needsAction && ['evaluate', 'later', 'final', 'approve', 'returned', 'pay'].includes(sinadTab) && (
+                                  {r.needsAction && ['evaluate', 'final', 'approve', 'returned', 'pay'].includes(sinadTab) && (
                                     <a href={`/org/claims/${r.id}/evaluate`} className="sn-act is-green">{sinadTab === 'final' || sinadTab === 'approve' ? 'ارزیابی نهایی' : sinadTab === 'returned' || sinadTab === 'pay' ? 'اقدام' : 'ارزیابی'}</a>
                                   )}
                                   {(sinadTab === 'doctor' || sinadTab === 'exam') && (
                                     <button className="sn-act" onClick={() => { setOpinionText(''); setOpinion({ id: r.id, name: r.deceasedName || r.claimNumber }); }}>اظهار نظر پزشک معتمد</button>
-                                  )}
-                                  {(sinadTab === 'evaluate' || sinadTab === 'later') && r.evaluatorName && (
-                                    <button className="sn-act is-ghost" disabled={busyOp} onClick={() => sinadOp(r.id, 'release')} title="پرونده به پرونده‌های تخصیص‌نیافتهٔ شعبه برمی‌گردد">خارج کردن از کارتابل</button>
                                   )}
                                 </>
                               ) : !entry && <a href={`/org/claims/${r.id}/evaluate`} target="_blank" rel="noopener" className="sn-act" title="باز شدن در زبانهٔ جدید">{brokerDesk ? 'بررسی مدارک' : 'ارزیابی'}</a>}
@@ -408,7 +386,8 @@ function WorkDesk() {
                             {r.finalizedAmount ? <span className="badge badge-success mr-1" style={{ fontSize: '0.6rem' }}>قطعی</span> : null}
                           </td>
                           <td><StatusBadge status={r.status} /></td>
-                          {sinadTab && <td>{r.evaluatorName || '—'}</td>}
+                          {sinadTab && allBranches && <td>{r.branchName || '—'}</td>}
+                          {!entry && <td title={r.lastActor?.at}>{r.lastActor ? <>{r.lastActor.name}<div className="text-xs ltr-num" style={{ color: 'var(--muted)' }}>{r.lastActor.at}</div></> : '—'}</td>}
                           {(sinadTab === 'doctor' || sinadTab === 'exam') && <td>{r.doctorNote || '—'}</td>}
                         </tr>
                       ))}
@@ -447,7 +426,7 @@ function WorkDesk() {
             </div>
             <div className="pmodal-body space-y-2 text-sm">
               <textarea className="input" rows={5} maxLength={1000} value={opinionText} onChange={(e) => setOpinionText(e.target.value)} placeholder="نظر پزشک معتمد دربارهٔ پرونده (مثلاً درصد نقص عضو، ارتباط علت با حادثه)" />
-              <div className="text-xs" style={{ color: 'var(--muted)' }}>پس از ثبت، پرونده به «در انتظار ارزیابی اولیه» ارزیاب خود برمی‌گردد.</div>
+
             </div>
             <div className="flex border-t" style={{ borderColor: 'var(--border)' }}>
               <button onClick={() => setOpinion(null)} className="flex-1 py-3 font-bold" style={{ color: 'var(--muted)', borderInlineEnd: '1px solid var(--border)' }}>انصراف</button>

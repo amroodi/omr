@@ -33,6 +33,8 @@ export interface CaseClaim {
   policyHolder?: { name: string | null; nationalCode: string | null } | null;
   insurer?: { name: string } | null; broker?: { name: string } | null; handlingBranchName?: string | null; lineLabel?: string | null; // نوع بیمه‌نامه
   description?: string | null;
+  /** «شرح» of a کارگزاری's panel 1: shown under «علت خسارت». */
+  descInCause?: boolean;
   steps?: TimelineStep[];
   deficiencies?: { items: string[]; slots?: { code: string; label: string }[]; raisedByLabel?: string | null; createdAt?: string | null; resolvedAt: string | null }[];
   workflow?: Workflow;
@@ -216,7 +218,7 @@ export function CaseSummary({ claim, fv }: { claim: CaseClaim; fv: Record<string
         <InfoRow label="مبلغ قابل پرداخت" value={fmtAmount(fv.payable_amount || claim.payableAmount) ?? 'ثبت نشده'} tone="amount" />
       </InfoCard>
       <InfoCard title={isDeath ? 'اطلاعات فوت' : 'اطلاعات حادثه'} icon={ICONS.doc} aside={claimTypeLabel(claim)}>
-        <InfoRow label="علت خسارت" value={[fv.cause_of_death || claim.causeOfDeath || fv.death_kind, claim.causeDetail].filter(Boolean).join(' — ')} />
+        <InfoRow label="علت خسارت" value={[fv.cause_of_death || claim.causeOfDeath || fv.death_kind, claim.causeDetail, claim.descInCause ? claim.description : null].filter(Boolean).join(' — ')} />
         <InfoRow label={isDeath ? 'تاریخ فوت' : 'تاریخ حادثه'} value={claim.eventDate || d('death_date')} />
         <InfoRow label={isDeath ? 'سن متوفی' : 'سن بیمه‌شده'} value={claim.deceasedAge != null ? `${claim.deceasedAge.toLocaleString('fa-IR')} سال` : null} />
         <InfoRow label="وضعیت پرونده" value={statusText} />

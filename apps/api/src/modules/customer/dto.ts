@@ -82,6 +82,8 @@ export class CustomerFileClaimDto {
   // سرمایه فوت / سرمایه حادثه (rials), optional — not every filer knows them
   @IsOptional() @IsString() @Matches(/^\d{0,18}$/) deathCapital?: string;
   @IsOptional() @IsString() @Matches(/^\d{0,18}$/) accidentCapital?: string;
+  // «شماره تماس قابل دسترس» (حوادث, نقص عضو)
+  @IsOptional() @IsString() @Matches(/^[\d۰-۹+\- ]{0,20}$/) contactPhone?: string;
   // نوع بیمه‌نامه chosen on the panel-1 login
   @IsOptional()
   @IsString()
