@@ -82,7 +82,7 @@ function BrandingTab() {
       <Field label="نام سازمان"><input className="input" value={s.name || ''} onChange={(e) => setS({ ...s, name: e.target.value })} /></Field>
       <Field label="سربرگ تماس (در خروجی‌ها)"><input className="input" value={s.contactHeader || ''} onChange={(e) => setS({ ...s, contactHeader: e.target.value })} /></Field>
       {s.kind === 'INSURER' && (
-        <Field label="سقف اختیار پرداخت مدیریت ستاد (ریال) — خالی = نامحدود؛ بالاتر از آن ارجاع به شورای فنی الزامی است">
+        <Field label="سقف اختیار پرداخت مدیریت ستادی عمر و حوادث (ریال) — خالی = نامحدود؛ بالاتر از آن ارجاع به شورای فنی الزامی است">
           <input className="input" inputMode="numeric" value={s.hqCeiling ?? ''} onChange={(e) => setS({ ...s, hqCeiling: e.target.value.replace(/[^\d]/g, '') })} style={{ direction: 'ltr', textAlign: 'right' }} placeholder="مثلاً 5000000000" />
         </Field>
       )}

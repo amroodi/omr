@@ -352,7 +352,7 @@ export const ACTION_FA: Record<string, string> = {
   DOWN_DIRECT: 'ارسال مستقیم به بیمه‌گزار (اختیار مدیریت)', MARK_PAID: 'ثبت پرداخت', REJECT_FINAL: 'رد نهایی',
 };
 /**
- * What a step did, in words. A hand-off down the chain names both desks — «ارسال از مدیریت ستاد به شعبه کرمان» —
+ * What a step did, in words. A hand-off down the chain names both desks — «ارسال از مدیریت ستادی عمر و حوادث به شعبه کرمان» —
  * read from the step after it.
  */
 export function stepActionFa(s: TimelineStep, all: TimelineStep[]): string {

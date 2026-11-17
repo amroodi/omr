@@ -19,7 +19,7 @@ export class UpdateBrandingDto {
   @IsOptional()
   @ValidateIf((_, v) => v !== null && v !== '')
   @Matches(/^\d{1,18}$/)
-  hqCeiling?: string | null; // مدیریت ستاد payment ceiling (ریال); empty/null = unlimited
+  hqCeiling?: string | null; // مدیریت ستادی عمر و حوادث payment ceiling (ریال); empty/null = unlimited
 
   @IsOptional()
   @IsHexColor()

@@ -81,7 +81,7 @@ function OrgSettings({ id }: { id: string }) {
       <Field label="سربرگ تماس (در خروجی‌ها)"><input className="input" value={s.contactHeader || ''} onChange={(e) => setS({ ...s, contactHeader: e.target.value })} /></Field>
       <Field label="مهلت اعلام خسارت (روز)"><input className="input" type="number" value={s.noticeDays ?? 30} onChange={(e) => setS({ ...s, noticeDays: e.target.value })} style={{ direction: 'ltr', textAlign: 'right' }} /></Field>
       {s.kind === 'INSURER' && (
-        <Field label="سقف اختیار پرداخت مدیریت ستاد (ریال) — خالی = نامحدود">
+        <Field label="سقف اختیار پرداخت مدیریت ستادی عمر و حوادث (ریال) — خالی = نامحدود">
           <input className="input" inputMode="numeric" value={s.hqCeiling ?? ''} onChange={(e) => setS({ ...s, hqCeiling: e.target.value.replace(/[^\d]/g, '') })} style={{ direction: 'ltr', textAlign: 'right' }} />
         </Field>
       )}

@@ -2,7 +2,7 @@ import { allKinds, KIND_CODE } from '../../common/kinds';
 /**
  * Claim chain (workflow v2) — pure rules, no I/O. See docs/CLAIMS-WORKFLOW.md.
  *
- *   بیمه‌گزار → کارگزاری → شعبه → مدیریت ستاد → (شورای فنی)
+ *   بیمه‌گزار → کارگزاری → شعبه → مدیریت ستادی عمر و حوادث → (شورای فنی)
  *
  * Going UP each desk reviews the documents and forwards; going DOWN a return (رفع نقص) or a payment
  * order is handed on desk by desk by an operator, each press labelled with the next desk's name.
@@ -18,7 +18,7 @@ export const STAGE_FA: Record<Stage, string> = {
   POLICYHOLDER: 'بیمه‌گزار',
   BROKER: 'کارگزاری',
   BRANCH: 'شعبه',
-  HQ: 'مدیریت ستاد',
+  HQ: 'مدیریت ستادی عمر و حوادث',
   COUNCIL: 'شورای فنی',
 };
 
@@ -308,7 +308,8 @@ export function modelFrom(stored: unknown): WorkflowModel {
     if (Object.keys(o).length) byType[t] = o;
   }
   const stages = Object.fromEntries(ORDER.map((st) => [st, {
-    label: text(raw.stages?.[st]?.label, d.stages[st].label, 40),
+    // ستاد's former names give way to «مدیریت ستادی عمر و حوادث» (2026-11-17).
+    label: st === 'HQ' && ['مدیریت ستاد', 'ستاد'].includes(String(raw.stages?.[st]?.label ?? '').trim()) ? d.stages[st].label : text(raw.stages?.[st]?.label, d.stages[st].label, 40),
     reviewDocs: st === 'POLICYHOLDER' ? false : flag(raw.stages?.[st]?.reviewDocs, d.stages[st].reviewDocs),
   }])) as WorkflowModel['stages'];
   const days = Number(raw.insured?.linkDays);
@@ -624,7 +625,7 @@ export function actionsFor(ctx: ActionContext): WorkflowAction[] {
       const ceiling = ctx.hqCeiling != null ? Number(ctx.hqCeiling.toString()) : null;
       let disabled = notApproved ?? waitingOriginals;
       if (!disabled && claim.finalizedAmount == null) disabled = noAmount;
-      if (!disabled && rules.councilEnabled && ceiling != null && payable > ceiling) disabled = 'مبلغ بیش از سقف اختیار مدیریت ستاد است؛ پرونده را به شورای فنی ارجاع دهید';
+      if (!disabled && rules.councilEnabled && ceiling != null && payable > ceiling) disabled = 'مبلغ بیش از سقف اختیار مدیریت ستادی عمر و حوادث است؛ پرونده را به شورای فنی ارجاع دهید';
       // The amount شعبه proposed: ستاد approves it, or rejects it back to شعبه with the reason.
       if (claim.finalizedAmount != null && ctx.amountApproved === false) {
         out.push({ key: 'APPROVE_AMOUNT', label: 'تایید مبلغ خسارت پیشنهادی شعبه', tone: 'primary', confirm: true });
@@ -640,13 +641,13 @@ export function actionsFor(ctx: ActionContext): WorkflowAction[] {
     if (!disabled && claim.finalizedAmount == null) disabled = 'مبلغ خسارت قطعی را شعبه ثبت نکرده است';
     if (!disabled) disabled = ctx.payeesMissing;
     // شورای فنی doesn't give the مجوز سرپرستی itself: it orders ستاد to give it to شعبه.
-    out.push({ key: 'PAY_ORDER', label: 'دستور پرداخت — ارسال به مدیریت ستاد برای صدور مجوز سرپرستی', tone: 'primary', disabled });
+    out.push({ key: 'PAY_ORDER', label: 'دستور پرداخت — ارسال به مدیریت ستادی عمر و حوادث برای صدور مجوز سرپرستی', tone: 'primary', disabled });
   }
 
   // Ask for the originals: شعبه from the کارگزاری (a broker's case) or the بیمه‌گزار (after approving the
   // scans), ستاد from شعبه, شورا via ستاد.
   if (s !== 'BROKER' && !ph.open && custodyOf(ph) !== s) {
-    const label = s === 'BRANCH' ? `درخواست اصل مدارک از ${fa[phBase]}` : s === 'HQ' ? 'درخواست اصل مدارک از شعبه' : 'درخواست اصل مدارک (از طریق مدیریت ستاد)';
+    const label = s === 'BRANCH' ? `درخواست اصل مدارک از ${fa[phBase]}` : s === 'HQ' ? 'درخواست اصل مدارک از شعبه' : 'درخواست اصل مدارک (از طریق مدیریت ستادی عمر و حوادث)';
     out.push({ key: 'REQUEST_PHYSICAL', label, tone: 'ghost', disabled: s === 'BRANCH' ? notApproved : undefined });
   }
 
