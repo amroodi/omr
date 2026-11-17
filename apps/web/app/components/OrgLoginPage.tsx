@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { client, getTenantSlug, setTenantSlug, setToken } from '../../lib/client';
 import { OrgPanel, PANELS, rememberMode, rememberPanel } from '../../lib/panel';
 
-const INSURER_INFO = { label: 'پنل بیمه‌گر', accent: '#334155', title: 'ورود بیمه‌گر', subtitle: 'شعبه، مدیریت ستاد و شورای فنی' };
+const INSURER_INFO = { label: 'پنل بیمه‌گر', accent: '#334155', title: 'ورود بیمه‌گر', subtitle: 'شعبه، مدیریت ستادی عمر و حوادث و شورای فنی' };
 const ENTRY_INFO = { label: 'پنل ورود داده', accent: '#f7931e', title: 'ورود برای بارگذاری مدارک', subtitle: 'ثبت پرونده، ورود دسته‌ای و میز کار مستقل — کارکنان سازمان' };
 import { applyTheme, TenantTheme } from '../../lib/theme';
 import { AuthCard, LoginNav } from './auth-card';

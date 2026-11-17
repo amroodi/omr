@@ -23,7 +23,7 @@ import { Flash } from './Toaster';
 import { DeficiencyBox } from './DeficiencyBox';
 import { RESULT_KEY, SubmitOutcome } from './SubmitResult';
 
-const DESK_FA: Record<string, string> = { BROKER: 'کارگزاری', BRANCH: 'شعبه', HQ: 'مدیریت ستاد', COUNCIL: 'شورای فنی' };
+const DESK_FA: Record<string, string> = { BROKER: 'کارگزاری', BRANCH: 'شعبه', HQ: 'مدیریت ستادی عمر و حوادث', COUNCIL: 'شورای فنی' };
 const OK = 'M20 6L9 17l-5-5';
 const NO = 'M18 6L6 18M6 6l12 12';
 const asc = (s: string | null | undefined) => (s ?? '').replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));

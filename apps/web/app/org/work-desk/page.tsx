@@ -55,7 +55,6 @@ function WorkDesk() {
   const [f, setF] = useState({ ...EMPTY });
   const [tip, setTip] = useState(false);
   const [active, setActive] = useState<Tile | null>(null);
-  const [revealed, setRevealed] = useState<string[]>([]); // tile counts stay hidden until the operator clicks the tile
   const [rows, setRows] = useState<QueueRow[]>([]);
   const [qLoading, setQLoading] = useState(false);
   const [page, setPage] = useState(1);
@@ -171,7 +170,6 @@ function WorkDesk() {
   const hideNonActionable = () => savePrefs({ ...prefs, hidden: orderedAll.filter((t) => !t.actionable && !['all'].includes(t.key)).map((t) => t.key) });
 
   const openQueue = (t: Tile) => {
-    setRevealed((r) => (r.includes(t.key) ? r : [...r, t.key])); // reveal this tile's count
     if (t.count === 0) { setNotice('موردی برای این صف وجود ندارد.'); return; }
     setActive(t); setRows([]); setQLoading(true);
     const url = t.key.startsWith('sinad:') ? `/claims/sinad/kartable/${t.key.slice(6)}` : `/claims/work-desk/queue?key=${encodeURIComponent(t.key)}`;
@@ -312,11 +310,7 @@ function WorkDesk() {
                 onClick={() => openQueue(t)}
               >
                 <div className="wd-tile-label">{t.label}</div>
-                {revealed.includes(t.key) ? (
-                  <div className="wd-tile-count" style={t.actionable && t.count > 0 ? { color: 'var(--brand)' } : undefined}>{t.count === 0 ? '—' : fa(t.count)}</div>
-                ) : (
-                  <div className="wd-tile-count" style={{ color: 'var(--muted)', opacity: 0.6 }} title="برای مشاهدهٔ تعداد کلیک کنید">···</div>
-                )}
+                <div className="wd-tile-count" style={t.actionable && t.count > 0 ? { color: 'var(--brand)' } : undefined}>{t.count === 0 ? '—' : fa(t.count)}</div>
               </div>
             ))}
           </div>

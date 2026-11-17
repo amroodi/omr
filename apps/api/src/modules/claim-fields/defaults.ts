@@ -6,7 +6,7 @@ const BOTH: ClaimPartyType[] = ['MOAREF', 'INSURER_LEVEL'];
 
 /** «وضعیت پرونده» — where a hand-completed case is (typed by the operator in «ویرایش»). */
 export const CASE_STAGE_OPTIONS = [
-  'نزد بیمه‌گزار', 'نزد کارگزاری', 'نزد شعبه', 'نزد مدیریت ستاد', 'نزد شورای فنی',
+  'نزد بیمه‌گزار', 'نزد کارگزاری', 'نزد شعبه', 'نزد مدیریت ستادی عمر و حوادث', 'نزد شورای فنی',
   'در انتظار پرداخت', 'پرداخت شده', 'رد شده', 'بسته شده',
 ];
 

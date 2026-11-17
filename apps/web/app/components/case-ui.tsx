@@ -31,7 +31,7 @@ export interface CaseClaim {
   currentStageLabel?: string | null; flowDirection?: string | null; flowPurpose?: string | null;
   policyholderCompany?: { name: string; phone: string | null } | null;
   policyHolder?: { name: string | null; nationalCode: string | null } | null;
-  insurer?: { name: string } | null; broker?: { name: string } | null; handlingBranchName?: string | null; lineLabel?: string | null; // نوع بیمه‌نامه
+  insurer?: { name: string } | null; broker?: { name: string } | null; handlingBranchName?: string | null; handlingBranchCode?: string | null; lineLabel?: string | null; // نوع بیمه‌نامه
   description?: string | null;
   /** «شرح» of a کارگزاری's panel 1: shown under «علت خسارت». */
   descInCause?: boolean;

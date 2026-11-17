@@ -2442,9 +2442,9 @@ a.cu-card.is-link:hover { transform: translateY(-2px); box-shadow: 0 0 0 2px var
 .cv-step-l { font-weight: 700; }
 .cv-step-s { font-size: 11px; font-weight: 700; }
 .cv-step.is-passed { color: #0f6b4a; }
-.cv-step.is-passed .cv-step-n { background: #19b38a; color: #fff; }
+.cv-step.is-passed .cv-step-n { background: #7c3aed; color: #fff; } /* the purple of «پنل مدیریت ستادی» */
 .cv-step.is-here { background: var(--brand-soft); color: var(--text); }
-.cv-step.is-here .cv-step-n { background: var(--brand); color: #fff; }
+.cv-step.is-here .cv-step-n { background: #7c3aed; color: #fff; }
 .cv-step.is-here .cv-step-s { color: var(--brand-700); }
 .cv-step.is-back { background: #fff1f1; }
 .cv-step.is-back .cv-step-n { background: #d93a4f; }
@@ -3036,3 +3036,13 @@ a.cu-card.is-link:hover { transform: translateY(-2px); box-shadow: 0 0 0 2px var
 
 .doc-pw { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; max-width: 900px; margin: 12px auto 0; }
 .doc-pw .input { max-width: 240px; }
+
+/* «(فعال)»: the desk this operator works at, blinking green */
+.cv-step-me { color: #16a34a; font-weight: 800; animation: cv-blink 1.1s steps(1, end) infinite; }
+@keyframes cv-blink { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .cv-step-me { animation: none; } }
+
+.ev-rm { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 6px; border: 1px solid #f1a5a5; color: #b91c1c; background: #fff; flex-shrink: 0; }
+.ev-rm svg { width: 15px; height: 15px; }
+.ev-rm:hover { background: #fee2e2; }
+:root.dark .ev-rm { background: transparent; }

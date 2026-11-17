@@ -161,6 +161,13 @@ export default function EvaluatePage() {
           {/* A new version of the document (e.g. a clearer scan), uploaded by this desk itself */}
           {code && !closedNow && canUploadCode(code) && <UploadButton className="ev-up" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" maxMB={15} camera title="بارگذاری دوبارهٔ مدرک" subtitle={label} onUpload={(f, onP) => uploadDoc(f, onP, code)}>بارگذاری</UploadButton>}
           {r && <ReviewButtons state={r.state} editable={r.canEdit && !closedNow} busy={busy} label={stageLabel} onSet={(st) => setReview(d, st)} />}
+          {/* The insurer's operator holding the case removes a wrong file */}
+          {!brokerDesk && w?.holdsDesk && !closedNow && (
+            <button type="button" className="ev-rm" disabled={busy} title="حذف این مدرک" aria-label="حذف این مدرک"
+              onClick={() => { if (window.confirm(`«${label}» (${d.fileName}) حذف شود؟ این کار بازگشت‌پذیر نیست.`)) run(async () => { await client.del(`/claims/${id}/documents/${d.id}`, 'org'); await load(); }); }}>
+              <Icon path="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 11v6M14 11v6" />
+            </button>
+          )}
         </div>
         {r?.state === 'REJECTED' && r.note && <div className="ev-doc-why">دلیل رد: {r.note}</div>}
         {rejectBox(d.id)}

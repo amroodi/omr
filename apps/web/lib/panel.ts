@@ -13,9 +13,9 @@ export interface PanelInfo { label: string; login: string; accent: string; title
 
 export const PANELS: Record<PanelKey, PanelInfo> = {
   BROKER: { label: 'پنل کارگزاری', login: '/org/login', accent: '#0ea5e9', title: 'ورود کارگزاری', subtitle: 'پنل کارگزاری — رسیدگی و پیگیری پرونده‌ها' },
-  BRANCH: { label: 'پنل شعبه', login: '/insurer/login', accent: '#16a34a', title: 'ورود بیمه‌گر', subtitle: 'شعبه، مدیریت ستاد و شورای فنی' },
-  HQ: { label: 'پنل ستاد', login: '/insurer/login', accent: '#7c3aed', title: 'ورود بیمه‌گر', subtitle: 'شعبه، مدیریت ستاد و شورای فنی' },
-  COUNCIL: { label: 'پنل شورای فنی', login: '/insurer/login', accent: '#b45309', title: 'ورود بیمه‌گر', subtitle: 'شعبه، مدیریت ستاد و شورای فنی' },
+  BRANCH: { label: 'پنل شعبه', login: '/insurer/login', accent: '#16a34a', title: 'ورود بیمه‌گر', subtitle: 'شعبه، مدیریت ستادی عمر و حوادث و شورای فنی' },
+  HQ: { label: 'پنل مدیریت ستادی عمر و حوادث', login: '/insurer/login', accent: '#7c3aed', title: 'ورود بیمه‌گر', subtitle: 'شعبه، مدیریت ستادی عمر و حوادث و شورای فنی' },
+  COUNCIL: { label: 'پنل شورای فنی', login: '/insurer/login', accent: '#b45309', title: 'ورود بیمه‌گر', subtitle: 'شعبه، مدیریت ستادی عمر و حوادث و شورای فنی' },
   COMPANY: { label: 'پنل بیمه‌گزار', login: '/customer/login', accent: '#f7931e', title: 'ورود بیمه‌گزار و نماینده', subtitle: 'اعلام و پیگیری خسارت عمر و حوادث' },
   REPRESENTATIVE: { label: 'پنل نماینده', login: '/customer/login', accent: '#0d9488', title: 'ورود بیمه‌گزار و نماینده', subtitle: 'اعلام و پیگیری خسارت عمر و حوادث' },
 };

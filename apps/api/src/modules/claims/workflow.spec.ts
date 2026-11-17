@@ -61,7 +61,7 @@ describe('actionsFor', () => {
   it('شعبه needs the مبلغ خسارت قطعی (not اعلام خسارت) before forwarding to ستاد', () => {
     expect(get(ctx({ currentStage: 'BRANCH' }), 'FORWARD')?.disabled).toBe('ابتدا مبلغ خسارت قطعی را ثبت کنید');
     expect(get(ctx({ currentStage: 'BRANCH', finalizedAmount: '900' }), 'FORWARD')?.disabled).toBeUndefined();
-    expect(get(ctx({ currentStage: 'BRANCH', finalizedAmount: '900' }), 'FORWARD')?.label).toBe('ارسال به مدیریت ستاد');
+    expect(get(ctx({ currentStage: 'BRANCH', finalizedAmount: '900' }), 'FORWARD')?.label).toBe('ارسال به مدیریت ستادی عمر و حوادث');
   });
 
   it('ستاد can pay or refer; above its ceiling payment is blocked', () => {
@@ -81,7 +81,7 @@ describe('actionsFor', () => {
   });
 
   it('شورای فنی orders payment down through ستاد', () => {
-    expect(get(ctx({ currentStage: 'COUNCIL', finalizedAmount: '1' }), 'PAY_ORDER')?.label).toContain('ارسال به مدیریت ستاد');
+    expect(get(ctx({ currentStage: 'COUNCIL', finalizedAmount: '1' }), 'PAY_ORDER')?.label).toContain('ارسال به مدیریت ستادی عمر و حوادث');
     expect(keys(ctx({ currentStage: 'HQ', flowDirection: 'DOWN', flowPurpose: 'PAYMENT', status: 'APPROVED' }))).toEqual(['DOWN_FORWARD']);
     expect(keys(ctx({ currentStage: 'BRANCH', flowDirection: 'DOWN', flowPurpose: 'PAYMENT', status: 'APPROVED' }))).toEqual(['MARK_PAID']);
   });

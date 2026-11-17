@@ -53,7 +53,7 @@ export function PaymentBox({ claimId, info, finalizedAmount, onDone }: { claimId
       {auths.length > 0 ? auths.slice(0, 3).map((a) => (
         <div key={a.id} className={`pay-auth is-${a.status.toLowerCase()}`}>
           <div><b>مجوز سرپرستی (حدود اختیار):</b> تا سقف {rial(a.ceiling)}</div>
-          <div>برای: {a.grantee} — صادرکننده: {a.grantedBy ?? 'مدیریت ستاد'}{a.byCouncil ? ' (به دستور شورای فنی)' : ''} — {a.at}</div>
+          <div>برای: {a.grantee} — صادرکننده: {a.grantedBy ?? 'مدیریت ستادی عمر و حوادث'}{a.byCouncil ? ' (به دستور شورای فنی)' : ''} — {a.at}</div>
           <div>وضعیت: {a.statusLabel}{a.closedAt ? ` (${a.closedAt})` : ''}</div>
         </div>
       )) : <div className="text-xs" style={{ color: 'var(--muted)' }}>مجوز سرپرستی صادر نشده است.</div>}

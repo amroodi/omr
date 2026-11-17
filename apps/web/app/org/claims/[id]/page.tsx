@@ -113,7 +113,7 @@ function ClaimDetail() {
             {!claim.imported && claim.createdAt && <div><span>تاریخ ثبت:</span><b>{claim.createdAt.split(' ')[0]}</b></div>}
             <div><span>مبلغ برآوردی:</span><b>{Number(claim.estimatedAmount ?? claim.claimedAmount) > 0 ? rial(claim.estimatedAmount ?? claim.claimedAmount) : 'ثبت نشده'}</b></div>
             <div><span>مبلغ قطعی:</span><b style={{ color: claim.finalizedAmount ? '#0f7a55' : '#c0172f' }}>{claim.finalizedAmount ? rial(claim.finalizedAmount) : 'ثبت نشده'}</b></div>
-            {claim.handlingBranchName && <div><span>شعبه:</span><b>{claim.handlingBranchName}</b></div>}
+            {claim.handlingBranchName && <div><span>شعبه تشکیل پرونده:</span><b>{claim.handlingBranchName}{claim.handlingBranchCode ? ` ${claim.handlingBranchCode}` : ''}</b></div>}
             {claim.broker?.name && <div><span>کارگزاری:</span><b>{claim.broker.name}</b></div>}
             {claim.filedBy && <div><span>ثبت‌کننده:</span><b>{filerText(claim.filedBy)}</b></div>}
             {claim.lateNotice && lateWarn && <div className="ev-strip-red">اعلام خسارت خارج از مهلت مقرر انجام شده است (مهلت: {claim.noticeDeadline})</div>}
@@ -133,7 +133,7 @@ function ClaimDetail() {
                     return (
                       <div key={c.stage} className={`cv-step${here ? ' is-here' : passed ? ' is-passed' : ''}${here && w.direction === 'DOWN' ? ' is-back' : ''}`}>
                         <span className="cv-step-n">{(i + 1).toLocaleString('fa-IR')}</span>
-                        <span className="cv-step-l">{c.label}{c.stage === w.myStage ? ' (شما)' : ''}</span>
+                        <span className="cv-step-l">{c.label}{c.stage === w.myStage && <span className="cv-step-me"> (فعال)</span>}</span>
                         {here && <span className="cv-step-s">{phaseLabel}</span>}
                       </div>
                     );

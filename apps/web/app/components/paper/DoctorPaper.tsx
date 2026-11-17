@@ -41,13 +41,13 @@ export function DoctorPaper({ form, request, answer, onRequest, onAnswer, reques
           </p>
           <div className="paper-p"><b>ملاحظات:</b></div>
           <Lines k="notes" rows={3} />
-          <Sign label="نام و امضاء کارشناس" sign={requestSign} />
+          <Sign label={life ? 'نام و امضاء کارشناس خسارت' : 'نام و امضاء کارشناس'} sign={requestSign} />
         </Band>
       </PaperFields>
       <PaperFields values={answer} onChange={onAnswer} can={() => true}>
         <Band side="پزشک معتمد شرکت" active={!!onAnswer} dashedTop>
           <div className="paper-h is-center">نظریه پزشک / پزشکان معتمد شرکت</div>
-          <div className="paper-h">مدیرمحترم بیمه های اشخاص / رئیس محترم مجتمع / شعبه</div>
+          <div className="paper-h">{life ? 'مدیرمحترم بیمه های عمر و حوادث /مجتمع - رئیس شعبه' : 'مدیرمحترم بیمه های اشخاص / رئیس محترم مجتمع / شعبه'}</div>
           <div className="paper-p paper-opt">
             <span>الف)</span><Box k="mode" opt="A" />
             <span>پرونده غرامت فوق‌الذکر مورد بررسی قرار گرفت و با توجه به محتویات پرونده نظریه پزشکی به شرح ذیل اعلام می‌گردد.</span>

@@ -14,7 +14,7 @@ interface User {
 }
 type Msg = { t: 'ok' | 'err'; m: string } | null;
 
-const seatLabel = (u: User) => (u.branch ? `شعبه: ${u.branch.name}` : u.desk === 'COUNCIL' ? 'شورای فنی' : 'مدیریت ستاد');
+const seatLabel = (u: User) => (u.branch ? `شعبه: ${u.branch.name}` : u.desk === 'COUNCIL' ? 'شورای فنی' : 'مدیریت ستادی عمر و حوادث');
 const seatValue = (u: User) => (u.branch ? `branch:${u.branch.id}` : u.desk === 'COUNCIL' ? 'COUNCIL' : 'HQ');
 const MsgBox = ({ v }: { v: Msg }) => <Flash id={v} text={v?.m} ok={v?.t === 'ok'} />; // a toast at the top of the screen
 
@@ -104,7 +104,7 @@ export function StaffPanel({ realm, base, roles, branches, isInsurer, onChanged 
 
   const seatOptions = (
     <>
-      <option value="HQ">مدیریت ستاد</option>
+      <option value="HQ">مدیریت ستادی عمر و حوادث</option>
       <option value="COUNCIL">شورای فنی</option>
       {branches.map((b) => <option key={b.id} value={`branch:${b.id}`}>شعبه: {b.name} ({b.code})</option>)}
     </>
