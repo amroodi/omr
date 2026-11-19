@@ -12,9 +12,15 @@ export function RequiredDocsButton({ checklist, title, kind, insurer }: { checkl
   const sheet = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
   const ben = checklist.beneficiary ?? null;
-  const plain = checklist.items.filter((it) => it.group !== 'BENEFICIARY' && !it.insurerOnly && !it.deficiency?.custom);
+  const plain = checklist.items.filter((it) => it.group !== 'BENEFICIARY' && it.group !== 'EMPLOYMENT' && !it.insurerOnly && !it.deficiency?.custom);
+  const emp = checklist.employment ?? null;
   const rows: { label: string; required: boolean; sub?: { head: string; docs: string[] }[] }[] = plain.map((it) => ({ label: it.label, required: !!it.required }));
-  if (ben) rows.splice(Math.min(ben.at, rows.length), 0, { label: ben.label, required: true, sub: (ben.options ?? []).map((o) => ({ head: BEN_FA[o.type] ?? o.type, docs: o.docs })) });
+  // later position first, so the earlier one's index still holds
+  const groups = [
+    ...(emp ? [{ at: emp.at, row: { label: emp.label, required: true, sub: (emp.options ?? []).filter((o) => o.type !== 'RETIRED' || emp.retired).map((o) => ({ head: o.type === 'RETIRED' ? 'بازنشسته' : 'شاغلین', docs: o.docs })) } }] : []),
+    ...(ben ? [{ at: ben.at, row: { label: ben.label, required: true, sub: (ben.options ?? []).map((o) => ({ head: BEN_FA[o.type] ?? o.type, docs: o.docs })) } }] : []),
+  ].sort((a, b) => b.at - a.at); // at the same place the ذینفع group comes first
+  for (const g of groups) rows.splice(Math.min(g.at, rows.length), 0, g.row);
   const run = async () => {
     if (!sheet.current) return;
     setBusy(true);
@@ -48,6 +54,7 @@ export function RequiredDocsButton({ checklist, title, kind, insurer }: { checkl
               ))}
             </tbody>
           </table>
+          {(checklist.tips ?? []).length > 0 && <ul className="rq-tips">{checklist.tips!.map((t) => <li key={t}>{t}</li>)}</ul>}
         </div>
       </div>
     </>

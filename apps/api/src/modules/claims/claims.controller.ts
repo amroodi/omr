@@ -365,6 +365,14 @@ export class ClaimsController {
     return this.iban.check(dto.nationalCode, dto.iban, dto.birthDate);
   }
 
+  /** «شاغلین / بازنشسته» of the case (who may: as for its ذینفعان). */
+  @EntryAllowed()
+  @Permissions(PERMISSIONS.CLAIM_READ)
+  @Put(':id/employment')
+  setEmployment(@Param('id', ParseUUIDPipe) id: string, @Body() body: { status?: string }) {
+    return this.claims.setEmployment(id, String(body?.status ?? ''));
+  }
+
   @EntryAllowed() // panel 1 fills them while the case is at the بیمه‌گزار's desk (see canEditHeirs)
   @Permissions(PERMISSIONS.CLAIM_PROCESS)
   @Put(':id/heirs')

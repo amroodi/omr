@@ -410,6 +410,14 @@ export class CustomerController {
     return this.claims.setHeirs(id, dto);
   }
 
+  /** «شاغلین / بازنشسته» while the case is on their desk. */
+  @Realms('CUSTOMER')
+  @UseGuards(JwtAuthGuard)
+  @Put('claims/:id/employment')
+  setClaimEmployment(@Param('id') id: string, @Body() body: { status?: string }) {
+    return this.claims.setEmployment(id, String(body?.status ?? ''));
+  }
+
   @Realms('CUSTOMER')
   @UseGuards(JwtAuthGuard)
   @Get('claims/:id/checklist')

@@ -199,6 +199,11 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
     }
   };
   const [benOpen, setBenOpen] = useState(false); // «تصویر مدارک ذینفع/ذینفعان» opened
+  const [empOpen, setEmpOpen] = useState(false); // «شاغلین / بازنشسته» opened
+  const setEmployment = async (status: string) => {
+    setError('');
+    try { await client.put(`${api}/employment`, { status }, realm); await reload(); } catch (e: any) { setError(e.message); }
+  };
   const viewDoc = (docId: string) => client.view(`${api}/documents/${docId}/file`, realm).catch((e) => setError(e.message));
   /** «حذف»: a file uploaded by mistake, while no desk has decided on it (the server checks again). */
   const removable = (p: ClaimDoc) => claim?.status !== 'PAID' && p.status === 'PENDING' && !(p.reviews ?? []).some((r) => r.state !== 'PENDING');
@@ -422,7 +427,47 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
                 {(() => {
                   // «تصویر مدارک ذینفع/ذینفعان»: one row at its place in the list; its documents follow the choice inside it.
                   const ben = checklist?.beneficiary ?? null;
-                  const plain = (checklist?.items ?? []).filter((it) => it.group !== 'BENEFICIARY');
+                  const plain = (checklist?.items ?? []).filter((it) => it.group !== 'BENEFICIARY' && it.group !== 'EMPLOYMENT');
+                  const emp = checklist?.employment ?? null;
+                  const empItems = (checklist?.items ?? []).filter((it) => it.group === 'EMPLOYMENT');
+                  // «شاغلین / بازنشسته»: the insured's work papers by the choice (a work accident has only شاغلین).
+                  const empRow = () => {
+                    const no = (++n).toLocaleString('fa-IR');
+                    const stories = empItems.map((it) => docStory(it, !!claim.story?.manual));
+                    const tone = !emp!.type ? 'none' : stories.some((x) => x.tone === 'bad') ? 'bad' : empItems.length && empItems.every((it) => it.uploaded) ? (stories.every((x) => x.tone === 'ok') ? 'ok' : 'wait') : 'none';
+                    const chip = !emp!.type ? 'انتخاب نشده' : tone === 'ok' ? 'تایید شده' : tone === 'bad' ? 'رد شده' : tone === 'wait' ? 'در انتظار بررسی' : 'بارگذاری نشده';
+                    const canChoose = claim.status !== 'PAID' && atMyDesk;
+                    return (
+                      <div key="_emp" role="row" className={`sdoc sdoc-group tone-${tone}${empOpen ? ' is-open' : ''}`}>
+                        <div className="sdoc-main">
+                          <span className="sdoc-n" role="cell">{no}</span>
+                          <div className="sdoc-t" role="cell">
+                            <button type="button" className="sdoc-group-t" onClick={() => setEmpOpen((v) => !v)} aria-expanded={empOpen}>
+                              <span className="sdoc-label">{emp!.label}<span className="sdoc-req"> *</span></span>
+                            </button>
+                            {emp!.type && <div className="sdoc-story">{emp!.type === 'RETIRED' ? 'بازنشسته' : 'شاغلین'}</div>}
+                          </div>
+                          <span role="cell" className="sdoc-st-w"><span className={`sdoc-st is-${tone}`}>{chip}</span></span>
+                          <div className="sdoc-files" role="cell">
+                            <button type="button" className="sdoc-group-btn" onClick={() => setEmpOpen((v) => !v)} aria-expanded={empOpen}>
+                              <Icon path={empOpen ? 'M18 15l-6-6-6 6' : 'M6 9l6 6 6-6'} />{empOpen ? 'بستن' : 'باز کردن'}
+                            </button>
+                          </div>
+                        </div>
+                        {empOpen && (
+                          <div className="sdoc-group-body">
+                            <div className="sdoc-ben-choices is-two" role="group" aria-label="وضعیت اشتغال">
+                              {([['EMPLOYED', 'شاغلین'], ['RETIRED', 'بازنشسته']] as const).map(([k, l]) => (
+                                <button key={k} type="button" className={`sdoc-ben-btn${emp!.type === k ? ' is-on' : ''}`} aria-pressed={emp!.type === k}
+                                  disabled={!canChoose || (k === 'RETIRED' && !emp!.retired)} onClick={() => emp!.type !== k && setEmployment(k)}>{l}</button>
+                              ))}
+                            </div>
+                            {empItems.map((it, i) => docRow(it, `${no}-${(i + 1).toLocaleString('fa-IR')}`))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  };
                   const group = (checklist?.items ?? []).filter((it) => it.group === 'BENEFICIARY');
                   const out: React.ReactNode[] = [];
                   let n = 0;
@@ -457,14 +502,19 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
                       </div>
                     );
                   };
+                  const groups = [...(ben ? [{ at: ben.at, row: benRow }] : []), ...(emp ? [{ at: emp.at, row: empRow }] : [])].sort((a, b) => a.at - b.at);
                   plain.forEach((it, i) => {
-                    if (ben && i === ben.at) out.push(benRow());
+                    for (const g of groups) if (g.at === i) out.push(g.row());
                     out.push(docRow(it, (++n).toLocaleString('fa-IR')));
                   });
-                  if (ben && plain.length <= ben.at) out.push(benRow());
+                  for (const g of groups) if (g.at >= plain.length) out.push(g.row());
                   return out;
                 })()}
               </div>
+              {/* حوادث: notes for whoever files the case */}
+              {(checklist?.tips ?? []).length > 0 && (
+                <ul className="sdocs-tips">{checklist!.tips!.map((t) => <li key={t}>{t}</li>)}</ul>
+              )}
             </section>
 
             {/* A brokerage's staff (panel 1): drop any number of files at once — they're kept as «سایر مدارک», no matter

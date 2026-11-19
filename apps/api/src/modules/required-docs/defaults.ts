@@ -95,7 +95,37 @@ export const RETIRED_DOC_CODES = ['social_security_history', 'beneficiary_iban',
  */
 /** Every document about who receives the money (ذینفع form, حصر وراثت, their IDs and شبا), in the default and Alborz lists. */
 export const BENEFICIARY_DOC_CODES = ['beneficiary_form', 'inheritance_cert', 'no_beneficiary_form_letter', 'heirs_id_national_card', 'iban_printout',
-  'li_beneficiary_form', 'li_heirs_id', 'li_heirs_iban', 'da_crash_beneficiary_form', 'da_crash_heirs_id', 'da_crash_heirs_iban'];
+  'li_beneficiary_form', 'li_heirs_id', 'li_heirs_iban', 'da_crash_beneficiary_form', 'da_crash_heirs_id', 'da_crash_heirs_iban', 'dw_beneficiary_form'];
+/** Rows that only mark where «تصویر مدارک ذینفع/ذینفعان» sits in a list (else it is the 5th row). */
+export const BENEFICIARY_SLOT_CODES = ['dw_beneficiary_form'];
+
+/**
+ * «شاغلین / بازنشسته»: the insured's work papers, by the choice on the case (`employmentStatus`). A list asks
+ * for it with a slot row (`EMPLOYMENT_SLOTS`, placed where the group goes); a work accident («در محل کار»)
+ * has no بازنشسته (`retired: false`), so شاغلین is taken without asking.
+ */
+export const EMPLOYMENT_GROUP_LABEL = 'وضعیت اشتغال بیمه شده';
+export const EMPLOYMENT_GROUP: Record<string, { code: string; label: string }[]> = {
+  EMPLOYED: [
+    { code: 'emp_personnel_order', label: 'تصویر حکم کارگزینی یا قرارداد کاری بیمه شده در ماه شروع پوشش بیمه ای و در ماه وقوع حادثه ممهور به مهر بیمه گزار' },
+    { code: 'emp_ss_list', label: 'تصویر لیست کسور حق بیمه تامین اجتماعی ( بیمه پایه ) بیمه شده در ماه شروع پوشش بیمه ای و در ماه فوت بیمه شده ممهور به مهر بیمه گزار' },
+  ],
+  RETIRED: [
+    { code: 'ret_leave_letter', label: 'برگه ترک کار' },
+    { code: 'ret_retirement_order', label: 'حکم بازنشستگی که نام بیمه شده و تاریخ بازنشستگی وی در آن درج شده باشد' },
+  ],
+};
+export const EMPLOYMENT_FA: Record<string, string> = { EMPLOYED: 'شاغلین', RETIRED: 'بازنشسته' };
+export const EMPLOYMENT_SLOTS: Record<string, { retired: boolean }> = { dw_employment: { retired: false } };
+export const EMPLOYMENT_GROUP_CODES = [...new Set(Object.values(EMPLOYMENT_GROUP).flat().map((x) => x.code))];
+
+/** Notes for whoever files a حوادث case («کاربر ثبت»), under its list of documents. */
+export function accidentTips(death: boolean): string[] {
+  return death
+    ? ['تصاویر مدارک ارسال می بایست خوانا و بدون خط خوردگی باشد.']
+    : ['لازم به ذکر است در صورت تکمیل و ارسال مدارک فوق الذکر ، به منظور دعوت به معاینه پزشکی جهت تعیین درصد نقص عضو بیمه شده متعاقبا ً اطلاع رسانی خواهد شد.',
+      'سایر توضیحات : در صورت عدم ارائه گواهی پزشک معالج مبنی بر خاتمه معالجات و تائید نقص عضو ، جهت معاینه پزشکی و تعیین نقص عضو بیمه شده ، حداکثر 6 ماه از تاریخ وقوع حادثه می بایست سپری شده باشد.'];
+}
 /**
  * «تصویر مدارک ذینفع/ذینفعان»: on a case whose list asks for any document about who receives the money, these
  * replace them — one slot (5th in the list) whose documents follow the case's choice (`beneficiaryType`):
