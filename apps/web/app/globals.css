@@ -3046,3 +3046,8 @@ a.cu-card.is-link:hover { transform: translateY(-2px); box-shadow: 0 0 0 2px var
 .ev-rm svg { width: 15px; height: 15px; }
 .ev-rm:hover { background: #fee2e2; }
 :root.dark .ev-rm { background: transparent; }
+
+.sdoc-ben-choices.is-two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.sdocs-tips { margin: 12px 0 0; padding: 10px 14px 10px 10px; border-radius: 10px; background: #fff8eb; border: 1px solid #f5c26b; font-size: 13px; line-height: 2; list-style: disc inside; color: #7c4a03; }
+:root.dark .sdocs-tips { background: rgba(245, 158, 11, .1); color: #fcd34d; }
+.rq-tips { margin: 12px 4px 0; font-size: 13px; line-height: 2; list-style: disc inside; }

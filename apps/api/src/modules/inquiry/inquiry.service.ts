@@ -35,7 +35,7 @@ function jalaliDate(v?: string | null): Date | undefined {
 import { NotificationsService } from '../notifications/notifications.service';
 import { ClaimFieldsService } from '../claim-fields/claim-fields.service';
 import { PolicyholdersService } from '../policyholders/policyholders.service';
-import { BENEFICIARY_DOC_CODES, BENEFICIARY_GROUP, BENEFICIARY_GROUP_AT, BENEFICIARY_GROUP_CODES, beneficiaryHiddenDocs } from '../required-docs/defaults';
+import { BENEFICIARY_DOC_CODES, BENEFICIARY_GROUP, BENEFICIARY_GROUP_AT, BENEFICIARY_GROUP_CODES, BENEFICIARY_SLOT_CODES, beneficiaryHiddenDocs, EMPLOYMENT_GROUP, EMPLOYMENT_GROUP_CODES, EMPLOYMENT_SLOTS } from '../required-docs/defaults';
 import { docKindWhere, kindLabel } from '../../common/kinds';
 
 /**
@@ -629,7 +629,7 @@ export class InquiryService {
   }
 
   /** Read-only document checklist of a claim for the inquiry («بررسی وضعیت مدارک»). */
-  private async documentStatus(c: { id: string; insurerTenantId: string; claimType: any; causeOfDeath?: string | null; beneficiaryType?: string | null; line?: string | null }, manual: boolean) {
+  private async documentStatus(c: { id: string; insurerTenantId: string; claimType: any; causeOfDeath?: string | null; beneficiaryType?: string | null; employmentStatus?: string | null; line?: string | null }, manual: boolean) {
     const db = this.prisma.unscoped();
     const [all, docs] = await Promise.all([
       db.requiredDocument.findMany({ where: { tenantId: c.insurerTenantId, isActive: true, appliesToTypes: { has: c.claimType }, ...docKindWhere(c.line) }, orderBy: { order: 'asc' } }),
@@ -638,9 +638,19 @@ export class InquiryService {
     const applying = all.filter((r) => docApplies(r, c)); // the case's «علت» narrows some lists
     // «تصویر مدارک ذینفع/ذینفعان»: the documents of the case's choice in place of every ذینفع document (as panel 1 lists them).
     const benGroup = applying.some((r) => BENEFICIARY_DOC_CODES.includes(r.code));
-    const hidden = benGroup ? [...BENEFICIARY_DOC_CODES, ...BENEFICIARY_GROUP_CODES] : beneficiaryHiddenDocs(c.beneficiaryType);
-    const reqs: { code: string; label: string }[] = applying.filter((r) => !hidden.includes(r.code));
-    if (benGroup) reqs.splice(Math.min(BENEFICIARY_GROUP_AT, reqs.length), 0, ...(BENEFICIARY_GROUP[c.beneficiaryType ?? ''] ?? []));
+    const empSlot = applying.find((r) => EMPLOYMENT_SLOTS[r.code]);
+    const empType = empSlot ? (c.employmentStatus === 'RETIRED' && EMPLOYMENT_SLOTS[empSlot.code].retired ? 'RETIRED' : c.employmentStatus === 'EMPLOYED' || !EMPLOYMENT_SLOTS[empSlot.code].retired ? 'EMPLOYED' : null) : null;
+    const hidden = [...(benGroup ? [...BENEFICIARY_DOC_CODES, ...BENEFICIARY_GROUP_CODES] : beneficiaryHiddenDocs(c.beneficiaryType)), ...Object.keys(EMPLOYMENT_SLOTS), ...EMPLOYMENT_GROUP_CODES];
+    const plain = applying.filter((r) => !hidden.includes(r.code));
+    const reqs: { code: string; label: string }[] = [...plain];
+    const benSlot = applying.find((r) => BENEFICIARY_SLOT_CODES.includes(r.code));
+    const at = (slot: { order: number } | undefined, fallback: number) => (slot ? plain.filter((r) => r.order < slot.order).length : fallback);
+    // later position first; at the same place the ذینفع group comes first
+    const groups = [
+      ...(empType ? [{ at: at(empSlot, plain.length), rows: EMPLOYMENT_GROUP[empType] ?? [] }] : []),
+      ...(benGroup ? [{ at: at(benSlot, BENEFICIARY_GROUP_AT), rows: BENEFICIARY_GROUP[c.beneficiaryType ?? ''] ?? [] }] : []),
+    ].sort((a, b) => b.at - a.at);
+    for (const g of groups) reqs.splice(Math.min(g.at, reqs.length), 0, ...g.rows);
     const reviews = docs.length && !manual ? await db.documentReview.findMany({ where: { documentId: { in: docs.map((d) => d.id) } } }) : [];
     const latest = new Map<string, (typeof docs)[number]>();
     for (const d of docs) if (d.docCode && !latest.has(d.docCode)) latest.set(d.docCode, d);

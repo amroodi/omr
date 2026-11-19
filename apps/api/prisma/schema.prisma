@@ -944,6 +944,7 @@ model Claim {
   imported        Boolean @default(false)
   legacyStatus    String? // raw وضعیت پرونده text from the source system
   beneficiaryType String? // نوع ذینفع (ذینفع قانونی / وراث قانونی)
+  employmentStatus String? // «شاغلین / بازنشسته»: EMPLOYED | RETIRED (decides the insured's work papers)
   employerName    String? // نام شرکت محل فعالیت
   causeOfDeath    String? // علت فوت (free text; more specific than claimType)
   causeDetail     String? // «نوع حادثه» when the cause asks for one (Model View caseType.detail)

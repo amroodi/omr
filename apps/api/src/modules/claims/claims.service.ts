@@ -26,7 +26,7 @@ import { TooManyRequestsException } from '../inquiry/http-exceptions';
 import { PERMISSIONS } from '../../common/rbac/permissions';
 import { nextClaimNumber } from './claim-number';
 import { isValidIban, isValidNationalCode } from '../../common/validation/field-validation';
-import { BENEFICIARY_DOC_CODES, BENEFICIARY_GROUP, BENEFICIARY_GROUP_AT, BENEFICIARY_GROUP_CODES, BENEFICIARY_GROUP_LABEL, beneficiaryHiddenDocs } from '../required-docs/defaults';
+import { accidentTips, BENEFICIARY_DOC_CODES, BENEFICIARY_GROUP, BENEFICIARY_GROUP_AT, BENEFICIARY_GROUP_CODES, BENEFICIARY_GROUP_LABEL, BENEFICIARY_SLOT_CODES, beneficiaryHiddenDocs, EMPLOYMENT_FA, EMPLOYMENT_GROUP, EMPLOYMENT_GROUP_CODES, EMPLOYMENT_GROUP_LABEL, EMPLOYMENT_SLOTS } from '../required-docs/defaults';
 import { toAsciiDigits } from '../../common/jalali/jalali.util';
 import { ModelStore } from '../model-view/model-store.service';
 import { CoverageService } from '../model-view/coverage.service';
@@ -1882,6 +1882,23 @@ export class ClaimsService {
     return null;
   }
 
+  /** «شاغلین / بازنشسته» of a case: whoever may edit its ذینفعان (panel 1 while it is theirs, panel 2 holding it). */
+  async setEmployment(claimId: string, status: string) {
+    const db = this.db();
+    const claim = await db.claim.findUnique({ where: { id: claimId } });
+    if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
+    this.assertParticipant(claim);
+    assertNotPaid(claim);
+    if (!EMPLOYMENT_FA[status]) throw new BadRequestException('وضعیت نامعتبر است');
+    if (!(await this.canEditHeirs(claim))) throw new ForbiddenException('اجازهٔ ویرایش این پرونده را ندارید');
+    const slot = (await db.requiredDocument.findMany({ where: { tenantId: claim.insurerTenantId, isActive: true, code: { in: Object.keys(EMPLOYMENT_SLOTS) }, ...docKindWhere(claim.line) } })).find((r) => docApplies(r, claim));
+    if (!slot) throw new BadRequestException('این پرونده وضعیت اشتغال ندارد');
+    if (status === 'RETIRED' && !EMPLOYMENT_SLOTS[slot.code].retired) throw new BadRequestException('برای این پرونده «بازنشسته» در دسترس نیست');
+    await db.claim.update({ where: { id: claimId }, data: { employmentStatus: status } });
+    await this.deskAct(claimId, 'EDIT', `وضعیت اشتغال: ${EMPLOYMENT_FA[status]}`);
+    return this.checklist(claimId);
+  }
+
   /** «ذینفع / وراث قانونی»: the kind, each person's name and شبا (masked for staff without view:pii). */
   async heirs(claimId: string) {
     const claim = await this.db().claim.findUnique({ where: { id: claimId }, include: { heirs: { orderBy: { order: 'asc' } } } });
@@ -2009,8 +2026,14 @@ export class ClaimsService {
     });
     // «تصویر مدارک ذینفع/ذینفعان» takes the place of every document about who receives the money.
     const benGroup = catalog.some((r) => BENEFICIARY_DOC_CODES.includes(r.code) && docApplies(r, claim));
-    const hidden = benGroup ? [...BENEFICIARY_DOC_CODES, ...BENEFICIARY_GROUP_CODES] : beneficiaryHiddenDocs(claim.beneficiaryType);
+    // «شاغلین / بازنشسته»: a slot row in the list asks for it (a work accident has no بازنشسته: شاغلین is taken).
+    const empSlot = catalog.find((r) => EMPLOYMENT_SLOTS[r.code] && docApplies(r, claim));
+    const empRetired = empSlot ? EMPLOYMENT_SLOTS[empSlot.code].retired : true;
+    const empType = empSlot ? (claim.employmentStatus === 'RETIRED' && empRetired ? 'RETIRED' : claim.employmentStatus === 'EMPLOYED' || !empRetired ? 'EMPLOYED' : null) : null;
+    const hidden = [...(benGroup ? [...BENEFICIARY_DOC_CODES, ...BENEFICIARY_GROUP_CODES] : beneficiaryHiddenDocs(claim.beneficiaryType)), ...Object.keys(EMPLOYMENT_SLOTS), ...EMPLOYMENT_GROUP_CODES];
     const allReqs = catalog.filter((r) => !hidden.includes(r.code));
+    // A group sits where its slot row is in the list; otherwise «تصویر مدارک ذینفع/ذینفعان» is the 5th row.
+    const benSlot = catalog.find((r) => BENEFICIARY_SLOT_CODES.includes(r.code) && docApplies(r, claim));
     const reqs = allReqs.filter((r) => docApplies(r, claim));
     const docs = await db.document.findMany({
       where: { claimId },
@@ -2117,7 +2140,23 @@ export class ClaimsService {
         documents: present(group), extras: present(extrasBy.get(b.code) ?? []), group: 'BENEFICIARY',
       };
     });
-    (items as any[]).splice(Math.min(BENEFICIARY_GROUP_AT, items.length), 0, ...benItems);
+    const before = (order: number) => [...reqs, ...kept].filter((r) => r.order < order && (!insurerOnlyDoc(r.code) || insurerDesk)).length;
+    const benAt = benSlot ? before(benSlot.order) : BENEFICIARY_GROUP_AT;
+    // The work papers of the choice («شاغلین / بازنشسته»), after the ذینفع group when both are in the list.
+    const empDocs = empType ? EMPLOYMENT_GROUP[empType] ?? [] : [];
+    const empItems = empDocs.map((b) => {
+      const group = byCode.get(b.code) ?? [];
+      return {
+        code: b.code, label: b.label, appliesToTypes: [] as string[], required: true, insurerOnly: false, canUpload: true, accidentOnly: false,
+        uploaded: !!group[0] && group[0].aiStatus !== 'MISMATCH', aiRefused: group[0]?.aiStatus === 'MISMATCH', latestStatus: group[0]?.verificationStatus ?? null,
+        documents: present(group), extras: present(extrasBy.get(b.code) ?? []), group: 'EMPLOYMENT',
+      };
+    });
+    const empAt = empSlot ? before(empSlot.order) : items.length;
+    // later position first, so the earlier one's index still holds
+    // later position first, so the earlier one's index still holds; at the same place the ذینفع group comes first
+    const inserts = [{ at: empAt, rows: empItems }, { at: benAt, rows: benItems }].sort((a, b) => b.at - a.at);
+    for (const g of inserts) (items as any[]).splice(Math.min(g.at, items.length), 0, ...g.rows);
     // نقص مدارک: a required document asked for again is due again; an operator's own line is a slot of its own.
     const defSlots = await this.deficiencySlots(claimId);
     for (const it of items as any[]) {
@@ -2137,15 +2176,19 @@ export class ClaimsService {
     }
     // what is asked in an open نقص first, then the insurer's own order
     items.sort((x: any, y: any) => Number(!!y.deficiency?.open) - Number(!!x.deficiency?.open));
-    const reqCodes = new Set([...reqs.map((r) => r.code), ...kept.map((r) => r.code), ...seenDef, ...benDocs.map((b) => b.code)]);
+    const reqCodes = new Set([...reqs.map((r) => r.code), ...kept.map((r) => r.code), ...seenDef, ...benDocs.map((b) => b.code), ...empDocs.map((b) => b.code)]);
     const benChosen = !benGroup || !!BENEFICIARY_GROUP[claim.beneficiaryType ?? ''];
     return {
       claimType: claim.claimType,
       archived: claim.status === 'PAID', // a paid case takes no more uploads or reviews
-      complete: items.length > 0 && benChosen && items.every((i) => i.uploaded || !i.required),
+      complete: items.length > 0 && benChosen && (!empSlot || !!empType) && items.every((i) => i.uploaded || !i.required),
       // «تصویر مدارک ذینفع/ذینفعان»: where it sits in the list and what was chosen (null = not yet).
+      // «شاغلین / بازنشسته»: where it sits and what is chosen (`retired: false`: only شاغلین).
+      employment: empSlot ? { label: EMPLOYMENT_GROUP_LABEL, at: empAt, type: empType, retired: empRetired, options: Object.entries(EMPLOYMENT_GROUP).map(([type, docs]) => ({ type, docs: docs.map((x) => x.label) })) } : null,
+      // Notes for whoever files a حوادث case.
+      tips: isAccidentKind(claim.line, claim.claimType) ? accidentTips(!!caseTypeOf(await this.modelOf(claim.insurerTenantId), claim.claimType)?.death) : [],
       beneficiary: benGroup ? {
-        label: BENEFICIARY_GROUP_LABEL, at: BENEFICIARY_GROUP_AT, type: benChosen ? claim.beneficiaryType : null,
+        label: BENEFICIARY_GROUP_LABEL, at: benAt, type: benChosen ? claim.beneficiaryType : null,
         // Every choice with its documents (the printable list of required documents shows them all).
         options: Object.entries(BENEFICIARY_GROUP).map(([type, docs]) => ({ type, docs: docs.map((x) => x.label) })),
       } : null,
