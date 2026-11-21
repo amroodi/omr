@@ -27,7 +27,7 @@ import { TooManyRequestsException } from '../inquiry/http-exceptions';
 import { PERMISSIONS } from '../../common/rbac/permissions';
 import { nextClaimNumber } from './claim-number';
 import { isValidIban, isValidNationalCode } from '../../common/validation/field-validation';
-import { accidentTips, BENEFICIARY_DOC_CODES, BENEFICIARY_GROUP, BENEFICIARY_GROUP_AT, BENEFICIARY_GROUP_CODES, BENEFICIARY_GROUP_LABEL, BENEFICIARY_SLOT_CODES, beneficiaryHiddenDocs, EMPLOYMENT_FA, EMPLOYMENT_GROUP, EMPLOYMENT_GROUP_CODES, EMPLOYMENT_GROUP_LABEL, EMPLOYMENT_SLOTS } from '../required-docs/defaults';
+import { accidentTips, BENEFICIARY_DOC_CODES, BENEFICIARY_GROUP, BENEFICIARY_GROUP_AT, BENEFICIARY_GROUP_CODES, BENEFICIARY_GROUP_LABEL, BENEFICIARY_SLOT_CODES, beneficiaryHiddenDocs, EMPLOYMENT_FA, EMPLOYMENT_GROUP, EMPLOYMENT_GROUP_CODES, EMPLOYMENT_GROUP_LABEL, EMPLOYMENT_HIDDEN, employmentSlot } from '../required-docs/defaults';
 import { toAsciiDigits } from '../../common/jalali/jalali.util';
 import { ModelStore } from '../model-view/model-store.service';
 import { CoverageService } from '../model-view/coverage.service';
@@ -1973,9 +1973,9 @@ export class ClaimsService {
     assertNotPaid(claim);
     if (!EMPLOYMENT_FA[status]) throw new BadRequestException('وضعیت نامعتبر است');
     if (!(await this.canEditHeirs(claim))) throw new ForbiddenException('اجازهٔ ویرایش این پرونده را ندارید');
-    const slot = (await db.requiredDocument.findMany({ where: { tenantId: claim.insurerTenantId, isActive: true, code: { in: Object.keys(EMPLOYMENT_SLOTS) }, ...docKindWhere(claim.line) } })).find((r) => docApplies(r, claim));
-    if (!slot) throw new BadRequestException('این پرونده وضعیت اشتغال ندارد');
-    if (status === 'RETIRED' && !EMPLOYMENT_SLOTS[slot.code].retired) throw new BadRequestException('برای این پرونده «بازنشسته» در دسترس نیست');
+    const emp = employmentSlot((await db.requiredDocument.findMany({ where: { tenantId: claim.insurerTenantId, isActive: true, ...docKindWhere(claim.line) } })).filter((r) => docApplies(r, claim)));
+    if (!emp) throw new BadRequestException('این پرونده وضعیت اشتغال ندارد');
+    if (status === 'RETIRED' && !emp.retired) throw new BadRequestException('برای این پرونده «بازنشسته» در دسترس نیست');
     await db.claim.update({ where: { id: claimId }, data: { employmentStatus: status } });
     await this.deskAct(claimId, 'EDIT', `وضعیت اشتغال: ${EMPLOYMENT_FA[status]}`);
     return this.checklist(claimId);
@@ -2109,10 +2109,11 @@ export class ClaimsService {
     // «تصویر مدارک ذینفع/ذینفعان» takes the place of every document about who receives the money.
     const benGroup = catalog.some((r) => BENEFICIARY_DOC_CODES.includes(r.code) && docApplies(r, claim));
     // «شاغلین / بازنشسته»: a slot row in the list asks for it (a work accident has no بازنشسته: شاغلین is taken).
-    const empSlot = catalog.find((r) => EMPLOYMENT_SLOTS[r.code] && docApplies(r, claim));
-    const empRetired = empSlot ? EMPLOYMENT_SLOTS[empSlot.code].retired : true;
+    const emp = employmentSlot(catalog.filter((r) => docApplies(r, claim)));
+    const empSlot = emp?.slot;
+    const empRetired = emp ? emp.retired : true;
     const empType = empSlot ? (claim.employmentStatus === 'RETIRED' && empRetired ? 'RETIRED' : claim.employmentStatus === 'EMPLOYED' || !empRetired ? 'EMPLOYED' : null) : null;
-    const hidden = [...(benGroup ? [...BENEFICIARY_DOC_CODES, ...BENEFICIARY_GROUP_CODES] : beneficiaryHiddenDocs(claim.beneficiaryType)), ...Object.keys(EMPLOYMENT_SLOTS), ...EMPLOYMENT_GROUP_CODES];
+    const hidden = [...(benGroup ? [...BENEFICIARY_DOC_CODES, ...BENEFICIARY_GROUP_CODES] : beneficiaryHiddenDocs(claim.beneficiaryType)), ...EMPLOYMENT_HIDDEN];
     const allReqs = catalog.filter((r) => !hidden.includes(r.code));
     // A group sits where its slot row is in the list; otherwise «تصویر مدارک ذینفع/ذینفعان» is the 5th row.
     const benSlot = catalog.find((r) => BENEFICIARY_SLOT_CODES.includes(r.code) && docApplies(r, claim));

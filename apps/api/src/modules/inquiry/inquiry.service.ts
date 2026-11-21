@@ -35,7 +35,7 @@ function jalaliDate(v?: string | null): Date | undefined {
 import { NotificationsService } from '../notifications/notifications.service';
 import { ClaimFieldsService } from '../claim-fields/claim-fields.service';
 import { PolicyholdersService } from '../policyholders/policyholders.service';
-import { BENEFICIARY_DOC_CODES, BENEFICIARY_GROUP, BENEFICIARY_GROUP_AT, BENEFICIARY_GROUP_CODES, BENEFICIARY_SLOT_CODES, beneficiaryHiddenDocs, EMPLOYMENT_GROUP, EMPLOYMENT_GROUP_CODES, EMPLOYMENT_SLOTS } from '../required-docs/defaults';
+import { BENEFICIARY_DOC_CODES, BENEFICIARY_GROUP, BENEFICIARY_GROUP_AT, BENEFICIARY_GROUP_CODES, BENEFICIARY_SLOT_CODES, beneficiaryHiddenDocs, EMPLOYMENT_GROUP, EMPLOYMENT_HIDDEN, employmentSlot } from '../required-docs/defaults';
 import { docKindWhere, kindLabel } from '../../common/kinds';
 
 /**
@@ -638,9 +638,10 @@ export class InquiryService {
     const applying = all.filter((r) => docApplies(r, c)); // the case's «علت» narrows some lists
     // «تصویر مدارک ذینفع/ذینفعان»: the documents of the case's choice in place of every ذینفع document (as panel 1 lists them).
     const benGroup = applying.some((r) => BENEFICIARY_DOC_CODES.includes(r.code));
-    const empSlot = applying.find((r) => EMPLOYMENT_SLOTS[r.code]);
-    const empType = empSlot ? (c.employmentStatus === 'RETIRED' && EMPLOYMENT_SLOTS[empSlot.code].retired ? 'RETIRED' : c.employmentStatus === 'EMPLOYED' || !EMPLOYMENT_SLOTS[empSlot.code].retired ? 'EMPLOYED' : null) : null;
-    const hidden = [...(benGroup ? [...BENEFICIARY_DOC_CODES, ...BENEFICIARY_GROUP_CODES] : beneficiaryHiddenDocs(c.beneficiaryType)), ...Object.keys(EMPLOYMENT_SLOTS), ...EMPLOYMENT_GROUP_CODES];
+    const emp = employmentSlot(applying);
+    const empSlot = emp?.slot;
+    const empType = emp ? (c.employmentStatus === 'RETIRED' && emp.retired ? 'RETIRED' : c.employmentStatus === 'EMPLOYED' || !emp.retired ? 'EMPLOYED' : null) : null;
+    const hidden = [...(benGroup ? [...BENEFICIARY_DOC_CODES, ...BENEFICIARY_GROUP_CODES] : beneficiaryHiddenDocs(c.beneficiaryType)), ...EMPLOYMENT_HIDDEN];
     const plain = applying.filter((r) => !hidden.includes(r.code));
     const reqs: { code: string; label: string }[] = [...plain];
     const benSlot = applying.find((r) => BENEFICIARY_SLOT_CODES.includes(r.code));
