@@ -118,6 +118,23 @@ export const EMPLOYMENT_GROUP: Record<string, { code: string; label: string }[]>
 export const EMPLOYMENT_FA: Record<string, string> = { EMPLOYED: 'شاغلین', RETIRED: 'بازنشسته' };
 export const EMPLOYMENT_SLOTS: Record<string, { retired: boolean }> = { dw_employment: { retired: false } };
 export const EMPLOYMENT_GROUP_CODES = [...new Set(Object.values(EMPLOYMENT_GROUP).flat().map((x) => x.code))];
+/**
+ * The insurers' own work papers (حکم کارگزینی، لیست کسور، حکم بازنشستگی…): a list that asks for any of them gets
+ * the «شاغلین / بازنشسته» group in their place (where the first of them was), and they are not listed.
+ */
+export const EMPLOYMENT_DOC_CODES = [
+  'last_personnel_order', 'employment_contract_payslips', 'retirement_list_death', 'retirement_list_start_death', 'retirement_order_death',
+  'personnel_order_payslip', 'personnel_order_start', 'retirement_deductions_3m', 'retirement_list_start_accident', 'retirement_order_accident',
+  'li_personnel_order', 'li_ss_list', 'di_personnel_order', 'di_ss_list', 'da_crash_personnel_order', 'da_crash_ss_list',
+];
+export const EMPLOYMENT_HIDDEN = [...Object.keys(EMPLOYMENT_SLOTS), ...EMPLOYMENT_DOC_CODES, ...EMPLOYMENT_GROUP_CODES];
+/** Where «شاغلین / بازنشسته» sits in a case's list (its own slot row, else the first work paper) and whether بازنشسته is offered. */
+export function employmentSlot<T extends { code: string; order: number }>(applying: T[]): { slot: T; retired: boolean } | null {
+  const own = applying.find((r) => EMPLOYMENT_SLOTS[r.code]);
+  if (own) return { slot: own, retired: EMPLOYMENT_SLOTS[own.code].retired };
+  const papers = applying.filter((r) => EMPLOYMENT_DOC_CODES.includes(r.code)).sort((a, b) => a.order - b.order);
+  return papers.length ? { slot: papers[0], retired: true } : null;
+}
 
 /** Notes for whoever files a حوادث case («کاربر ثبت»), under its list of documents. */
 export function accidentTips(death: boolean): string[] {
