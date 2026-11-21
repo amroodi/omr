@@ -97,7 +97,7 @@ export const RETIRED_DOC_CODES = ['social_security_history', 'beneficiary_iban',
 export const BENEFICIARY_DOC_CODES = ['beneficiary_form', 'inheritance_cert', 'no_beneficiary_form_letter', 'heirs_id_national_card', 'iban_printout',
   'li_beneficiary_form', 'li_heirs_id', 'li_heirs_iban', 'da_crash_beneficiary_form', 'da_crash_heirs_id', 'da_crash_heirs_iban', 'dw_beneficiary_form'];
 /** Rows that only mark where «تصویر مدارک ذینفع/ذینفعان» sits in a list (else it is the 5th row). */
-export const BENEFICIARY_SLOT_CODES = ['dw_beneficiary_form'];
+export const BENEFICIARY_SLOT_CODES = ['dw_beneficiary_form', 'da_crash_beneficiary_form'];
 
 /**
  * «شاغلین / بازنشسته»: the insured's work papers, by the choice on the case (`employmentStatus`). A list asks
