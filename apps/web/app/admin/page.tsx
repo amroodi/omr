@@ -242,6 +242,7 @@ export default function AdminDashboard() {
         <PlatformSms />
         <ShahkarCard />
         <IbanMatchCard />
+        <ReceiptSmsCard />
         <div className="card p-5 space-y-3 mt-5">
           <h3 className="font-semibold">ورود دومرحله‌ای مدیر سامانه</h3>
           <MfaSetup realm="super" />
@@ -362,6 +363,58 @@ function IbanMatchCard() {
         <button className="btn btn-ghost btn-sm" onClick={runTest} disabled={!test.nationalCode || !test.iban}>آزمایش اتصال</button>
       </div>
       {out && <pre className="text-xs p-2 rounded overflow-auto" style={{ background: 'var(--surface-2)', direction: 'ltr', maxHeight: 220 }}>{out}</pre>}
+    </div>
+  );
+}
+
+/** «پیامک کد پذیرش»: whoever filed a case gets its code by SMS on their own mobile (once). */
+function ReceiptSmsCard() {
+  const [c, setC] = useState<{ enabled: boolean; when: 'FILE' | 'SUBMIT'; gateway: 'PLATFORM' | 'ORG'; template: string } | null>(null);
+  const [phone, setPhone] = useState('');
+  const [msg, setMsg] = useState<{ t: 'ok' | 'err'; m: string } | null>(null);
+  useEffect(() => { client.get<any>('/platform/receipt-sms', 'super').then(setC).catch((e) => setMsg({ t: 'err', m: e.message })); }, []);
+  const save = async (patch: Partial<NonNullable<typeof c>>) => {
+    if (!c) return;
+    setMsg(null);
+    try { setC(await client.put<any>('/platform/receipt-sms', { ...c, ...patch }, 'super')); setMsg({ t: 'ok', m: 'ذخیره شد' }); } catch (e: any) { setMsg({ t: 'err', m: e.message }); }
+  };
+  const test = async () => {
+    setMsg(null);
+    try { const r = await client.post<{ text: string }>('/platform/receipt-sms/test', { phone: phone.trim() }, 'super'); setMsg({ t: 'ok', m: `ارسال شد: ${r.text}` }); } catch (e: any) { setMsg({ t: 'err', m: e.message }); }
+  };
+  if (!c) return null;
+  return (
+    <div className="card p-5 space-y-3 mt-5">
+      <h3 className="font-semibold">پیامک کد پذیرش</h3>
+      <Flash id={msg} text={msg?.m} ok={!!msg && msg.t === 'ok'} />
+      <label className="flex items-center gap-2 text-sm cursor-pointer">
+        <input type="checkbox" checked={c.enabled} onChange={(e) => save({ enabled: e.target.checked })} />
+        <span className="font-semibold">ارسال کد پذیرش به شمارهٔ همراه کاربر ثبت‌کننده</span>
+      </label>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <Field label="زمان ارسال">
+          <select className="input" value={c.when} onChange={(e) => setC({ ...c, when: e.target.value as 'FILE' | 'SUBMIT' })}>
+            <option value="SUBMIT">پس از «ثبت نهایی» پرونده</option>
+            <option value="FILE">هنگام ثبت پرونده</option>
+          </select>
+        </Field>
+        <Field label="درگاه پیامک">
+          <select className="input" value={c.gateway} onChange={(e) => setC({ ...c, gateway: e.target.value as 'PLATFORM' | 'ORG' })}>
+            <option value="PLATFORM">درگاه سکو (دامون)</option>
+            <option value="ORG">درگاه سازمان کاربر ثبت‌کننده</option>
+          </select>
+        </Field>
+        <div className="sm:col-span-2">
+          <Field label="متن پیامک — {code} کد پذیرش، {claimNumber} شماره پرونده، {name} نام بیمه‌شده، {org} نام سازمان">
+            <textarea className="input" rows={4} maxLength={500} value={c.template} onChange={(e) => setC({ ...c, template: e.target.value })} />
+          </Field>
+        </div>
+      </div>
+      <button onClick={() => save({})} className="btn btn-primary btn-sm">ذخیرهٔ تنظیمات</button>
+      <div className="flex items-end gap-2 flex-wrap pt-2" style={{ borderTop: '1px solid var(--border)' }}>
+        <Field label="شمارهٔ آزمایشی"><input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="09xxxxxxxxx" style={{ direction: 'ltr', textAlign: 'left' }} /></Field>
+        <button className="btn btn-ghost btn-sm" disabled={!/^09\d{9}$/.test(phone.trim())} onClick={test}>ارسال پیامک آزمایشی</button>
+      </div>
     </div>
   );
 }

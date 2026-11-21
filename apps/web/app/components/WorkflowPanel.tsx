@@ -24,7 +24,10 @@ export interface Workflow {
   lossNoticeAsksNumber?: boolean; // false: شعبه records اعلام خسارت with one click (no number / date)
   actions: WorkflowAction[];
   physical?: PhysicalView;
+  /** «موارد نیازمند توجه»: requests to this user and the reasons their actions are blocked. */
+  attention?: Attention[];
 }
+export interface Attention { kind: 'REQUEST' | 'BLOCKER'; text: string; fix?: 'HEIRS' | 'DOCS' | 'PHYSICAL' }
 
 /** Where the original documents are, the open request (if any), its history, and this user's moves. */
 export interface PhysicalView {
@@ -32,9 +35,11 @@ export interface PhysicalView {
   open: { requesterStage: string; holderStage: string; status: 'REQUESTED' | 'SENT'; requesterLabel: string; holderLabel: string } | null;
   actions: { key: string; label: string; seat: string }[];
   events: { id: string; stageLabel: string; action: string; note: string | null; trackingNo: string | null; at: string; by: string | null; letters: TimelineStep['letters'] }[];
+  /** At شعبه, after receiving: do the originals match the uploaded copies? */
+  match?: { state: 'MATCH' | 'MISMATCH' | null; note: string | null; at: string | null; by: string | null; canSet: boolean } | null;
 }
 
-const PHYSICAL_EVENT_FA: Record<string, string> = { REQUEST: 'درخواست اصل مدارک', RELAY: 'ارسال درخواست', SEND: 'ارسال اصل مدارک', RECEIVE: 'تایید دریافت اصل مدارک', RETURN: 'بازگرداندن اصل مدارک به شعبه' };
+const PHYSICAL_EVENT_FA: Record<string, string> = { REQUEST: 'درخواست اصل مدارک', RELAY: 'ارسال درخواست', SEND: 'ارسال اصل مدارک', RECEIVE: 'تایید دریافت اصل مدارک', RETURN: 'بازگرداندن اصل مدارک به شعبه', MATCH: 'اصل مدارک با تصاویر بارگذاری‌شده مطابقت دارد', MISMATCH: 'مغایرت اصل مدارک با تصاویر بارگذاری‌شده' };
 
 const TONE: Record<string, string> = { primary: 'btn btn-solid btn-sm', warning: 'btn btn-ghost btn-sm', danger: 'btn btn-ghost btn-sm', ghost: 'btn btn-ghost btn-sm' };
 const TONE_COLOR: Record<string, string | undefined> = { warning: 'var(--warning)', danger: 'var(--danger)' };
@@ -96,6 +101,12 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact, ac
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [sure, setSure] = useState(false); // «آیا مطمئن هستید؟» step of a confirm-first action
+  const [mismatch, setMismatch] = useState<string | null>(null); // «مغایرت دارد»: what differs
+  const saveMatch = async (state: 'MATCH' | 'MISMATCH', note?: string) => {
+    setErr(''); setBusy(true);
+    try { await client.post(`/claims/${claimId}/physical/match`, { state, ...(note ? { note } : {}) }, 'org'); setMismatch(null); onDone(); }
+    catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+  };
   const ask = open ? confirmText(open.key) : CONFIRM_DEFAULT;
   const base = realm === 'customer' ? '/customer/claims' : '/claims';
   const cur = w.chain.findIndex((c) => c.stage === w.currentStage);
@@ -184,7 +195,7 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact, ac
       </>}
       {/* «اعلام خسارت» has no button for now: it is a document the بیمه‌گزار uploads. */}
       {/* Original documents (side track) */}
-      {w.physical && (w.physical.collected || w.physical.open || w.physical.actions.length > 0 || w.physical.events.length > 0) && (
+      {w.physical && (w.physical.collected || w.physical.open || w.physical.actions.length > 0 || w.physical.events.length > 0 || w.physical.match) && (
         <div className="rounded-lg p-2.5 text-sm space-y-1.5" style={{ background: 'var(--surface-2)' }}>
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <span className="font-semibold">اصل مدارک (فیزیکی)</span>
@@ -201,6 +212,31 @@ export function WorkflowPanel({ claimId, workflow: w, realm, onDone, compact, ac
             <div className="flex flex-wrap gap-2">
               {w.physical.actions.map((a) => (
                 <button key={a.key + a.seat} onClick={() => start({ key: a.key, label: a.label, tone: 'primary', physical: true })} disabled={busy} className="btn btn-solid btn-sm">{a.label}</button>
+              ))}
+            </div>
+          )}
+          {/* شعبه: the originals received against the uploaded copies */}
+          {w.physical.match && (
+            <div className={`ph-match${w.physical.match.state === 'MATCH' ? ' is-ok' : w.physical.match.state === 'MISMATCH' ? ' is-bad' : ''}`}>
+              {w.physical.match.state ? (
+                <div className="text-xs font-bold">
+                  {w.physical.match.state === 'MATCH' ? '✓ اصل مدارک با تصاویر بارگذاری‌شده مطابقت دارد' : `✕ مغایرت اصل مدارک با تصاویر: ${w.physical.match.note ?? ''}`}
+                  <span className="font-normal" style={{ color: 'var(--muted)' }}> — {w.physical.match.at}{w.physical.match.by ? ` — ${w.physical.match.by}` : ''}</span>
+                </div>
+              ) : <div className="text-xs font-bold">تطابق اصل مدارک دریافت‌شده با تصاویر بارگذاری‌شده ثبت نشده است</div>}
+              {w.physical.match.canSet && (mismatch === null ? (
+                <div className="flex flex-wrap gap-2">
+                  <button className="btn btn-solid btn-sm" disabled={busy} onClick={() => saveMatch('MATCH')}>اصل مدارک با تصاویر مطابقت دارد</button>
+                  <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} disabled={busy} onClick={() => setMismatch(w.physical?.match?.state === 'MISMATCH' ? w.physical.match.note ?? '' : '')}>مغایرت دارد</button>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <textarea className="input" rows={2} maxLength={1000} autoFocus value={mismatch} onChange={(e) => setMismatch(e.target.value)} placeholder="مغایرت اصل مدارک با تصاویر" />
+                  <div className="flex gap-2">
+                    <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} disabled={busy || mismatch.trim().length < 2} onClick={() => saveMatch('MISMATCH', mismatch.trim())}>ثبت مغایرت</button>
+                    <button className="btn btn-ghost btn-sm" disabled={busy} onClick={() => setMismatch(null)}>انصراف</button>
+                  </div>
+                </div>
               ))}
             </div>
           )}

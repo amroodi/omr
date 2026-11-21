@@ -551,6 +551,13 @@ export class ClaimsController {
     return this.claims.physicalAct(id, dto);
   }
 
+  /** شعبه: the originals received match the uploaded copies (MATCH), or not (MISMATCH, with what differs). */
+  @Permissions(PERMISSIONS.CLAIM_PROCESS)
+  @Post(':id/physical/match')
+  physicalMatch(@Param('id', ParseUUIDPipe) id: string, @Body() body: { state?: string; note?: string }) {
+    return this.claims.physicalMatch(id, String(body?.state ?? ''), body?.note);
+  }
+
   /** شعبه records اعلام خسارت (registered in the insurer's own system). */
   @Permissions(PERMISSIONS.CLAIM_PROCESS)
   @Put(':id/loss-notice')

@@ -1,5 +1,5 @@
 import { Realms } from '../../common/rbac/decorators';
-import { Controller, Get, Param, Post } from '@nestjs/common';
+import { Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
 
 /** In-panel notifications for the signed-in actor (org user or بیمه‌گزار). Requires a token. */
@@ -21,8 +21,8 @@ export class NotificationsController {
 
   @Realms('ORG', 'CUSTOMER')
   @Post('read-all')
-  readAll() {
-    return this.notifications.markAllRead();
+  readAll(@Query('kind') kind?: string) {
+    return this.notifications.markAllRead(kind);
   }
 
   @Realms('ORG', 'CUSTOMER')
