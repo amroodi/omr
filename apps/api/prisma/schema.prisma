@@ -145,6 +145,8 @@ model PlatformConfig {
   // defines one). Off = no check, the operator's approval alone is enough. Super-admin only.
   shahkarEnabled     Boolean  @default(false)
   shahkarConfig      String? // ENCRYPTED json: provider + endpoint + credentials (see auth/shahkar.service.ts)
+  // «پیامک کد پذیرش» to whoever filed a case: { enabled, when: FILE | SUBMIT, gateway: PLATFORM | ORG, template }
+  receiptSms         Json?
   // «تطابق شبا و کد ملی» of a case's ذینفعان (model-view/iban-match.service.ts): off until Super Admin sets it up.
   ibanMatchEnabled   Boolean  @default(false)
   ibanMatchConfig    String? // ENCRYPTED json: endpoint, field names, where the yes/no is, token
@@ -196,10 +198,30 @@ model Notification {
   title       String
   body        String
   link        String? // in-panel path the recipient should open
-  readAt      DateTime?
+  readAt      DateTime? // a personal notice (recipientId); shared ones are read per user (NotificationRead)
   createdAt   DateTime             @default(now())
+  // ACTION: something to do (counted on the bell) | ACTIVITY: oversight of colleagues' acts (admins)
+  kind        String               @default("ACTION")
+  // A shared notice is for one desk of the organization (and branch, and panel): null = everyone there.
+  stage       String?
+  branchId    String?
+  panel       String? // ENTRY | PROCESS
+  claimId     String?
+  reads       NotificationRead[]
 
   @@index([tenantId, audience, recipientId, readAt])
+  @@index([tenantId, createdAt])
+}
+
+// Who has read a shared (whole-organization) notice: each operator has their own read state.
+model NotificationRead {
+  notificationId String
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  userId         String
+  readAt         DateTime     @default(now())
+
+  @@id([notificationId, userId])
+  @@index([userId])
 }
 
 model Branch {
@@ -945,6 +967,7 @@ model Claim {
   legacyStatus    String? // raw وضعیت پرونده text from the source system
   beneficiaryType String? // نوع ذینفع (ذینفع قانونی / وراث قانونی)
   employmentStatus String? // «شاغلین / بازنشسته»: EMPLOYED | RETIRED (decides the insured's work papers)
+  receiptSmsAt     DateTime? // «کد پذیرش» sent by SMS to whoever filed the case (once)
   employerName    String? // نام شرکت محل فعالیت
   causeOfDeath    String? // علت فوت (free text; more specific than claimType)
   causeDetail     String? // «نوع حادثه» when the cause asks for one (Model View caseType.detail)
@@ -1234,6 +1257,11 @@ model ClaimPhysicalRequest {
   createdAt      DateTime       @default(now())
   sentAt         DateTime?
   receivedAt     DateTime?
+  // At شعبه, after receiving: do the originals match the uploaded copies? MATCH | MISMATCH (with its note)
+  matchState     String?
+  matchNote      String?
+  matchedAt      DateTime?
+  matchedById    String?
 
   events ClaimPhysicalEvent[]
 

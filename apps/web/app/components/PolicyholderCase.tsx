@@ -17,6 +17,7 @@ import { AI_QUEUED_FA, aiVerdict, ChecklistItem, ClaimDoc, dateOnly, STATUS_FA, 
 import { DocUploadTile, OnProgress, UploadButton } from './upload';
 import { BEN_FA, BeneficiaryGroup } from './heirs';
 import { RequiredDocsButton } from './RequiredDocsPdf';
+import { AttentionBox } from './AttentionBox';
 import { JalaliDatePicker } from './JalaliDatePicker';
 import { causeDetailFor, filerText, GENDERS, personTitle } from './claim-wording';
 import { Flash } from './Toaster';
@@ -405,11 +406,15 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
             )}
 
             {/* نقص مدارک: what was asked (with its upload slots) and where the case is — «نیازمند اقدام شما» only when it waits here */}
+            <AttentionBox items={claim.workflow?.attention} onFix={(f) => {
+              if (f === 'HEIRS') setBenOpen(true);
+              document.querySelector(f === 'PHYSICAL' ? '.ph-anchor' : '.sdocs')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }} />
             <DeficiencyBox claimId={id} claim={claim} checklist={checklist} realm={realm} canUpload={claim.workflow?.currentStage === 'POLICYHOLDER'} onChanged={reload} actions={false} onSubmit={atMyDesk ? finalSubmit : undefined} submitting={sending} />
 
             {/* The originals were asked for: the move stays right here, not only in «روند پرونده». */}
             {physicalMoves && claim.workflow && (
-              <section className="pcard cu-spec"><h2 className="cu-spec-h"><span>اصل مدارک</span></h2><WorkflowPanel claimId={id} workflow={{ ...claim.workflow, actions: claim.workflow.actions.filter((a) => a.key !== 'SUBMIT') }} realm={realm} onDone={reload} /></section>
+              <section className="pcard cu-spec ph-anchor"><h2 className="cu-spec-h"><span>اصل مدارک</span></h2><WorkflowPanel claimId={id} workflow={{ ...claim.workflow, actions: claim.workflow.actions.filter((a) => a.key !== 'SUBMIT') }} realm={realm} onDone={reload} /></section>
             )}
 
             {claim.insuredLinkEnabled && !org && <InsuredAccess claimId={id} />}

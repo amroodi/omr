@@ -1,5 +1,5 @@
 import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
-import { NotificationAudience } from '@prisma/client';
+import { NotificationAudience, Prisma } from '@prisma/client';
 import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { getContext } from '../../common/tenant/tenant-context';
@@ -15,7 +15,17 @@ export interface NotifyInput {
   link?: string;
   /** Send the companion SMS too (default true). Set false for internal, high-volume ORG oversight. */
   sms?: boolean;
+  /** ACTION (to do; counted on the bell) or ACTIVITY (colleagues' acts, for admins). */
+  kind?: 'ACTION' | 'ACTIVITY';
+  /** A shared ORG notice for one desk / branch / panel of the organization (unset = everyone there). */
+  stage?: string | null;
+  branchId?: string | null;
+  panel?: 'ENTRY' | 'PROCESS' | null;
+  claimId?: string | null;
 }
+
+/** Older than this, a notice no longer counts on the bell (it stays in the list). */
+const COUNT_DAYS = 60;
 
 // Only staff holding this permission (the «مدیر سازمان» role) receive operator-activity oversight.
 const ADMIN_PERMISSION = 'user:manage';
@@ -45,6 +55,11 @@ export class NotificationsService {
           title: input.title,
           body: input.body,
           link: input.link ?? null,
+          kind: input.kind ?? 'ACTION',
+          stage: input.stage ?? null,
+          branchId: input.branchId ?? null,
+          panel: input.panel ?? null,
+          claimId: input.claimId ?? null,
         },
       });
     } catch (e) {
@@ -77,7 +92,7 @@ export class NotificationsService {
       });
       for (const a of admins) {
         if (opts.excludeActorId && a.id === opts.excludeActorId) continue;
-        await this.notify({ tenantId, audience: 'ORG', recipientId: a.id, title, body, link, sms: false });
+        await this.notify({ tenantId, audience: 'ORG', recipientId: a.id, title, body, link, sms: false, kind: 'ACTIVITY' });
       }
     } catch (e) {
       this.logger.error(`Admin-activity notify failed: ${String(e)}`);
@@ -106,23 +121,55 @@ export class NotificationsService {
   }
 
   // ── Reads for the panel (current actor) ──
-  private where() {
+  /**
+   * What the caller may see: a بیمه‌گزار their own; an operator what is addressed to them, plus the shared
+   * notices of their own desk (and branch, and panel) — an insurer's admin those of every desk.
+   */
+  private async where(): Promise<Prisma.NotificationWhereInput> {
     const ctx = getContext();
     if (ctx?.actorType === 'CUSTOMER') return { tenantId: ctx.tenantId, audience: 'CUSTOMER' as const, recipientId: ctx.actorId };
     // Only staff read the organization's inbox — never the public inquiry's token or a پنل بیمه‌شده sign-in.
-    if (ctx?.actorType !== 'ORG_USER' || !ctx.tenantId) throw new ForbiddenException('دسترسی ندارید');
-    // org user → the whole-org inbox (recipientId null) PLUS anything addressed to them personally
-    // (admin-activity oversight is targeted per-admin via recipientId).
-    return { tenantId: ctx?.tenantId, audience: 'ORG' as const, OR: [{ recipientId: null }, { recipientId: ctx?.actorId }] };
+    if (ctx?.actorType !== 'ORG_USER' || !ctx.tenantId || !ctx.actorId) throw new ForbiddenException('دسترسی ندارید');
+    const db = this.prisma.unscoped();
+    const [user, tenant] = await Promise.all([
+      db.orgUser.findUnique({ where: { id: ctx.actorId }, select: { desk: true, branchId: true } }),
+      db.tenant.findUnique({ where: { id: ctx.tenantId }, select: { kind: true } }),
+    ]);
+    const admin = (ctx.permissions ?? []).includes('claim:override');
+    const branchId = user?.branchId ?? ctx.branchId ?? null;
+    const stage = tenant?.kind === 'BROKER' ? 'BROKER' : user?.desk === 'HQ' || user?.desk === 'COUNCIL' || user?.desk === 'BRANCH' ? user.desk : branchId ? 'BRANCH' : 'HQ';
+    const shared: Prisma.NotificationWhereInput[] = [{ OR: [{ panel: null }, { panel: ctx.panelMode === 'ENTRY' ? 'ENTRY' : 'PROCESS' }] }];
+    if (!admin) {
+      shared.push({ OR: [{ stage: null }, { stage }] });
+      if (stage === 'BRANCH' && branchId) shared.push({ OR: [{ branchId: null }, { branchId }] });
+    }
+    return { tenantId: ctx.tenantId, audience: 'ORG' as const, OR: [{ recipientId: ctx.actorId }, { recipientId: null, AND: shared }] };
+  }
+
+  /** Read by me: a personal notice by its own flag, a shared one by my read mark (or one read before marks were per user). */
+  private readBy(me: string | undefined): Prisma.NotificationWhereInput {
+    return { OR: [{ readAt: { not: null } }, ...(me ? [{ reads: { some: { userId: me } } }] : [])] };
   }
 
   async list() {
-    const rows = await this.live(await this.prisma.unscoped().notification.findMany({ where: this.where(), orderBy: { createdAt: 'desc' }, take: 80 }));
-    return rows.slice(0, 50).map((r) => ({ id: r.id, title: r.title, body: r.body, link: r.link, readAt: r.readAt, createdAt: toJalali(r.createdAt) }));
+    const me = getContext()?.actorId;
+    const rows = await this.live(await this.prisma.unscoped().notification.findMany({
+      where: await this.where(), orderBy: { createdAt: 'desc' }, take: 120,
+      include: me && getContext()?.actorType === 'ORG_USER' ? { reads: { where: { userId: me }, select: { readAt: true } } } : undefined,
+    }));
+    return rows.slice(0, 80).map((r: any) => ({
+      id: r.id, title: r.title, body: r.body, link: r.link, kind: r.kind, claimId: r.claimId,
+      readAt: r.readAt ?? r.reads?.[0]?.readAt ?? null, createdAt: toJalali(r.createdAt),
+    }));
   }
 
   async unreadCount() {
-    const rows = await this.live(await this.prisma.unscoped().notification.findMany({ where: { ...this.where(), readAt: null }, select: { id: true, link: true }, orderBy: { createdAt: 'desc' }, take: 500 }));
+    const me = getContext()?.actorId;
+    const since = new Date(Date.now() - COUNT_DAYS * 86_400_000);
+    const rows = await this.live(await this.prisma.unscoped().notification.findMany({
+      where: { AND: [await this.where(), { kind: 'ACTION', createdAt: { gte: since } }, { NOT: this.readBy(me) }] },
+      select: { id: true, link: true }, orderBy: { createdAt: 'desc' }, take: 500,
+    }));
     return { count: rows.length };
   }
 
@@ -138,13 +185,30 @@ export class NotificationsService {
     return rows.filter((r) => { const id = idOf(r.link); return !id || alive.has(id); });
   }
 
+  /** A personal notice is marked on itself; a shared one only for me (my colleagues still see it unread). */
   async markRead(id: string) {
-    await this.prisma.unscoped().notification.updateMany({ where: { id, ...this.where() }, data: { readAt: new Date() } });
+    const db = this.prisma.unscoped();
+    const ctx = getContext();
+    const n = await db.notification.findFirst({ where: { AND: [{ id }, await this.where()] }, select: { id: true, recipientId: true } });
+    if (!n) return { ok: true };
+    if (n.recipientId || ctx?.actorType !== 'ORG_USER') await db.notification.update({ where: { id }, data: { readAt: new Date() } });
+    else await db.notificationRead.upsert({ where: { notificationId_userId: { notificationId: id, userId: ctx.actorId! } }, update: {}, create: { notificationId: id, userId: ctx.actorId! } });
     return { ok: true };
   }
 
-  async markAllRead() {
-    await this.prisma.unscoped().notification.updateMany({ where: { ...this.where(), readAt: null }, data: { readAt: new Date() } });
+  async markAllRead(kind?: string) {
+    const db = this.prisma.unscoped();
+    const ctx = getContext();
+    const base = await this.where();
+    const k = kind === 'ACTIVITY' || kind === 'ACTION' ? { kind } : {};
+    if (ctx?.actorType !== 'ORG_USER') {
+      await db.notification.updateMany({ where: { AND: [base, k, { readAt: null }] }, data: { readAt: new Date() } });
+      return { ok: true };
+    }
+    const me = ctx.actorId!;
+    await db.notification.updateMany({ where: { AND: [base, k, { recipientId: me, readAt: null }] }, data: { readAt: new Date() } });
+    const shared = await db.notification.findMany({ where: { AND: [base, k, { recipientId: null }, { NOT: this.readBy(me) }] }, select: { id: true }, take: 2000 });
+    if (shared.length) await db.notificationRead.createMany({ data: shared.map((n) => ({ notificationId: n.id, userId: me })), skipDuplicates: true });
     return { ok: true };
   }
 }

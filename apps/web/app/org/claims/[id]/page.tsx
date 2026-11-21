@@ -15,6 +15,8 @@ import { filerText, INSURED_RELATIONS, personTitle } from '../../../components/c
 import { PolicyholderCase } from '../../../components/PolicyholderCase';
 import { DeficiencyBox } from '../../../components/DeficiencyBox';
 import { WorkflowStatus } from '../../../components/WorkflowStatus';
+import { AttentionBox } from '../../../components/AttentionBox';
+import { ReminderDialog } from '../../../components/ReminderDialog';
 
 /**
  * «مشاهده»: the case on one page, laid out like Sinad's case window — a title bar with the case's own
@@ -51,6 +53,7 @@ function ClaimDetail() {
 
   // «بررسی مجدد»: ستاد of the insurer opens a closed case again.
   const [reopening, setReopening] = useState(false);
+  const [reminding, setReminding] = useState(false); // «یادآور» set right here
   const [reopenNote, setReopenNote] = useState('');
   const reopen = async () => {
     setError(''); setBusy(true);
@@ -96,7 +99,7 @@ function ClaimDetail() {
             <span className="cv-title-btns no-print">
               <Link href={`/org/claims/${id}/evaluate`} className="cv-tbtn is-strong">{brokerDesk ? 'بررسی مدارک' : 'ارزیابی'}</Link>
               {canReopen && <button className="cv-tbtn" onClick={() => { setReopenNote(''); setReopening(true); }}>بررسی مجدد</button>}
-              <a href={`/org/reminders?claim=${id}&n=${encodeURIComponent(claim.claimNumber)}`} target="_blank" rel="noopener" className="cv-tbtn" title="یادآوری پیگیری این پرونده برای خودتان یا همکار">یادآور</a>
+              <button className="cv-tbtn" onClick={() => setReminding(true)}>یادآور</button>
               {perms.del && claim.status !== 'PAID' && <button className="cv-tbtn is-danger" onClick={removeClaim} disabled={busy} title="انتقال به سطل بازیافت (۱۴ روز قابل بازیابی)">حذف</button>}
             </span>
           </div>
@@ -143,6 +146,10 @@ function ClaimDetail() {
               )}
 
               {/* ── نقص مدارک: what was asked, upload slots, and the fix / send-down buttons ── */}
+              <AttentionBox items={w?.attention} onFix={(f) => {
+                if (f === 'DOCS') setTab('docs');
+                else window.open(`/org/claims/${id}/evaluate${f === 'HEIRS' ? '?open=heirs' : ''}`, '_blank', 'noopener');
+              }} />
               <DeathNoticeDate claimId={id} />
               <DeficiencyBox claimId={id} claim={claim} checklist={checklist} realm="org" canUpload={!closed && (perms.file || (perms.process && !!w?.holdsDesk))} onChanged={reload} />
 
@@ -220,6 +227,7 @@ function ClaimDetail() {
           )}
         </div>
       )}
+      {reminding && claim && <ReminderDialog claimId={id} claimNumber={claim.claimNumber} onClose={() => setReminding(false)} />}
       {reopening && (
         <Overlay onClose={() => setReopening(false)}>
           <div className="pmodal" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>

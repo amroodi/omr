@@ -3051,3 +3051,25 @@ a.cu-card.is-link:hover { transform: translateY(-2px); box-shadow: 0 0 0 2px var
 .sdocs-tips { margin: 12px 0 0; padding: 10px 14px 10px 10px; border-radius: 10px; background: #fff8eb; border: 1px solid #f5c26b; font-size: 13px; line-height: 2; list-style: disc inside; color: #7c4a03; }
 :root.dark .sdocs-tips { background: rgba(245, 158, 11, .1); color: #fcd34d; }
 .rq-tips { margin: 12px 4px 0; font-size: 13px; line-height: 2; list-style: disc inside; }
+
+/* «موارد نیازمند توجه»: requests to this user and blocked actions, at the top of a case */
+.att-box { border: 1.5px solid #f5c26b; background: #fff8eb; border-radius: 10px; padding: 10px 14px; }
+:root.dark .att-box { background: rgba(245, 158, 11, .1); }
+.att-h { font-weight: 800; font-size: 14px; margin-bottom: 6px; color: #9a5b00; }
+:root.dark .att-h { color: #fcd34d; }
+.att-box ul { display: flex; flex-direction: column; gap: 6px; }
+.att-box li { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; line-height: 1.8; padding-inline-start: 14px; position: relative; }
+.att-box li::before { content: ''; position: absolute; inset-inline-start: 0; top: .7em; width: 7px; height: 7px; border-radius: 50%; background: #f59e0b; }
+.att-box li.is-block::before { background: #dc2626; }
+.att-box li.is-block span { color: #b91c1c; font-weight: 700; }
+:root.dark .att-box li.is-block span { color: #fca5a5; }
+.att-fix { flex-shrink: 0; font-size: 12px; font-weight: 800; padding: 3px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--brand); cursor: pointer; }
+/* originals vs uploaded copies at شعبه */
+.ph-match { display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 8px; border: 1px dashed #f5c26b; background: #fffbeb; }
+.ph-match.is-ok { border-color: #86c79a; background: #edf8f0; color: #0f7a55; }
+.ph-match.is-bad { border-color: #f1a5a5; background: #fff5f5; color: #b91c1c; }
+:root.dark .ph-match { background: transparent; }
+/* the bell's two lists */
+.nb-tabs { display: inline-flex; gap: 4px; }
+.nb-tabs button { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 8px; color: var(--muted); }
+.nb-tabs button.is-on { background: var(--brand-soft); color: var(--brand-700); }

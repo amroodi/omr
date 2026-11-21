@@ -14,6 +14,7 @@ import { HeirsCard } from '../../../../components/heirs';
 import { DoctorPaper, doctorFormOf } from '../../../../components/paper/DoctorPaper';
 import { PaperModal, Values } from '../../../../components/paper/Paper';
 import { CaseEditForm } from '../case-edit';
+import { AttentionBox } from '../../../../components/AttentionBox';
 import { lastPanel } from '../../../../../lib/panel';
 
 /**
@@ -78,7 +79,7 @@ export default function EvaluatePage() {
   const [exclusion, setExclusion] = useState('');
   // کارگزاری's panel 2 calls this window «بررسی مدارک»; the insurer's keeps «ارزیابی».
   const [brokerDesk, setBrokerDesk] = useState(false);
-  useEffect(() => { setBrokerDesk(lastPanel('org') === 'BROKER'); }, []);
+  useEffect(() => { setBrokerDesk(lastPanel('org') === 'BROKER'); if (new URLSearchParams(window.location.search).get('open') === 'heirs') setModal('heirs'); }, []);
   // «اظهار نظر پزشک معتمد»: which doctor, and شعبه's part of the form (the insurer's form will replace these fields)
   const [doctors, setDoctors] = useState<{ id: string; name: string }[] | null>(null);
   const [doctorId, setDoctorId] = useState('');
@@ -321,6 +322,11 @@ export default function EvaluatePage() {
         <div className="ev-form">
           <ErrorBox message={error} />
           {msg && <div className="alert-success text-sm">{msg}</div>}
+          {/* what waits for this user on the case, and why an action is blocked */}
+          <AttentionBox items={w?.attention} onFix={(f) => {
+            if (f === 'HEIRS') setModal('heirs');
+            else document.querySelector(f === 'PHYSICAL' ? '.ph-anchor' : '.ev-docs-anchor')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }} />
 
           {/* «تطابق شرایط پرونده با بیمه نامه»: the insurer's شعبه only */}
           {insurerBranch && (
@@ -399,7 +405,7 @@ export default function EvaluatePage() {
               {tab === 'eval' ? (
                 <div className="ev-pane">
                   {/* اصل مدارک: receive (or send) the originals right here — e.g. «دریافت اصل مدارک» from the کارگزاری. */}
-                  {w?.physical && (w.physical.actions.length > 0 || w.physical.open) && <WorkflowPanel claimId={id} workflow={w} realm="org" onDone={load} compact physicalOnly />}
+                  {w?.physical && (w.physical.actions.length > 0 || w.physical.open || w.physical.match) && <div className="ph-anchor"><WorkflowPanel claimId={id} workflow={w} realm="org" onDone={load} compact physicalOnly /></div>}
                   <div className="ev-fields">
                     <div><span>نوع پرونده</span><b>{claim.claimTypeLabel || claim.claimType}</b></div>
                     <div><span>علت</span><b>{claim.causeOfDeath || '—'}{claim.causeDetail ? ` — ${claim.causeDetail}` : ''}{claim.descInCause && claim.description ? ` — ${claim.description}` : ''}</b></div>
@@ -428,7 +434,7 @@ export default function EvaluatePage() {
                   )}
 
                   <div className="ev-item">
-                    <div className="ev-item-head"><b>{brokerDesk ? 'مدارک پرونده' : 'تطابق مدارک پرونده'}</b><span>{checklist?.complete ? 'کامل' : 'ناقص'}</span></div>
+                    <div className="ev-item-head ev-docs-anchor"><b>{brokerDesk ? 'مدارک پرونده' : 'تطابق مدارک پرونده'}</b><span>{checklist?.complete ? 'کامل' : 'ناقص'}</span></div>
 <DeathNoticeDate claimId={id} className="is-ev" />
                     {docRows('شعبه')}
                     {!closed && rows.some(({ d }) => { const r = deskReview(d); return r?.canEdit && r.state !== 'APPROVED'; }) && (
@@ -510,7 +516,7 @@ export default function EvaluatePage() {
               </div>
               {identity}
               <div className="ev-item">
-                <div className="ev-item-head"><b>{brokerDesk ? 'مدارک پرونده' : 'تطابق مدارک پرونده'}</b><span>{checklist?.complete ? 'کامل' : 'ناقص'}</span></div>
+                <div className="ev-item-head ev-docs-anchor"><b>{brokerDesk ? 'مدارک پرونده' : 'تطابق مدارک پرونده'}</b><span>{checklist?.complete ? 'کامل' : 'ناقص'}</span></div>
 <DeathNoticeDate claimId={id} className="is-ev" />
                 {docRows(w?.currentStageLabel ?? '')}
                 {rows.length === 0 && <div className="ev-doc is-missing"><span>مدرکی بارگذاری نشده است.</span></div>}
@@ -521,7 +527,7 @@ export default function EvaluatePage() {
               </div>
               {heirsItem}
               {w && <PaymentBox claimId={id} info={w} finalizedAmount={claim.finalizedAmount} closed={closed} onDone={load} />}
-              {w && <WorkflowPanel claimId={id} workflow={w} realm="org" onDone={load} compact />}
+              {w && <div className="ph-anchor"><WorkflowPanel claimId={id} workflow={w} realm="org" onDone={load} compact /></div>}
               {!w?.holdsDesk && <div className="text-xs" style={{ color: 'var(--muted)' }}>این پرونده اکنون در «{w?.currentStageLabel || '—'}» است و اقدامی برای شما ندارد.</div>}
             </div>
           )}

@@ -8,6 +8,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { AuditAction, ClaimStatus, Prisma, SalesChannel } from '@prisma/client';
 import { AuditService } from '../../common/audit/audit.service';
 import { HashService } from '../../common/crypto/hash.service';
+import { ReceiptSmsService } from '../notifications/receipt-sms.service';
 import { FieldCryptoService } from '../../common/crypto/field-crypto.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { StorageService } from '../../common/storage/storage.service';
@@ -203,6 +204,7 @@ export class ClaimsService {
     private readonly store: ModelStore,
     private readonly coverage: CoverageService,
     private readonly hash: HashService,
+    private readonly receiptSms: ReceiptSmsService,
   ) {}
 
   // ── Notification helpers (in-panel + SMS via the relevant org's gateway) ──
@@ -210,11 +212,23 @@ export class ClaimsService {
     await this.notifications.notify({ tenantId, audience: 'ORG', title, body, link });
   }
 
-  private async notifyPolicyHolder(policyHolderId: string | null | undefined, title: string, body: string) {
+  private async notifyPolicyHolder(policyHolderId: string | null | undefined, title: string, body: string, claimId?: string) {
     if (!policyHolderId) return;
     const acc = await this.prisma.unscoped().customerAccount.findUnique({ where: { id: policyHolderId }, select: { tenantId: true } });
     if (!acc) return;
-    await this.notifications.notify({ tenantId: acc.tenantId, audience: 'CUSTOMER', recipientId: policyHolderId, title, body, link: '/customer' });
+    await this.notifications.notify({ tenantId: acc.tenantId, audience: 'CUSTOMER', recipientId: policyHolderId, title, body, link: claimId ? `/customer/claims/${claimId}` : '/customer', claimId: claimId ?? null });
+  }
+
+  /**
+   * The بیمه‌گزار's side of a case: the بیمه‌گزار (or نماینده) who filed it — or, when an organization's staff
+   * filed it on panel 1, that organization's panel 1 — with a link to the case itself.
+   */
+  private async notifyPolicyHolderOf(claim: any, title: string, body: string) {
+    if (claim.filedByKind === 'ORG_USER' && claim.filedById) {
+      const u = await this.prisma.unscoped().orgUser.findUnique({ where: { id: claim.filedById }, select: { tenantId: true } });
+      if (u) await this.notifications.notify({ tenantId: u.tenantId, audience: 'ORG', title, body, link: `/org/claims/${claim.id}`, panel: 'ENTRY', claimId: claim.id });
+    }
+    await this.notifyPolicyHolder(claim.policyHolderId, title, body, claim.id);
   }
 
   /** Oversight note for the acting operator's own-org admins (in-panel only; actor excluded). */
@@ -626,13 +640,14 @@ export class ClaimsService {
 
     await this.audit.record({ action: AuditAction.CLAIM_SUBMIT, tenantId: insurerTenantId, targetType: 'Claim', targetId: claim.id, metadata: { channel: input.channel, moaref: moarefRole, ...(input.onBehalf ? { onBehalf: true, companyId } : {}) } });
     if (byPolicyHolder) {
-      await this.notifyPolicyHolder(claim.policyHolderId, 'ثبت پرونده خسارت', `پرونده ${claim.claimNumber} ثبت شد؛ مدارک را بارگذاری و پرونده را ارسال کنید.`);
+      await this.notifyPolicyHolderOf(claim, 'ثبت پرونده خسارت', `پرونده ${claim.claimNumber} ثبت شد؛ مدارک را بارگذاری و پرونده را ارسال کنید.`);
     } else {
       await this.notifyOrg(firstStage === 'BROKER' ? moarefTenantId : insurerTenantId, 'پرونده خسارت جدید', `پرونده ${claim.claimNumber} برای بررسی به میز کار شما رسید.`, `/org/claims/${claim.id}`);
-      await this.notifyPolicyHolder(claim.policyHolderId, 'ثبت پرونده خسارت', `پرونده ${claim.claimNumber} ثبت شد و در حال بررسی است.`);
+      await this.notifyPolicyHolderOf(claim, 'ثبت پرونده خسارت', `پرونده ${claim.claimNumber} ثبت شد و در حال بررسی است.`);
     }
     // NOT_CHECKED (service down) is filled in by the coverage sweep as soon as the service answers.
     if (coverage) await this.coverage.record(claim.id, coverage, accidentKind);
+    await this.receiptSms.sendFor(claim.id, 'FILE'); // «پیامک کد پذیرش» (when Super Admin set it for filing)
     return this.present(claim);
   }
 
@@ -811,6 +826,12 @@ export class ClaimsService {
     const amountApproved = s === 'HQ' && claim.flowDirection === 'UP' ? !!claim.amountApprovedAt : undefined;
     const authority = s === 'BRANCH' && claim.flowPurpose === 'PAYMENT' ? await this.myAuthority(claim, desk) : undefined;
     const actions = actionsFor({ claim, isAdmin: desk.isAdmin, hqCeiling: insurer?.hqCeiling ?? null, docs, branches, physical, model, submitBlocked, payeesMissing, amountApproved, authority });
+    // شعبه: originals received must be checked against the uploaded copies before the case goes on.
+    if (s === 'BRANCH' && claim.flowDirection === 'UP') {
+      const got = await this.prisma.unscoped().claimPhysicalRequest.findFirst({ where: { claimId: claim.id, requesterStage: 'BRANCH', status: 'RECEIVED' }, orderBy: { receivedAt: 'desc' }, select: { matchState: true } });
+      const why = !got ? null : !got.matchState ? 'ابتدا تطابق اصل مدارک با تصاویر بارگذاری‌شده را ثبت کنید' : got.matchState === 'MISMATCH' ? 'اصل مدارک با تصاویر بارگذاری‌شده مغایرت دارد' : null;
+      if (why) for (const a of actions) if (a.key === 'FORWARD' && !a.disabled) a.disabled = why;
+    }
     // کارگزاری: «تطابق ذینفعان» first, then «ارسال به شعبه».
     if (s === 'BROKER' && claim.flowDirection === 'UP' && !claim.heirsMatchedAt && (await this.beneficiaryApplies(claim))) {
       for (const a of actions) if (a.key === 'FORWARD' && !a.disabled) a.disabled = 'ابتدا «تطابق ذینفعان» را انجام دهید';
@@ -849,6 +870,29 @@ export class ClaimsService {
       physical: await this.physicalView(claim, desk),
       ...(await this.paymentView(claim)),
     };
+  }
+
+  /**
+   * «موارد نیازمند توجه»: what waits for this user on the case — requests to them (originals, a return, a
+   * payment to record), and every reason an action of theirs is blocked — so nothing has to be hunted for.
+   */
+  private attentionOf(claim: any, w: any): { kind: 'REQUEST' | 'BLOCKER'; text: string; fix?: 'HEIRS' | 'DOCS' | 'PHYSICAL' }[] {
+    const out: { kind: 'REQUEST' | 'BLOCKER'; text: string; fix?: 'HEIRS' | 'DOCS' | 'PHYSICAL' }[] = [];
+    const p = w.physical;
+    for (const a of p?.actions ?? []) {
+      out.push({ kind: 'REQUEST', fix: 'PHYSICAL', text: a.key === 'PHYSICAL_RECEIVE' ? 'اصل مدارک برای شما ارسال شده است؛ دریافت آن را تایید کنید.'
+        : a.key === 'PHYSICAL_SEND' ? `اصل مدارک از شما درخواست شده است (${p.open?.requesterLabel ?? ''}).`
+        : a.key === 'PHYSICAL_RELAY' ? `درخواست اصل مدارک از سوی «${p.open?.requesterLabel ?? ''}» رسیده است.` : a.label });
+    }
+    if (p?.match?.canSet && !p.match.state) out.push({ kind: 'REQUEST', fix: 'PHYSICAL', text: 'تطابق اصل مدارک دریافت‌شده با تصاویر بارگذاری‌شده را ثبت کنید.' });
+    if (w.holdsDesk && claim.flowDirection === 'DOWN' && claim.flowPurpose === 'DEFICIENCY') out.push({ kind: 'REQUEST', fix: 'DOCS', text: 'پرونده برای رفع نقص به شما عودت شده است.' });
+    if (w.holdsDesk && claim.flowDirection === 'DOWN' && claim.flowPurpose === 'PAYMENT') out.push({ kind: 'REQUEST', text: 'دستور پرداخت این پرونده صادر شده است.' });
+    for (const a of w.actions ?? []) {
+      if (!a.disabled) continue;
+      const fix = /ذینفع|وراث|گیرندگان|شبا/.test(a.disabled) ? 'HEIRS' : /اصل مدارک/.test(a.disabled) ? 'PHYSICAL' : /مدارک|مدرک/.test(a.disabled) ? 'DOCS' : undefined;
+      out.push({ kind: 'BLOCKER', text: `«${a.label}»: ${a.disabled}`, ...(fix ? { fix } : {}) });
+    }
+    return out;
   }
 
   /** Amount approval, مجوز سرپرستی and «فرم ارفاقی» of a case, for panel 2. */
@@ -1034,6 +1078,7 @@ export class ClaimsService {
         const to = submitTarget(claim) ?? up!;
         await this.move(claim, step, { ...base, closeState: 'FORWARDED', to, direction: 'UP', purpose: 'REVIEW', status: ClaimStatus.UNDER_REVIEW, extra: claim.submitTo ? { submitTo: null } : undefined });
         await this.audit.record({ action: resubmit ? AuditAction.CLAIM_RECTIFY : AuditAction.CLAIM_SUBMIT, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId });
+        if (!resubmit) await this.receiptSms.sendFor(claimId, 'SUBMIT'); // «پیامک کد پذیرش» at «ثبت نهایی»
         await this.notifyHolder(claim, to, resubmit ? 'رفع نقص انجام شد' : 'پرونده خسارت جدید', resubmit
           ? `نقص مدارک پروندهٔ ${claim.claimNumber} رفع شد؛ مدارک اصلاح‌شده در دست بررسی شماست.`
           : `پروندهٔ ${claim.claimNumber} برای بررسی به میز کار شما رسید.`);
@@ -1081,7 +1126,7 @@ export class ClaimsService {
         if (s === 'HQ') await this.grantAuthority(claim, false);
         await this.audit.record({ action: AuditAction.CLAIM_APPROVE, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { by: s } });
         await this.notifyHolder(claim, dn!, 'دستور پرداخت', `برای پروندهٔ ${claim.claimNumber} از سوی ${this.store.labels(claim.insurerTenantId)[s]} دستور پرداخت صادر شد.`);
-        await this.notifyPolicyHolder(claim.policyHolderId, 'تایید پرونده خسارت', `پروندهٔ ${claim.claimNumber} تایید شد و دستور پرداخت صادر شده است.`);
+        await this.notifyPolicyHolderOf(claim, 'تایید پرونده خسارت', `پروندهٔ ${claim.claimNumber} تایید شد و دستور پرداخت صادر شده است.`);
         break;
       }
       case 'RETURN':
@@ -1132,7 +1177,7 @@ export class ClaimsService {
         await this.move(claim, step, { ...base, closeState: 'ACKED', to: null, status: ClaimStatus.PAID });
         await this.revokeAuthority(claimId, 'پرداخت انجام شد', 'USED'); // the مجوز ends with the payment
         await this.audit.record({ action: AuditAction.CLAIM_PAY, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId });
-        await this.notifyPolicyHolder(claim.policyHolderId, 'پرداخت خسارت', `خسارت پروندهٔ ${claim.claimNumber} پرداخت شد.`);
+        await this.notifyPolicyHolderOf(claim, 'پرداخت خسارت', `خسارت پروندهٔ ${claim.claimNumber} پرداخت شد.`);
         if (claim.brokerTenantId) await this.notifyOrg(claim.brokerTenantId, 'پرداخت خسارت', `خسارت پروندهٔ ${claim.claimNumber} توسط شعبه پرداخت شد.`, `/org/claims/${claimId}`);
         break;
       }
@@ -1149,7 +1194,7 @@ export class ClaimsService {
       case 'REJECT_FINAL': {
         await this.move(claim, step, { ...base, closeState: 'REJECTED', to: null, status: ClaimStatus.REJECTED });
         await this.audit.record({ action: AuditAction.CLAIM_REJECT, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { by: s } });
-        await this.notifyPolicyHolder(claim.policyHolderId, 'رد پرونده خسارت', `پروندهٔ ${claim.claimNumber} رد شد${note ? `: ${note}` : '.'}`);
+        await this.notifyPolicyHolderOf(claim, 'رد پرونده خسارت', `پروندهٔ ${claim.claimNumber} رد شد${note ? `: ${note}` : '.'}`);
         if (claim.brokerTenantId) await this.notifyOrg(claim.brokerTenantId, 'رد پرونده خسارت', `پروندهٔ ${claim.claimNumber} توسط ${this.store.labels(claim.insurerTenantId)[s]} رد شد.`, `/org/claims/${claimId}`);
         break;
       }
@@ -1209,7 +1254,7 @@ export class ClaimsService {
       const status = outcome === 'PAID' ? ClaimStatus.PAID : ClaimStatus.REJECTED;
       if (step) await this.move(claim, step, { action: outcome === 'PAID' ? 'MARK_PAID' : 'REJECT_FINAL', closeState: outcome === 'PAID' ? 'ACKED' : 'REJECTED', note, to: null, status });
       else await db.claim.update({ where: { id: claimId }, data: { status, currentStage: null, flowDirection: null, flowPurpose: null } });
-      await this.notifyPolicyHolder(claim.policyHolderId, outcome === 'PAID' ? 'پرداخت خسارت' : 'رد پرونده خسارت',
+      await this.notifyPolicyHolderOf(claim, outcome === 'PAID' ? 'پرداخت خسارت' : 'رد پرونده خسارت',
         outcome === 'PAID' ? `خسارت پروندهٔ ${claim.claimNumber} پرداخت شد.` : `پروندهٔ ${claim.claimNumber} رد شد.`);
     }
     await this.audit.record({
@@ -1219,10 +1264,18 @@ export class ClaimsService {
   }
 
   /** Tell whoever now holds the claim: the بیمه‌گزار, or the holding org's inbox. */
+  /**
+   * A notice for the desk that has to act now: only that desk of the organization sees it (a شعبه: only the
+   * case's branch), in panel 2 — and the بیمه‌گزار's side for the بیمه‌گزار's desk.
+   */
   private async notifyHolder(claim: any, to: Stage, title: string, body: string) {
-    if (to === 'POLICYHOLDER') return this.notifyPolicyHolder(claim.policyHolderId, title, body);
+    if (to === 'POLICYHOLDER') return this.notifyPolicyHolderOf(claim, title, body);
     const tenantId = to === 'BROKER' ? claim.brokerTenantId : claim.insurerTenantId;
-    if (tenantId) await this.notifyOrg(tenantId, title, `${body} (مرحله: ${this.store.labels(claim.insurerTenantId)[to]})`, `/org/claims/${claim.id}`);
+    if (!tenantId) return;
+    await this.notifications.notify({
+      tenantId, audience: 'ORG', title, body: `${body} (مرحله: ${this.store.labels(claim.insurerTenantId)[to]})`, link: `/org/claims/${claim.id}`,
+      stage: to, branchId: to === 'BRANCH' ? claim.handlingBranchId ?? null : null, panel: 'PROCESS', claimId: claim.id,
+    });
   }
 
   /** بیمه‌گزار sends the claim on — initial submission or after رفع نقص. */
@@ -1308,7 +1361,12 @@ export class ClaimsService {
     const users = actorIds.length ? await db.orgUser.findMany({ where: { id: { in: actorIds } }, select: { id: true, displayName: true } }) : [];
     const uMap = new Map(users.map((u) => [u.id, u.displayName]));
     const o = state.open;
+    // شعبه, after receiving the originals: do they match the uploaded copies?
+    const got = await db.claimPhysicalRequest.findFirst({ where: { claimId: claim.id, requesterStage: 'BRANCH', status: 'RECEIVED' }, orderBy: { receivedAt: 'desc' } });
+    const matcher = got?.matchedById ? await db.orgUser.findUnique({ where: { id: got.matchedById }, select: { displayName: true, username: true } }) : null;
+    const canMatch = !!got && claim.currentStage === 'BRANCH' && claim.flowDirection === 'UP' && seats.includes('BRANCH');
     return {
+      match: got ? { state: got.matchState, note: got.matchNote, at: got.matchedAt ? toJalali(got.matchedAt) : null, by: isOrg && matcher ? matcher.displayName || matcher.username : null, canSet: canMatch } : null,
       at: state.at ?? state.base ?? 'POLICYHOLDER',
       atLabel: this.store.labels(claim.insurerTenantId)[state.at ?? state.base ?? 'POLICYHOLDER'],
       collected: !!state.at,
@@ -1329,6 +1387,29 @@ export class ClaimsService {
   }
 
   /** Relay / send / receive / return the original documents. Offered per desk by physicalActionsFor. */
+  /**
+   * شعبه records whether the originals it received match the uploaded copies (a difference may come from a
+   * mistake or a loss on the way): «مطابقت دارد», or «مغایرت دارد» with what differs.
+   */
+  async physicalMatch(claimId: string, state: string, note?: string) {
+    const db = this.db();
+    const claim = await db.claim.findUnique({ where: { id: claimId } });
+    if (!claim || claim.deletedAt) throw new NotFoundException('پرونده یافت نشد');
+    this.assertParticipant(claim);
+    assertNotPaid(claim);
+    if (state !== 'MATCH' && state !== 'MISMATCH') throw new BadRequestException('وضعیت نامعتبر است');
+    const why = (note ?? '').trim().slice(0, 1000);
+    if (state === 'MISMATCH' && why.length < 2) throw new BadRequestException('مغایرت اصل مدارک با تصاویر را بنویسید');
+    const desk = await this.myDesk();
+    if (!(claim.currentStage === 'BRANCH' && claim.flowDirection === 'UP' && this.physicalSeats(claim, desk).includes('BRANCH'))) throw new ForbiddenException('تطابق اصل مدارک را شعبه‌ای که پرونده نزد اوست ثبت می‌کند');
+    const got = await db.claimPhysicalRequest.findFirst({ where: { claimId, requesterStage: 'BRANCH', status: 'RECEIVED' }, orderBy: { receivedAt: 'desc' } });
+    if (!got) throw new BadRequestException('اصل مدارک هنوز در شعبه دریافت نشده است');
+    await db.claimPhysicalRequest.update({ where: { id: got.id }, data: { matchState: state, matchNote: state === 'MISMATCH' ? why : why || null, matchedAt: new Date(), matchedById: getContext()?.actorId ?? null } });
+    await db.claimPhysicalEvent.create({ data: { requestId: got.id, claimId, stage: 'BRANCH', action: state, note: why || null, actorId: getContext()?.actorId ?? null } });
+    await this.deskAct(claimId, 'ACTION', state === 'MATCH' ? 'اصل مدارک با تصاویر بارگذاری‌شده مطابقت دارد' : `مغایرت اصل مدارک با تصاویر: ${why}`);
+    return this.get(claimId);
+  }
+
   async physicalAct(claimId: string, input: PhysicalInput) {
     const db = this.db();
     const claim = await db.claim.findUnique({ where: { id: claimId } });
@@ -1621,6 +1702,7 @@ export class ClaimsService {
     const result: any = this.present(claim, true);
     await this.enrichParties(claim, result);
     result.workflow = await this.workflowView(claim);
+    result.workflow.attention = this.attentionOf(claim, result.workflow);
     result.policyholderCompany = await this.policyholders.contact(claim.policyholderCompanyId);
     // «ویرایش» first: a hand-completed case tells its typed story; otherwise the hierarchy's.
     result.story = await this.fields.statusStory(claim);

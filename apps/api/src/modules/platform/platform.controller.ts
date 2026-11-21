@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
 import { IsBoolean, IsIn, IsOptional, IsString, Length } from 'class-validator';
 import { ShahkarService } from '../auth/shahkar.service';
 import { IbanMatchService } from '../model-view/iban-match.service';
+import { ReceiptSmsService } from '../notifications/receipt-sms.service';
 import { IsInt, Matches, Max, Min } from 'class-validator';
 import { SuperAdminOnly } from '../../common/rbac/decorators';
 import { SmsConfigDto, TestSmsDto } from '../branding/dto';
@@ -40,6 +41,16 @@ class IbanTestDto {
   @IsOptional() @IsString() @Length(0, 12) birthDate?: string;
 }
 
+class ReceiptSmsDto {
+  @IsOptional() @IsBoolean() enabled?: boolean;
+  @IsOptional() @IsIn(['FILE', 'SUBMIT']) when?: 'FILE' | 'SUBMIT';
+  @IsOptional() @IsIn(['PLATFORM', 'ORG']) gateway?: 'PLATFORM' | 'ORG';
+  @IsOptional() @IsString() @Length(1, 500) template?: string;
+}
+class ReceiptTestDto {
+  @IsString() @Matches(/^(\+98|0)?9\d{9}$/) phone!: string;
+}
+
 class SetPlatformSmsDto {
   @IsBoolean()
   enabled!: boolean;
@@ -49,7 +60,24 @@ class SetPlatformSmsDto {
 @SuperAdminOnly()
 @Controller('platform')
 export class PlatformController {
-  constructor(private readonly platform: PlatformService, private readonly shahkarSvc: ShahkarService, private readonly iban: IbanMatchService) {}
+  constructor(private readonly platform: PlatformService, private readonly shahkarSvc: ShahkarService, private readonly iban: IbanMatchService, private readonly receipt: ReceiptSmsService) {}
+
+  /** «پیامک کد پذیرش» to whoever filed a case: on/off, when, gateway, text. */
+  @Get('receipt-sms')
+  receiptSms() {
+    return this.receipt.settings();
+  }
+
+  @Put('receipt-sms')
+  setReceiptSms(@Body() dto: ReceiptSmsDto) {
+    return this.receipt.save(dto);
+  }
+
+  /** A test SMS with sample values. */
+  @Post('receipt-sms/test')
+  testReceiptSms(@Body() dto: ReceiptTestDto) {
+    return this.receipt.test(dto.phone);
+  }
 
   /** «استعلام تطابق شبا و کد ملی» of ذینفعان: on/off + the provider's call. */
   @Get('iban-match')
