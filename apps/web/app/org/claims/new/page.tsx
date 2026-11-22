@@ -13,6 +13,7 @@ import { SearchPick } from '../../../components/SearchPick';
 import { CaseDetail, causeDetailFor, GENDERS } from '../../../components/claim-wording';
 import { eventDateLabel, CAUSE_LABEL, EVENT_DATE_LABEL, insuredNameLabel } from '../../../components/claim-wording';
 import { useDraft } from '../../../../lib/draft';
+import { useMissing } from '../../../components/useMissing';
 
 /** An insurer's panel 1: its partner کارگزاری‌ها (with their بیمه‌گزاران), شعبه‌ها, and Super Admin's entry way. */
 type FieldMode = 'hidden' | 'optional' | 'required';
@@ -49,8 +50,10 @@ function ageBetween(birthIso: string | null, atIso: string | null): number | nul
 
 /** Field with a bold label and an optional help bubble — same look as the بیمه‌گزار panel's form. */
 function PField({ label, help, children }: { label: string; help?: string; children: ReactNode }) {
+  const box = useRef<HTMLDivElement>(null);
+  const missing = useMissing(box, label.endsWith('*'));
   return (
-    <div>
+    <div ref={box} className={missing ? 'pfield-missing' : undefined}>
       <label className="label">{label.endsWith(' *') ? <>{label.slice(0, -2)} <span className="req-star">*</span></> : label}</label>
       <div className="flex items-center gap-2">
         <div className="flex-1 min-w-0">{children}</div>
@@ -427,7 +430,7 @@ export default function NewClaim() {
           )}
         </div>
 
-        <div className={`mt-2.5${ins ? ' red-stars' : ''}`}>
+        <div className={`mt-2.5${ins ? ' red-stars' : ''}${descRequired && !f.description.trim() ? ' pfield-missing' : ''}`}>
           <label className="label">{ins ? <>شرح{descRequired && <> <span className="req-star">*</span></>}</> : 'توضیحات (اختیاری)'}</label>
           <textarea className="input" rows={ins ? 4 : 2} value={f.description} onChange={set('description')} maxLength={2000}
             placeholder={ins ? (descRequired ? `${causeLabel} انتخاب نشده است؛ شرح حادثه را بنویسید.` : 'متن آمادهٔ علت انتخاب‌شده اینجا می‌آید؛ می‌توانید آن را ویرایش یا تکمیل کنید.') : 'هر توضیح یا جزئیاتی که لازم می‌دانید بنویسید؛ مثلاً شرح حادثه یا موارد خاص پرونده.'} />

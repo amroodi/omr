@@ -35,7 +35,7 @@ function jalaliDate(v?: string | null): Date | undefined {
 import { NotificationsService } from '../notifications/notifications.service';
 import { ClaimFieldsService } from '../claim-fields/claim-fields.service';
 import { PolicyholdersService } from '../policyholders/policyholders.service';
-import { BENEFICIARY_DOC_CODES, BENEFICIARY_GROUP, BENEFICIARY_GROUP_AT, BENEFICIARY_GROUP_CODES, BENEFICIARY_SLOT_CODES, beneficiaryHiddenDocs, EMPLOYMENT_GROUP, EMPLOYMENT_HIDDEN, employmentSlot, dedicatedOnly } from '../required-docs/defaults';
+import { BENEFICIARY_DOC_CODES, BENEFICIARY_GROUP, BENEFICIARY_GROUP_AT, BENEFICIARY_GROUP_CODES, BENEFICIARY_SLOT_CODES, beneficiaryHiddenDocs, employmentGroupFor, EMPLOYMENT_HIDDEN, employmentSlot, dedicatedOnly } from '../required-docs/defaults';
 import { docKindWhere, kindLabel } from '../../common/kinds';
 
 /**
@@ -648,7 +648,7 @@ export class InquiryService {
     const at = (slot: { order: number } | undefined, fallback: number) => (slot ? plain.filter((r) => r.order < slot.order).length : fallback);
     // later position first; at the same place, by their slots' order (else the ذینفع group first)
     const groups = [
-      ...(empType ? [{ at: at(empSlot, plain.length), order: empSlot?.order ?? Number.MAX_SAFE_INTEGER, rows: EMPLOYMENT_GROUP[empType] ?? [] }] : []),
+      ...(empType ? [{ at: at(empSlot, plain.length), order: empSlot?.order ?? Number.MAX_SAFE_INTEGER, rows: employmentGroupFor(c.claimType)[empType] ?? [] }] : []),
       ...(benGroup ? [{ at: at(benSlot, BENEFICIARY_GROUP_AT), order: benSlot?.order ?? -1, rows: BENEFICIARY_GROUP[c.beneficiaryType ?? ''] ?? [] }] : []),
     ].sort((a, b) => b.at - a.at || b.order - a.order);
     for (const g of groups) reqs.splice(Math.min(g.at, reqs.length), 0, ...g.rows);

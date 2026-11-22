@@ -39,6 +39,7 @@ export function Shell({
   subtitle,
   breadcrumb,
   action,
+  back,
   sectionLabel,
   nav,
   realm,
@@ -50,6 +51,8 @@ export function Shell({
   breadcrumb?: string;
   /** Optional top-left bar button (e.g. a help / tutorial link). */
   action?: ReactNode;
+  /** «بازگشت» to a fixed page (with its own label) instead of one step back. */
+  back?: { href: string; label: string };
   /** Optional navy group header shown above the nav list. */
   sectionLabel?: string;
   nav: NavItem[];
@@ -181,9 +184,14 @@ export function Shell({
           >
             <Icon path="M4 6h16M4 12h16M4 18h16" />
           </button>
-          {!isHome && (
+          {back ? (
+            <Link href={back.href} className="pback no-print" title={back.label} aria-label={back.label}>
+              <span className="pback-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 18l6-6-6-6" /></svg></span>
+              <span className="lbl">{back.label}</span>
+            </Link>
+          ) : !isHome && (
             <button onClick={goBack} className="pback no-print" title="بازگشت به صفحهٔ قبل" aria-label="بازگشت">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 18l6-6-6-6" /></svg>
+              <span className="pback-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 18l6-6-6-6" /></svg></span>
               <span className="lbl">بازگشت</span>
             </button>
           )}
