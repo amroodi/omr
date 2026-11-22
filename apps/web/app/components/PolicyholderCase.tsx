@@ -272,7 +272,7 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
     return (
       <div key={it.code} role="row" className={`sdoc tone-${story.tone}${greyed ? ' is-optional' : ''}`}>
         <div className="sdoc-main">
-          <span className="sdoc-n" role="cell">{no}</span>
+          <span className={`sdoc-n${it.uploaded ? ' is-done' : it.required ? ' is-todo' : ''}`} role="cell">{no}</span>
           <div className="sdoc-t" role="cell">
             <div className="sdoc-label">{it.label}{(it.required || it.accidentOnly) && <span className="sdoc-req"> *</span>}</div>
             {it.accidentOnly && <div className="text-xs font-bold" style={{ color: 'var(--danger)' }}>در صورت وقوع سانحه تصادف{it.required ? '' : ' (برای این پرونده الزامی نیست)'}</div>}
@@ -335,12 +335,7 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
 
   return (
     <Shell title="تشکیل پرونده (بارگذاری مدارک)" breadcrumb="تشکیل پرونده (بارگذاری مدارک)" sectionLabel="خسارت عمر و حادثه" nav={org ? ORG_NAV : CUSTOMER_NAV} realm={realm}
-      action={claim ? (
-        <>
-          <Link href={`${page}/workflow`} className="cu-intro-btn text-center">مرحله بعد</Link>
-          <Link href={org ? '/org/entry/claims' : '/customer/claims'} className="cu-intro-btn text-center">مرحله قبل</Link>
-        </>
-      ) : undefined}>
+      back={{ href: org ? '/org/entry/claims' : '/customer/claims', label: 'بازگشت به پرونده‌ها' }}>
       <div className="cu-home">
         <ErrorBox message={error} />
         {!claim ? <div className="pcard p-10 flex justify-center"><Spinner /></div> : (
@@ -445,7 +440,7 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
                     return (
                       <div key="_emp" role="row" className={`sdoc sdoc-group tone-${tone}${empOpen ? ' is-open' : ''}`}>
                         <div className="sdoc-main">
-                          <span className="sdoc-n" role="cell">{no}</span>
+                          <span className={`sdoc-n${emp!.type && empItems.every((it) => it.uploaded) ? ' is-done' : ' is-todo'}`} role="cell">{no}</span>
                           <div className="sdoc-t" role="cell">
                             <button type="button" className="sdoc-group-t" onClick={() => setEmpOpen((v) => !v)} aria-expanded={empOpen}>
                               <span className="sdoc-label">{emp!.label}<span className="sdoc-req"> *</span></span>
@@ -484,7 +479,7 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
                     return (
                       <div key="_ben" role="row" className={`sdoc sdoc-group tone-${tone}${benOpen ? ' is-open' : ''}`}>
                         <div className="sdoc-main">
-                          <span className="sdoc-n" role="cell">{no}</span>
+                          <span className={`sdoc-n${ben!.type && group.every((it) => it.uploaded) ? ' is-done' : ' is-todo'}`} role="cell">{no}</span>
                           <div className="sdoc-t" role="cell">
                             <button type="button" className="sdoc-group-t" onClick={() => setBenOpen((v) => !v)} aria-expanded={benOpen}>
                               <span className="sdoc-label">{ben!.label}<span className="sdoc-req"> *</span></span>
@@ -557,7 +552,7 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
             <div className="pcard cu-launch">
               <div className="cu-tiles">
                 <Diamond href={`${page}/workflow`} title="روند پرونده" sub="مراحل و وضعیت رسیدگی" icon={IC.tray} />
-                {atMyDesk && <Diamond onClick={finalSubmit} active={sending} title={sending ? 'در حال ثبت…' : 'ثبت نهایی'} sub="ارسال مدارک برای رسیدگی" icon={IC.check} />}
+                {atMyDesk && <Diamond go onClick={finalSubmit} active={sending} title={sending ? 'در حال ثبت…' : 'ثبت نهایی'} sub="ارسال مدارک برای رسیدگی" icon={IC.check} />}
                 <Diamond href={org ? '/org/entry/claims' : '/customer/claims'} title="پیگیری خسارت" sub="بازگشت به فهرست پرونده‌ها" icon={IC.search} />
               </div>
               <div className="cu-notice">{whereNow}</div>

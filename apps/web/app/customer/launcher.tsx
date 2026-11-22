@@ -18,7 +18,7 @@ export const IC = {
 };
 
 /** One tile of the action launcher (link, or a button that opens a section below). */
-export function Diamond({ title, sub, icon, href, onClick, active }: { title: string; sub: string; icon: string; href?: string; onClick?: () => void; active?: boolean }) {
+export function Diamond({ title, sub, icon, href, onClick, active, go }: { title: string; sub: string; icon: string; href?: string; onClick?: () => void; active?: boolean; /** green: the step that sends the case on */ go?: boolean }) {
   const inner = (
     <>
       <div className="pdiamond"><BigIcon path={icon} size={30} /></div>
@@ -26,5 +26,5 @@ export function Diamond({ title, sub, icon, href, onClick, active }: { title: st
     </>
   );
   if (href) return <Link href={href} className="pdiamond-wrap">{inner}</Link>;
-  return <button type="button" onClick={onClick} className={`pdiamond-wrap${active ? ' is-active' : ''}`} aria-pressed={active}>{inner}</button>;
+  return <button type="button" onClick={onClick} className={`pdiamond-wrap${active ? ' is-active' : ''}${go ? ' is-go' : ''}`} aria-pressed={active}>{inner}</button>;
 }

@@ -331,6 +331,10 @@ describe('documents per «علت» and «نوع حادثه»', () => {
     expect(docRequired(crash, { claimType: 'DEATH_ILLNESS', causeDetail: 'حادثه تصادف' })).toBe(true);
     expect(docRequired(crash, { claimType: 'DEATH_ILLNESS', causeDetail: 'نزاع و درگیری' })).toBe(false);
     expect(docRequired(crash, { claimType: 'DEATH_ILLNESS', causeDetail: null })).toBe(false);
+    // a «نوع حادثه» document is listed only under its own نوع حادثه
+    expect(docApplies(crash, { claimType: 'DEATH_ILLNESS', causeDetail: 'حادثه تصادف' })).toBe(true);
+    expect(docApplies(crash, { claimType: 'DEATH_ILLNESS', causeDetail: 'نزاع و درگیری' })).toBe(false);
+    expect(docApplies(crash, { claimType: 'DEATH_ILLNESS', causeDetail: null })).toBe(false);
     expect(docRequired({ appliesToTypes: ['DEATH_ILLNESS'], requiredTypes: ['DEATH_ILLNESS'] }, { claimType: 'DEATH_ILLNESS' })).toBe(true);
   });
   it('Model View keeps the «نوع حادثه» of a type and lets it be removed', () => {

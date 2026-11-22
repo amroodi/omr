@@ -377,8 +377,9 @@ export function detailFor(t: CaseType | null | undefined, cause: string | null |
 
 type DocRule = { appliesToTypes: string[]; requiredTypes: string[]; causes?: string[] | null; requiredDetails?: string[] | null };
 type DocClaim = { claimType: string; causeOfDeath?: string | null; causeDetail?: string | null };
-/** Is the document listed for this case: its نوع پرونده, and its «علت» when the document names some. */
-export const docApplies = (r: DocRule, c: DocClaim) => r.appliesToTypes.includes(c.claimType) && (!r.causes?.length || sameCause(r.causes, c.causeOfDeath));
+/** Is the document listed for this case: its نوع پرونده, its «علت» and its «نوع حادثه» when the document names some. */
+export const docApplies = (r: DocRule, c: DocClaim) => r.appliesToTypes.includes(c.claimType) && (!r.causes?.length || sameCause(r.causes, c.causeOfDeath))
+  && (!r.requiredDetails?.length || sameCause(r.requiredDetails, c.causeDetail));
 /** Must it be uploaded before sending: required for the type, and for the «نوع حادثه» when the document names some. */
 export const docRequired = (r: DocRule, c: DocClaim) => r.requiredTypes.includes(c.claimType) && (!r.requiredDetails?.length || sameCause(r.requiredDetails, c.causeDetail));
 

@@ -115,6 +115,17 @@ export const EMPLOYMENT_GROUP: Record<string, { code: string; label: string }[]>
     { code: 'ret_retirement_order', label: 'حکم بازنشستگی که نام بیمه شده و تاریخ بازنشستگی وی در آن درج شده باشد' },
   ],
 };
+/** The group's documents for a نوع پرونده: «از کار افتادگی ناشی از بیماری» asks for the month the disability happened. */
+export function employmentGroupFor(claimType: string | null | undefined): Record<string, { code: string; label: string }[]> {
+  if (claimType !== 'DISABILITY_ILLNESS') return EMPLOYMENT_GROUP;
+  return {
+    ...EMPLOYMENT_GROUP,
+    EMPLOYED: [
+      { code: 'emp_personnel_order', label: 'تصویر حکم کارگزینی یا قرارداد کاری بیمه شده در ماه شروع پوشش بیمه ای و در ماه وقوع از کار افتادگی ممهور به مهر بیمه گزار' },
+      { code: 'emp_ss_list', label: 'تصویر لیست کسور حق بیمه تامین اجتماعی ( بیمه پایه ) بیمه شده در ماه شروع پوشش بیمه ای و در ماه وقوع از کار افتادگی بیمه شده ممهور به مهر بیمه گزار' },
+    ],
+  };
+}
 export const EMPLOYMENT_FA: Record<string, string> = { EMPLOYED: 'شاغلین', RETIRED: 'بازنشسته' };
 export const EMPLOYMENT_SLOTS: Record<string, { retired: boolean }> = { dw_employment: { retired: false }, it_employment: { retired: true } };
 export const EMPLOYMENT_GROUP_CODES = [...new Set(Object.values(EMPLOYMENT_GROUP).flat().map((x) => x.code))];
@@ -142,6 +153,8 @@ export function dedicatedOnly<T extends { exclusive?: boolean | null }>(applying
 }
 
 /** Notes for whoever files a حوادث case («کاربر ثبت»), under its list of documents. */
+/** Under every عمر list. */
+export const LIFE_TIPS = ['تصاویر مدارک ارسال می بایست خوانا و بدون خط خوردگی باشد.'];
 export function accidentTips(death: boolean): string[] {
   return death
     ? ['تصاویر مدارک ارسال می بایست خوانا و بدون خط خوردگی باشد.']

@@ -27,7 +27,7 @@ import { TooManyRequestsException } from '../inquiry/http-exceptions';
 import { PERMISSIONS } from '../../common/rbac/permissions';
 import { nextClaimNumber } from './claim-number';
 import { isValidIban, isValidNationalCode } from '../../common/validation/field-validation';
-import { accidentTips, dedicatedOnly, BENEFICIARY_DOC_CODES, BENEFICIARY_GROUP, BENEFICIARY_GROUP_AT, BENEFICIARY_GROUP_CODES, BENEFICIARY_GROUP_LABEL, BENEFICIARY_SLOT_CODES, beneficiaryHiddenDocs, EMPLOYMENT_FA, EMPLOYMENT_GROUP, EMPLOYMENT_GROUP_CODES, EMPLOYMENT_GROUP_LABEL, EMPLOYMENT_HIDDEN, employmentSlot } from '../required-docs/defaults';
+import { accidentTips, dedicatedOnly, BENEFICIARY_DOC_CODES, BENEFICIARY_GROUP, BENEFICIARY_GROUP_AT, BENEFICIARY_GROUP_CODES, BENEFICIARY_GROUP_LABEL, BENEFICIARY_SLOT_CODES, beneficiaryHiddenDocs, EMPLOYMENT_FA, employmentGroupFor, EMPLOYMENT_GROUP_CODES, LIFE_TIPS, EMPLOYMENT_GROUP_LABEL, EMPLOYMENT_HIDDEN, employmentSlot } from '../required-docs/defaults';
 import { toAsciiDigits } from '../../common/jalali/jalali.util';
 import { ModelStore } from '../model-view/model-store.service';
 import { CoverageService } from '../model-view/coverage.service';
@@ -2233,7 +2233,7 @@ export class ClaimsService {
     const before = (order: number) => [...reqs, ...kept].filter((r) => r.order < order && (!insurerOnlyDoc(r.code) || insurerDesk)).length;
     const benAt = benSlot ? before(benSlot.order) : BENEFICIARY_GROUP_AT;
     // The work papers of the choice («شاغلین / بازنشسته»), after the ذینفع group when both are in the list.
-    const empDocs = empType ? EMPLOYMENT_GROUP[empType] ?? [] : [];
+    const empDocs = empType ? employmentGroupFor(claim.claimType)[empType] ?? [] : [];
     const empItems = empDocs.map((b) => {
       const group = byCode.get(b.code) ?? [];
       return {
@@ -2275,9 +2275,9 @@ export class ClaimsService {
       complete: items.length > 0 && benChosen && (!empSlot || !!empType) && items.every((i) => i.uploaded || !i.required),
       // «تصویر مدارک ذینفع/ذینفعان»: where it sits in the list and what was chosen (null = not yet).
       // «شاغلین / بازنشسته»: where it sits and what is chosen (`retired: false`: only شاغلین).
-      employment: empSlot ? { label: EMPLOYMENT_GROUP_LABEL, at: empAt, order: empOrder, type: empType, retired: empRetired, options: Object.entries(EMPLOYMENT_GROUP).map(([type, docs]) => ({ type, docs: docs.map((x) => x.label) })) } : null,
+      employment: empSlot ? { label: EMPLOYMENT_GROUP_LABEL, at: empAt, order: empOrder, type: empType, retired: empRetired, options: Object.entries(employmentGroupFor(claim.claimType)).map(([type, docs]) => ({ type, docs: docs.map((x) => x.label) })) } : null,
       // Notes for whoever files a حوادث case.
-      tips: isAccidentKind(claim.line, claim.claimType) ? accidentTips(!!caseTypeOf(await this.modelOf(claim.insurerTenantId), claim.claimType)?.death) : [],
+      tips: isAccidentKind(claim.line, claim.claimType) ? accidentTips(!!caseTypeOf(await this.modelOf(claim.insurerTenantId), claim.claimType)?.death) : LIFE_TIPS,
       beneficiary: benGroup ? {
         label: BENEFICIARY_GROUP_LABEL, at: benAt, order: benOrder, type: benChosen ? claim.beneficiaryType : null,
         // Every choice with its documents (the printable list of required documents shows them all).

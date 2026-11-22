@@ -3073,3 +3073,28 @@ a.cu-card.is-link:hover { transform: translateY(-2px); box-shadow: 0 0 0 2px var
 .nb-tabs { display: inline-flex; gap: 4px; }
 .nb-tabs button { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 8px; color: var(--muted); }
 .nb-tabs button.is-on { background: var(--brand-soft); color: var(--brand-700); }
+
+/* ── Filing: a required field still empty is tinted, so what is left shows at a glance ── */
+.pfield-missing :is(input, select, textarea):not([readonly]):not([type=checkbox]):not([type=radio]) { background-color: rgba(220, 38, 38, 0.07); border-color: rgba(220, 38, 38, 0.38); }
+:root.dark .pfield-missing :is(input, select, textarea):not([readonly]):not([type=checkbox]):not([type=radio]) { background-color: rgba(248, 113, 113, 0.12); border-color: rgba(248, 113, 113, 0.45); }
+
+/* ── Document list: the row number is green once uploaded, amber while a required one is missing ── */
+.sdoc-n.is-done { background: #dcfce7; color: #15803d; box-shadow: 0 0 0 1.5px #22c55e inset; }
+.sdoc-n.is-todo { background: #fef3c7; color: #b45309; box-shadow: 0 0 0 1.5px #f59e0b inset; }
+:root.dark .sdoc-n.is-done { background: rgba(34, 197, 94, 0.18); color: #86efac; }
+:root.dark .sdoc-n.is-todo { background: rgba(245, 158, 11, 0.18); color: #fcd34d; }
+
+/* ── «ثبت نهایی»: the step that sends the case on, in green ── */
+.pdiamond-wrap.is-go .pdiamond, .is-customer .pdiamond-wrap.is-go .pdiamond { background: #16a34a; border-color: #16a34a; color: #fff; }
+.pdiamond-wrap.is-go .pdiamond-title, .is-customer .pdiamond-wrap.is-go .pdiamond-title { color: #15803d; }
+.pdiamond-wrap.is-go:hover .pdiamond, .is-customer .pdiamond-wrap.is-go:hover .pdiamond { background: #15803d; }
+.is-customer .pdiamond-wrap.is-go:hover { background: rgba(22, 163, 74, 0.08); }
+:root.dark .pdiamond-wrap.is-go .pdiamond-title { color: #4ade80; }
+
+/* ── «بازگشت»: a clear pill in the panel's colour, the arrow in its own circle ── */
+.pback, .is-customer .pback { height: 36px; padding: 0 6px 0 14px; gap: 8px; border-radius: 999px; border: 1.5px solid var(--panel-accent, var(--brand)); background: var(--surface); color: var(--panel-accent, var(--brand)); font-weight: 800; font-size: .82rem; text-decoration: none; box-shadow: 0 1px 2px rgba(15, 23, 42, .06); }
+.pback .pback-ico { width: 24px; height: 24px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; background: var(--panel-accent, var(--brand)); color: #fff; flex-shrink: 0; transition: transform .16s ease; }
+.pback:hover, .is-customer .pback:hover { background: var(--panel-accent, var(--brand)); color: #fff; border-color: var(--panel-accent, var(--brand)); }
+.pback:hover .pback-ico { background: #fff; color: var(--panel-accent, var(--brand)); transform: translateX(2px); }
+.pback:focus-visible { outline: 2px solid var(--panel-accent, var(--brand)); outline-offset: 2px; }
+@media (max-width: 640px) { .pback, .is-customer .pback { padding: 0 5px; } }

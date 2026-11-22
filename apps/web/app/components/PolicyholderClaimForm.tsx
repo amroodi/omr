@@ -8,6 +8,7 @@ import { CLAIM_TYPE_LABELS, ErrorBox } from './ui';
 import { JalaliDatePicker } from './JalaliDatePicker';
 import { Coverage, CoverageNote, coverageText } from './CoverageNote';
 import { Shell } from './Shell';
+import { useMissing } from './useMissing';
 import { CUSTOMER_NAV, POLICY_KEY, PolicyRow } from '../customer/nav';
 import { ORG_NAV } from '../org/nav';
 import { eventDateLabel, CAUSE_LABEL, EVENT_DATE_LABEL, INSURED_RELATIONS, insuredNameLabel, CaseDetail, causeDetailFor, GENDERS } from './claim-wording';
@@ -38,8 +39,10 @@ function jalaliToIso(input: string): string | null {
 
 /** Field with a right-aligned bold label and an optional orange help bubble beside it. */
 function PField({ label, help, children }: { label: string; help?: string; children: ReactNode }) {
+  const box = useRef<HTMLDivElement>(null);
+  const missing = useMissing(box, label.endsWith('*'));
   return (
-    <div>
+    <div ref={box} className={missing ? 'pfield-missing' : undefined}>
       <label className="label">{label}</label>
       <div className="flex items-center gap-2">
         <div className="flex-1 min-w-0">{children}</div>
@@ -333,7 +336,8 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
   const age = ageBetween(f.birthDate ? jalaliToIso(f.birthDate) : null, f.eventDate ? jalaliToIso(f.eventDate) : null);
 
   return (
-    <Shell title="ثبت پرونده خسارت" breadcrumb="ثبت پرونده خسارت" sectionLabel="خسارت عمر و حادثه" nav={org ? ORG_NAV : CUSTOMER_NAV} realm={realm}>
+    <Shell title="ثبت پرونده خسارت" breadcrumb="ثبت پرونده خسارت" sectionLabel="خسارت عمر و حادثه" nav={org ? ORG_NAV : CUSTOMER_NAV} realm={realm}
+      back={{ href: org ? '/org/entry/claims' : '/customer/claims', label: 'بازگشت به پرونده‌ها' }}>
       <div className="pcard p-5 pform">
         {/* Guidance banner */}
         <div className="pinfobox mb-3 text-center">
@@ -506,7 +510,7 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
         )}
 
         {/* «شرح», as on the insurer's panel 1: required when no «علت» is picked from the list */}
-        <div className="mt-2.5 red-stars">
+        <div className={`mt-2.5 red-stars${descRequired && !f.description.trim() ? ' pfield-missing' : ''}`}>
           <label className="label">شرح{descRequired && <> <span className="req-star">*</span></>}</label>
           <textarea className="input" rows={4} maxLength={2000} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })}
             placeholder={descRequired ? `${causeLabel} انتخاب نشده است؛ شرح حادثه را بنویسید.` : 'شرح حادثه و هر جزئیاتی که لازم می‌دانید بنویسید؛ مثلاً محل و چگونگی وقوع، یا موارد خاص پرونده.'} />
