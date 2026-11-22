@@ -93,6 +93,8 @@ export class FileClaimDto {
   @IsOptional() @IsString() @Matches(/^\d{0,18}$/) accidentCapital?: string;
   // «شماره تماس قابل دسترس» (حوادث, نقص عضو)
   @IsOptional() @IsString() @Matches(/^[\d۰-۹+\- ]{0,20}$/) contactPhone?: string;
+  // «محل سکونت» (same cases)
+  @IsOptional() @IsString() @Length(0, 400) contactAddress?: string;
   // «علت خسارت» (ticked items and/or typed text); Model View may make it required
   @IsOptional()
   @IsString()
@@ -201,6 +203,8 @@ export class FileOnBehalfDto {
   @IsOptional() @IsString() @Matches(/^\d{0,18}$/) accidentCapital?: string;
   // «شماره تماس قابل دسترس» (حوادث, نقص عضو)
   @IsOptional() @IsString() @Matches(/^[\d۰-۹+\- ]{0,20}$/) contactPhone?: string;
+  // «محل سکونت» (same cases)
+  @IsOptional() @IsString() @Length(0, 400) contactAddress?: string;
   // «تاریخ اعلام فوت» (Jalali), typed by the کارگزاری's panel 1
   @IsOptional() @IsString() @Matches(/^[\d۰-۹]{4}\/[\d۰-۹]{1,2}\/[\d۰-۹]{1,2}$/) deathNoticeDate?: string;
   // نوع بیمه‌نامه chosen on the panel-1 login

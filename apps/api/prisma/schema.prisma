@@ -882,6 +882,9 @@ model RequiredDocument {
   causes          String[] @default([]) // listed only for these «علت» (empty = every cause)
   requiredDetails String[] @default([]) // required only for these «نوع حادثه» (empty = as requiredTypes says)
   kinds          String[] @default([]) // نوع بیمه‌نامه it belongs to; empty = every kind
+  // A list made for one نوع پرونده + «علت»: when any such document applies to a case, only those do (the
+  // shared ones of the type step aside).
+  exclusive      Boolean     @default(false)
   order          Int         @default(0)
   isActive       Boolean     @default(true)
   createdAt      DateTime    @default(now())

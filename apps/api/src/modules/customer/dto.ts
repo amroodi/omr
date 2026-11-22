@@ -84,6 +84,8 @@ export class CustomerFileClaimDto {
   @IsOptional() @IsString() @Matches(/^\d{0,18}$/) accidentCapital?: string;
   // «شماره تماس قابل دسترس» (حوادث, نقص عضو)
   @IsOptional() @IsString() @Matches(/^[\d۰-۹+\- ]{0,20}$/) contactPhone?: string;
+  // «محل سکونت» (same cases)
+  @IsOptional() @IsString() @Length(0, 400) contactAddress?: string;
   // نوع بیمه‌نامه chosen on the panel-1 login
   @IsOptional()
   @IsString()

@@ -95,9 +95,9 @@ export const RETIRED_DOC_CODES = ['social_security_history', 'beneficiary_iban',
  */
 /** Every document about who receives the money (ذینفع form, حصر وراثت, their IDs and شبا), in the default and Alborz lists. */
 export const BENEFICIARY_DOC_CODES = ['beneficiary_form', 'inheritance_cert', 'no_beneficiary_form_letter', 'heirs_id_national_card', 'iban_printout',
-  'li_beneficiary_form', 'li_heirs_id', 'li_heirs_iban', 'da_crash_beneficiary_form', 'da_crash_heirs_id', 'da_crash_heirs_iban', 'dw_beneficiary_form'];
+  'li_beneficiary_form', 'li_heirs_id', 'li_heirs_iban', 'da_crash_beneficiary_form', 'da_crash_heirs_id', 'da_crash_heirs_iban', 'dw_beneficiary_form', 'it_beneficiary_form'];
 /** Rows that only mark where «تصویر مدارک ذینفع/ذینفعان» sits in a list (else it is the 5th row). */
-export const BENEFICIARY_SLOT_CODES = ['dw_beneficiary_form', 'da_crash_beneficiary_form'];
+export const BENEFICIARY_SLOT_CODES = ['dw_beneficiary_form', 'da_crash_beneficiary_form', 'it_beneficiary_form'];
 
 /**
  * «شاغلین / بازنشسته»: the insured's work papers, by the choice on the case (`employmentStatus`). A list asks
@@ -116,7 +116,7 @@ export const EMPLOYMENT_GROUP: Record<string, { code: string; label: string }[]>
   ],
 };
 export const EMPLOYMENT_FA: Record<string, string> = { EMPLOYED: 'شاغلین', RETIRED: 'بازنشسته' };
-export const EMPLOYMENT_SLOTS: Record<string, { retired: boolean }> = { dw_employment: { retired: false } };
+export const EMPLOYMENT_SLOTS: Record<string, { retired: boolean }> = { dw_employment: { retired: false }, it_employment: { retired: true } };
 export const EMPLOYMENT_GROUP_CODES = [...new Set(Object.values(EMPLOYMENT_GROUP).flat().map((x) => x.code))];
 /**
  * The insurers' own work papers (حکم کارگزینی، لیست کسور، حکم بازنشستگی…): a list that asks for any of them gets
@@ -136,11 +136,17 @@ export function employmentSlot<T extends { code: string; order: number }>(applyi
   return papers.length ? { slot: papers[0], retired: true } : null;
 }
 
+/** A list made for the case's type and «علت» (`exclusive`): when it applies, the type's shared documents step aside. */
+export function dedicatedOnly<T extends { exclusive?: boolean | null }>(applying: T[]): T[] {
+  return applying.some((r) => r.exclusive) ? applying.filter((r) => r.exclusive) : applying;
+}
+
 /** Notes for whoever files a حوادث case («کاربر ثبت»), under its list of documents. */
 export function accidentTips(death: boolean): string[] {
   return death
     ? ['تصاویر مدارک ارسال می بایست خوانا و بدون خط خوردگی باشد.']
-    : ['لازم به ذکر است در صورت تکمیل و ارسال مدارک فوق الذکر ، به منظور دعوت به معاینه پزشکی جهت تعیین درصد نقص عضو بیمه شده متعاقبا ً اطلاع رسانی خواهد شد.',
+    : ['تصاویر مدارک ارسال می بایست خوانا و بدون خط خوردگی باشد.',
+      'لازم به ذکر است در صورت تکمیل و ارسال مدارک فوق الذکر ، به منظور دعوت به معاینه پزشکی جهت تعیین درصد نقص عضو بیمه شده متعاقبا ً اطلاع رسانی خواهد شد.',
       'سایر توضیحات : در صورت عدم ارائه گواهی پزشک معالج مبنی بر خاتمه معالجات و تائید نقص عضو ، جهت معاینه پزشکی و تعیین نقص عضو بیمه شده ، حداکثر 6 ماه از تاریخ وقوع حادثه می بایست سپری شده باشد.'];
 }
 /**

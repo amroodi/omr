@@ -507,7 +507,7 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
                       </div>
                     );
                   };
-                  const groups = [...(ben ? [{ at: ben.at, row: benRow }] : []), ...(emp ? [{ at: emp.at, row: empRow }] : [])].sort((a, b) => a.at - b.at);
+                  const groups = [...(ben ? [{ at: ben.at, order: ben.order ?? -1, row: benRow }] : []), ...(emp ? [{ at: emp.at, order: emp.order ?? Number.MAX_SAFE_INTEGER, row: empRow }] : [])].sort((a, b) => a.at - b.at || a.order - b.order);
                   plain.forEach((it, i) => {
                     for (const g of groups) if (g.at === i) out.push(g.row());
                     out.push(docRow(it, (++n).toLocaleString('fa-IR')));

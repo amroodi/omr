@@ -27,7 +27,7 @@ import { TooManyRequestsException } from '../inquiry/http-exceptions';
 import { PERMISSIONS } from '../../common/rbac/permissions';
 import { nextClaimNumber } from './claim-number';
 import { isValidIban, isValidNationalCode } from '../../common/validation/field-validation';
-import { accidentTips, BENEFICIARY_DOC_CODES, BENEFICIARY_GROUP, BENEFICIARY_GROUP_AT, BENEFICIARY_GROUP_CODES, BENEFICIARY_GROUP_LABEL, BENEFICIARY_SLOT_CODES, beneficiaryHiddenDocs, EMPLOYMENT_FA, EMPLOYMENT_GROUP, EMPLOYMENT_GROUP_CODES, EMPLOYMENT_GROUP_LABEL, EMPLOYMENT_HIDDEN, employmentSlot } from '../required-docs/defaults';
+import { accidentTips, dedicatedOnly, BENEFICIARY_DOC_CODES, BENEFICIARY_GROUP, BENEFICIARY_GROUP_AT, BENEFICIARY_GROUP_CODES, BENEFICIARY_GROUP_LABEL, BENEFICIARY_SLOT_CODES, beneficiaryHiddenDocs, EMPLOYMENT_FA, EMPLOYMENT_GROUP, EMPLOYMENT_GROUP_CODES, EMPLOYMENT_GROUP_LABEL, EMPLOYMENT_HIDDEN, employmentSlot } from '../required-docs/defaults';
 import { toAsciiDigits } from '../../common/jalali/jalali.util';
 import { ModelStore } from '../model-view/model-store.service';
 import { CoverageService } from '../model-view/coverage.service';
@@ -111,6 +111,7 @@ interface FileClaimInput {
   /** «تاریخ اعلام فوت» typed by a کارگزاری's panel 1 at filing (Jalali). */
   deathNoticeDate?: string;
   contactPhone?: string; // «شماره تماس قابل دسترس» (حوادث, نقص عضو): for «دعوت به معاینه»
+  contactAddress?: string; // «محل سکونت» (the same cases), to arrange the examination
 }
 
 /** The caller's seat in the claim chain (see myDesk). */
@@ -631,6 +632,10 @@ export class ClaimsService {
     if (phone.length >= 8 && examAllowed(line, input.claimType)) {
       await db.claimFieldValue.create({ data: { claimId: claim.id, key: 'contact_phone', value: phone, source: 'MANUAL' as any, confirmedAt: new Date() } });
     }
+    const address = (input.contactAddress ?? '').trim().slice(0, 400);
+    if (address.length >= 3 && examAllowed(line, input.claimType)) {
+      await db.claimFieldValue.create({ data: { claimId: claim.id, key: 'contact_address', value: address, source: 'MANUAL' as any, confirmedAt: new Date() } });
+    }
     if (/^\d{4}\/\d{1,2}\/\d{1,2}$/.test(noticeDay)) {
       await db.claimFieldValue.create({ data: { claimId: claim.id, key: 'death_notice_date', value: noticeDay, source: 'MANUAL' as any, confirmedAt: new Date() } });
     }
@@ -761,9 +766,9 @@ export class ClaimsService {
     // شعبه: the insurer's own forms this case requires and nobody has uploaded yet.
     let insurerMissing: string[] = [];
     if (s === 'BRANCH') {
-      const own = await this.db().requiredDocument.findMany({ where: { tenantId: claim.insurerTenantId, isActive: true, code: { notIn: beneficiaryHiddenDocs(claim.beneficiaryType) }, ...docKindWhere(claim.line) }, select: { code: true, label: true, appliesToTypes: true, requiredTypes: true, causes: true, requiredDetails: true } });
+      const own = await this.db().requiredDocument.findMany({ where: { tenantId: claim.insurerTenantId, isActive: true, code: { notIn: beneficiaryHiddenDocs(claim.beneficiaryType) }, ...docKindWhere(claim.line) }, select: { code: true, label: true, appliesToTypes: true, requiredTypes: true, causes: true, requiredDetails: true, exclusive: true } });
       const have = new Set(latest.map((d) => d.docCode));
-      insurerMissing = own.filter((r) => insurerOnlyDoc(r.code) && docApplies(r, claim) && docRequired(r, claim) && !have.has(r.code)).map((r) => r.label);
+      insurerMissing = dedicatedOnly(own.filter((r) => docApplies(r, claim))).filter((r) => insurerOnlyDoc(r.code) && docRequired(r, claim) && !have.has(r.code)).map((r) => r.label);
     }
     return {
       deficiencyMissing: missing,
@@ -1973,7 +1978,7 @@ export class ClaimsService {
     assertNotPaid(claim);
     if (!EMPLOYMENT_FA[status]) throw new BadRequestException('وضعیت نامعتبر است');
     if (!(await this.canEditHeirs(claim))) throw new ForbiddenException('اجازهٔ ویرایش این پرونده را ندارید');
-    const emp = employmentSlot((await db.requiredDocument.findMany({ where: { tenantId: claim.insurerTenantId, isActive: true, ...docKindWhere(claim.line) } })).filter((r) => docApplies(r, claim)));
+    const emp = employmentSlot(dedicatedOnly((await db.requiredDocument.findMany({ where: { tenantId: claim.insurerTenantId, isActive: true, ...docKindWhere(claim.line) } })).filter((r) => docApplies(r, claim))));
     if (!emp) throw new BadRequestException('این پرونده وضعیت اشتغال ندارد');
     if (status === 'RETIRED' && !emp.retired) throw new BadRequestException('برای این پرونده «بازنشسته» در دسترس نیست');
     await db.claim.update({ where: { id: claimId }, data: { employmentStatus: status } });
@@ -2102,10 +2107,12 @@ export class ClaimsService {
     if (!claim) throw new NotFoundException('پرونده یافت نشد');
     this.assertParticipant(claim);
 
-    const catalog = await db.requiredDocument.findMany({
+    let catalog = await db.requiredDocument.findMany({
       where: { tenantId: claim.insurerTenantId, isActive: true, ...docKindWhere(claim.line) },
       orderBy: { order: 'asc' },
     });
+    // A list made for this type and «علت» takes the place of the type's shared documents.
+    if (catalog.some((r) => r.exclusive && docApplies(r, claim))) catalog = catalog.filter((r) => r.exclusive || !docApplies(r, claim));
     // «تصویر مدارک ذینفع/ذینفعان» takes the place of every document about who receives the money.
     const benGroup = catalog.some((r) => BENEFICIARY_DOC_CODES.includes(r.code) && docApplies(r, claim));
     // «شاغلین / بازنشسته»: a slot row in the list asks for it (a work accident has no بازنشسته: شاغلین is taken).
@@ -2238,7 +2245,8 @@ export class ClaimsService {
     const empAt = empSlot ? before(empSlot.order) : items.length;
     // later position first, so the earlier one's index still holds
     // later position first, so the earlier one's index still holds; at the same place the ذینفع group comes first
-    const inserts = [{ at: empAt, rows: empItems }, { at: benAt, rows: benItems }].sort((a, b) => b.at - a.at);
+    const benOrder = benSlot?.order ?? -1; const empOrder = empSlot?.order ?? Number.MAX_SAFE_INTEGER;
+    const inserts = [{ at: empAt, order: empOrder, rows: empItems }, { at: benAt, order: benOrder, rows: benItems }].sort((a, b) => b.at - a.at || b.order - a.order);
     for (const g of inserts) (items as any[]).splice(Math.min(g.at, items.length), 0, ...g.rows);
     // نقص مدارک: a required document asked for again is due again; an operator's own line is a slot of its own.
     const defSlots = await this.deficiencySlots(claimId);
@@ -2267,11 +2275,11 @@ export class ClaimsService {
       complete: items.length > 0 && benChosen && (!empSlot || !!empType) && items.every((i) => i.uploaded || !i.required),
       // «تصویر مدارک ذینفع/ذینفعان»: where it sits in the list and what was chosen (null = not yet).
       // «شاغلین / بازنشسته»: where it sits and what is chosen (`retired: false`: only شاغلین).
-      employment: empSlot ? { label: EMPLOYMENT_GROUP_LABEL, at: empAt, type: empType, retired: empRetired, options: Object.entries(EMPLOYMENT_GROUP).map(([type, docs]) => ({ type, docs: docs.map((x) => x.label) })) } : null,
+      employment: empSlot ? { label: EMPLOYMENT_GROUP_LABEL, at: empAt, order: empOrder, type: empType, retired: empRetired, options: Object.entries(EMPLOYMENT_GROUP).map(([type, docs]) => ({ type, docs: docs.map((x) => x.label) })) } : null,
       // Notes for whoever files a حوادث case.
       tips: isAccidentKind(claim.line, claim.claimType) ? accidentTips(!!caseTypeOf(await this.modelOf(claim.insurerTenantId), claim.claimType)?.death) : [],
       beneficiary: benGroup ? {
-        label: BENEFICIARY_GROUP_LABEL, at: benAt, type: benChosen ? claim.beneficiaryType : null,
+        label: BENEFICIARY_GROUP_LABEL, at: benAt, order: benOrder, type: benChosen ? claim.beneficiaryType : null,
         // Every choice with its documents (the printable list of required documents shows them all).
         options: Object.entries(BENEFICIARY_GROUP).map(([type, docs]) => ({ type, docs: docs.map((x) => x.label) })),
       } : null,
@@ -2747,7 +2755,7 @@ export class ClaimsService {
       branchIds.length ? db.branch.findMany({ where: { id: { in: branchIds } }, select: { id: true, name: true } }) : [],
       ids.length ? db.claimFieldValue.findMany({ where: { claimId: { in: ids } }, select: { claimId: true, key: true, value: true } }) : [],
       ids.length ? db.document.findMany({ where: { claimId: { in: ids } }, select: { claimId: true, docCode: true, verificationStatus: true }, orderBy: { createdAt: 'desc' } }) : [],
-      db.requiredDocument.findMany({ where: { isActive: true, tenantId: { in: insurerIds } }, select: { tenantId: true, code: true, appliesToTypes: true, requiredTypes: true, causes: true, requiredDetails: true } }),
+      db.requiredDocument.findMany({ where: { isActive: true, tenantId: { in: insurerIds } }, select: { tenantId: true, code: true, appliesToTypes: true, requiredTypes: true, causes: true, requiredDetails: true, exclusive: true } }),
       db.claimFieldDef.findMany({ where: { tenantId: { in: insurerIds }, isActive: true }, orderBy: { order: 'asc' }, select: { key: true, label: true, type: true } }),
     ]);
     const tName = new Map(tenants.map((t) => [t.id, t.name]));
@@ -2772,7 +2780,7 @@ export class ClaimsService {
       const f = fv.get(c.id) ?? {};
       const cd = docsBy.get(c.id) ?? [];
       const hidden = beneficiaryHiddenDocs(c.beneficiaryType);
-      const required = reqs.filter((r) => r.tenantId === c.insurerTenantId && docApplies(r, c) && docRequired(r, c) && !hidden.includes(r.code)).map((r) => r.code);
+      const required = dedicatedOnly(reqs.filter((r) => r.tenantId === c.insurerTenantId && docApplies(r, c))).filter((r) => docRequired(r, c) && !hidden.includes(r.code)).map((r) => r.code);
       const latestByCode = new Map<string, string>();
       for (const d of cd) if (d.docCode && !latestByCode.has(d.docCode)) latestByCode.set(d.docCode, d.verificationStatus);
       const uploaded = required.filter((code) => latestByCode.has(code)).length;
@@ -3159,6 +3167,7 @@ export class ClaimsService {
       examAllowed: examAllowed(claim.line, claim.claimType),
       examItems: EXAM_ITEMS,
       contactPhone: (await unscoped.claimFieldValue.findUnique({ where: { claimId_key: { claimId, key: 'contact_phone' } }, select: { value: true } }))?.value ?? null,
+      contactAddress: (await unscoped.claimFieldValue.findUnique({ where: { claimId_key: { claimId, key: 'contact_address' } }, select: { value: true } }))?.value ?? null,
       rejectReasons: REJECT_REASONS,
       lastActor: (await this.lastActorsOf([claimId])).get(claimId) ?? null,
       canEvaluate: this.holdsDesk(claim, desk) && claim.currentStage === 'BRANCH' && claim.flowDirection === 'UP' && getContext()?.panelMode !== 'ENTRY',
