@@ -39,7 +39,7 @@ interface Sinad {
   enabled: boolean; evaluator: { id: string; name: string; at: string | null; me: boolean } | null; later: boolean;
   doctor: { state: string | null; note: string | null }; fraudCheck: string | null; fraudItems?: { key: string; label: string; reason: string; no: string; why: string | null; value: 'OK' | 'SUSPECT' | null }[];
   exclusions?: { key: string; text: string }[]; exclusionsNote?: string;
-  lastActor?: { name: string; at: string } | null; examAllowed?: boolean; examItems?: string[]; contactPhone?: string | null; rejectReasons?: string[]; risk: { level: 'LOW' | 'MEDIUM' | 'HIGH'; reasons: string[] };
+  lastActor?: { name: string; at: string } | null; examAllowed?: boolean; examItems?: string[]; contactPhone?: string | null; contactAddress?: string | null; rejectReasons?: string[]; risk: { level: 'LOW' | 'MEDIUM' | 'HIGH'; reasons: string[] };
   canEvaluate: boolean; admin: boolean; returnGroups: { label: string; items: string[] }[];
   history: { kind: string; label: string; note: string | null; by: string; at: string }[];
   related: { id: string; claimNumber: string; claimTypeLabel: string; status: string; name: string | null; relation: string | null; line: string | null; amount: string; createdAt: string }[];
@@ -311,6 +311,7 @@ export default function EvaluatePage() {
         <div><span>کد ملی</span><b className="ltr">{claim.deceasedNationalCode || '—'}</b></div>
         <div><span>مبلغ غرامت</span><b>{rial(claim.estimatedAmount)}</b></div>
         {sinad.contactPhone && insurerBranch && <div><span>شماره تماس</span><b className="ltr">{sinad.contactPhone}</b></div>}
+        {sinad.contactAddress && insurerBranch && <div><span>محل سکونت</span><b>{sinad.contactAddress}</b></div>}
         <div><span>تاریخ وقوع</span><b>{claim.eventDate || '—'}</b></div>
         <div><span>نوع پرونده</span><b>{claim.claimTypeLabel || claim.claimType}</b></div>
         {claim.filedBy && <div><span>ثبت‌کننده</span><b>{filerText(claim.filedBy)}</b></div>}
@@ -657,6 +658,7 @@ export default function EvaluatePage() {
                     <select className="input" value={doctorId} onChange={(e) => setDoctorId(e.target.value)}><option value="">انتخاب پزشک معتمد…</option>{doctors.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</select>
                   )}
                   <div className="ev-exam-phone">شماره تماس قابل دسترس: <b className="ltr">{sinad.contactPhone || 'ثبت نشده'}</b></div>
+                  {sinad.contactAddress && <div className="ev-exam-phone">محل سکونت: <b>{sinad.contactAddress}</b></div>}
                   <div className="ev-reject-reasons">
                     {(sinad.examItems ?? []).map((x) => <label key={x}><input type="checkbox" checked={examPick.includes(x)} onChange={(e) => setExamPick((p) => (e.target.checked ? [...p, x] : p.filter((y) => y !== x)))} /> {x}</label>)}
                   </div>

@@ -335,6 +335,7 @@ export class CustomerController {
       deathCapital: dto.deathCapital,
       accidentCapital: dto.accidentCapital,
       contactPhone: dto.contactPhone,
+      contactAddress: dto.contactAddress,
       claimedAmount: dto.claimedAmount || undefined,
     });
   }

@@ -35,7 +35,7 @@ function jalaliDate(v?: string | null): Date | undefined {
 import { NotificationsService } from '../notifications/notifications.service';
 import { ClaimFieldsService } from '../claim-fields/claim-fields.service';
 import { PolicyholdersService } from '../policyholders/policyholders.service';
-import { BENEFICIARY_DOC_CODES, BENEFICIARY_GROUP, BENEFICIARY_GROUP_AT, BENEFICIARY_GROUP_CODES, BENEFICIARY_SLOT_CODES, beneficiaryHiddenDocs, EMPLOYMENT_GROUP, EMPLOYMENT_HIDDEN, employmentSlot } from '../required-docs/defaults';
+import { BENEFICIARY_DOC_CODES, BENEFICIARY_GROUP, BENEFICIARY_GROUP_AT, BENEFICIARY_GROUP_CODES, BENEFICIARY_SLOT_CODES, beneficiaryHiddenDocs, EMPLOYMENT_GROUP, EMPLOYMENT_HIDDEN, employmentSlot, dedicatedOnly } from '../required-docs/defaults';
 import { docKindWhere, kindLabel } from '../../common/kinds';
 
 /**
@@ -635,7 +635,7 @@ export class InquiryService {
       db.requiredDocument.findMany({ where: { tenantId: c.insurerTenantId, isActive: true, appliesToTypes: { has: c.claimType }, ...docKindWhere(c.line) }, orderBy: { order: 'asc' } }),
       db.document.findMany({ where: { claimId: c.id }, orderBy: { createdAt: 'desc' }, select: { id: true, docCode: true, createdAt: true, verificationStatus: true } }),
     ]);
-    const applying = all.filter((r) => docApplies(r, c)); // the case's «علت» narrows some lists
+    const applying = dedicatedOnly(all.filter((r) => docApplies(r, c))); // the case's «علت» narrows some lists (a list made for it replaces the shared one)
     // «تصویر مدارک ذینفع/ذینفعان»: the documents of the case's choice in place of every ذینفع document (as panel 1 lists them).
     const benGroup = applying.some((r) => BENEFICIARY_DOC_CODES.includes(r.code));
     const emp = employmentSlot(applying);
@@ -646,11 +646,11 @@ export class InquiryService {
     const reqs: { code: string; label: string }[] = [...plain];
     const benSlot = applying.find((r) => BENEFICIARY_SLOT_CODES.includes(r.code));
     const at = (slot: { order: number } | undefined, fallback: number) => (slot ? plain.filter((r) => r.order < slot.order).length : fallback);
-    // later position first; at the same place the ذینفع group comes first
+    // later position first; at the same place, by their slots' order (else the ذینفع group first)
     const groups = [
-      ...(empType ? [{ at: at(empSlot, plain.length), rows: EMPLOYMENT_GROUP[empType] ?? [] }] : []),
-      ...(benGroup ? [{ at: at(benSlot, BENEFICIARY_GROUP_AT), rows: BENEFICIARY_GROUP[c.beneficiaryType ?? ''] ?? [] }] : []),
-    ].sort((a, b) => b.at - a.at);
+      ...(empType ? [{ at: at(empSlot, plain.length), order: empSlot?.order ?? Number.MAX_SAFE_INTEGER, rows: EMPLOYMENT_GROUP[empType] ?? [] }] : []),
+      ...(benGroup ? [{ at: at(benSlot, BENEFICIARY_GROUP_AT), order: benSlot?.order ?? -1, rows: BENEFICIARY_GROUP[c.beneficiaryType ?? ''] ?? [] }] : []),
+    ].sort((a, b) => b.at - a.at || b.order - a.order);
     for (const g of groups) reqs.splice(Math.min(g.at, reqs.length), 0, ...g.rows);
     const reviews = docs.length && !manual ? await db.documentReview.findMany({ where: { documentId: { in: docs.map((d) => d.id) } } }) : [];
     const latest = new Map<string, (typeof docs)[number]>();

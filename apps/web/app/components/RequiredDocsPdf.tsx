@@ -17,9 +17,9 @@ export function RequiredDocsButton({ checklist, title, kind, insurer }: { checkl
   const rows: { label: string; required: boolean; sub?: { head: string; docs: string[] }[] }[] = plain.map((it) => ({ label: it.label, required: !!it.required }));
   // later position first, so the earlier one's index still holds
   const groups = [
-    ...(emp ? [{ at: emp.at, row: { label: emp.label, required: true, sub: (emp.options ?? []).filter((o) => o.type !== 'RETIRED' || emp.retired).map((o) => ({ head: o.type === 'RETIRED' ? 'بازنشسته' : 'شاغلین', docs: o.docs })) } }] : []),
-    ...(ben ? [{ at: ben.at, row: { label: ben.label, required: true, sub: (ben.options ?? []).map((o) => ({ head: BEN_FA[o.type] ?? o.type, docs: o.docs })) } }] : []),
-  ].sort((a, b) => b.at - a.at); // at the same place the ذینفع group comes first
+    ...(emp ? [{ at: emp.at, order: emp.order ?? Number.MAX_SAFE_INTEGER, row: { label: emp.label, required: true, sub: (emp.options ?? []).filter((o) => o.type !== 'RETIRED' || emp.retired).map((o) => ({ head: o.type === 'RETIRED' ? 'بازنشسته' : 'شاغلین', docs: o.docs })) } }] : []),
+    ...(ben ? [{ at: ben.at, order: ben.order ?? -1, row: { label: ben.label, required: true, sub: (ben.options ?? []).map((o) => ({ head: BEN_FA[o.type] ?? o.type, docs: o.docs })) } }] : []),
+  ].sort((a, b) => b.at - a.at || b.order - a.order); // at the same place, by their slots' order
   for (const g of groups) rows.splice(Math.min(g.at, rows.length), 0, g.row);
   const run = async () => {
     if (!sheet.current) return;
