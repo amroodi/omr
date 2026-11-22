@@ -199,8 +199,8 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
       throw e;
     }
   };
-  const [benOpen, setBenOpen] = useState(false); // «تصویر مدارک ذینفع/ذینفعان» opened
-  const [empOpen, setEmpOpen] = useState(false); // «شاغلین / بازنشسته» opened
+  const [benOpen, setBenOpen] = useState(true); // «تصویر مدارک ذینفع/ذینفعان» open, its three choices in sight
+  const [empOpen, setEmpOpen] = useState(true); // «وضعیت اشتغال» open, its two choices in sight
   const setEmployment = async (status: string) => {
     setError('');
     try { await client.put(`${api}/employment`, { status }, realm); await reload(); } catch (e: any) { setError(e.message); }
