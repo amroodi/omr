@@ -473,6 +473,8 @@ export interface ActionContext {
   model?: WorkflowModel;
   /** Why this login can't send the case on from the بیمه‌گزار desk (Model View). */
   submitBlocked?: string;
+  /** A کارگزاری's panel 1: every document is up to them, so the case may be sent with none uploaded. */
+  docsOptional?: boolean;
   /** Why the گیرندگان خسارت aren't ready for a payment yet (name, کد ملی, شبا, shares); undefined = ready. */
   payeesMissing?: string;
   /** Has ستاد approved the amount شعبه proposed? (undefined = not asked, as before) */
@@ -556,7 +558,7 @@ export function actionsFor(ctx: ActionContext): WorkflowAction[] {
   const notApproved = !model.stages[s].reviewDocs ? undefined : docs.count === 0 ? 'مدرکی بارگذاری نشده است' : !docs.allApproved ? `ابتدا همهٔ مدارک را در مرحلهٔ ${fa[s]} تایید کنید` : undefined;
 
   if (s === 'POLICYHOLDER') {
-    const disabled = ctx.submitBlocked ? ctx.submitBlocked : docs.count === 0
+    const disabled = ctx.submitBlocked ? ctx.submitBlocked : docs.count === 0 && !ctx.docsOptional
       ? 'ابتدا مدارک را بارگذاری کنید'
       : docs.rejectedAnywhere.length
         ? `مدارک ردشده را جایگزین کنید: ${docs.rejectedAnywhere.join('، ')}`

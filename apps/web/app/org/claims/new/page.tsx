@@ -247,7 +247,6 @@ export default function NewClaim() {
       if (birthIso) payload.deceasedBirthDate = birthIso;
       if (f.policyNumber.trim()) payload.policyNumber = toAscii(f.policyNumber).trim();
       if (f.description.trim()) payload.description = f.description.trim();
-      if (f.startStage) payload.startStage = f.startStage;
       if (cause) payload.causeOfDeath = cause;
       if (causeDetail) payload.causeDetail = causeDetail;
       if (f.gender) payload.insuredGender = f.gender;
@@ -400,13 +399,6 @@ export default function NewClaim() {
           <PField label={ins ? 'مبلغ برآورد خسارت' : 'مبلغ خسارت برآوردی (ریال)'} help={`اختیاری؛ ${ins ? 'به ریال؛ ' : ''}مبلغ قطعی پس از ارزیابی ثبت می‌شود.`}>
             <input className="input" inputMode="numeric" value={groupDigits(f.claimedAmount)} onChange={(e) => setF((s) => ({ ...s, claimedAmount: toAscii(e.target.value).replace(/[^\d]/g, '') }))} placeholder="۰" style={{ direction: 'ltr', textAlign: 'right' }} />
           </PField>
-          {!ins && notice && notice.enabled && notice.targets.length > 1 && (
-            <PField label="ارسال پرونده پس از ثبت به" help="مرحله‌هایی که در «تنظیمات سازمان › اعلام خسارت» مجاز شده‌اند.">
-              <select className="input" value={f.startStage || notice.default} onChange={set('startStage')}>
-                {notice.targets.filter((t) => t !== 'BROKER' || !manual || f.channel === 'BROKER').map((t) => <option key={t} value={t}>{notice.labels[t] ?? t}</option>)}
-              </select>
-            </PField>
-          )}
           {!ins && (
             <PField label="شماره بیمه‌نامه" help={co ? 'اگر خالی بماند از قرارداد شرکت برداشته می‌شود.' : 'اختیاری.'}>
               <input className="input" value={f.policyNumber} onChange={set('policyNumber')} style={{ direction: 'ltr', textAlign: 'right' }} />

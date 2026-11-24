@@ -224,12 +224,22 @@ export class ClaimsService {
    * The بیمه‌گزار's side of a case: the بیمه‌گزار (or نماینده) who filed it — or, when an organization's staff
    * filed it on panel 1, that organization's panel 1 — with a link to the case itself.
    */
-  private async notifyPolicyHolderOf(claim: any, title: string, body: string) {
-    if (claim.filedByKind === 'ORG_USER' && claim.filedById) {
+  private async notifyPolicyHolderOf(claim: any, title: string, body: string, kind: 'ACTION' | 'INFO' = 'ACTION') {
+    // Panel 1 is never told about what its own operator just did (filing, sending…).
+    if (claim.filedByKind === 'ORG_USER' && claim.filedById && getContext()?.actorId !== claim.filedById) {
       const u = await this.prisma.unscoped().orgUser.findUnique({ where: { id: claim.filedById }, select: { tenantId: true } });
-      if (u) await this.notifications.notify({ tenantId: u.tenantId, audience: 'ORG', title, body, link: `/org/claims/${claim.id}`, panel: 'ENTRY', claimId: claim.id });
+      // ACTION: panel 1 has something to do (a return); INFO: news of the case (approved, paid, rejected), not counted.
+      if (u) await this.notifications.notify({ tenantId: u.tenantId, audience: 'ORG', title, body, link: `/org/claims/${claim.id}`, panel: 'ENTRY', claimId: claim.id, kind });
     }
     await this.notifyPolicyHolder(claim.policyHolderId, title, body, claim.id);
+  }
+
+  /** A کارگزاری's panel 1: its documents are all optional (shown as asked, never blocking «ثبت نهایی»). */
+  private async brokerEntry(): Promise<boolean> {
+    const ctx = getContext();
+    if (ctx?.actorType !== 'ORG_USER' || ctx.panelMode !== 'ENTRY' || !ctx.tenantId) return false;
+    const t = await this.prisma.unscoped().tenant.findUnique({ where: { id: ctx.tenantId }, select: { kind: true } });
+    return t?.kind === 'BROKER';
   }
 
   /** Oversight note for the acting operator's own-org admins (in-panel only; actor excluded). */
@@ -502,7 +512,8 @@ export class ClaimsService {
     // filing on behalf starts at the بیمه‌گزار desk too; an operator's own filing goes to their desk.
     const notice = await this.noticeOptions(input.channel === 'BROKER' ? input.brokerTenantId! : null, insurerTenantId);
     if (!notice.enabled) throw new ForbiddenException('اعلام خسارت از این پنل غیرفعال است؛ با مدیر سازمان تماس بگیرید.');
-    const wanted = input.startStage ?? (input.onBehalf && notice.targets.includes('POLICYHOLDER') ? 'POLICYHOLDER' : notice.default);
+    // The chain decides where a case starts; only an insurer's own entry way (Super Admin) may leave it to the operator.
+    const wanted = (notice.entryWay ? input.startStage : undefined) ?? (input.onBehalf && notice.targets.includes('POLICYHOLDER') ? 'POLICYHOLDER' : notice.default);
     if (!notice.targets.includes(wanted)) {
       throw new BadRequestException(notice.entryWay
         ? `پرونده‌هایی که این بیمه‌گر ثبت می‌کند طبق تنظیم مدیر سامانه از «${notice.targets.map((t) => TARGET_FA[t]).join(' یا ')}» شروع می‌شوند.`
@@ -830,7 +841,8 @@ export class ClaimsService {
     const payeesMissing = paying ? this.payeesProblem(claim, await db.claimHeir.findMany({ where: { claimId: claim.id }, select: { fullName: true, nationalCode: true, iban: true, sharePercent: true } })) ?? undefined : undefined;
     const amountApproved = s === 'HQ' && claim.flowDirection === 'UP' ? !!claim.amountApprovedAt : undefined;
     const authority = s === 'BRANCH' && claim.flowPurpose === 'PAYMENT' ? await this.myAuthority(claim, desk) : undefined;
-    const actions = actionsFor({ claim, isAdmin: desk.isAdmin, hqCeiling: insurer?.hqCeiling ?? null, docs, branches, physical, model, submitBlocked, payeesMissing, amountApproved, authority });
+    const docsOptional = s === 'POLICYHOLDER' && (await this.brokerEntry());
+    const actions = actionsFor({ claim, isAdmin: desk.isAdmin, hqCeiling: insurer?.hqCeiling ?? null, docs, branches, physical, model, submitBlocked, docsOptional, payeesMissing, amountApproved, authority });
     // شعبه: originals received must be checked against the uploaded copies before the case goes on.
     if (s === 'BRANCH' && claim.flowDirection === 'UP') {
       const got = await this.prisma.unscoped().claimPhysicalRequest.findFirst({ where: { claimId: claim.id, requesterStage: 'BRANCH', status: 'RECEIVED' }, orderBy: { receivedAt: 'desc' }, select: { matchState: true } });
@@ -1131,7 +1143,7 @@ export class ClaimsService {
         if (s === 'HQ') await this.grantAuthority(claim, false);
         await this.audit.record({ action: AuditAction.CLAIM_APPROVE, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { by: s } });
         await this.notifyHolder(claim, dn!, 'دستور پرداخت', `برای پروندهٔ ${claim.claimNumber} از سوی ${this.store.labels(claim.insurerTenantId)[s]} دستور پرداخت صادر شد.`);
-        await this.notifyPolicyHolderOf(claim, 'تایید پرونده خسارت', `پروندهٔ ${claim.claimNumber} تایید شد و دستور پرداخت صادر شده است.`);
+        await this.notifyPolicyHolderOf(claim, 'تایید پرونده خسارت', `پروندهٔ ${claim.claimNumber} تایید شد و دستور پرداخت صادر شده است.`, 'INFO');
         break;
       }
       case 'RETURN':
@@ -1182,7 +1194,7 @@ export class ClaimsService {
         await this.move(claim, step, { ...base, closeState: 'ACKED', to: null, status: ClaimStatus.PAID });
         await this.revokeAuthority(claimId, 'پرداخت انجام شد', 'USED'); // the مجوز ends with the payment
         await this.audit.record({ action: AuditAction.CLAIM_PAY, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId });
-        await this.notifyPolicyHolderOf(claim, 'پرداخت خسارت', `خسارت پروندهٔ ${claim.claimNumber} پرداخت شد.`);
+        await this.notifyPolicyHolderOf(claim, 'پرداخت خسارت', `خسارت پروندهٔ ${claim.claimNumber} پرداخت شد.`, 'INFO');
         if (claim.brokerTenantId) await this.notifyOrg(claim.brokerTenantId, 'پرداخت خسارت', `خسارت پروندهٔ ${claim.claimNumber} توسط شعبه پرداخت شد.`, `/org/claims/${claimId}`);
         break;
       }
@@ -1199,7 +1211,7 @@ export class ClaimsService {
       case 'REJECT_FINAL': {
         await this.move(claim, step, { ...base, closeState: 'REJECTED', to: null, status: ClaimStatus.REJECTED });
         await this.audit.record({ action: AuditAction.CLAIM_REJECT, tenantId: claim.insurerTenantId, targetType: 'Claim', targetId: claimId, metadata: { by: s } });
-        await this.notifyPolicyHolderOf(claim, 'رد پرونده خسارت', `پروندهٔ ${claim.claimNumber} رد شد${note ? `: ${note}` : '.'}`);
+        await this.notifyPolicyHolderOf(claim, 'رد پرونده خسارت', `پروندهٔ ${claim.claimNumber} رد شد${note ? `: ${note}` : '.'}`, 'INFO');
         if (claim.brokerTenantId) await this.notifyOrg(claim.brokerTenantId, 'رد پرونده خسارت', `پروندهٔ ${claim.claimNumber} توسط ${this.store.labels(claim.insurerTenantId)[s]} رد شد.`, `/org/claims/${claimId}`);
         break;
       }
@@ -1260,7 +1272,7 @@ export class ClaimsService {
       if (step) await this.move(claim, step, { action: outcome === 'PAID' ? 'MARK_PAID' : 'REJECT_FINAL', closeState: outcome === 'PAID' ? 'ACKED' : 'REJECTED', note, to: null, status });
       else await db.claim.update({ where: { id: claimId }, data: { status, currentStage: null, flowDirection: null, flowPurpose: null } });
       await this.notifyPolicyHolderOf(claim, outcome === 'PAID' ? 'پرداخت خسارت' : 'رد پرونده خسارت',
-        outcome === 'PAID' ? `خسارت پروندهٔ ${claim.claimNumber} پرداخت شد.` : `پروندهٔ ${claim.claimNumber} رد شد.`);
+        outcome === 'PAID' ? `خسارت پروندهٔ ${claim.claimNumber} پرداخت شد.` : `پروندهٔ ${claim.claimNumber} رد شد.`, 'INFO');
     }
     await this.audit.record({
       action: outcome === 'PAID' ? AuditAction.CLAIM_PAY : outcome === 'REJECTED' ? AuditAction.CLAIM_REJECT : AuditAction.CLAIM_APPROVE,
@@ -2277,6 +2289,7 @@ export class ClaimsService {
       // «شاغلین / بازنشسته»: where it sits and what is chosen (`retired: false`: only شاغلین).
       employment: empSlot ? { label: EMPLOYMENT_GROUP_LABEL, at: empAt, order: empOrder, type: empType, retired: empRetired, options: Object.entries(employmentGroupFor(claim.claimType)).map(([type, docs]) => ({ type, docs: docs.map((x) => x.label) })) } : null,
       // Notes for whoever files a حوادث case.
+      docsOptional: await this.brokerEntry(),
       tips: isAccidentKind(claim.line, claim.claimType) ? accidentTips(!!caseTypeOf(await this.modelOf(claim.insurerTenantId), claim.claimType)?.death) : LIFE_TIPS,
       beneficiary: benGroup ? {
         label: BENEFICIARY_GROUP_LABEL, at: benAt, order: benOrder, type: benChosen ? claim.beneficiaryType : null,

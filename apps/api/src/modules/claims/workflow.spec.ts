@@ -226,6 +226,13 @@ describe('Model View', () => {
     const a = actionsFor(ctx({ currentStage: 'POLICYHOLDER' } as any, { ...docsOk, submitBlocked: 'x' })).find((k) => k.key === 'SUBMIT');
     expect(a?.disabled).toBe('x');
   });
+
+  it('a کارگزاری panel 1 may send with no document; others need one', () => {
+    const none = { ...docsOk, docs: { ...docsOk.docs, count: 0 } };
+    const submit = (extra: object) => actionsFor(ctx({ currentStage: 'POLICYHOLDER' } as any, { ...none, ...extra })).find((k) => k.key === 'SUBMIT');
+    expect(submit({})?.disabled).toBeTruthy();
+    expect(submit({ docsOptional: true })?.disabled).toBeUndefined();
+  });
 });
 
 describe('Model View: stages, types and forms', () => {

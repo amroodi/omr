@@ -3,12 +3,15 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { client, Realm } from '../../lib/client';
 
-interface Note { id: string; title: string; body: string; link: string | null; readAt: string | null; createdAt: string; kind?: 'ACTION' | 'ACTIVITY' }
+interface Note { id: string; title: string; body: string; link: string | null; readAt: string | null; createdAt: string; kind?: 'ACTION' | 'INFO' | 'ACTIVITY' }
 
 /**
  * Bell with the count of unread things to do, and the list: «اعلان‌ها» (to do) and — for admins — «فعالیت
  * همکاران» (colleagues' acts). Each operator has their own read state; opening one opens its case.
  */
+/** «اعلان‌ها» holds the to-do notices and the news of cases; «فعالیت همکاران» the rest. */
+const tabOf = (i: Note): 'ACTION' | 'ACTIVITY' => (i.kind === 'ACTIVITY' ? 'ACTIVITY' : 'ACTION');
+
 export function NotificationBell({ realm }: { realm: Realm }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -35,7 +38,7 @@ export function NotificationBell({ realm }: { realm: Realm }) {
   const markRead = (it: Note) => {
     if (it.readAt) return;
     setItems((x) => x?.map((i) => (i.id === it.id ? { ...i, readAt: 'now' } : i)) ?? x);
-    if ((it.kind ?? 'ACTION') === 'ACTION') setCount((c) => Math.max(0, c - 1));
+    if ((it.kind ?? 'ACTION') === 'ACTION') setCount((c) => Math.max(0, c - 1)); // news (INFO) is not counted
     client.post(`/notifications/${it.id}/read`, {}, realm).then(loadCount).catch(() => {});
   };
   // Opened right in the click (a tab opened after waiting for the server is blocked as a pop-up).
@@ -49,12 +52,12 @@ export function NotificationBell({ realm }: { realm: Realm }) {
   const markAll = async () => {
     try {
       await client.post(`/notifications/read-all?kind=${tab}`, {}, realm);
-      setItems((x) => x?.map((i) => ((i.kind ?? 'ACTION') === tab ? { ...i, readAt: i.readAt ?? 'now' } : i)) ?? x);
+      setItems((x) => x?.map((i) => (tabOf(i) === tab ? { ...i, readAt: i.readAt ?? 'now' } : i)) ?? x);
       loadCount();
     } catch { /* ignore */ }
   };
   const activity = (items ?? []).filter((i) => i.kind === 'ACTIVITY');
-  const shown = (items ?? []).filter((i) => (i.kind ?? 'ACTION') === tab);
+  const shown = (items ?? []).filter((i) => tabOf(i) === tab);
   const unreadActivity = activity.filter((i) => !i.readAt).length;
 
   return (

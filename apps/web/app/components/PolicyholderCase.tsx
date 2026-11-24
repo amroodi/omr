@@ -236,8 +236,8 @@ export function PolicyholderCase({ realm }: { realm: 'customer' | 'org' }) {
     };
     const fail = (reason: string, items: string[] = []) => show({ ok: false, reason, items });
     if (uploading) return fail('بارگذاری یک یا چند مدرک هنوز تمام نشده است؛ پس از پایان بارگذاری دوباره «ثبت نهایی» را بزنید.');
-    if (checklist.beneficiary && !checklist.beneficiary.type) { setBenOpen(true); return fail(`در «${checklist.beneficiary.label}» یکی از ذینفع های منتخب، حصر وراثت یا بیمه گزار را انتخاب کنید.`); }
-    if (missing.length) return fail('مدارک الزامی زیر هنوز بارگذاری نشده‌اند؛ پس از بارگذاری آن‌ها دوباره «ثبت نهایی» را بزنید:', missing);
+    if (!checklist.docsOptional && checklist.beneficiary && !checklist.beneficiary.type) { setBenOpen(true); return fail(`در «${checklist.beneficiary.label}» یکی از ذینفع های منتخب، حصر وراثت یا بیمه گزار را انتخاب کنید.`); }
+    if (missing.length && !checklist.docsOptional) return fail('مدارک الزامی زیر هنوز بارگذاری نشده‌اند؛ پس از بارگذاری آن‌ها دوباره «ثبت نهایی» را بزنید:', missing);
     if (rejected.length) return fail('مدارک زیر رد شده‌اند و باید مدرک صحیح جایگزین شود:', rejected);
     if (submitAction?.disabled) return fail(submitAction.disabled);
     setSending(true);

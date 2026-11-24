@@ -296,7 +296,6 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
       if (cause) payload.causeOfDeath = cause;
       if (causeDetail) payload.causeDetail = causeDetail;
       if (f.gender) payload.insuredGender = f.gender;
-      if (f.startStage || (notice?.enabled && notice.targets.length > 1)) payload.startStage = f.startStage || startDefault;
       if (f.description.trim()) payload.description = f.description.trim();
       if (!agent && estimate && estimate !== '0') payload.claimedAmount = estimate;
       if (!agent && !accidentKind && f.deathCapital) payload.deathCapital = f.deathCapital;
@@ -321,7 +320,6 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
   };
 
   // Filed for a بیمه‌گزار by its brokerage, a case starts at the بیمه‌گزار's desk unless chosen otherwise (as the server does).
-  const startDefault = notice ? (org && notice.targets.includes('POLICYHOLDER') ? 'POLICYHOLDER' : notice.default) : '';
   const isDeath = caseType?.death ?? DEATH_TYPES.has(f.claimType);
   // عمر or حوادث: by the نوع بیمه‌نامه panel 1 works in, else by the نوع پرونده. سرمایه فوت is عمر's, سرمایه حادثه حوادث's.
   const kindLine = getLine();
@@ -499,15 +497,6 @@ export function PolicyholderClaimForm({ realm }: { realm: 'customer' | 'org' }) 
           </PField></div>
           )}
         </div>
-
-        {notice && notice.enabled && notice.targets.length > 1 && (
-          <div className="mt-2.5 max-w-md">
-            <label className="label">ارسال پرونده پس از ثبت به</label>
-            <select className="input" value={f.startStage || startDefault} onChange={(e) => setF({ ...f, startStage: e.target.value })}>
-              {notice.targets.map((t) => <option key={t} value={t}>{notice.labels[t] ?? t}</option>)}
-            </select>
-          </div>
-        )}
 
         {/* «شرح», as on the insurer's panel 1: required when no «علت» is picked from the list */}
         <div className={`mt-2.5 red-stars${descRequired && !f.description.trim() ? ' pfield-missing' : ''}`}>
