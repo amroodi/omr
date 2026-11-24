@@ -15,8 +15,8 @@ export interface NotifyInput {
   link?: string;
   /** Send the companion SMS too (default true). Set false for internal, high-volume ORG oversight. */
   sms?: boolean;
-  /** ACTION (to do; counted on the bell) or ACTIVITY (colleagues' acts, for admins). */
-  kind?: 'ACTION' | 'ACTIVITY';
+  /** ACTION (to do; counted on the bell), INFO (news of a case; listed, not counted) or ACTIVITY (colleagues' acts, for admins). */
+  kind?: 'ACTION' | 'INFO' | 'ACTIVITY';
   /** A shared ORG notice for one desk / branch / panel of the organization (unset = everyone there). */
   stage?: string | null;
   branchId?: string | null;
@@ -138,7 +138,8 @@ export class NotificationsService {
     const admin = (ctx.permissions ?? []).includes('claim:override');
     const branchId = user?.branchId ?? ctx.branchId ?? null;
     const stage = tenant?.kind === 'BROKER' ? 'BROKER' : user?.desk === 'HQ' || user?.desk === 'COUNCIL' || user?.desk === 'BRANCH' ? user.desk : branchId ? 'BRANCH' : 'HQ';
-    const shared: Prisma.NotificationWhereInput[] = [{ OR: [{ panel: null }, { panel: ctx.panelMode === 'ENTRY' ? 'ENTRY' : 'PROCESS' }] }];
+    // Panel 1 sees only what is addressed to panel 1; a notice for no particular panel is panel 2's work.
+    const shared: Prisma.NotificationWhereInput[] = [ctx.panelMode === 'ENTRY' ? { panel: 'ENTRY' } : { OR: [{ panel: null }, { panel: 'PROCESS' }] }];
     if (!admin) {
       shared.push({ OR: [{ stage: null }, { stage }] });
       if (stage === 'BRANCH' && branchId) shared.push({ OR: [{ branchId: null }, { branchId }] });
@@ -196,11 +197,29 @@ export class NotificationsService {
     return { ok: true };
   }
 
+  /** Opening a case: its notices are read for me (nothing left on the bell about a case I am looking at). */
+  async markClaimRead(claimId: string) {
+    const db = this.prisma.unscoped();
+    const ctx = getContext();
+    const base = await this.where();
+    const mine = { claimId };
+    if (ctx?.actorType !== 'ORG_USER') {
+      await db.notification.updateMany({ where: { AND: [base, mine, { readAt: null }] }, data: { readAt: new Date() } });
+      return { ok: true };
+    }
+    const me = ctx.actorId!;
+    await db.notification.updateMany({ where: { AND: [base, mine, { recipientId: me, readAt: null }] }, data: { readAt: new Date() } });
+    const shared = await db.notification.findMany({ where: { AND: [base, mine, { recipientId: null }, { NOT: this.readBy(me) }] }, select: { id: true }, take: 500 });
+    if (shared.length) await db.notificationRead.createMany({ data: shared.map((n) => ({ notificationId: n.id, userId: me })), skipDuplicates: true });
+    return { ok: true };
+  }
+
   async markAllRead(kind?: string) {
     const db = this.prisma.unscoped();
     const ctx = getContext();
     const base = await this.where();
-    const k = kind === 'ACTIVITY' || kind === 'ACTION' ? { kind } : {};
+    // «اعلان‌ها» holds the to-do notices and the news of cases together.
+    const k = kind === 'ACTIVITY' ? { kind } : kind === 'ACTION' ? { kind: { in: ['ACTION', 'INFO'] } } : {};
     if (ctx?.actorType !== 'ORG_USER') {
       await db.notification.updateMany({ where: { AND: [base, k, { readAt: null }] }, data: { readAt: new Date() } });
       return { ok: true };
