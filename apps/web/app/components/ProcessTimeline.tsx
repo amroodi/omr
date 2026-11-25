@@ -4,6 +4,8 @@ import { LossNoticeEntry, stepActionFa, TimelineStep, withLossNotice } from './W
 import { blankVal, CaseClaim, CaseNo, DEATH_TYPES, fmtAmount, STATUS_FA, StatusHistoryButton, WF_STEPS } from './case-ui';
 
 const faD = (s: string) => s.replace(/\d/g, (d) => '۰۱۲۳۴۵۶۷۸۹'[+d]);
+/** The step still open: at the بیمه‌گزار the case is being completed (or fixed after a return), elsewhere reviewed. */
+const pendingFa = (s: TimelineStep) => (s.stage === 'POLICYHOLDER' ? (s.direction === 'DOWN' ? 'در حال رفع نقص' : 'در حال تکمیل پرونده') : 'در حال بررسی');
 
 /**
  * «فرایند رسیدگی پرونده» — shared by the بیمه‌گزار panel («روند پرونده») and the inquiry panel
@@ -73,7 +75,7 @@ export function ProcessTimeline({ c, fv, splitNumber = false }: { c: CaseClaim &
           return (
             <li key={s.order} className={pending ? 'is-wait' : back ? 'is-back' : 'is-done'}>
               <div className="cu-node-t">{s.stageLabel || s.holderName || 'مرحله'}{s.branchName ? ` — ${s.branchName}` : ''} :</div>
-              <div className="cu-kv"><b>وضعیت :</b><span>{pending ? 'در حال بررسی' : stepActionFa(s, steps)}</span></div>
+              <div className="cu-kv"><b>وضعیت :</b><span>{pending ? pendingFa(s) : stepActionFa(s, steps)}</span></div>
               {s.decidedAt && <div className="cu-kv"><b>تاریخ :</b><span>{s.decidedAt}</span></div>}
               {s.note && <div className="cu-kv"><b>توضیحات :</b><span>{s.note}</span></div>}
               {(s.letters ?? []).map((l) => (
@@ -115,7 +117,7 @@ export function processRows(c: CaseClaim & { steps?: TimelineStep[]; lossNotice?
       const pending = s.state === 'PENDING';
       rows.push({
         stage: `${s.stageLabel || s.holderName || 'مرحله'}${s.branchName ? ` — ${s.branchName}` : ''}`,
-        status: pending ? 'در حال بررسی' : stepActionFa(s, steps),
+        status: pending ? pendingFa(s) : stepActionFa(s, steps),
         date: s.decidedAt ?? '',
         note: [s.note, ...(s.letters ?? []).map((l) => `نامه ${l.number ?? ''}${l.date ? ` (${l.date})` : ''}`)].filter(Boolean).join(' — '),
       });
